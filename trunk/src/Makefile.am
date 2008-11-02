@@ -13,8 +13,8 @@ sgdd_SOURCES =		sgdd.c	\
 			../include/sg_lib_data.h	\
 			../lib/sg_cmds_basic.c	\
 			../include/sg_cmds_basic.h	\
-			../lib/sg_cmds_mmc.c	\
-			../include/sg_cmds_mmc.h	\
+			../lib/sg_cmds_extra.c	\
+			../include/sg_cmds_extra.h	\
 			../include/sg_pt.h
 
 sgdd_LDADD = @os_deps@ @GETOPT_O_FILES@ @os_libs@

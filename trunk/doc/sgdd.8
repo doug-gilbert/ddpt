@@ -1,25 +1,24 @@
-.TH SG_DD "8" "September 2008" "sg3_utils\-1.27" SG3_UTILS
+.TH SGDD "8" "October 2008" "sgdd\-0.90" SGDD
 .SH NAME
-sg_dd \- copies data to and from files and devices. Specialised for
+sgdd \- copies data to and from files and devices. Specialised for
 devices that understand the SCSI command set.
 .SH SYNOPSIS
-.B sg_dd
+.B sgdd
 [\fIbs=BS\fR] [\fIconv=CONV\fR] [\fIcount=COUNT\fR] [\fIibs=BS\fR]
 [\fIif=IFILE\fR] [\fIiflag=FLAGS\fR] [\fIobs=BS\fR] [\fIof=OFILE\fR]
 [\fIoflag=FLAGS\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fI\-\-help\fR]
 [\fI\-\-version\fR]
 .PP
-[\fIblk_sgio=\fR0|1] [\fIbpt=BPT\fR] [\fIcdbsz=\fR6|10|12|16]
-[\fIcoe=\fR0|1|2|3] [\fIcoe_limit=CL\fR] [\fIdio=\fR0|1] [\fIodir=\fR0|1]
-[\fIof2=OFILE2\fR] [\fIretries=RETR\fR] [\fIsync=\fR0|1] [\fItime=\fR0|1]
-[\fIverbose=VERB\fR]
+[\fIbpt=BPT\fR] [\fIcdbsz=\fR6|10|12|16] [\fIcoe=\fR0|1|2|3]
+[\fIcoe_limit=CL\fR] [\fIof2=OFILE2\fR] [\fIretries=RETR\fR]
+[\fItime=\fR0|1] [\fIverbose=VERB\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
-Copy data to and from any files. Specialized for "files" that are Linux SCSI
-generic (sg) devices, raw devices or other devices that support the SG_IO
-ioctl (which are only found in the lk 2.6 series). Similar syntax and
-semantics to
+Copy data to and from any files. Specialized for "files" that are SCSI
+(or SCSI like) direct access storage devices (e.g. SATA and SAS disks,
+plus DVD drives). Can issue SCSI commands it pass-through ("pt") mode.
+Similar syntax and semantics to
 .B dd(1)
 but only one type of "conversion" is supported. That optional conversion is
 sparse writing of the output file.
@@ -30,37 +29,22 @@ operands. The second group are extra options added by this utility.
 Both groups are defined below.
 .SH OPTIONS
 .TP
-\fBblk_sgio\fR=0 | 1
-when set to 0, block devices (e.g. /dev/sda) are treated like normal
-files (i.e.
-.B read(2)
-and
-.B write(2)
-are used for IO). When set to 1, block devices are assumed to accept the
-SG_IO ioctl and SCSI commands are issued for IO. This is only supported
-for 2.6 series kernels. Note that ATAPI devices (e.g. cd/dvd players) use
-the SCSI command set but ATA disks do not (unless there is a protocol
-conversion as often occurs in the USB mass storage class). If the input
-or output device is a block device partition (e.g. /dev/sda3) then setting
-this option causes the partition information to be ignored (since access
-is directly to the underlying device). Default is 0. See the 'sgio' flag.
-.TP
 \fBbpt\fR=\fIBPT\fR
-each IO transaction will be made using \fIBPT\fR blocks (or less if near
-the end of the copy). Default is 128 for block sizes less that 2048
-bytes, otherwise the default is 32. So for bs=512 the reads and writes
-will each convey 64 KiB of data by default (less if near the end of the
-transfer or memory restrictions). When cd/dvd drives are accessed, the
-block size is typically 2048 bytes and bpt defaults to 32 which again
-implies 64 KiB transfers. The block layer when the blk_sgio=1 option
-is used has relatively low upper limits for transfer sizes (compared
-to sg device nodes, see /sys/block/<dev_name>/queue/max_sectors_kb ).
+each IO transaction on \fIIFILE\fR will be made using \fIBPT\fR
+blocks (or less if near the end of the copy). Default is 128 for block
+sizes less that 2048 bytes, otherwise the default is 32. So for bs=512
+the reads will each convey 64 KiB of data by default (less if near the
+end of the transfer or memory restrictions). When cd/dvd drives are
+accessed, the block size is typically 2048 bytes and bpt defaults to 32
+which again implies 64 KiB transfers.
 .TP
 \fBbs\fR=\fIBS\fR
-where \fIBS\fR
+where \fIBS\fR is the \fIIFILE\fR block size. If \fIOBS\fR is not supplied
+by the "obs=" option then \fIBS\fR is also the \fIOFILE\fR block size.
+If \fIIFILE\fR is a block device or a "pt" device then \fIBS\fR
 .B must
-be the block size of the physical device (if either the input or output
-files are accessed via SCSI commands). Note that this differs from
+be the block size of the physical input device.
+Note that this differs from
 .B dd(1)
 which permits \fIBS\fR to be an integral multiple. Default is 512 which
 is usually correct for disks but incorrect for cdroms (which normally
@@ -107,15 +91,9 @@ rather than the size of the whole device is used. If \fICOUNT\fR is not
 given and cannot be derived then an error message is issued and no copy
 takes place.
 .TP
-\fBdio\fR=0 | 1
-default is 0 which selects indirect (buffered) IO on sg devices. Value of 1
-attempts direct IO which, if not available, falls back to indirect IO and
-notes this at completion. If direct IO is selected and /proc/scsi/sg/allow_dio
-has the value of 0 then a warning is issued (and indirect IO is performed).
-For finer grain control use 'iflag=dio' or 'oflag=dio'.
-.TP
 \fBibs\fR=\fIBS\fR
-if given must be the same as \fIBS\fR given to 'bs=' option.
+where \fIBS\fR is the \fIIFILE\fR block size. If given it must be the same
+as \fIBS\fR given to 'bs=' option.
 .TP
 \fBif\fR=\fIIFILE\fR
 read from \fIIFILE\fR instead of stdin. If \fIIFILE\fR is '\-' then stdin
@@ -127,16 +105,12 @@ where \fIFLAGS\fR is a comma separated list of one or more flags outlined
 below.  These flags are associated with \fIIFILE\fR and are ignored when
 \fIIFILE\fR is stdin.
 .TP
-\fBobs\fR=\fIBS\fR
-if given must be the same as \fIBS\fR given to 'bs=' option.
-.TP
-\fBodir\fR=0 | 1
-when set to one opens block devices (e.g. /dev/sda) with the O_DIRECT
-flag. User memory buffers are aligned to the page size when set. The
-default is 0 (i.e. the O_DIRECT flag is not used). Has no effect on sg,
-normal or raw files. If blk_sgio is also set then both are honoured:
-block devices are opened with the O_DIRECT flag and SCSI commands are
-issued via the SG_IO ioctl.
+\fBobs\fR=\fIOBS\fR
+this is the \fIOFILE\fR block size. If not supplied the \fIBS\fR value
+is assumed. If \fIOBS\fR is given then is has the following restriction:
+the integer expression (((\fIBS\fR * \fIBPT\fR) % \fIOBS\fR) == 0).
+Stated another way: the input buffer size must be an intgral multiple
+of \fIOBS\fR. 
 .TP
 \fBof\fR=\fIOFILE\fR
 write to \fIOFILE\fR instead of stdout. If \fIOFILE\fR is '\-' then writes
@@ -171,11 +145,6 @@ Default is block 0 (i.e. start of file).
 \fBskip\fR=\fISKIP\fR
 start reading \fISKIP\fR bs\-sized blocks from the start of \fIIFILE\fR.
 Default is block 0 (i.e. start of file).
-.TP
-\fBsync\fR=0 | 1
-when 1, does SYNCHRONIZE CACHE command on \fIOFILE\fR at the end of the
-transfer. Only active when \fIOFILE\fR is a sg device file name or a block
-device and 'blk_sgio=1' is given.
 .TP
 \fBtime\fR=0 | 1
 when 1, times transfer and does throughput calculation, outputting the
@@ -277,18 +246,21 @@ WRITE commands do not support the FUA bit.
 null
 has no affect, just a placeholder.
 .TP
-sgio
-causes block devices to be accessed via the SG_IO ioctl rather than
-standard UNIX read() and write() commands. When the SG_IO ioctl is
-used the SCSI READ and WRITE commands are used directly to move
-data. sg devices always use the SG_IO ioctl. This flag offers finer
-grain control compared to the otherwise identical 'blk_sgio=1' option.
+pt
+causes a device to be accessed in "pt" mode. In "pt" mode SCSI commands
+are sent to READ and WRITE blocks rather than standard UNIX read() and
+write() commands. The "pt" mode may be implicit if the device is only
+capable of passing through SCSI commands (e.g. the /dev/sg devices in
+Linux). This flag is needed for device nodes that can be accessed both
+via standard UNIX read() and write() commands as well as SCSI commands.
+Such devices default standard UNIX read() and write() commands in the
+absence of this flag.
 .TP
 sparse
 after each \fIBS\fR * \fIBPT\fR byte segment is read from the input,
 it is checked for being all zeros. If so, nothing is written to the output
-file unless this is the last segment of the transfer. This option is
-only active with oflag. It cannot be used when the output is not
+file unless this is the last segment of the transfer. This flag is only
+active with the oflag option. It cannot be used when the output is not
 seekable (e.g. stdout). It is ignored if the output file is /dev/null .
 Note that this utility does not remove the \fIOFILE\fR prior to starting
 to write to it. Hence it may be advantageous to manually remove the
@@ -298,18 +270,11 @@ programs like md5sum and sha1sum will generate the same value regardless
 of whether oflag=sparse is given or not. This option may be used when the
 \fIOFILE\fR is a raw device but is probably only useful if the device is
 known to contain zeros (e.g. a SCSI disk after a FORMAT command).
-.SH RETIRED OPTIONS
-Here are some retired options that are still present:
 .TP
-append=0 | 1
-when set, equivalent to 'oflag=append'. When clear the action is
-to overwrite the existing file (if it exists); this is the default.
-See the 'append' flag.
-.TP
-fua=0 | 1 | 2 | 3
-force unit access bit. When 3, fua is set on both \fIIFILE\fR and
-\fIOFILE\fR; when 2, fua is set on \fIIFILE\fR;, when 1, fua is set on
-\fIOFILE\fR; when 0 (default), fua is cleared on both. See the 'fua' flag.
+sync
+if \fIOFILE\fR is in "pt" mode the the SCSI SYNCHRONIZE CACHE command is
+sent to \fIOFILE\fR at the end of the transfer. This flag is only valid
+with the "oflag=" option.
 .SH NOTES
 Block devices (e.g. /dev/sda and /dev/hda) can be given for \fIIFILE\fR.
 If neither '\-iflag=direct', 'iflag=sgio' nor 'blk_sgio=1' is given then
@@ -457,12 +422,12 @@ Written by Doug Gilbert and Peter Allworth.
 .SH "REPORTING BUGS"
 Report bugs to <dgilbert at interlog dot com>.
 .SH COPYRIGHT
-Copyright \(co 2000\-2008 Douglas Gilbert
+Copyright \(co 2008 Douglas Gilbert
 .br
 This software is distributed under the GPL version 2. There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 .SH "SEE ALSO"
-There is a web page discussing sg_dd at http://www.torque.net/sg/sg_dd.html
+There is a web page discussing sg_dd at http://sg.danny.cz/sg/sg_dd.html
 .PP
 A POSIX threads version of this utility called
 .B sgp_dd
