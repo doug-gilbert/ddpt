@@ -763,7 +763,7 @@ sg_read_low(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
 {
     unsigned char rdCmd[MAX_SCSI_CDBSZ];
     unsigned char sense_b[SENSE_BUFF_LEN];
-    int res, k, info_valid, slen, sense_cat, ret;
+    int res, k, info_valid, slen, sense_cat, ret, vt;
     struct sg_pt_base * ptvp;
 
     if (sg_build_scsi_cdb(rdCmd, ifp->cdbsz, blocks, from_block, 0,
@@ -792,14 +792,10 @@ sg_read_low(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_in(ptvp, buff, bs * blocks);
     res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, verbose);
-    if (verbose > 3) {
-        k = get_scsi_pt_duration_ms(ptvp);
-        if (k >= 0)
-            fprintf(stderr, "      duration=%d ms\n", k);
-    }
 
+    vt = ((verbose > 1) ? (verbose - 1) : verbose);
     ret = sg_cmds_process_resp(ptvp, "READ", res, bs * blocks, sense_b,
-                               1 /* noisy */, verbose, &sense_cat);
+                               1 /* noisy */, vt, &sense_cat);
     if (-1 == ret)
         ;
     else if (-2 == ret) {
@@ -1139,7 +1135,7 @@ sg_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
 {
     unsigned char wrCmd[MAX_SCSI_CDBSZ];
     unsigned char sense_b[SENSE_BUFF_LEN];
-    int res, k, info_valid, ret, sense_cat, slen;
+    int res, k, info_valid, ret, sense_cat, slen, vt;
     uint64_t io_addr = 0;
     struct sg_pt_base * ptvp;
 
@@ -1169,14 +1165,10 @@ sg_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_out(ptvp, buff, bs * blocks);
     res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, verbose);
-    if (verbose > 3) {
-        k = get_scsi_pt_duration_ms(ptvp);
-        if (k >= 0)
-            fprintf(stderr, "      duration=%d ms\n", k);
-    }
 
+    vt = ((verbose > 1) ? (verbose - 1) : verbose);
     ret = sg_cmds_process_resp(ptvp, "WRITE", res, bs * blocks, sense_b,
-                               1 /* noisy */, verbose, &sense_cat);
+                               1 /* noisy */, vt, &sense_cat);
     if (-1 == ret)
         ;
     else if (-2 == ret) {
