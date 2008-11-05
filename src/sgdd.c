@@ -1,6 +1,51 @@
+/*
+ * Copyright (c) 2008 Douglas Gilbert.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ */
+
+/* sgdd is a utility program for copying files. It broadly follows the syntax
+ * and semantics of the "dd" program found in Unix. sgdd is specialised for
+ * "files" that represent storage devices, especially those that understand
+ * the SCSI command set.
+ */
+
+/*
+ * Note: Over 10 years ago the author's first dd implementation was done
+ * with Peter Allworth. With various re-implementations of dd since then
+ * the author has named Peter as a co-copyright holder. It is difficult
+ * to decide when to stop doing that.
+ * The license has also been changed to FreeBSD style from the previous
+ * incarnation which was sg_dd in the sg3_utils package. sg_dd has a
+ * GPL style license. Both licenses are considered "open source".
+ */
+
 #define _XOPEN_SOURCE 500
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE     /* resolves u_char typedef in scsi/scsi.h [lk 2.4] */
+#define _GNU_SOURCE
 #endif
 
 #include <unistd.h>
@@ -21,47 +66,21 @@
 #include <sys/time.h>
 #include <sys/file.h>
 
-#include <linux/major.h>
-#include <linux/fs.h>   /* <sys/mount.h> */
-
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
+
+#if SGDD_LINUX
+#include <linux/major.h>
+#include <linux/fs.h>   /* <sys/mount.h> */
+#endif
+
 #include "sg_lib.h"
 #include "sg_cmds_basic.h"
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-// #include "sg_io_linux.h"
-
-/* A utility program for copying files. Specialised for "files" that
-*  represent devices that understand the SCSI command set.
-*
-*  Copyright (C) 1999 - 2008 D. Gilbert and P. Allworth
-*  This program is free software; you can redistribute it and/or modify
-*  it under the terms of the GNU General Public License as published by
-*  the Free Software Foundation; either version 2, or (at your option)
-*  any later version.
-
-   This program is a specialisation of the Unix "dd" command in which
-   either the input or the output file is a scsi generic device, raw
-   device, a block device or a normal file. The block size ('bs') is
-   assumed to be 512 if not given. This program complains if 'ibs' or
-   'obs' are given with a value that differs from 'bs' (or the default 512).
-   If 'if' is not given or 'if=-' then stdin is assumed. If 'of' is
-   not given or 'of=-' then stdout assumed.
-
-   A non-standard argument "bpt" (blocks per transfer) is added to control
-   the maximum number of blocks in each transfer. The default value is 128.
-   For example if "bs=512" and "bpt=32" then a maximum of 32 blocks (16 KiB
-   in this case) is transferred to or from the sg device in a single SCSI
-   command. The actual size of the SCSI READ or WRITE command block can be
-   selected with the "cdbsz" argument.
-
-   This version is designed for the linux kernel 2.4 and 2.6 series.
-*/
-
-static char * version_str = "0.90 20081031";
+static char * version_str = "0.90 20081104";
 
 #define ME "sgdd: "
 
@@ -98,11 +117,11 @@ static char * version_str = "0.90 20081031";
 #define SG_LIB_FLOCK_ERR 90
 
 #define FT_OTHER 1              /* filetype is probably normal */
-#define FT_SG 2                 /* filetype is sg char device or supports
-                                   SG_IO ioctl */
+#define FT_PT 2                 /* filetype is a device that SCSI
+                                   commands can be sent via a pass-through */
 #define FT_RAW 4                /* filetype is raw char device */
 #define FT_DEV_NULL 8           /* either "/dev/null" or "." as filename */
-#define FT_ST 16                /* filetype is st char device (tape) */
+#define FT_TAPE 16              /* filetype is tape style device */
 #define FT_BLOCK 32             /* filetype is block device */
 #define FT_FIFO 64              /* filetype is a fifo (name pipe) */
 #define FT_ERROR 128            /* couldn't "stat" file */
@@ -155,7 +174,7 @@ struct flags_t {
     int dsync;
     int excl;
     int fua;
-    int sgio;
+    int pt;
     int pdt;
     int cdbsz;
     int retries;
@@ -195,14 +214,14 @@ usage()
     fprintf(stderr, "Usage: "
            "sgdd  [bs=BS] [count=COUNT] [ibs=BS] [if=IFILE]"
            " [iflag=FLAGS]\n"
-           "              [obs=OBS] [of=OFILE] [oflag=FLAGS] "
+           "             [obs=OBS] [of=OFILE] [oflag=FLAGS] "
            "[seek=SEEK] [skip=SKIP]\n"
-           "              [--help] [--version]\n\n"
-           "              [bpt=BPT] [cdbsz=6|10|12|16] "
+           "             [--help] [--version]\n\n"
+           "             [bpt=BPT] [cdbsz=6|10|12|16] "
            "[coe=0|1|2|3]\n"
-           "              [coe_limit=CL] "
+           "             [coe_limit=CL] "
            "[of2=OFILE2] [retries=RETR]\n"
-           "              [time=0|1] [verbose=VERB]\n"
+           "             [time=0|1] [verbose=VERB]\n"
            "  where:\n"
            "    bpt         is blocks_per_transfer (default is 128 or 32 "
            "when BS>=2048)\n"
@@ -224,7 +243,7 @@ usage()
            "    if          file or device to read from (def: stdin)\n"
            "    iflag       comma separated list from: [coe,direct,"
            "dpo,dsync,excl,\n"
-           "                flock,fua,null,sgio]\n"
+           "                flock,fua,null,pt]\n"
            "    obs         output block size ((((BS*BPT)%%OBS)==0) "
            "required\n"
            "    of          file or device to write to (def: stdout), "
@@ -236,8 +255,8 @@ usage()
            "                normal file or pipe\n"
            "    oflag       comma separated list from: [append,coe,"
            "direct,dpo,\n"
-           "                dsync,excl,flock,fua,null,sgio,sparse]\n"
-           "    retries     retry sgio errors RETR times (def: 0)\n"
+           "                dsync,excl,flock,fua,null,pt,sparse]\n"
+           "    retries     retry pt errors RETR times (def: 0)\n"
            "    seek        block position to start writing to OFILE\n"
            "    skip        block position to start reading from IFILE\n"
            "    time        0->no timing(def), 1->time plus calculate "
@@ -509,9 +528,9 @@ dd_filetype(const char * filename)
         if (RAW_MAJOR == major(st.st_rdev))
             return FT_RAW;
         if (SCSI_GENERIC_MAJOR == major(st.st_rdev))
-            return FT_SG;
+            return FT_PT;
         if (SCSI_TAPE_MAJOR == major(st.st_rdev))
-            return FT_ST;
+            return FT_TAPE;
     } else if (S_ISBLK(st.st_mode))
         return FT_BLOCK;
     else if (S_ISFIFO(st.st_mode))
@@ -527,13 +546,13 @@ dd_filetype_str(int ft, char * buff)
 
     if (FT_DEV_NULL & ft)
         off += snprintf(buff + off, 32, "null device ");
-    if (FT_SG & ft)
+    if (FT_PT & ft)
         off += snprintf(buff + off, 32, "SCSI generic (sg) device ");
     if (FT_BLOCK & ft)
         off += snprintf(buff + off, 32, "block device ");
     if (FT_FIFO & ft)
         off += snprintf(buff + off, 32, "fifo (named pipe) ");
-    if (FT_ST & ft)
+    if (FT_TAPE & ft)
         off += snprintf(buff + off, 32, "SCSI tape device ");
     if (FT_RAW & ft)
         off += snprintf(buff + off, 32, "raw device ");
@@ -753,6 +772,12 @@ sg_read_low(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
                 "blocks=%d\n", from_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
     }
+    if (verbose > 2) {
+        fprintf(stderr, "    READ cdb: ");
+        for (k = 0; k < ifp->cdbsz; ++k)
+            fprintf(stderr, "%02x ", rdCmd[k]);
+        fprintf(stderr, "\n");
+    }
 
     if (NULL == sg_warnings_strm)
         sg_warnings_strm = stderr;
@@ -767,7 +792,7 @@ sg_read_low(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_in(ptvp, buff, bs * blocks);
     res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, verbose);
-    if (verbose > 2) {
+    if (verbose > 3) {
         k = get_scsi_pt_duration_ms(ptvp);
         if (k >= 0)
             fprintf(stderr, "      duration=%d ms\n", k);
@@ -901,7 +926,7 @@ sg_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
             break;
         case SG_LIB_CAT_MEDIUM_HARD_WITH_INFO:
             if (retries_tmp > 0) {
-                fprintf(stderr, ">>> retrying a sgio read, lba=0x%"PRIx64"\n",
+                fprintf(stderr, ">>> retrying a pt read, lba=0x%"PRIx64"\n",
                         (uint64_t)lba);
                 --retries_tmp;
                 ++num_retries;
@@ -922,7 +947,7 @@ sg_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
             may_coe = 1;
         default:
             if (retries_tmp > 0) {
-                fprintf(stderr, ">>> retrying a sgio read, lba=0x%"PRIx64"\n",
+                fprintf(stderr, ">>> retrying a pt read, lba=0x%"PRIx64"\n",
                         (uint64_t)lba);
                 --retries_tmp;
                 ++num_retries;
@@ -1124,6 +1149,12 @@ sg_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
                 to_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
     }
+    if (verbose > 2) {
+        fprintf(stderr, "    WRITE cdb: ");
+        for (k = 0; k < ofp->cdbsz; ++k)
+            fprintf(stderr, "%02x ", wrCmd[k]);
+        fprintf(stderr, "\n");
+    }
 
     if (NULL == sg_warnings_strm)
         sg_warnings_strm = stderr;
@@ -1138,7 +1169,7 @@ sg_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_out(ptvp, buff, bs * blocks);
     res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, verbose);
-    if (verbose > 2) {
+    if (verbose > 3) {
         k = get_scsi_pt_duration_ms(ptvp);
         if (k >= 0)
             fprintf(stderr, "      duration=%d ms\n", k);
@@ -1249,8 +1280,8 @@ process_flags(const char * arg, struct flags_t * fp)
             fp->fua = 1;
         else if (0 == strcmp(cp, "null"))
             ;
-        else if (0 == strcmp(cp, "sgio"))
-            fp->sgio = 1;
+        else if (0 == strcmp(cp, "pt"))
+            fp->pt = 1;
         else if (0 == strcmp(cp, "sparse"))
             ++fp->sparse;
         else if (0 == strcmp(cp, "flock"))
@@ -1283,13 +1314,13 @@ open_if(const char * inf, int64_t skip, /* int bpt, */ struct flags_t * ifp,
     if (FT_ERROR & *in_typep) {
         fprintf(stderr, ME "unable access %s\n", inf);
         goto file_err;
-    } else if ((FT_BLOCK & *in_typep) && ifp->sgio)
-        *in_typep |= FT_SG;
+    } else if ((FT_BLOCK & *in_typep) && ifp->pt)
+        *in_typep |= FT_PT;
 
-    if (FT_ST & *in_typep) {
+    if (FT_TAPE & *in_typep) {
         fprintf(stderr, ME "unable to use scsi tape device %s\n", inf);
         goto file_err;
-    } else if (FT_SG & *in_typep) {
+    } else if (FT_PT & *in_typep) {
         flags = O_NONBLOCK;
         if (ifp->direct)
             flags |= O_DIRECT;
@@ -1308,7 +1339,7 @@ open_if(const char * inf, int64_t skip, /* int bpt, */ struct flags_t * ifp,
             }
         }
         if (verbose)
-            fprintf(stderr, "        open input(sg_io), flags=0x%x\n",
+            fprintf(stderr, "        open input(pt), flags=0x%x\n",
                     fl | flags);
         if (sg_simple_inquiry(infd, &sir, 0, verb)) {
             fprintf(stderr, "INQUIRY failed on %s\n", inf);
@@ -1389,13 +1420,13 @@ open_of(const char * outf, int64_t seek, /* int bpt, */ struct flags_t * ofp,
         fprintf(stderr, " >> Output file type: %s\n",
                 dd_filetype_str(*out_typep, ebuff));
 
-    if ((FT_BLOCK & *out_typep) && ofp->sgio)
-        *out_typep |= FT_SG;
+    if ((FT_BLOCK & *out_typep) && ofp->pt)
+        *out_typep |= FT_PT;
 
-    if (FT_ST & *out_typep) {
+    if (FT_TAPE & *out_typep) {
         fprintf(stderr, ME "unable to use scsi tape device %s\n", outf);
         goto file_err;
-    } else if (FT_SG & *out_typep) {
+    } else if (FT_PT & *out_typep) {
         flags = O_RDWR | O_NONBLOCK;
         if (ofp->direct)
             flags |= O_DIRECT;
@@ -1410,7 +1441,7 @@ open_of(const char * outf, int64_t seek, /* int bpt, */ struct flags_t * ofp,
             goto file_err;
         }
         if (verbose)
-            fprintf(stderr, "        open output(sg_io), flags=0x%x\n",
+            fprintf(stderr, "        open output(pt), flags=0x%x\n",
                     flags);
         if (sg_simple_inquiry(outfd, &sir, 0, verb)) {
             fprintf(stderr, "INQUIRY failed on %s\n", outf);
@@ -1491,23 +1522,318 @@ other_err:
     return -SG_LIB_CAT_OTHER;
 }
 
+static int
+do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
+        unsigned char * wrkPos)
+{
+    int blocks_per, res, blks_read, retries_tmp, first, buf_sz;
+    int blocks = 0;
+    int sparse_skip = 0;
+    int penult_sparse_skip = 0;
+    int penult_blocks = 0;
+    char ebuff[EBUFF_SZ];
+    int res2 = 0;
+    int ret = 0;
+
+    blocks_per = optsp->bpt;
+
+    /* <<< main loop that does the copy >>> */
+    while (dd_count > 0) {
+        penult_sparse_skip = sparse_skip;
+        penult_blocks = penult_sparse_skip ? blocks : 0;
+        sparse_skip = 0;
+        blocks = (dd_count > blocks_per) ? blocks_per : dd_count;
+        if (FT_PT & optsp->in_type) {
+            res = sg_read(infd, wrkPos, blocks, optsp->skip, blk_sz,
+                          optsp->iflagp, &blks_read);
+            if (-2 == res) {     /* ENOMEM, find what's available+try that */
+#if 0
+                if (ioctl(infd, SG_GET_RESERVED_SIZE, &buf_sz) < 0) {
+                    perror("RESERVED_SIZE ioctls failed");
+                    ret = res;
+                    break;
+                }
+#else
+                buf_sz = MIN_RESERVED_SIZE;
+#endif
+                if (buf_sz < MIN_RESERVED_SIZE)
+                    buf_sz = MIN_RESERVED_SIZE;
+                blocks_per = (buf_sz + blk_sz - 1) / blk_sz;
+                if (blocks_per < blocks) {
+                    blocks = blocks_per;
+                    fprintf(stderr, "Reducing read to %d blocks per "
+                            "loop\n", blocks_per);
+                    res = sg_read(infd, wrkPos, blocks, optsp->skip, blk_sz,
+                                  optsp->iflagp, &blks_read);
+                }
+            }
+            if (res) {
+                fprintf(stderr, "sg_read failed,%s at or after lba=%"PRId64" "
+                        "[0x%"PRIx64"]\n", ((-2 == res) ?
+                          " try reducing bpt," : ""),
+                         optsp->skip, optsp->skip);
+                ret = res;
+                break;
+            } else {
+                if (blks_read < blocks) {
+                    dd_count = 0;   /* force exit after write */
+                    blocks = blks_read;
+                }
+                in_full += blocks;
+            }
+        } else {
+            while (((res = read(infd, wrkPos, blocks * blk_sz)) < 0) &&
+                   (EINTR == errno))
+                ;
+            if (verbose > 2)
+                fprintf(stderr, "read(unix): count=%d, res=%d\n",
+                        blocks * blk_sz, res);
+            if (res < 0) {
+                snprintf(ebuff, EBUFF_SZ, ME "reading, skip=%"PRId64" ",
+                         optsp->skip);
+                perror(ebuff);
+                ret = -1;
+                break;
+            } else if (res < blocks * blk_sz) {
+                dd_count = 0;
+                blocks = res / blk_sz;
+                if ((res % blk_sz) > 0) {
+                    blocks++;
+                    in_partial++;
+                }
+            }
+#ifdef HAVE_POSIX_FADVISE
+            if ((FT_OTHER == optsp->in_type) || (FT_BLOCK== optsp->in_type)) {
+                // res2 = posix_fadvise(infd, skip, res, POSIX_FADV_DONTNEED);
+                res2 = posix_fadvise(infd, 0, 0, POSIX_FADV_DONTNEED);
+                if (res2 < 0) {
+                    snprintf(ebuff, EBUFF_SZ, ME "posix_fadvise after read, "
+                             "skip=%"PRId64" ", optsp->skip);
+                    perror(ebuff);
+                }
+            }
+#endif
+            in_full += blocks;
+        }
+
+        if (0 == blocks)
+            break;      /* nothing read so leave loop */
+
+        if (optsp->out2f[0]) {
+            while (((res = write(out2fd, wrkPos, blocks * blk_sz)) < 0)
+                   && (EINTR == errno))
+                ;
+            if (verbose > 2)
+                fprintf(stderr, "write to of2: count=%d, res=%d\n",
+                        blocks * blk_sz, res);
+            if (res < 0) {
+                snprintf(ebuff, EBUFF_SZ, ME "writing to of2, seek=%"PRId64" ",
+                         optsp->seek);
+                perror(ebuff);
+                ret = -1;
+                break;
+            }
+#ifdef HAVE_POSIX_FADVISE
+            if ((FT_OTHER == optsp->out2_type) ||
+                (FT_BLOCK== optsp->out2_type)) {
+                res2 = posix_fadvise(out2fd, 0, 0, POSIX_FADV_DONTNEED);
+                if (res2 < 0) {
+                    snprintf(ebuff, EBUFF_SZ, ME "posix_fadvise after of2 "
+                             "write, seek=%"PRId64" ", optsp->seek);
+                    perror(ebuff);
+                }
+            }
+#endif
+            optsp->out2_off += res;
+        }
+
+        if ((optsp->oflagp->sparse) && (dd_count > blocks) &&
+            (! (FT_DEV_NULL & optsp->out_type))) {
+            if (NULL == zeros_buff) {
+                zeros_buff = (unsigned char *)malloc(blocks * blk_sz);
+                if (NULL == zeros_buff) {
+                    fprintf(stderr, "zeros_buff malloc failed\n");
+                    ret = -1;
+                    break;
+                }
+                memset(zeros_buff, 0, blocks * blk_sz);
+            }
+            if (0 == memcmp(wrkPos, zeros_buff, blocks * blk_sz))
+                sparse_skip = 1;
+        }
+        if (sparse_skip) {
+            if (FT_PT & optsp->out_type) {
+                out_sparse += blocks;
+                if (verbose > 2)
+                    fprintf(stderr, "sparse bypassing sg_write: seek "
+                            "blk=%"PRId64", offset blks=%d\n", optsp->seek,
+                            blocks);
+            } else if (FT_DEV_NULL & optsp->out_type)
+                ;
+            else {
+                off64_t offset = blocks * blk_sz;
+                off64_t off_res;
+
+                if (verbose > 2)
+                    fprintf(stderr, "sparse bypassing write: "
+                            "seek=%"PRId64", rel offset=%"PRId64"\n",
+                            (optsp->seek * blk_sz), (int64_t)offset);
+                off_res = lseek64(outfd, offset, SEEK_CUR);
+                if (off_res < 0) {
+                    fprintf(stderr, "sparse tried to bypass write: "
+                            "seek=%"PRId64", rel offset=%"PRId64" but ...\n",
+                            (optsp->seek * blk_sz), (int64_t)offset);
+                    perror("lseek64 on output");
+                    ret = SG_LIB_FILE_ERROR;
+                    break;
+                } else if (verbose > 4)
+                    fprintf(stderr, "oflag=sparse lseek64 result=%"PRId64"\n",
+                           (int64_t)off_res);
+                out_sparse += blocks;
+            }
+        } else if (FT_PT & optsp->out_type) {
+            retries_tmp = oflag.retries;
+            first = 1;
+            while (1) {
+                ret = sg_write(outfd, wrkPos, blocks, optsp->seek, blk_sz,
+                               &oflag);
+                if (0 == ret)
+                    break;
+                if ((SG_LIB_CAT_NOT_READY == ret) ||
+                    (SG_LIB_SYNTAX_ERROR == ret))
+                    break;
+                else if ((-2 == ret) && first) {
+                    /* ENOMEM: find what's available and try that */
+#if 0
+                    if (ioctl(outfd, SG_GET_RESERVED_SIZE, &buf_sz) < 0) {
+                        perror("RESERVED_SIZE ioctls failed");
+                        break;
+                    }
+#else
+                    buf_sz = MIN_RESERVED_SIZE;
+#endif
+                    if (buf_sz < MIN_RESERVED_SIZE)
+                        buf_sz = MIN_RESERVED_SIZE;
+                    blocks_per = (buf_sz + blk_sz - 1) / blk_sz;
+                    if (blocks_per < blocks) {
+                        blocks = blocks_per;
+                        fprintf(stderr, "Reducing write to %d blocks per "
+                                "loop\n", blocks);
+                    } else
+                        break;
+                } else if ((SG_LIB_CAT_UNIT_ATTENTION == ret) && first) {
+                    if (--max_uas > 0)
+                        fprintf(stderr, "Unit attention, continuing (w)\n");
+                    else {
+                        fprintf(stderr, "Unit attention, too many (w)\n");
+                        break;
+                    }
+                } else if ((SG_LIB_CAT_ABORTED_COMMAND == ret) && first) {
+                    if (--max_aborted > 0)
+                        fprintf(stderr, "Aborted command, continuing (w)\n");
+                    else {
+                        fprintf(stderr, "Aborted command, too many (w)\n");
+                        break;
+                    }
+                } else if (ret < 0)
+                    break;
+                else if (retries_tmp > 0) {
+                    fprintf(stderr, ">>> retrying a pt write, "
+                            "lba=0x%"PRIx64"\n", (uint64_t)optsp->seek);
+                    --retries_tmp;
+                    ++num_retries;
+                    if (unrecovered_errs > 0)
+                        --unrecovered_errs;
+                } else
+                    break;
+                first = 0;
+            }
+            if (0 != ret) {
+                fprintf(stderr, "sg_write failed,%s seek=%"PRId64"\n",
+                        ((-2 == ret) ? " try reducing bpt," : ""),
+                        optsp->seek);
+                break;
+            } else {
+                out_full += blocks;
+            }
+        } else if (FT_DEV_NULL & optsp->out_type)
+            out_full += blocks; /* act as if written out without error */
+        else {
+            while (((res = write(outfd, wrkPos, blocks * blk_sz)) < 0)
+                   && (EINTR == errno))
+                ;
+            if (verbose > 2)
+                fprintf(stderr, "write(unix): count=%d, res=%d\n",
+                        blocks * blk_sz, res);
+            if (res < 0) {
+                snprintf(ebuff, EBUFF_SZ, ME "writing, seek=%"PRId64" ",
+                         optsp->seek);
+                perror(ebuff);
+                ret = -1;
+                break;
+            } else if (res < blocks * blk_sz) {
+                fprintf(stderr, "output file probably full, seek=%"PRId64" ",
+                        optsp->seek);
+                blocks = res / blk_sz;
+                out_full += blocks;
+                if ((res % blk_sz) > 0)
+                    out_partial++;
+                ret = -1;
+                break;
+            } else {
+                out_full += blocks;
+#ifdef HAVE_POSIX_FADVISE
+                if ((FT_OTHER == optsp->out_type) ||
+                    (FT_BLOCK== optsp->out_type)) {
+                    res2 = posix_fadvise(outfd, 0, 0, POSIX_FADV_DONTNEED);
+                    if (res2 < 0) {
+                        snprintf(ebuff, EBUFF_SZ, ME "posix_fadvise after "
+                                 "write, seek=%"PRId64" ", optsp->seek);
+                        perror(ebuff);
+                    }
+                }
+#endif
+            }
+        }
+        if (dd_count > 0)
+            dd_count -= blocks;
+        optsp->skip += blocks;
+        optsp->seek += blocks;
+    } /* end of main loop that does the copy ... */
+
+    if (ret && penult_sparse_skip && (penult_blocks > 0)) {
+        /* if error and skipped last output due to sparse ... */
+        if ((FT_PT & optsp->out_type) || (FT_DEV_NULL & optsp->out_type))
+            ;
+        else {
+            /* ... try writing to extend ofile to length prior to error */
+            while (((res = write(outfd, zeros_buff, penult_blocks * blk_sz))
+                    < 0) && (EINTR == errno))
+                ;
+            if (verbose > 2)
+                fprintf(stderr, "write(unix, sparse after error): count=%d, "
+                        "res=%d\n", penult_blocks * blk_sz, res);
+            if (res < 0) {
+                snprintf(ebuff, EBUFF_SZ, ME "writing(sparse after error), "
+                        "seek=%"PRId64" ", optsp->seek);
+                perror(ebuff);
+            }
+        }
+    }
+    return ret;
+}
+
 
 int
 main(int argc, char * argv[])
 {
-    int blocks = 0;
-    int res, buf_sz, first, blocks_per;
-    int infd, outfd, out2fd, retries_tmp, blks_read;
-    int res2 = 0;
+    int res, infd, outfd, out2fd;
     unsigned char * wrkBuff;
     unsigned char * wrkPos;
     int64_t in_num_sect = -1;
     int64_t out_num_sect = -1;
     int in_sect_sz, out_sect_sz;
     char ebuff[EBUFF_SZ];
-    int sparse_skip = 0;
-    int penult_sparse_skip = 0;
-    int penult_blocks = 0;
     int ret = 0;
     struct opts_t opts;
 
@@ -1580,7 +1906,7 @@ main(int argc, char * argv[])
 
     if ((dd_count < 0) || ((verbose > 0) && (0 == dd_count))) {
         in_num_sect = -1;
-        if (FT_SG & opts.in_type) {
+        if (FT_PT & opts.in_type) {
             res = scsi_read_capacity(infd, &in_num_sect, &in_sect_sz);
             if (SG_LIB_CAT_UNIT_ATTENTION == res) {
                 fprintf(stderr, "Unit attention (readcap in), continuing\n");
@@ -1621,7 +1947,7 @@ main(int argc, char * argv[])
             in_num_sect -= opts.skip;
 
         out_num_sect = -1;
-        if (FT_SG & opts.out_type) {
+        if (FT_PT & opts.out_type) {
             res = scsi_read_capacity(outfd, &out_num_sect, &out_sect_sz);
             if (SG_LIB_CAT_UNIT_ATTENTION == res) {
                 fprintf(stderr,
@@ -1682,13 +2008,13 @@ main(int argc, char * argv[])
         return SG_LIB_CAT_OTHER;
     }
     if (! opts.cdbsz_given) {
-        if ((FT_SG & opts.in_type) && (MAX_SCSI_CDBSZ != opts.iflagp->cdbsz) &&
+        if ((FT_PT & opts.in_type) && (MAX_SCSI_CDBSZ != opts.iflagp->cdbsz) &&
             (((dd_count + opts.skip) > UINT_MAX) || (opts.bpt > USHRT_MAX))) {
             fprintf(stderr, "Note: SCSI command size increased to 16 bytes "
                     "(for 'if')\n");
             opts.iflagp->cdbsz = MAX_SCSI_CDBSZ;
         }
-        if ((FT_SG & opts.out_type) &&
+        if ((FT_PT & opts.out_type) &&
             (MAX_SCSI_CDBSZ != opts.oflagp->cdbsz) &&
             (((dd_count + opts.seek) > UINT_MAX) || (opts.bpt > USHRT_MAX))) {
             fprintf(stderr, "Note: SCSI command size increased to 16 bytes "
@@ -1716,10 +2042,9 @@ main(int argc, char * argv[])
         wrkPos = wrkBuff;
     }
 
-    blocks_per = opts.bpt;
 #ifdef SG_DEBUG
     fprintf(stderr, "Start of loop, count=%"PRId64", blocks_per=%d\n",
-            dd_count, blocks_per);
+            dd_count, opts.bpt);
 #endif
     if (do_time) {
         start_tm.tv_sec = 0;
@@ -1729,292 +2054,14 @@ main(int argc, char * argv[])
     }
     req_count = dd_count;
 
-    /* <<< main loop that does the copy >>> */
-    while (dd_count > 0) {
-        penult_sparse_skip = sparse_skip;
-        penult_blocks = penult_sparse_skip ? blocks : 0;
-        sparse_skip = 0;
-        blocks = (dd_count > blocks_per) ? blocks_per : dd_count;
-        if (FT_SG & opts.in_type) {
-            res = sg_read(infd, wrkPos, blocks, opts.skip, blk_sz, opts.iflagp,
-                          &blks_read);
-            if (-2 == res) {     /* ENOMEM, find what's available+try that */
-#if 0
-                if (ioctl(infd, SG_GET_RESERVED_SIZE, &buf_sz) < 0) {
-                    perror("RESERVED_SIZE ioctls failed");
-                    ret = res;
-                    break;
-                }
-#else
-                buf_sz = MIN_RESERVED_SIZE;
-#endif
-                if (buf_sz < MIN_RESERVED_SIZE)
-                    buf_sz = MIN_RESERVED_SIZE;
-                blocks_per = (buf_sz + blk_sz - 1) / blk_sz;
-                if (blocks_per < blocks) {
-                    blocks = blocks_per;
-                    fprintf(stderr, "Reducing read to %d blocks per "
-                            "loop\n", blocks_per);
-                    res = sg_read(infd, wrkPos, blocks, opts.skip, blk_sz,
-                                  opts.iflagp, &blks_read);
-                }
-            }
-            if (res) {
-                fprintf(stderr, "sg_read failed,%s at or after lba=%"PRId64" "
-                        "[0x%"PRIx64"]\n", ((-2 == res) ?
-                          " try reducing bpt," : ""), opts.skip, opts.skip);
-                ret = res;
-                break;
-            } else {
-                if (blks_read < blocks) {
-                    dd_count = 0;   /* force exit after write */
-                    blocks = blks_read;
-                }
-                in_full += blocks;
-            }
-        } else {
-            while (((res = read(infd, wrkPos, blocks * blk_sz)) < 0) &&
-                   (EINTR == errno))
-                ;
-            if (verbose > 2)
-                fprintf(stderr, "read(unix): count=%d, res=%d\n",
-                        blocks * blk_sz, res);
-            if (res < 0) {
-                snprintf(ebuff, EBUFF_SZ, ME "reading, skip=%"PRId64" ",
-                         opts.skip);
-                perror(ebuff);
-                ret = -1;
-                break;
-            } else if (res < blocks * blk_sz) {
-                dd_count = 0;
-                blocks = res / blk_sz;
-                if ((res % blk_sz) > 0) {
-                    blocks++;
-                    in_partial++;
-                }
-            }
-#ifdef HAVE_POSIX_FADVISE
-            if ((FT_OTHER == opts.in_type) || (FT_BLOCK== opts.in_type)) {
-                // res2 = posix_fadvise(infd, skip, res, POSIX_FADV_DONTNEED);
-                res2 = posix_fadvise(infd, 0, 0, POSIX_FADV_DONTNEED);
-                if (res2 < 0) {
-                    snprintf(ebuff, EBUFF_SZ, ME "posix_fadvise after read, "
-                             "skip=%"PRId64" ", opts.skip);
-                    perror(ebuff);
-                }
-            }
-#endif
-            in_full += blocks;
-        }
-
-        if (0 == blocks)
-            break;      /* nothing read so leave loop */
-
-        if (opts.out2f[0]) {
-            while (((res = write(out2fd, wrkPos, blocks * blk_sz)) < 0)
-                   && (EINTR == errno))
-                ;
-            if (verbose > 2)
-                fprintf(stderr, "write to of2: count=%d, res=%d\n",
-                        blocks * blk_sz, res);
-            if (res < 0) {
-                snprintf(ebuff, EBUFF_SZ, ME "writing to of2, seek=%"PRId64" ",
-                         opts.seek);
-                perror(ebuff);
-                ret = -1;
-                break;
-            }
-#ifdef HAVE_POSIX_FADVISE
-            if ((FT_OTHER == opts.out2_type) || (FT_BLOCK== opts.out2_type)) {
-                res2 = posix_fadvise(out2fd, 0, 0, POSIX_FADV_DONTNEED);
-                if (res2 < 0) {
-                    snprintf(ebuff, EBUFF_SZ, ME "posix_fadvise after of2 "
-                             "write, seek=%"PRId64" ", opts.seek);
-                    perror(ebuff);
-                }
-            }
-#endif
-            opts.out2_off += res;
-        }
-
-        if ((opts.oflagp->sparse) && (dd_count > blocks) &&
-            (! (FT_DEV_NULL & opts.out_type))) {
-            if (NULL == zeros_buff) {
-                zeros_buff = (unsigned char *)malloc(blocks * blk_sz);
-                if (NULL == zeros_buff) {
-                    fprintf(stderr, "zeros_buff malloc failed\n");
-                    ret = -1;
-                    break;
-                }
-                memset(zeros_buff, 0, blocks * blk_sz);
-            }
-            if (0 == memcmp(wrkPos, zeros_buff, blocks * blk_sz))
-                sparse_skip = 1;
-        }
-        if (sparse_skip) {
-            if (FT_SG & opts.out_type) {
-                out_sparse += blocks;
-                if (verbose > 2)
-                    fprintf(stderr, "sparse bypassing sg_write: seek "
-                            "blk=%"PRId64", offset blks=%d\n", opts.seek,
-                            blocks);
-            } else if (FT_DEV_NULL & opts.out_type)
-                ;
-            else {
-                off64_t offset = blocks * blk_sz;
-                off64_t off_res;
-
-                if (verbose > 2)
-                    fprintf(stderr, "sparse bypassing write: "
-                            "seek=%"PRId64", rel offset=%"PRId64"\n",
-                            (opts.seek * blk_sz), (int64_t)offset);
-                off_res = lseek64(outfd, offset, SEEK_CUR);
-                if (off_res < 0) {
-                    fprintf(stderr, "sparse tried to bypass write: "
-                            "seek=%"PRId64", rel offset=%"PRId64" but ...\n",
-                            (opts.seek * blk_sz), (int64_t)offset);
-                    perror("lseek64 on output");
-                    ret = SG_LIB_FILE_ERROR;
-                    break;
-                } else if (verbose > 4)
-                    fprintf(stderr, "oflag=sparse lseek64 result=%"PRId64"\n",
-                           (int64_t)off_res);
-                out_sparse += blocks;
-            }
-        } else if (FT_SG & opts.out_type) {
-            retries_tmp = oflag.retries;
-            first = 1;
-            while (1) {
-                ret = sg_write(outfd, wrkPos, blocks, opts.seek, blk_sz,
-                               &oflag);
-                if (0 == ret)
-                    break;
-                if ((SG_LIB_CAT_NOT_READY == ret) ||
-                    (SG_LIB_SYNTAX_ERROR == ret))
-                    break;
-                else if ((-2 == ret) && first) {
-                    /* ENOMEM: find what's available and try that */
-#if 0
-                    if (ioctl(outfd, SG_GET_RESERVED_SIZE, &buf_sz) < 0) {
-                        perror("RESERVED_SIZE ioctls failed");
-                        break;
-                    }
-#else
-                    buf_sz = MIN_RESERVED_SIZE;
-#endif
-                    if (buf_sz < MIN_RESERVED_SIZE)
-                        buf_sz = MIN_RESERVED_SIZE;
-                    blocks_per = (buf_sz + blk_sz - 1) / blk_sz;
-                    if (blocks_per < blocks) {
-                        blocks = blocks_per;
-                        fprintf(stderr, "Reducing write to %d blocks per "
-                                "loop\n", blocks);
-                    } else
-                        break;
-                } else if ((SG_LIB_CAT_UNIT_ATTENTION == ret) && first) {
-                    if (--max_uas > 0)
-                        fprintf(stderr, "Unit attention, continuing (w)\n");
-                    else {
-                        fprintf(stderr, "Unit attention, too many (w)\n");
-                        break;
-                    }
-                } else if ((SG_LIB_CAT_ABORTED_COMMAND == ret) && first) {
-                    if (--max_aborted > 0)
-                        fprintf(stderr, "Aborted command, continuing (w)\n");
-                    else {
-                        fprintf(stderr, "Aborted command, too many (w)\n");
-                        break;
-                    }
-                } else if (ret < 0)
-                    break;
-                else if (retries_tmp > 0) {
-                    fprintf(stderr, ">>> retrying a sgio write, "
-                            "lba=0x%"PRIx64"\n", (uint64_t)opts.seek);
-                    --retries_tmp;
-                    ++num_retries;
-                    if (unrecovered_errs > 0)
-                        --unrecovered_errs;
-                } else
-                    break;
-                first = 0;
-            }
-            if (0 != ret) {
-                fprintf(stderr, "sg_write failed,%s seek=%"PRId64"\n",
-                        ((-2 == ret) ? " try reducing bpt," : ""), opts.seek);
-                break;
-            } else {
-                out_full += blocks;
-            }
-        } else if (FT_DEV_NULL & opts.out_type)
-            out_full += blocks; /* act as if written out without error */
-        else {
-            while (((res = write(outfd, wrkPos, blocks * blk_sz)) < 0)
-                   && (EINTR == errno))
-                ;
-            if (verbose > 2)
-                fprintf(stderr, "write(unix): count=%d, res=%d\n",
-                        blocks * blk_sz, res);
-            if (res < 0) {
-                snprintf(ebuff, EBUFF_SZ, ME "writing, seek=%"PRId64" ",
-                         opts.seek);
-                perror(ebuff);
-                ret = -1;
-                break;
-            } else if (res < blocks * blk_sz) {
-                fprintf(stderr, "output file probably full, seek=%"PRId64" ",
-                        opts.seek);
-                blocks = res / blk_sz;
-                out_full += blocks;
-                if ((res % blk_sz) > 0)
-                    out_partial++;
-                ret = -1;
-                break;
-            } else {
-                out_full += blocks;
-#ifdef HAVE_POSIX_FADVISE
-                if ((FT_OTHER == opts.out_type) ||
-                    (FT_BLOCK== opts.out_type)) {
-                    res2 = posix_fadvise(outfd, 0, 0, POSIX_FADV_DONTNEED);
-                    if (res2 < 0) {
-                        snprintf(ebuff, EBUFF_SZ, ME "posix_fadvise after "
-                                 "write, seek=%"PRId64" ", opts.seek);
-                        perror(ebuff);
-                    }
-                }
-#endif
-            }
-        }
-        if (dd_count > 0)
-            dd_count -= blocks;
-        opts.skip += blocks;
-        opts.seek += blocks;
-    } /* end of main loop that does the copy ... */
-    if (ret && penult_sparse_skip && (penult_blocks > 0)) {
-        /* if error and skipped last output due to sparse ... */
-        if ((FT_SG & opts.out_type) || (FT_DEV_NULL & opts.out_type))
-            ;
-        else {
-            /* ... try writing to extend ofile to length prior to error */
-            while (((res = write(outfd, zeros_buff, penult_blocks * blk_sz))
-                    < 0) && (EINTR == errno))
-                ;
-            if (verbose > 2)
-                fprintf(stderr, "write(unix, sparse after error): count=%d, "
-                        "res=%d\n", penult_blocks * blk_sz, res);
-            if (res < 0) {
-                snprintf(ebuff, EBUFF_SZ, ME "writing(sparse after error), "
-                        "seek=%"PRId64" ", opts.seek);
-                perror(ebuff);
-            }
-        }
-    }
+    ret = do_copy(&opts, infd, outfd, out2fd, wrkPos);
 
     if (do_time)
         calc_duration_throughput(0);
 
 #if 0
     if (do_sync) {
-        if (FT_SG & out_type) {
+        if (FT_PT & out_type) {
             fprintf(stderr, ">> Synchronizing cache on %s\n", outf);
             res = sg_ll_sync_cache_10(outfd, 0, 0, 0, 0, 0, 0, 0);
             if (SG_LIB_CAT_UNIT_ATTENTION == res) {
