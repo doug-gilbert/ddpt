@@ -1,6 +1,6 @@
 .TH SGDD "8" "November 2008" "sgdd\-0.90" SGDD
 .SH NAME
-sgdd \- copies data to and from files and devices. Specialised for
+sgdd \- copies data to and from files and devices. Specialized for
 devices that understand the SCSI command set.
 .SH SYNOPSIS
 .B sgdd
@@ -17,16 +17,24 @@ devices that understand the SCSI command set.
 .PP
 Copy data to and from any files. Specialized for "files" that are SCSI
 (or SCSI like) direct access storage devices (e.g. SATA and SAS disks,
-plus DVD drives). Can issue SCSI commands it pass-through ("pt") mode.
+plus DVD drives). Can issue SCSI commands in pass-through ("pt") mode.
 Similar syntax and semantics to
 .B dd(1)
 but only one type of "conversion" is supported. That optional conversion is
 sparse writing of the output file.
 .PP
-The first group in the synopsis above are "standard" Unix
+The first group in the synopsis above contains "standard" Unix
 .B dd(1)
-operands. The second group are extra options added by this utility.
+options. The second group contains extra options added by this utility.
 Both groups are defined below.
+.PP
+The term "pt device" is used for a pass-through device to which SCSI
+commands like READ(10) and WRITE(10) may be sent. A pt device may only be
+able to process SCSI commands in which case the "pt" flag is assumed. However
+if a device can process either normal UNIX read()/write() calls or
+pass-through SCSI commands then the default is to use UNIX read()/write()
+calls. In the latter case, to use the pass-through facility then the "pt"
+flag must be given (e.g. "if=/dev/sdc iflag=pt").
 .SH OPTIONS
 .TP
 \fBbpt\fR=\fIBPT\fR
@@ -34,8 +42,8 @@ each IO transaction on \fIIFILE\fR will be made using \fIBPT\fR
 blocks (or less if near the end of the copy). Default is 128 for block
 sizes less that 2048 bytes, otherwise the default is 32. So for bs=512
 the reads will each convey 64 KiB of data by default (less if near the
-end of the transfer or memory restrictions). When cd/dvd drives are
-accessed, the block size is typically 2048 bytes and bpt defaults to 32
+end of the transfer or memory restrictions). For example the media in
+cd/dvd drives has a block size of 2048 bytes so bpt defaults to 32
 which again implies 64 KiB transfers.
 .TP
 \fBbs\fR=\fIBS\fR
@@ -47,30 +55,28 @@ be the block size of the physical input device.
 Note that this differs from
 .B dd(1)
 which permits \fIBS\fR to be an integral multiple. Default is 512 which
-is usually correct for disks but incorrect for cdroms (which normally
+is usually correct for disks but incorrect for dvds (which normally
 have 2048 byte blocks). For this utility the maximum size of each individual
 IO operation is \fIBS\fR * \fIBPT\fR bytes.
 .TP
 \fBcdbsz\fR=6 | 10 | 12 | 16
-size of SCSI READ and/or WRITE commands issued on sg device
-names (or block devices when 'iflag=sgio' and/or 'oflag=sgio' is given).
+size of SCSI READ and/or WRITE commands issued on pt devices.
 Default is 10 byte SCSI command blocks (unless calculations indicate
 that a 4 byte block number may be exceeded or \fIBPT\fR is greater than
 16 bits (65535), in which case it defaults to 16 byte SCSI commands).
 .TP
 \fBcoe\fR=0 | 1 | 2 | 3
-set to 1 or more for continue on error. Only applies to errors on sg
-devices or block devices with the 'sgio' flag set. Thus errors on other
-files will stop sg_dd. Default is 0 which implies stop on any error. See
-the 'coe' flag for more information.
+set to 1 or more for continue on error. Only applies to errors on pt
+devices. Thus errors on other files will stop sgdd. Default is 0 which
+implies stop on any error. See the 'coe' flag for more information.
 .TP
 \fBcoe_limit\fR=\fICL\fR
 where \fICL\fR is the maximum number of consecutive bad blocks stepped
 over (due to "coe>0") on reads before the copy terminates. This only
-applies when \fIIFILE\fR is accessed via the SG_IO ioctl. The default
-is 0 which is interpreted as no limit. This option is meant to stop
-the copy soon after unrecorded media is detected while still
-offering "continue on error" capability.
+applies when \fIIFILE\fR is a pt device. The default is 0 which is
+interpreted as no limit. This option is meant to stop the copy soon after
+unrecorded media is detected while still offering "continue on error"
+capability.
 .TP
 \fBconv\fR=\fBsparse\fR
 only one conversion is permitted: sparse writing of the \fIOFILE\fR.
@@ -79,17 +85,17 @@ syntax was added for FreeBSD which uses this syntax in its dd command.
 See the FLAGS section below.
 .TP
 \fBcount\fR=\fICOUNT\fR
-copy \fICOUNT\fR blocks from \fIIFILE\fR to \fIOFILE\fR. Default is the
-minimum (of \fIIFILE\fR and \fIOFILE\fR) number of blocks that sg devices
-report from SCSI READ CAPACITY commands or that block devices (or their
-partitions) report. Normal files are not probed for their size. If
-\fIskip=SKIP\fR or \fIskip=SEEK\fR are given and the count is derived (i.e.
-not explicitly given) then the derived count is scaled back so that the
-copy will not overrun the device. If the file name is a block device
-partition and \fICOUNT\fR is not given then the size of the partition
-rather than the size of the whole device is used. If \fICOUNT\fR is not
-given and cannot be derived then an error message is issued and no copy
-takes place.
+copy \fICOUNT\fR blocks each of \fIBS\fR bytes from \fIIFILE\fR to
+\fIOFILE\fR. Default is the minimum (of \fIIFILE\fR and \fIOFILE\fR)
+number of blocks that pt devices report from SCSI READ CAPACITY commands
+or that block devices (or their partitions) report. Normal files are not
+probed for their size. If \fIskip=SKIP\fR or \fIskip=SEEK\fR are given
+and the count is derived (i.e.  not explicitly given) then the derived
+count is scaled back so that the copy will not overrun the device. If the
+file name is a block device partition and \fICOUNT\fR is not given then
+the size of the partition rather than the size of the whole device is
+used. If \fICOUNT\fR is not given and cannot be derived then an error
+message is issued and no copy takes place.
 .TP
 \fBibs\fR=\fIBS\fR
 where \fIBS\fR is the \fIIFILE\fR block size. If given it must be the same
@@ -106,11 +112,11 @@ below.  These flags are associated with \fIIFILE\fR and are ignored when
 \fIIFILE\fR is stdin.
 .TP
 \fBobs\fR=\fIOBS\fR
-this is the \fIOFILE\fR block size. If not supplied the \fIBS\fR value
-is assumed. If \fIOBS\fR is given then is has the following restriction:
-the integer expression (((\fIBS\fR * \fIBPT\fR) % \fIOBS\fR) == 0).
-Stated another way: the input buffer size must be an intgral multiple
-of \fIOBS\fR. 
+this is the \fIOFILE\fR block size. If not supplied the \fIBS\fR value is
+assumed. If \fIOBS\fR is given then is has the following restriction:
+the integer expression (((\fIBS\fR * \fIBPT\fR) % \fIOBS\fR) == 0) must
+be true. Stated another way: the input buffer size must be an integral
+multiple of \fIOBS\fR. 
 .TP
 \fBof\fR=\fIOFILE\fR
 write to \fIOFILE\fR instead of stdout. If \fIOFILE\fR is '\-' then writes
@@ -123,10 +129,10 @@ unless 'oflag=append' or \fISEEK\fR is given.
 \fBof2\fR=\fIOFILE2\fR
 write output to \fIOFILE2\fR. The default action is not to do this additional
 write (i.e. when this option is not given). \fIOFILE2\fR is assumed to be
-a normal file or a fifo (i.e. a named pipe). \fIOFILE2\fR is opened for writing,
-created if necessary, and closed at the end of the transfer. If \fIOFILE2\fR
-is a fifo (named pipe) then some other command should be consuming that
-data (e.g. 'md5sum OFILE2'), otherwise this utility will block.
+a normal file or a fifo (i.e. a named pipe). \fIOFILE2\fR is opened for
+writing and is created if necessary. If \fIOFILE2\fR is a fifo (named pipe)
+then some other command should be consuming that data (e.g. 'md5sum OFILE2'),
+otherwise this utility will block.
 .TP
 \fBoflag\fR=\fIFLAGS\fR
 where \fIFLAGS\fR is a comma separated list of one or more flags outlined
@@ -158,8 +164,6 @@ A value of 1 reports extra information that is not repetitive. A value
 (i.e. other that READ and WRITE). Error processing is not considered
 repetitive. Values of 3 and 4 yield output for all SCSI commands (and
 Unix read() and write() calls) so there can be a lot of output.
-This only occurs for scsi generic (sg) devices and block devices when
-the 'blk_sgio=1' option is set.
 .TP
 \fB\-\-help\fR
 outputs usage message and exits.
@@ -179,10 +183,9 @@ block \fISEEK\fR. Note that attempting to 'append' to a device file (e.g.
 a disk) will usually be ignored or may cause an error to be reported.
 .TP
 coe
-continue on error. Only active for sg devices and block devices that
-have the 'sgio' flag set. 'iflag=coe oflag=coe' and 'coe=1' are
-equivalent. Use this flag twice (e.g. 'iflag=coe,coe') to have the
-same action as the 'coe=2'. A medium, hardware or blank check error
+continue on error. Only active for pt devices. 'iflag=coe oflag=coe'
+and 'coe=1' are equivalent. Use this flag twice (e.g. 'iflag=coe,coe') to
+have the same action as the 'coe=2'. A medium, hardware or blank check error
 while reading will re\-read blocks prior to the bad block, then try to
 recover the bad block, supplying zeros if that fails, and finally reread
 the blocks after the bad block. A medium, hardware or blank check error
@@ -191,26 +194,17 @@ reading uses the SCSI READ LONG command if 'coe' given twice or
 more (also with the command line option 'coe=2'). Further, the READ LONG
 will set its CORRCT bit if 'coe' given thrice. SCSI disks may automatically
 try and remap faulty sectors (see the AWRE and ARRE in the read write
-error recovery mode page (the sdparm utility can access and possibly change
-these attributes)). Errors occurring on other files types will stop sg_dd.
-Error messages are sent to stderr. This flag is similar
- o 'conv=noerror,sync' in the
+error recovery mode page (the sdparm utility can access these attributes)).
+Errors occurring on other files types will stop sgdd. Error messages are
+sent to stderr. This flag is similar to 'conv=noerror,sync' in the
 .B dd(1)
 utility. See note about READ LONG below.
-.TP
-dio
-request the sg device node associated with this flag does direct IO.
-If direct IO is not available, falls back to indirect IO and notes
-this at completion. If direct IO is selected and /proc/scsi/sg/allow_dio
-has the value of 0 then a warning is issued (and indirect IO is performed).
 .TP
 direct
 causes the O_DIRECT flag to be added to the open of \fIIFILE\fR and/or
 \fIOFILE\fR. This flag requires some memory alignment on IO. Hence user
-memory buffers are aligned to the page size. Has no effect on sg, normal
-or raw files. If 'iflag=sgio' and/or 'oflag=sgio' is also set then both
-are honoured: block devices are opened with the O_DIRECT flag and SCSI
-commands are issued via the SG_IO ioctl.
+memory buffers are aligned to the page size. May have no effect on pt
+devices.
 .TP
 dpo
 set the DPO bit (disable page out) in SCSI READ and WRITE commands. Not
@@ -239,9 +233,8 @@ and no copy is done.
 .TP
 fua
 causes the FUA (force unit access) bit to be set in SCSI READ and/or WRITE
-commands. This only has an effect with sg devices or block devices
-that have the 'sgio' flag set. The 6 byte variants of the SCSI READ and
-WRITE commands do not support the FUA bit.
+commands. This only has an effect with pt devices. The 6 byte variants o
+the SCSI READ and WRITE commands do not support the FUA bit.
 .TP
 null
 has no affect, just a placeholder.
@@ -257,19 +250,17 @@ Such devices default standard UNIX read() and write() commands in the
 absence of this flag.
 .TP
 sparse
-after each \fIBS\fR * \fIBPT\fR byte segment is read from the input,
-it is checked for being all zeros. If so, nothing is written to the output
+after each \fIBS\fR * \fIBPT\fR byte segment is read from the input, it is
+checked to see if it is all zeros. If so, nothing is written to the output
 file unless this is the last segment of the transfer. This flag is only
 active with the oflag option. It cannot be used when the output is not
 seekable (e.g. stdout). It is ignored if the output file is /dev/null .
-Note that this utility does not remove the \fIOFILE\fR prior to starting
+Note that this utility does not truncate the \fIOFILE\fR prior to starting
 to write to it. Hence it may be advantageous to manually remove the
 \fIOFILE\fR if it is large prior to using oflag=sparse. The last segment
 is always written so regular files will show the same length and so
 programs like md5sum and sha1sum will generate the same value regardless
-of whether oflag=sparse is given or not. This option may be used when the
-\fIOFILE\fR is a raw device but is probably only useful if the device is
-known to contain zeros (e.g. a SCSI disk after a FORMAT command).
+of whether oflag=sparse is given or not.
 .TP
 sync
 if \fIOFILE\fR is in "pt" mode the the SCSI SYNCHRONIZE CACHE command is
@@ -277,24 +268,21 @@ sent to \fIOFILE\fR at the end of the transfer. This flag is only valid
 with the "oflag=" option.
 .SH NOTES
 Block devices (e.g. /dev/sda and /dev/hda) can be given for \fIIFILE\fR.
-If neither '\-iflag=direct', 'iflag=sgio' nor 'blk_sgio=1' is given then
-normal block IO involving buffering and caching is performed. If
-only '\-iflag=direct' is given then the buffering and caching is
-bypassed (this is applicable to both SCSI devices and ATA disks).
-If 'iflag=sgio' or 'blk_sgio=1' is given then the SG_IO ioctl is used on
-the given file causing SCSI commands to be sent to the device and that also
-bypasses most of the actions performed by the block layer (this is only
-applicable to SCSI devices, not ATA disks). The same applies for block
-devices given for \fIOFILE\fR.
+If neither 'iflag=direct' nor 'iflag=pt' is given then normal block IO
+involving buffering and caching is performed. If only 'iflag=direct' is
+given then the buffering and caching is bypassed (this is applicable to
+both SCSI devices and ATA disks). When 'iflag=pt' is given SCSI commands
+are sent to the device which bypasses most of the actions performed by the
+block layer. The same applies for block devices given for \fIOFILE\fR.
 .PP
-\fICOUNT\fR, \fISKIP\fR, \fISEEK\fR, \fIBPT\fR and \fIBS\fR may include one
-of these multiplicative suffixes:
+\fIBPT\fR, \fIBS\fR, \fICOUNT\fR, \fIOBS\fR, \fISKIP\fR and \fISEEK\fR may
+include one of these multiplicative suffixes:
 c C *1; w W *2; b B *512; k K KiB *1,024; KB *1,000; m M MiB *1,048,576;
 MB *1,000,000 . This pattern continues for "G", "T" and "P". The latter two
 suffixes can only be used for \fICOUNT\fR, \fISKIP\fR and \fISEEK\fR.
 Also a suffix of the form "x<n>" multiplies the leading number by <n>.
 These multiplicative suffixes are compatible with GNU's dd command (since
-2002) which claims compliance with SI and with IEC 60027\-2.
+2002) which claims compliance with the SI and with IEC 60027\-2 standards.
 .PP
 Alternatively numerical values can be given in hexadecimal preceded by
 either "0x" or "0X" (or with a trailing "h" or "H"). When hex numbers are
@@ -304,15 +292,6 @@ The \fICOUNT\fR, \fISKIP\fR and \fISEEK\fR arguments can take 64 bit
 values (i.e. very big numbers). Other values are limited to what can fit in
 a signed 32 bit number.
 .PP
-Data usually gets to the user space in a 2 stage process: first the
-SCSI adapter DMAs into kernel buffers and then the sg driver copies
-this data into user memory (write operations reverse this sequence).
-This is called "indirect IO" and there is a 'dio' option to
-select "direct IO" which will DMA directly into user memory. Due to some
-issues "direct IO" is disabled in the sg driver and needs a
-configuration change to activate it. This is typically done
-with 'echo 1 > /proc/scsi/sg/allow_dio'.
-.PP
 All informative, warning and error output is sent to stderr so that
 dd's output file can be stdout and remain unpolluted. If no options
 are given, then the usage message is output and nothing else happens.
@@ -321,35 +300,27 @@ Even if READ LONG succeeds on a "bad" block when 'coe=2' (or 'coe=3')
 is given, the recovered data may not be useful. There are no guarantees
 that the user data will appear "as is" in the first 512 bytes.
 .PP
-A raw device must be bound to a block device prior to using sg_dd.
-See
-.B raw(8)
-for more information about binding raw devices. To be safe, the sg device
-mapping to SCSI block devices should be checked with 'cat /proc/scsi/scsi',
-or sg_map before use.
-.PP
 Disk partition information can often be found with
 .B fdisk(8)
 [the "\-ul" argument is useful in this respect].
 .PP
-For sg devices (and block devices when blk_sgio=1 is given) this utility
-issues SCSI READ and WRITE (SBC) commands which are appropriate for disks and
-reading from CD/DVD/HD-DVD/BD drives. Those commands
-are not formatted correctly for tape devices so sg_dd should not be used on
-tape devices. If the largest block address of the requested transfer
+For pt devices this utility issues SCSI READ and WRITE (SBC) commands which
+are appropriate for disks and reading from CD/DVD/HD-DVD/BD drives. Those
+commands are not formatted correctly for tape devices so sgdd should not be
+used on tape devices. If the largest block address of the requested transfer
 exceeds a 32 bit block number (i.e 0xffff) then a warning is issued and
 the sg device is accessed via SCSI READ(16) and WRITE(16) commands.
 .PP
-The attributes of a block device (partition) are ignored when 'blk_sgio=1'
+The attributes of a block device (partition) are ignored when the pt flag
 is used. Hence the whole device is read (rather than just the second
 partition) by this invocation:
 .PP
-   sg_dd if=/dev/sdb2 blk_sgio=1 of=t bs=512
+   sgdd if=/dev/sdb2 iflag=pt of=t bs=512
 .SH EXAMPLES
 .PP
 Looks quite similar in usage to dd:
 .PP
-   sg_dd if=/dev/sg0 of=t bs=512 count=1MB
+   sgdd if=/dev/sg0 of=t bs=512 count=1MB
 .PP
 This will copy 1 million 512 byte blocks from the device associated with
 /dev/sg0 (which should have 512 byte blocks) to a file called t.
@@ -362,18 +333,6 @@ although dd's speed may improve if bs was larger and count was suitably
 reduced. The use of the 'iflag=direct' option bypasses the buffering and
 caching that is usually done on a block device.
 .PP
-Using a raw device to do something similar on a ATA disk:
-.PP
-   raw /dev/raw/raw1 /dev/hda
-.br
-   sg_dd if=/dev/raw/raw1 of=t bs=512 count=1MB
-.PP
-To copy a SCSI disk partition to an ATA disk partition:
-.PP
-   raw /dev/raw/raw2 /dev/hda3
-.br
-   sg_dd if=/dev/sg0 skip=10123456 of=/dev/raw/raw2 bs=512
-.PP
 This assumes a valid partition is found on the SCSI disk at the given
 skip block address (past the 5 GB point of that disk) and that
 the partition goes to the end of the SCSI disk. An explicit count
@@ -384,7 +343,7 @@ read from /dev/sg0 are written to /dev/hda (i.e. no padding).
 To time a streaming read of the first 1 GB (2 ** 30 bytes) on a disk
 this utility could be used:
 .PP
-   sg_dd if=/dev/sg0 of=/dev/null bs=512 count=2m time=1
+   sgdd if=/dev/sg0 of=/dev/null bs=512 count=2m time=1
 .PP
 On completion this will output a line like:
 "time to transfer data was 18.779506 secs, 57.18 MB/sec". The "MB/sec"
@@ -397,7 +356,7 @@ without needing to re-read the data:
 .br
   md5sum fif &
 .br
-  sg_dd if=/dev/sg3 iflag=coe of=sg3.img oflag=sparse of2=fif bs=512
+  sgdd if=/dev/sg3 iflag=coe of=sg3.img oflag=sparse of2=fif bs=512
 .PP
 This will image /dev/sg3 (e.g. an unmounted disk) and place the contents
 in the (sparse) file sg3.img . Without re-reading the data it will also
@@ -406,17 +365,84 @@ perform a md5sum calculation on the image.
 The signal handling has been borrowed from dd: SIGINT, SIGQUIT and
 SIGPIPE output the number of remaining blocks to be transferred and
 the records in + out counts; then they have their default action.
-SIGUSR1 causes the same information to be output yet the copy continues.
+SIGUSR1 causes the same information to be output and the copy continues.
 All output caused by signals is sent to stderr.
 .SH EXIT STATUS
-The exit status of sg_dd is 0 when it is successful. Otherwise see
-the sg3_utils(8) man page. Since this utility works at a higher level
-than individual commands, and there are 'coe' and 'retries' flags,
-individual SCSI command failures do not necessary cause the process
-to exit.
-.PP
-An additional exit status of 90 is generated if the flock flag is given
-and some other process holds the advisory exclusive lock.
+To aid scripts that call sgdd, the exit status is set to indicate
+success (0) or failure (1 or more). Note that some of the lower values
+correspond to the SCSI sense key values. The exit status values are:
+.TP
+.B 0
+success
+.TP
+.B 1
+syntax error. Either illegal command line options, options with bad
+arguments or a combination of options that is not permitted.
+.TP
+.B 2
+the device reports that it is not ready for the operation requested.
+The device may be in the process of becoming ready (e.g.  spinning up but
+not at speed) so the utility may work after a wait.
+.TP
+.B 3
+the device reports a medium or hardware error (or a blank check). For example
+an attempt to read a corrupted block on a disk will yield this value.
+.TP
+.B 5
+the device reports an "illegal request" with an additional sense code other
+than "invalid operation code". This is often a supported command with a
+field set requesting an unsupported capability.
+.TP
+.B 6
+the device reports a "unit attention" condition. This usually indicates
+that something unrelated to the requested command has occurred (e.g. a
+device reset) potentially before the current SCSI command was sent. The
+requested command has not been executed by the device. Note that unit
+attention conditions are usually only reported once by a device.
+.TP
+.B 9
+the device reports an illegal request with an additional sense code
+of "invalid operation code" which means that it doesn't support the
+requested command.
+.TP
+.B 11
+the device reports an aborted command. In some cases aborted commands can
+be retried immediately (e.g. if the transport aborted the command due to
+congestion).
+.TP
+.B 15
+the utility is unable to open, close or use the given \fIDEVICE\fR.  The
+given file name could be incorrect or there may be permission problems.
+Adding the \fI\-v\fR option may give more information.
+.TP
+.B 20
+the device reports it has a check condition but "no sense".
+It is unlikely that this value will occur as an exit status.
+.TP
+.B 21
+the device reports a "recovered error". The requested command was successful.
+Most likely a utility will report a recovered error to stderr and continue,
+probably leaving the utility with an exit status of 0 .
+.TP
+.B 33
+the command sent to device has timed out. This occurs in Linux only; in
+other ports a command timeout will appear as a transport (or OS) error.
+.TP
+.B 90
+the flock flag has been given on a device and some other process holds the
+advisory exclusive lock.
+.TP
+.B 97
+the response to a SCSI command failed sanity checks.
+.TP
+.B 98
+the device reports it has a check condition but the error doesn't fit into
+any of the above categories.
+.TP
+.B 99
+any errors that can't be categorized into values 1 to 98 may yield
+this value. This includes transport and operating system errors
+after the command has been sent to the device.
 .SH AUTHORS
 Written by Doug Gilbert
 .SH "REPORTING BUGS"
@@ -427,13 +453,7 @@ Copyright \(co 2008 Douglas Gilbert
 This software is distributed under the GPL version 2. There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 .SH "SEE ALSO"
-There is a web page discussing sg_dd at http://sg.danny.cz/sg/sg_dd.html
-.PP
-A POSIX threads version of this utility called
-.B sgp_dd
-is in the sg3_utils package. Another version from that package is called
-.B sgm_dd
-and it uses memory mapped IO to speed transfers from sg devices.
+There is a web page discussing sgdd at http://sg.danny.cz/sg/sgdd.html
 .PP
 The lmbench package contains
 .B lmdd
@@ -446,4 +466,4 @@ recovery see
 .B sdparm(sdparm)
 .PP
 See also
-.B raw(8), dd(1), ddrescue(GNU)
+.B dd(1), ddrescue(GNU)
