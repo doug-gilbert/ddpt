@@ -62,15 +62,14 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/sysmacros.h>
 #include <sys/time.h>
-#include <sys/file.h>
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
 
 #if SGDD_LINUX
+#include <sys/file.h>
 #include <linux/major.h>
 #include <linux/fs.h>   /* <sys/mount.h> */
 #endif
@@ -80,7 +79,7 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-static char * version_str = "0.90 20081112";
+static char * version_str = "0.90 20081113";
 
 #define ME "sgdd: "
 
@@ -174,7 +173,9 @@ struct flags_t {
     int dpo;
     int dsync;
     int excl;
+#if SGDD_LINUX
     int flock;
+#endif
     int fua;
     int pdt;
     int pt;
@@ -533,6 +534,7 @@ dd_filetype(const char * filename)
     if (stat(filename, &st) < 0)
         return FT_ERROR;
     if (S_ISCHR(st.st_mode)) {
+#if SGDD_LINUX
         if ((MEM_MAJOR == major(st.st_rdev)) &&
             (DEV_NULL_MINOR_NUM == minor(st.st_rdev)))
             return FT_DEV_NULL;
@@ -542,6 +544,9 @@ dd_filetype(const char * filename)
             return FT_PT;
         if (SCSI_TAPE_MAJOR == major(st.st_rdev))
             return FT_TAPE;
+#else
+        return FT_PT;
+#endif
     } else if (S_ISBLK(st.st_mode))
         return FT_BLOCK;
     else if (S_ISFIFO(st.st_mode))
@@ -1282,8 +1287,10 @@ process_flags(const char * arg, struct flags_t * fp)
             fp->dsync = 1;
         else if (0 == strcmp(cp, "excl"))
             fp->excl = 1;
+#if SGDD_LINUX
         else if (0 == strcmp(cp, "flock"))
             ++fp->flock;
+#endif
         else if (0 == strcmp(cp, "fua"))
             fp->fua = 1;
         else if (0 == strcmp(cp, "null"))
@@ -1392,6 +1399,7 @@ open_if(const char * inf, int64_t skip, int bs, struct flags_t * ifp,
             }
         }
     }
+#if SGDD_LINUX
     if (ifp->flock) {
         res = flock(infd, LOCK_EX | LOCK_NB);
         if (res < 0) {
@@ -1402,6 +1410,7 @@ open_if(const char * inf, int64_t skip, int bs, struct flags_t * ifp,
             return -SG_LIB_FLOCK_ERR;
         }
     }
+#endif
     return infd;
 
 file_err:
@@ -1512,6 +1521,7 @@ open_of(const char * outf, int64_t seek, int bs, struct flags_t * ofp,
                         (uint64_t)offset);
         }
     }
+#if SGDD_LINUX
     if (ofp->flock) {
         res = flock(outfd, LOCK_EX | LOCK_NB);
         if (res < 0) {
@@ -1522,6 +1532,7 @@ open_of(const char * outf, int64_t seek, int bs, struct flags_t * ofp,
             return -SG_LIB_FLOCK_ERR;
         }
     }
+#endif
     return outfd;
 
 file_err:
