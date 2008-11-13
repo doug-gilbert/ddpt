@@ -85,17 +85,18 @@ syntax was added for FreeBSD which uses this syntax in its dd command.
 See the FLAGS section below.
 .TP
 \fBcount\fR=\fICOUNT\fR
-copy \fICOUNT\fR blocks each of \fIBS\fR bytes from \fIIFILE\fR to
-\fIOFILE\fR. Default is the minimum (of \fIIFILE\fR and \fIOFILE\fR)
-number of blocks that pt devices report from SCSI READ CAPACITY commands
-or that block devices (or their partitions) report. Normal files are not
-probed for their size. If \fIskip=SKIP\fR or \fIskip=SEEK\fR are given
-and the count is derived (i.e.  not explicitly given) then the derived
-count is scaled back so that the copy will not overrun the device. If the
-file name is a block device partition and \fICOUNT\fR is not given then
-the size of the partition rather than the size of the whole device is
-used. If \fICOUNT\fR is not given and cannot be derived then an error
-message is issued and no copy takes place.
+copy \fICOUNT\fR input blocks from \fIIFILE\fR to \fIOFILE\fR. The
+following outlines how the \fICOUNT\fR may be deduced if this option is
+not given. The default is the minimum size, expressed in units of input
+blocks, of \fIIFILE\fR and \fIOFILE\fR. If the size of \fIIFILE\fR or
+\fIOFILE\fR cannot be found, then the size of the other is used. The size
+of pt devices is deduced from the SCSI READ CAPACITY command. Block
+devices (or their partitions) are deduced from the operating system,
+if available. Normal files are not probed for their size. If
+\fIskip=SKIP\fR or \fIskip=SEEK\fR are given and the \fICOUNT\fR is
+deduced (i.e. not explicitly given) then that size is scaled back so that
+the copy will not overrun the device. If \fICOUNT\fR is not given and
+cannot be deduced then an error message is issued and no copy takes place.
 .TP
 \fBibs\fR=\fIBS\fR
 where \fIBS\fR is the \fIIFILE\fR block size. If given it must be the same
