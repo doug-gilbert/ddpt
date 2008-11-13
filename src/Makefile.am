@@ -2,8 +2,8 @@ bin_PROGRAMS = sgdd
 
 # INCLUDES = -I$(top_srcdir)/include -I$(top_srcdir)/include/scsi
 
-AM_CFLAGS = -I$(top_srcdir)/include -Wall -W
-# AM_CFLAGS = -I$(top_srcdir)/include -Wall -W -pedantic -std=c99
+AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W
+# AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W -pedantic -std=c99
 
 sgdd_SOURCES =		sgdd.c	\
 			sgdd.h	\
