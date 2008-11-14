@@ -4154,16 +4154,6 @@ _ACEOF
 
                 os_libs=''
 ;;
-        *-*-osf*)
-                os_deps='sg_pt_osf1.o'
-
-
-cat >>confdefs.h <<_ACEOF
-#define SGDD_OSF1 1
-_ACEOF
-
-                os_libs=''
- ;;
         *-*-cygwin*)
                 os_deps='sg_pt_win32.o'
 
