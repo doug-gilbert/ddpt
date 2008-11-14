@@ -33,9 +33,6 @@
 /* also MinGW environment */
 #undef SGDD_MINGW
 
-/* sgdd on Tru64 UNIX */
-#undef SGDD_OSF1
-
 /* sgdd on Solaris */
 #undef SGDD_SOLARIS
 

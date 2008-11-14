@@ -32,10 +32,6 @@ case "${host}" in
                 AC_SUBST([os_deps], ['sg_pt_solaris.o'])
 		AC_DEFINE_UNQUOTED(SGDD_SOLARIS, 1, [sgdd on Solaris])
                 AC_SUBST([os_libs], ['']);;
-        *-*-osf*)
-                AC_SUBST([os_deps], ['sg_pt_osf1.o'])
-		AC_DEFINE_UNQUOTED(SGDD_OSF1, 1, [sgdd on Tru64 UNIX])
-                AC_SUBST([os_libs], ['']) ;;
         *-*-cygwin*)
                 AC_SUBST([os_deps], ['sg_pt_win32.o'])
 		AC_DEFINE_UNQUOTED(SGDD_WIN32, 1, [sgdd on Win32])
