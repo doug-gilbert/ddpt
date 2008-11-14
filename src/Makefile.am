@@ -17,14 +17,12 @@ sgdd_SOURCES =		sgdd.c	\
 			../include/sg_cmds_extra.h	\
 			../include/sg_pt.h
 
-sgdd_LDADD = @os_deps@ @GETOPT_O_FILES@ @os_libs@
-sgdd_DEPENDENCIES = @os_deps@ @GETOPT_O_FILES@
+sgdd_LDADD = @os_deps@ @os_libs@
+sgdd_DEPENDENCIES = @os_deps@
 EXTRA_sgdd_SOURCES =	../lib/sg_pt_linux.c	\
 			../include/sg_linux_inc.h	\
 			../lib/sg_pt_freebsd.c	\
 			../lib/sg_pt_osf1.c	\
 			../lib/sg_pt_solaris.c	\
 			../lib/sg_pt_win32.c	\
-			../include/sg_pt_win32.h	\
-			getopt_long.c	\
-			port_getopt.h
+			../include/sg_pt_win32.h
