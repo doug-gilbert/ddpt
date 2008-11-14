@@ -663,7 +663,7 @@ read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
     }
     return 0;
 #else
-    sg_dd = sg_dd;      // silence warning
+    sg_fd = sg_fd;      // silence warning
     if (verbose)
         fprintf(stderr, "      BLKSSZGET+BLKGETSIZE ioctl not available\n");
     *num_sect = 0;
