@@ -43,10 +43,10 @@
  * GPL style license. Both licenses are considered "open source".
  */
 
-#define _XOPEN_SOURCE 500
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
+// #define _XOPEN_SOURCE 500
+// #ifndef _GNU_SOURCE
+// #define _GNU_SOURCE
+// #endif
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -1383,17 +1383,17 @@ open_if(const char * inf, int64_t skip, int bs, struct flags_t * ifp,
                 fprintf(stderr, "        open input, flags=0x%x\n",
                         flags);
             if (skip > 0) {
-                off64_t offset = skip;
+                off_t offset = skip;
 
                 offset *= bs;       /* could exceed 32 bits here! */
-                if (lseek64(infd, offset, SEEK_SET) < 0) {
+                if (lseek(infd, offset, SEEK_SET) < 0) {
                     snprintf(ebuff, EBUFF_SZ, ME "couldn't skip to "
                              "required position on %s", inf);
                     perror(ebuff);
                     goto file_err;
                 }
                 if (verbose)
-                    fprintf(stderr, "  >> skip: lseek64 SEEK_SET, "
+                    fprintf(stderr, "  >> skip: lseek SEEK_SET, "
                             "byte offset=0x%"PRIx64"\n",
                             (uint64_t)offset);
             }
@@ -1506,17 +1506,17 @@ open_of(const char * outf, int64_t seek, int bs, struct flags_t * ofp,
             fprintf(stderr, "        %s output, flags=0x%x\n",
                     ((O_CREAT & flags) ? "create" : "open"), flags);
         if (seek > 0) {
-            off64_t offset = seek;
+            off_t offset = seek;
 
             offset *= bs;       /* could exceed 32 bits here! */
-            if (lseek64(outfd, offset, SEEK_SET) < 0) {
+            if (lseek(outfd, offset, SEEK_SET) < 0) {
                 snprintf(ebuff, EBUFF_SZ,
                     ME "couldn't seek to required position on %s", outf);
                 perror(ebuff);
                 goto file_err;
             }
             if (verbose)
-                fprintf(stderr, "   >> seek: lseek64 SEEK_SET, "
+                fprintf(stderr, "   >> seek: lseek SEEK_SET, "
                         "byte offset=0x%"PRIx64"\n",
                         (uint64_t)offset);
         }
@@ -1690,23 +1690,23 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
             } else if (FT_DEV_NULL & optsp->out_type)
                 ;
             else {
-                off64_t offset = oblocks * optsp->obs;
-                off64_t off_res;
+                off_t offset = oblocks * optsp->obs;
+                off_t off_res;
 
                 if (verbose > 2)
                     fprintf(stderr, "sparse bypassing write: "
                             "seek=%"PRId64", rel offset=%"PRId64"\n",
                             (optsp->seek * optsp->obs), (int64_t)offset);
-                off_res = lseek64(outfd, offset, SEEK_CUR);
+                off_res = lseek(outfd, offset, SEEK_CUR);
                 if (off_res < 0) {
                     fprintf(stderr, "sparse tried to bypass write: "
                             "seek=%"PRId64", rel offset=%"PRId64" but ...\n",
                             (optsp->seek * optsp->obs), (int64_t)offset);
-                    perror("lseek64 on output");
+                    perror("lseek on output");
                     ret = SG_LIB_FILE_ERROR;
                     break;
                 } else if (verbose > 4)
-                    fprintf(stderr, "oflag=sparse lseek64 result=%"PRId64"\n",
+                    fprintf(stderr, "oflag=sparse lseek result=%"PRId64"\n",
                            (int64_t)off_res);
                 out_sparse += oblocks;
             }
