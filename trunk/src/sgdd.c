@@ -43,7 +43,7 @@
  * GPL style license. Both licenses are considered "open source".
  */
 
-// #define _XOPEN_SOURCE 500
+#define _XOPEN_SOURCE 600
 // #ifndef _GNU_SOURCE
 // #define _GNU_SOURCE
 // #endif
@@ -69,6 +69,7 @@
 #endif
 
 #if SGDD_LINUX
+#include <sys/sysmacros.h>
 #include <sys/file.h>
 #include <linux/major.h>
 #include <linux/fs.h>   /* <sys/mount.h> */
@@ -79,7 +80,7 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-static char * version_str = "0.90 20081113";
+static char * version_str = "0.90 20081114";
 
 #define ME "sgdd: "
 
@@ -535,6 +536,7 @@ dd_filetype(const char * filename)
         return FT_ERROR;
     if (S_ISCHR(st.st_mode)) {
 #if SGDD_LINUX
+        /* major() and minor() defined in sys/sysmacros.h */
         if ((MEM_MAJOR == major(st.st_rdev)) &&
             (DEV_NULL_MINOR_NUM == minor(st.st_rdev)))
             return FT_DEV_NULL;
@@ -661,6 +663,7 @@ read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
     }
     return 0;
 #else
+    sg_dd = sg_dd;      // silence warning
     if (verbose)
         fprintf(stderr, "      BLKSSZGET+BLKGETSIZE ioctl not available\n");
     *num_sect = 0;
@@ -1317,7 +1320,7 @@ static int
 open_if(const char * inf, int64_t skip, int bs, struct flags_t * ifp,
         int * in_typep, int verbose)
 {
-    int infd, flags, fl, verb, res;
+    int infd, flags, fl, verb;
     char ebuff[EBUFF_SZ];
     struct sg_simple_inquiry_resp sir;
 
@@ -1401,6 +1404,8 @@ open_if(const char * inf, int64_t skip, int bs, struct flags_t * ifp,
     }
 #if SGDD_LINUX
     if (ifp->flock) {
+        int res;
+
         res = flock(infd, LOCK_EX | LOCK_NB);
         if (res < 0) {
             close(infd);
@@ -1427,7 +1432,7 @@ static int
 open_of(const char * outf, int64_t seek, int bs, struct flags_t * ofp,
         int * out_typep, int verbose)
 {
-    int outfd, flags, verb, res;
+    int outfd, flags, verb;
     char ebuff[EBUFF_SZ];
     struct sg_simple_inquiry_resp sir;
 
@@ -1523,6 +1528,8 @@ open_of(const char * outf, int64_t seek, int bs, struct flags_t * ofp,
     }
 #if SGDD_LINUX
     if (ofp->flock) {
+        int res;
+
         res = flock(outfd, LOCK_EX | LOCK_NB);
         if (res < 0) {
             close(outfd);
@@ -1552,7 +1559,6 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
     int penult_sparse_skip = 0;
     int penult_blocks = 0;
     char ebuff[EBUFF_SZ];
-    int res2 = 0;
     int ret = 0;
 
     ibpt = optsp->bpt_i;
@@ -1623,6 +1629,8 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
             }
 #ifdef HAVE_POSIX_FADVISE
             if ((FT_OTHER == optsp->in_type) || (FT_BLOCK== optsp->in_type)) {
+                int res2;
+
                 // res2 = posix_fadvise(infd, skip, res, POSIX_FADV_DONTNEED);
                 res2 = posix_fadvise(infd, 0, 0, POSIX_FADV_DONTNEED);
                 if (res2 < 0) {
@@ -1655,6 +1663,8 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
 #ifdef HAVE_POSIX_FADVISE
             if ((FT_OTHER == optsp->out2_type) ||
                 (FT_BLOCK== optsp->out2_type)) {
+                int res2;
+
                 res2 = posix_fadvise(out2fd, 0, 0, POSIX_FADV_DONTNEED);
                 if (res2 < 0) {
                     snprintf(ebuff, EBUFF_SZ, ME "posix_fadvise after of2 "
@@ -1787,6 +1797,8 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
 #ifdef HAVE_POSIX_FADVISE
                 if ((FT_OTHER == optsp->out_type) ||
                     (FT_BLOCK== optsp->out_type)) {
+                    int res2;
+
                     res2 = posix_fadvise(outfd, 0, 0, POSIX_FADV_DONTNEED);
                     if (res2 < 0) {
                         snprintf(ebuff, EBUFF_SZ, ME "posix_fadvise after "
@@ -2032,7 +2044,8 @@ main(int argc, char * argv[])
 
     if (opts.iflagp->direct || opts.oflagp->direct ||
         (FT_RAW & opts.in_type) || (FT_RAW & opts.out_type)) {
-        size_t psz = getpagesize();
+        size_t psz = sysconf(_SC_PAGESIZE); /* was getpagesize() */
+
         wrkBuff = (unsigned char*)malloc(opts.ibs * opts.bpt_i + psz);
         if (0 == wrkBuff) {
             fprintf(stderr, "Not enough user memory for raw\n");
