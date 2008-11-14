@@ -44,12 +44,11 @@
  */
 
 #define _XOPEN_SOURCE 600
-// #ifndef _GNU_SOURCE
-// #define _GNU_SOURCE
-// #endif
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 
 #include <unistd.h>
-#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,6 +56,9 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #define __STDC_FORMAT_MACROS 1
 #include <inttypes.h>
 #include <sys/ioctl.h>
@@ -129,9 +131,10 @@ static char * version_str = "0.90 20081114";
 #define DEV_NULL_MINOR_NUM 3
 
 /* If platform does not support O_DIRECT then define it harmlessly */
-#ifndef O_DIRECT
-#define O_DIRECT 0
-#endif
+// #ifndef O_DIRECT
+// #warning boo
+// #define O_DIRECT 0
+// #endif
 
 #define MIN_RESERVED_SIZE 8192
 
