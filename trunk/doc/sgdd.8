@@ -30,7 +30,9 @@ Both groups are defined below.
 .PP
 The term "pt device" is used for a pass-through device to which SCSI
 commands like READ(10) and WRITE(10) may be sent. A pt device may only be
-able to process SCSI commands in which case the "pt" flag is assumed. However
+able to process SCSI commands in which case the "pt" flag is assumed. The
+ability to recognize such a pt only device may vary depending on the
+operating system (e.g. in Linux '/dev/sg2' is recognized). However
 if a device can process either normal UNIX read()/write() calls or
 pass-through SCSI commands then the default is to use UNIX read()/write()
 calls. In the latter case, to use the pass-through facility then the "pt"
@@ -214,12 +216,6 @@ data is unlikely to be required to stay in device (e.g. disk) cache.
 May speed media copy and/or cause a media copy to have less impact
 on other device users.
 .TP
-dsync
-causes the O_SYNC flag to be added to the open of \fIIFILE\fR and/or
-\fIOFILE\fR. The 'd' is prepended to lower confusion with the 'sync=0|1'
-option which has another action (i.e. a synchronisation to media at the
-end of the transfer).
-.TP
 excl
 causes the O_EXCL flag to be added to the open of \fIIFILE\fR and/or
 \fIOFILE\fR.
@@ -236,6 +232,10 @@ fua
 causes the FUA (force unit access) bit to be set in SCSI READ and/or WRITE
 commands. This only has an effect with pt devices. The 6 byte variants o
 the SCSI READ and WRITE commands do not support the FUA bit.
+.TP
+nocache
+use posix_fadvise() to advise corresponding file there is no need to fill
+the file buffer with recently read or written blocks.
 .TP
 null
 has no affect, just a placeholder.
@@ -263,10 +263,14 @@ is always written so regular files will show the same length and so
 programs like md5sum and sha1sum will generate the same value regardless
 of whether oflag=sparse is given or not.
 .TP
-sync
+ssync
 if \fIOFILE\fR is in "pt" mode the the SCSI SYNCHRONIZE CACHE command is
 sent to \fIOFILE\fR at the end of the transfer. This flag is only valid
 with the "oflag=" option.
+.TP
+sync
+causes the O_SYNC flag to be added to the open of \fIIFILE\fR and/or
+\fIOFILE\fR.
 .SH NOTES
 Block devices (e.g. /dev/sda and /dev/hda) can be given for \fIIFILE\fR.
 If neither 'iflag=direct' nor 'iflag=pt' is given then normal block IO
