@@ -2,6 +2,12 @@ The version number is hardcoded into src/sgdd.c (in a C string);
 the rpm spec file: sgdd.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for sgdd-0.90 [20081114] [svn: r14]
+Changelog for sgdd-0.90 [20081115] [svn: r15]
   - converting from sg_dd utility in sg3_utils package
   - ibs and obs can differ when ((ibs * bpt) % obs) == 0)
+  - change 'sg_io' flag to 'pt' (for pass-through)
+  - change 'dsync' flag to 'sync', 'ssync' flag for SCSI
+    SYNCHRONIZE CACHE command; add 'nocache' flag
+  - if 'nocache' flag call posix_fadvise(SEQUENTIAL) on
+    input fd and posix_fadvise(DONTNEED) during copy
+  - call sg_set_binary_mode() on fds (for windows)
