@@ -133,10 +133,9 @@ static char * version_str = "0.90 20081115";
 #define DEV_NULL_MINOR_NUM 3
 
 /* If platform does not support O_DIRECT then define it harmlessly */
-// #ifndef O_DIRECT
-// #warning boo
-// #define O_DIRECT 0
-// #endif
+#ifndef O_DIRECT
+#define O_DIRECT 0
+#endif
 
 #define MIN_RESERVED_SIZE 8192
 
