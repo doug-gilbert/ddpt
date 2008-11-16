@@ -2,7 +2,7 @@ The version number is hardcoded into src/sgdd.c (in a C string);
 the rpm spec file: sgdd.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for sgdd-0.90 [20081115] [svn: r15]
+Changelog for sgdd-0.90 [20081115] [svn: r16]
   - converting from sg_dd utility in sg3_utils package
   - ibs and obs can differ when ((ibs * bpt) % obs) == 0)
   - change 'sg_io' flag to 'pt' (for pass-through)

@@ -82,7 +82,7 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-static char * version_str = "0.90 20081115";
+static char * version_str = "0.90 20081116";
 
 #define ME "sgdd: "
 
@@ -218,19 +218,17 @@ static void
 usage()
 {
     fprintf(stderr, "Usage: "
-           "sgdd  [bs=BS] [count=COUNT] [ibs=BS] [if=IFILE]"
-           " [iflag=FLAGS]\n"
-           "             [obs=OBS] [of=OFILE] [oflag=FLAGS] "
-           "[seek=SEEK] [skip=SKIP]\n"
+           "sgdd  [bs=BS] [count=COUNT] [ibs=BS] [if=IFILE] [iflag=FLAGS]\n"
+           "             [obs=OBS] [of=OFILE] [oflag=FLAGS] [seek=SEEK] "
+           "[skip=SKIP]\n"
            "             [--help] [--version]\n\n"
-           "             [bpt=BPT] [cdbsz=6|10|12|16] "
-           "[coe=0|1|2|3]\n"
-           "             [coe_limit=CL] "
-           "[of2=OFILE2] [retries=RETR]\n"
-           "             [time=0|1] [verbose=VERB]\n"
+           "             [bpt=BPT] [cdbsz=6|10|12|16] [coe=0|1|2|3] "
+           "[coe_limit=CL]\n"
+           "             [of2=OFILE2] [retries=RETR] [time=0|1] "
+           "[verbose=VERB]\n"
            "  where:\n"
-           "    bpt         is blocks_per_transfer (default is 128 or 32 "
-           "when BS>=2048)\n"
+           "    bpt         input blocks_per_transfer (default 128 if "
+           "BS<2048, else 32)\n"
            "    bs          input block size (default is 512)\n");
     fprintf(stderr,
            "    cdbsz       size of SCSI READ or WRITE cdb (default is "
@@ -273,9 +271,9 @@ usage()
            "etc\n"
            "    --help      print out this usage message then exit\n"
            "    --version   print version information then exit\n\n"
-           "copy from IFILE to OFILE, similar to dd command; "
-           "specialized for block devices,\nespecially those that "
-           "understand the SCSI command set.\n");
+           "Copy from IFILE to OFILE, BS*BPT bytes at a time. Similar to "
+           "dd command.\nSupport for block devices, especially those "
+           "accessed via a SCSI pass-through.\n");
 }
 
 
@@ -1589,7 +1587,7 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
         unsigned char * wrkPos)
 {
     int ibpt, obpt, res, n, blks_read, retries_tmp, first;
-    int bytes_read, bytes_of2, bytes_of;
+    int bytes_read, bytes_of, bytes_of2;
     int iblocks = 0;
     int oblocks = 0;
     int sparse_skip = 0;
@@ -1823,8 +1821,10 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
             out_valid = ((FT_OTHER == optsp->out_type) ||
                          (FT_BLOCK == optsp->out_type));
             if (optsp->iflagp->nocache && (bytes_read > 0) && in_valid) {
-                rt = posix_fadvise(infd, optsp->skip, res,
-                                   POSIX_FADV_DONTNEED);
+                rt = posix_fadvise(infd, 0, (optsp->skip * optsp->ibs) +
+                                            bytes_read, POSIX_FADV_DONTNEED);
+                // rt = posix_fadvise(infd, (optsp->skip * optsp->ibs),
+                                   // bytes_read, POSIX_FADV_DONTNEED);
                 // rt = posix_fadvise(infd, 0, 0, POSIX_FADV_DONTNEED);
                 if (rt)         /* returns error as result */
                     fprintf(stderr, "posix_fadvise on read, skip="
