@@ -82,7 +82,7 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-static char * version_str = "0.90 20081116";
+static char * version_str = "0.90 20081118";
 
 #define ME "sgdd: "
 
@@ -116,25 +116,28 @@ static char * version_str = "0.90 20081116";
 #ifndef RAW_MAJOR
 #define RAW_MAJOR 255   /*unlikey value */
 #endif
+#define DEV_NULL_MINOR_NUM 3
 #endif
 
 #define SG_LIB_FLOCK_ERR 90
 
-#define FT_OTHER 1              /* filetype is probably normal */
-#define FT_PT 2                 /* filetype is a device that SCSI
-                                   commands can be sent via a pass-through */
-#define FT_RAW 4                /* filetype is raw char device */
+#define FT_OTHER 1              /* filetype is unknown (unexpected) */
+#define FT_PT 2                 /* filetype is a device that SCSI */
+                                /* commands can be sent via a pass-through */
+#define FT_REG 4                /* a normal (regular) file */
 #define FT_DEV_NULL 8           /* either "/dev/null" or "." as filename */
 #define FT_TAPE 16              /* filetype is tape style device */
 #define FT_BLOCK 32             /* filetype is block device */
 #define FT_FIFO 64              /* filetype is a fifo (name pipe) */
 #define FT_ERROR 128            /* couldn't "stat" file */
 
-#define DEV_NULL_MINOR_NUM 3
 
-/* If platform does not support O_DIRECT then define it harmlessly */
+/* If O_DIRECT or O_SYNC not supported then define harmlessly */
 #ifndef O_DIRECT
 #define O_DIRECT 0
+#endif
+#ifndef O_SYNC
+#define O_SYNC 0
 #endif
 
 #define MIN_RESERVED_SIZE 8192
@@ -183,6 +186,7 @@ struct flags_t {
     int nocache;
     int pt;
     int retries;
+    int sparing;
     int sparse;
     int ssync;
     int sync;
@@ -258,9 +262,9 @@ usage()
            "    of2         additional output file (def: /dev/null), "
            "OFILE2 should be\n"
            "                normal file or pipe\n"
-           "    oflag       comma separated list from: [append,coe,"
-           "direct,dpo,\n"
-           "                excl,flock,fua,nosync,null,pt,sparse,ssync,"
+           "    oflag       comma separated list from: [append,coe,direct,"
+           "dpo,excl,\n"
+           "                flock,fua,nosync,null,pt,sparing,sparse,ssync,"
            "sync]\n"
            "    retries     retry pt errors RETR times (def: 0)\n"
            "    seek        block position to start writing to OFILE\n"
@@ -520,8 +524,14 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
         fprintf(stderr, "bpt must be greater than 0\n");
         return SG_LIB_SYNTAX_ERROR;
     }
+    if (optsp->iflagp->append)
+        fprintf(stderr, "append flag ignored on input\n");
+    if (optsp->iflagp->sparing)
+        fprintf(stderr, "sparing flag ignored on input\n");
     if (optsp->iflagp->sparse)
-        fprintf(stderr, "sparse flag ignored for iflag\n");
+        fprintf(stderr, "sparse flag ignored on input\n");
+    if (optsp->iflagp->ssync)
+        fprintf(stderr, "ssync flag ignored on input\n");
 
     if (verbose) {      /* report flags used but not supported */
 #ifndef SGDD_LINUX
@@ -538,8 +548,13 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
 
 #if O_SYNC == 0
         if (optsp->iflagp->sync || optsp->oflagp->sync)
-            fprintf(stderr, "warning: 'sync' flag ()_SYNC) not supported on "
+            fprintf(stderr, "warning: 'sync' flag (O_SYNC) not supported on "
                     "this platform\n");
+#endif
+#if O_DIRECT == 0
+        if (optsp->iflagp->direct || optsp->oflagp->direct)
+            fprintf(stderr, "warning: 'direct' flag (O_DIRECT) not supported "
+                    "on this platform\n");
 #endif
     }
     return 0;
@@ -556,24 +571,28 @@ dd_filetype(const char * filename)
         return FT_DEV_NULL;
     if (stat(filename, &st) < 0)
         return FT_ERROR;
-    if (S_ISCHR(st.st_mode)) {
+    if (S_ISREG(st.st_mode)) {
+fprintf(stderr, "dd_filetype: regular file, st_size=%"PRId64"\n", st.st_size);
+        return FT_REG;
+    } else if (S_ISCHR(st.st_mode)) {
 #ifdef SGDD_LINUX
         /* major() and minor() defined in sys/sysmacros.h */
         if ((MEM_MAJOR == major(st.st_rdev)) &&
             (DEV_NULL_MINOR_NUM == minor(st.st_rdev)))
             return FT_DEV_NULL;
-        if (RAW_MAJOR == major(st.st_rdev))
-            return FT_RAW;
         if (SCSI_GENERIC_MAJOR == major(st.st_rdev))
             return FT_PT;
         if (SCSI_TAPE_MAJOR == major(st.st_rdev))
             return FT_TAPE;
+        return FT_OTHER;
 #else
         return FT_PT;
 #endif
-    } else if (S_ISBLK(st.st_mode))
+    } else if (S_ISBLK(st.st_mode)) {
+fprintf(stderr, "dd_filetype: block device, st_size=%"PRId64"\n", st.st_size);
+fprintf(stderr, "dd_filetype: block device, st_blocks=%"PRId64"\n", st.st_blocks);
         return FT_BLOCK;
-    else if (S_ISFIFO(st.st_mode))
+    } else if (S_ISFIFO(st.st_mode))
         return FT_FIFO;
     return FT_OTHER;
 }
@@ -587,17 +606,17 @@ dd_filetype_str(int ft, char * buff)
     if (FT_DEV_NULL & ft)
         off += snprintf(buff + off, 32, "null device ");
     if (FT_PT & ft)
-        off += snprintf(buff + off, 32, "SCSI generic (pt) device ");
+        off += snprintf(buff + off, 32, "pass-through (pt) device ");
     if (FT_BLOCK & ft)
         off += snprintf(buff + off, 32, "block device ");
     if (FT_FIFO & ft)
         off += snprintf(buff + off, 32, "fifo (named pipe) ");
     if (FT_TAPE & ft)
         off += snprintf(buff + off, 32, "SCSI tape device ");
-    if (FT_RAW & ft)
-        off += snprintf(buff + off, 32, "raw device ");
+    if (FT_REG & ft)
+        off += snprintf(buff + off, 32, "regular file ");
     if (FT_OTHER & ft)
-        off += snprintf(buff + off, 32, "other (perhaps ordinary file) ");
+        off += snprintf(buff + off, 32, "other file type ");
     if (FT_ERROR & ft)
         off += snprintf(buff + off, 32, "unable to 'stat' file ");
     return buff;
@@ -1318,6 +1337,8 @@ process_flags(const char * arg, struct flags_t * fp)
             ;
         else if (0 == strcmp(cp, "pt"))
             ++fp->pt;
+        else if (0 == strcmp(cp, "sparing"))
+            ++fp->sparing;
         else if (0 == strcmp(cp, "sparse"))
             ++fp->sparse;
         else if (0 == strcmp(cp, "ssync"))
@@ -1508,36 +1529,20 @@ open_of(const char * outf, int64_t seek, int bs, struct flags_t * ofp,
     } else if (FT_DEV_NULL & *out_typep)
         outfd = -1; /* don't bother opening */
     else {
-        if (! (FT_RAW & *out_typep)) {
-            flags = O_WRONLY | O_CREAT;
-            if (ofp->direct)
-                flags |= O_DIRECT;
-            if (ofp->excl)
-                flags |= O_EXCL;
-            if (ofp->sync)
-                flags |= O_SYNC;
-            if (ofp->append)
-                flags |= O_APPEND;
-            if ((outfd = open(outf, flags, 0666)) < 0) {
-                snprintf(ebuff, EBUFF_SZ,
-                        ME "could not open %s for writing", outf);
-                perror(ebuff);
-                goto file_err;
-            }
-        } else {
-            flags = O_WRONLY;
-            if (ofp->direct)
-                flags |= O_DIRECT;
-            if (ofp->excl)
-                flags |= O_EXCL;
-            if (ofp->sync)
-                flags |= O_SYNC;
-            if ((outfd = open(outf, flags)) < 0) {
-                snprintf(ebuff, EBUFF_SZ,
-                        ME "could not open %s for raw writing", outf);
-                perror(ebuff);
-                goto file_err;
-            }
+        flags = O_WRONLY | O_CREAT;
+        if (ofp->direct)
+            flags |= O_DIRECT;
+        if (ofp->excl)
+            flags |= O_EXCL;
+        if (ofp->sync)
+            flags |= O_SYNC;
+        if (ofp->append)
+            flags |= O_APPEND;
+        if ((outfd = open(outf, flags, 0666)) < 0) {
+            snprintf(ebuff, EBUFF_SZ,
+                    ME "could not open %s for writing", outf);
+            perror(ebuff);
+            goto file_err;
         }
         if (sg_set_binary_mode(outfd) < 0)
             perror("sg_set_binary_mode");
@@ -1586,10 +1591,12 @@ static int
 do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
         unsigned char * wrkPos)
 {
-    int ibpt, obpt, res, n, blks_read, retries_tmp, first;
+    int ibpt, obpt, res, n, retries_tmp, first;
     int bytes_read, bytes_of, bytes_of2;
+    int blks_read = 0;
     int iblocks = 0;
     int oblocks = 0;
+    int sparing_skip = 0;
     int sparse_skip = 0;
     int penult_sparse_skip = 0;
     int penult_blocks = 0;
@@ -1606,6 +1613,7 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
         bytes_of2 = 0;
         penult_sparse_skip = sparse_skip;
         penult_blocks = penult_sparse_skip ? oblocks : 0;
+        sparing_skip = 0;
         sparse_skip = 0;
         if (dd_count >= ibpt) {
             iblocks = ibpt;
@@ -1703,13 +1711,18 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
             if (0 == memcmp(wrkPos, zeros_buff, oblocks * optsp->obs))
                 sparse_skip = 1;
         }
-        if (sparse_skip) {
+        if ((optsp->oflagp->sparse) && 1) {
+            ;
+            // sparing_skip = 1;
+
+        }
+        if (sparing_skip || sparse_skip) {
             if (FT_PT & optsp->out_type) {
                 out_sparse += oblocks;
                 if (verbose > 2)
-                    fprintf(stderr, "sparse bypassing pt_write: seek "
-                            "blk=%"PRId64", offset blks=%d\n", optsp->seek,
-                            oblocks);
+                    fprintf(stderr, "%s bypassing pt_write: seek blk=%"
+                            PRId64", offset blks=%d\n", (sparing_skip ?
+                             "sparing" : "sparse"), optsp->seek, oblocks);
             } else if (FT_DEV_NULL & optsp->out_type)
                 ;
             else {
@@ -1814,11 +1827,11 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
         {
             int rt, in_valid, out2_valid, out_valid;
 
-            in_valid = ((FT_OTHER == optsp->in_type) ||
+            in_valid = ((FT_REG == optsp->in_type) ||
                         (FT_BLOCK == optsp->in_type));
-            out2_valid = ((FT_OTHER == optsp->out2_type) ||
+            out2_valid = ((FT_REG == optsp->out2_type) ||
                           (FT_BLOCK == optsp->out2_type));
-            out_valid = ((FT_OTHER == optsp->out_type) ||
+            out_valid = ((FT_REG == optsp->out_type) ||
                          (FT_BLOCK == optsp->out_type));
             if (optsp->iflagp->nocache && (bytes_read > 0) && in_valid) {
                 rt = posix_fadvise(infd, 0, (optsp->skip * optsp->ibs) +
@@ -1955,6 +1968,12 @@ main(int argc, char * argv[])
             return SG_LIB_SYNTAX_ERROR;
         }
     }
+    if (oflag.sparing) {
+        if (STDOUT_FILENO == outfd) {
+            fprintf(stderr, "oflag=sparing needs seekable output file\n");
+            return SG_LIB_SYNTAX_ERROR;
+        }
+    }
 
     if ((dd_count < 0) || ((verbose > 0) && (0 == dd_count))) {
         in_num_sect = -1;
@@ -2087,13 +2106,12 @@ main(int argc, char * argv[])
         }
     }
 
-    if (opts.iflagp->direct || opts.oflagp->direct ||
-        (FT_RAW & opts.in_type) || (FT_RAW & opts.out_type)) {
+    if (opts.iflagp->direct || opts.oflagp->direct) {
         size_t psz = sysconf(_SC_PAGESIZE); /* was getpagesize() */
 
         wrkBuff = (unsigned char*)calloc(opts.ibs * opts.bpt_i + psz, 1);
         if (0 == wrkBuff) {
-            fprintf(stderr, "Not enough user memory for raw\n");
+            fprintf(stderr, "Not enough user memory for aligned usage\n");
             return SG_LIB_CAT_OTHER;
         }
         wrkPos = (unsigned char *)(((unsigned long)wrkBuff + psz - 1) &
