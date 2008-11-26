@@ -82,7 +82,7 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-static char * version_str = "0.90 20081118";
+static char * version_str = "0.90 20081125";
 
 #define ME "sgdd: "
 
@@ -306,7 +306,7 @@ print_stats(const char * str)
             in_partial);
     fprintf(stderr, "%s%"PRId64"+%d records out\n", str, out_full - out_partial,
             out_partial);
-    if (oflag.sparse)
+    if (out_sparse)
         fprintf(stderr, "%s%"PRId64" bypassed records out\n", str, out_sparse);
     if (recovered_errs > 0)
         fprintf(stderr, "%s%d recovered errors\n", str, recovered_errs);
@@ -572,7 +572,8 @@ dd_filetype(const char * filename)
     if (stat(filename, &st) < 0)
         return FT_ERROR;
     if (S_ISREG(st.st_mode)) {
-fprintf(stderr, "dd_filetype: regular file, st_size=%"PRId64"\n", st.st_size);
+        // fprintf(stderr, "dd_filetype: regular file, st_size=%"PRId64"\n",
+        //         st.st_size);
         return FT_REG;
     } else if (S_ISCHR(st.st_mode)) {
 #ifdef SGDD_LINUX
@@ -589,8 +590,10 @@ fprintf(stderr, "dd_filetype: regular file, st_size=%"PRId64"\n", st.st_size);
         return FT_PT;
 #endif
     } else if (S_ISBLK(st.st_mode)) {
-fprintf(stderr, "dd_filetype: block device, st_size=%"PRId64"\n", st.st_size);
-fprintf(stderr, "dd_filetype: block device, st_blocks=%"PRId64"\n", st.st_blocks);
+        // fprintf(stderr, "dd_filetype: block device, st_size=%"PRId64"\n",
+        //         st.st_size);
+        // fprintf(stderr, "dd_filetype: block device, st_blocks=%"PRId64"\n",
+        //         st.st_blocks);
         return FT_BLOCK;
     } else if (S_ISFIFO(st.st_mode))
         return FT_FIFO;
@@ -1529,7 +1532,7 @@ open_of(const char * outf, int64_t seek, int bs, struct flags_t * ofp,
     } else if (FT_DEV_NULL & *out_typep)
         outfd = -1; /* don't bother opening */
     else {
-        flags = O_WRONLY | O_CREAT;
+        flags = ofp->sparing ? (O_RDWR | O_CREAT) : (O_WRONLY | O_CREAT);
         if (ofp->direct)
             flags |= O_DIRECT;
         if (ofp->excl)
@@ -1589,7 +1592,7 @@ other_err:
 
 static int
 do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
-        unsigned char * wrkPos)
+        unsigned char * wrkPos, unsigned char * wrkPos2)
 {
     int ibpt, obpt, res, n, retries_tmp, first;
     int bytes_read, bytes_of, bytes_of2;
@@ -1625,7 +1628,7 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
             oblocks = n / optsp->obs;
             if (n % optsp->obs) {
                 ++oblocks;
-                ++out_partial;
+                // ++out_partial;
                 /* make sure pad is zeros */
                 memset(wrkPos, 0, optsp->ibs * optsp->bpt_i);
             }
@@ -1670,7 +1673,8 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
                 oblocks = res / optsp->obs;
                 if ((res % optsp->obs) > 0) {
                     ++oblocks;
-                    ++out_partial;
+                    // ++out_full;
+                    // ++out_partial;
                 }
             }
             bytes_read = res;
@@ -1711,10 +1715,52 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
             if (0 == memcmp(wrkPos, zeros_buff, oblocks * optsp->obs))
                 sparse_skip = 1;
         }
-        if ((optsp->oflagp->sparse) && 1) {
-            ;
-            // sparing_skip = 1;
+        if (optsp->oflagp->sparing && (! sparse_skip)) {
+            if (FT_PT & optsp->out_type) {
+                res = pt_read(outfd, wrkPos2, oblocks, optsp->seek, optsp->obs,
+                              optsp->oflagp, &blks_read);
+                if (res)
+                    fprintf(stderr, "pt_read(sparing) failed, at or after "
+                            "lba=%"PRId64" [0x%"PRIx64"]\n", optsp->seek,
+                            optsp->seek);
+                else if ((blks_read == oblocks) &&
+                         (0 == memcmp(wrkPos, wrkPos2, oblocks * optsp->obs)))
+                    sparing_skip = 1;
+            } else {
+                while (((res = read(outfd, wrkPos2, oblocks * optsp->obs))
+                        < 0) && (EINTR == errno))
+                    ;
+                if (verbose > 2)
+                    fprintf(stderr, "read(sparing): requested bytes=%d, res=%d\n",
+                            oblocks * optsp->obs, res);
+                if (res < 0) {
+                    snprintf(ebuff, EBUFF_SZ, ME "read(sparing), seek=%"PRId64" ",
+                             optsp->seek);
+                    perror(ebuff);
+                } else if ((res == oblocks * optsp->obs) &&
+                           (0 == memcmp(wrkPos, wrkPos2, oblocks * optsp->obs)))
+                    sparing_skip = 1;
+                else {  /* need to back up pointer */
+                    off_t offset = -res;
+                    off_t off_res;
 
+                    if (verbose > 2)
+                        fprintf(stderr, "sparing backing up: seek="
+                                "%"PRId64", rel offset=%"PRId64"\n",
+                                (optsp->seek * optsp->obs), (int64_t)offset);
+                    off_res = lseek(outfd, offset, SEEK_CUR);
+                    if (off_res < 0) {
+                        fprintf(stderr, "sparing tried to backup: "
+                                "seek=%"PRId64", rel offset=%"PRId64" but ...\n",
+                                (optsp->seek * optsp->obs), (int64_t)offset);
+                        perror("lseek on output");
+                        ret = SG_LIB_FILE_ERROR;
+                        break;
+                    } else if (verbose > 4)
+                        fprintf(stderr, "oflag=sparing lseek result="
+                                "%"PRId64"\n", (int64_t)off_res);
+                }
+            }
         }
         if (sparing_skip || sparse_skip) {
             if (FT_PT & optsp->out_type) {
@@ -1725,13 +1771,13 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
                              "sparing" : "sparse"), optsp->seek, oblocks);
             } else if (FT_DEV_NULL & optsp->out_type)
                 ;
-            else {
+            else if (sparse_skip) {
                 off_t offset = oblocks * optsp->obs;
                 off_t off_res;
 
                 if (verbose > 2)
-                    fprintf(stderr, "sparse bypassing write: "
-                            "seek=%"PRId64", rel offset=%"PRId64"\n",
+                    fprintf(stderr, "sparse bypassing write: seek="
+                            "%"PRId64", rel offset=%"PRId64"\n",
                             (optsp->seek * optsp->obs), (int64_t)offset);
                 off_res = lseek(outfd, offset, SEEK_CUR);
                 if (off_res < 0) {
@@ -1743,9 +1789,10 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
                     break;
                 } else if (verbose > 4)
                     fprintf(stderr, "oflag=sparse lseek result=%"PRId64"\n",
-                           (int64_t)off_res);
+                            (int64_t)off_res);
                 out_sparse += oblocks;
-            }
+            } else
+                out_sparse += oblocks;
         } else if (FT_PT & optsp->out_type) {
             retries_tmp = oflag.retries;
             first = 1;
@@ -1789,9 +1836,8 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
                         ((-2 == ret) ? " try reducing bpt," : ""),
                         optsp->seek);
                 break;
-            } else {
+            } else
                 out_full += oblocks;
-            }
         } else if (FT_DEV_NULL & optsp->out_type)
             out_full += oblocks; /* act as if written out without error */
         else {
@@ -1893,6 +1939,8 @@ main(int argc, char * argv[])
     int res, infd, outfd, out2fd;
     unsigned char * wrkBuff;
     unsigned char * wrkPos;
+    unsigned char * wrkBuff2 = NULL;
+    unsigned char * wrkPos2 = NULL;
     int64_t in_num_sect = -1;
     int64_t out_num_sect = -1;
     int in_sect_sz, out_sect_sz;
@@ -2116,6 +2164,16 @@ main(int argc, char * argv[])
         }
         wrkPos = (unsigned char *)(((unsigned long)wrkBuff + psz - 1) &
                                    (~(psz - 1)));
+        if (opts.oflagp->sparing) {
+            wrkBuff2 = (unsigned char*)calloc(opts.ibs * opts.bpt_i + psz, 1);
+            if (0 == wrkBuff2) {
+                fprintf(stderr, "Not enough user memory for aligned "
+                        "usage(2)\n");
+                return SG_LIB_CAT_OTHER;
+            }
+            wrkPos2 = (unsigned char *)(((unsigned long)wrkBuff2 + psz - 1) &
+                                   (~(psz - 1)));
+        }
     } else {
         wrkBuff = (unsigned char*)calloc(opts.ibs * opts.bpt_i, 1);
         if (0 == wrkBuff) {
@@ -2123,6 +2181,14 @@ main(int argc, char * argv[])
             return SG_LIB_CAT_OTHER;
         }
         wrkPos = wrkBuff;
+        if (opts.oflagp->sparing) {
+            wrkBuff2 = (unsigned char*)calloc(opts.ibs * opts.bpt_i, 1);
+            if (0 == wrkBuff2) {
+                fprintf(stderr, "Not enough user memory(2)\n");
+                return SG_LIB_CAT_OTHER;
+            }
+            wrkPos2 = wrkBuff2;
+        }
     }
 
     if (verbose > 3)
@@ -2136,7 +2202,7 @@ main(int argc, char * argv[])
     }
     req_count = dd_count;
 
-    ret = do_copy(&opts, infd, outfd, out2fd, wrkPos);
+    ret = do_copy(&opts, infd, outfd, out2fd, wrkPos, wrkPos2);
 
     if (do_time)
         calc_duration_throughput(0);
@@ -2154,6 +2220,8 @@ main(int argc, char * argv[])
     }
 
     free(wrkBuff);
+    if (wrkBuff2)
+        free(wrkBuff2);
     if (zeros_buff)
         free(zeros_buff);
     if (STDIN_FILENO != infd)

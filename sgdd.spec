@@ -51,6 +51,6 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Sat Nov 15 2008 - dgilbert at interlog dot com
+* Tue Nov 25 2008 - dgilbert at interlog dot com
 - initial version
   * sgdd-0.90
