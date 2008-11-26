@@ -250,6 +250,18 @@ via standard UNIX read() and write() commands as well as SCSI commands.
 Such devices default standard UNIX read() and write() commands in the
 absence of this flag.
 .TP
+sparing
+during the copy each \fIBS\fR * \fIBPT\fR byte segment is read from
+input into a buffer. Then, instead of writing that buffer to output, the
+corresponding segment is read from the output file into another buffer.
+If the two buffers are different, the original buffer is written to the
+output file. If the two buffers compare equal then the write to output
+is skipped. This flag is only active with the oflag option. For write
+sparing, the output file must exist, be readable and seekable. Write
+sparing is useful when a write operation is more "expensive" than a read.
+For example flash memory devices have an upper limit on the number of
+times a block can be written.
+.TP
 sparse
 after each \fIBS\fR * \fIBPT\fR byte segment is read from the input, it is
 checked to see if it is all zeros. If so, nothing is written to the output
@@ -471,4 +483,4 @@ recovery see
 .B sdparm(sdparm)
 .PP
 See also
-.B dd(1), ddrescue(GNU)
+.B dd(1), ddrescue(GNU), sg_dd(sg3_utils)
