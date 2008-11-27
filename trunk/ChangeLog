@@ -13,3 +13,4 @@ Changelog for sgdd-0.90 [20081127] [svn: r20]
   - call sg_set_binary_mode() on fds (for windows)
   - drop Linux raw file support
   - add write sparing support (oflag=sparing)
+  - accept '-V' as synonym for '--version'
