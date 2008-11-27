@@ -19,7 +19,8 @@ sgdd utility<br>
 <ol id="mozToc">
 <!--mozToc h1 1 h2 2 h3 3 h4 4 h5 5 h6 6-->
   <li><a href="#mozTocId228087"> The&nbsp; Linux
-sgdd utility </a>
+sgdd utility
+    </a>
     <ol>
       <li><a href="#mozTocId370866">Introduction</a></li>
       <li><a href="#mozTocId123443">History</a></li>
@@ -29,9 +30,8 @@ sgdd utility </a>
       <li><a href="#mozTocId437677">Continue on error
 (coe)</a></li>
       <li><a href="#mozTocId566094">Recovered errors</a></li>
-      <li><a href="#mozTocId836611">Sparse writes</a></li>
+      <li><a href="#mozTocId836611">Sparse writes and write sparing</a></li>
       <li><a href="#mozTocId899152">Verbose</a></li>
-      <li><a href="#mozTocId157981">Conclusion</a></li>
     </ol>
   </li>
 </ol>
@@ -48,17 +48,18 @@ Windows.<br>
 <br>
 The supported SCSI peripheral device
 types are direct access devices (e.g. disks) and cd/dvd devices. The
-SCSI tape device type is not be supported (but could be to a limited
-degree). When instructed, the sgdd utility issues SCSI
+SCSI tape device type is not be supported. When instructed, the sgdd
+utility issues SCSI
 commands that are defined in SPC-4 (primary commands), SBC-3 (commands
 for direct access devices (e.g. disks)) and MMC-5 (commands for CD/DVD
 devices). These SCSI command sets can be found at <a
  href="http://www.t10.org/">www.t10.org</a>
 . <br>
 <br>
-It is becoming common for non-SCSI devices (e.g. ATA disks) to appear
+It is becoming common for non-SCSI storage devices (e.g. ATA disks) to
+appear
 as SCSI devices to an operating system via a protocol conversion in an
-external enclosure and via some transport such as USB or IEEE 1394. The
+external enclosure or via some transport such as USB or IEEE 1394. The
 sgdd utility should work with most of these devices as it tends to use
 exactly the same SCSI commands that the operating system's block layer
 would use.
@@ -68,9 +69,7 @@ all CD/DVD players use the Multi Media Command set (MMC or&nbsp;
 MMC-2,3,4,5,6) as their native command set. The fact that the most
 common
 transport for CD/DVD drives is ATAPI (i.e. the ATA packet interface) is
-irrelevant to
-the
-sgdd utility: they use SCSI command sets.<br>
+irrelevant in this context: SCSI command sets are being used.<br>
 <br>
 This page outlines the features of the sgdd utility version 0.90 .<br>
 <br>
@@ -84,9 +83,11 @@ command pass-through mechanisms are found in most operating systems,
 the sg_dd utility&nbsp; has options to control some special features
 associated with the sg driver and the SG_IO ioctl in Linux.<br>
 <br>
-Apart from the "sg" at the start of this utility's name, other sg_dd
-usages of "sg" meant to imply the SCSI pass-through mechanism was being
-used, have been changed to "pt" in this utility.<br>
+Where a block device could either be accessed via normal UNIX
+read-write commands (the default) or the SCSI pass-through mechanism,
+"sg" appearing in options or flags of sg_dd has been changed to "pt" in
+this utility. For example requesting the SCSI pass-through "if=/dev/sda
+iflag=sgio" in sg_dd has become "if=/dev/sda iflag=pt" in sgdd.<br>
 <br>
 The restriction that the input block size ('ibs=') and output block
 size ('obs=') be the same value in the sg_dd utility has been relaxed
@@ -558,6 +559,19 @@ pass-through mechanism<br>
       </td>
     </tr>
     <tr>
+      <td style="vertical-align: top;">sparing<br>
+      </td>
+      <td style="vertical-align: top;">applied on <span
+ style="font-style: italic;">OFILE</span></td>
+      <td style="vertical-align: top;">applied on <span
+ style="font-style: italic;">OFILE</span></td>
+      <td style="vertical-align: top;">applied on <span
+ style="font-style: italic;">OFILE</span></td>
+      <td style="vertical-align: top;">don't write output buffers if
+reading the output indicates the data compares equal. See section on <a
+ href="sgdd.html#mozTocId836611">sparse writes and write sparing</a> </td>
+    </tr>
+    <tr>
       <td style="vertical-align: top;">sparse<br>
       </td>
       <td style="vertical-align: top;">applied on <span
@@ -571,9 +585,7 @@ pass-through mechanism<br>
       </td>
       <td style="vertical-align: top;">don't write output buffers
 (except the last one) that are full of zeros. See section on <a
- href="#mozTocId836611">sparse writes</a> . <span
- style="font-style: italic;">OFILE</span> cannot be a stream (e.g.
-stdout) when this flag is given<br>
+ href="#mozTocId836611">sparse writes and write sparing</a> .<br>
       </td>
     </tr>
     <tr>
@@ -1051,7 +1063,9 @@ Informational Exceptions mode page). Such alerts have additional sense
 codes like "Failure prediction threshold exceeded" and those that
 contain "impending failure".<br>
 <br>
-<h2><a class="mozTocH2" name="mozTocId836611"></a>Sparse writes</h2>
+<h2><a class="mozTocH2" name="mozTocId836611"></a>Sparse writes and
+write sparing<br>
+</h2>
 Typically disks are manufactured with their data sectors initialized to
 zero bytes. In some cases a DOS partition table and boot loader are
 written during manufacture but that only involves the first 63 sectors.
@@ -1136,6 +1150,24 @@ calculate checksums such as <span style="font-weight: bold;">md5sum</span>
 and <span style="font-weight: bold;">sha1sum</span> should give the
 same result when applied to either a sparse file or the corresponding
 source file.<br>
+<br>
+Writing sparing is a related mechanism in which, after reading the <span
+ style="font-style: italic;">IFILE</span>, the corresponding segment in
+the <span style="font-style: italic;">OFILE</span> is read into
+another buffer and the two are compared. If unequal, the write of the
+original buffer to<span style="font-style: italic;"> OFILE</span> takes
+place as normal. If equal then the write to<span
+ style="font-style: italic;"> OFILE</span> is skipped. This may be
+useful when a write operation is more "expensive" than a read operation
+(e.g. with flash memory). The <span style="font-style: italic;">OFILE</span>
+should exist and be readable and seekable (hence stdout is no
+appropriate).<br>
+<br>
+If may not be useful to have both sparse writes and write sparing
+active at the same time. If they are both given (i.e. '<span
+ style="font-family: monospace;">oflag=sparing,sparse</span>') then
+sparse writes are checked first and if zeros are found, the check for
+write sparing is skipped on that segment.<br>
 <br>
 <h2><a class="mozTocH2" name="mozTocId899152"></a>Verbose</h2>
 In the Unix style, sgdd doesn't output anything (to stderr) during
@@ -1222,7 +1254,7 @@ Mode page settings can be examined and changed with a utility like <a
 <br>
 <p>Return to <a href="index.html">main</a> page. </p>
 <center>
-<p>Last updated: 15th November 2008<br>
+<p>Last updated: 27th November 2008<br>
 <br>
 </p>
 </center>
