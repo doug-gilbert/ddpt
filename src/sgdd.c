@@ -481,7 +481,8 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
                    (0 == strcmp(key, "-?"))) {
             usage();
             return -1;
-        } else if (0 == strncmp(key, "--vers", 6)) {
+        } else if ((0 == strncmp(key, "--vers", 6)) ||
+                   (0 == strncmp(key, "-V", 2))) {
             fprintf(stderr, ME "%s\n", version_str);
             return -1;
         } else {
