@@ -82,7 +82,7 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-static char * version_str = "0.90 20081125";
+static char * version_str = "0.90 20081127";
 
 #define ME "sgdd: "
 
@@ -1740,7 +1740,7 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
                 } else if ((res == oblocks * optsp->obs) &&
                            (0 == memcmp(wrkPos, wrkPos2, oblocks * optsp->obs)))
                     sparing_skip = 1;
-                else {  /* need to back up pointer */
+                else if (res > 0) {  /* need to back up pointer */
                     off_t offset = -res;
                     off_t off_res;
 
