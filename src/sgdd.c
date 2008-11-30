@@ -82,7 +82,7 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-static char * version_str = "0.90 20081127";
+static char * version_str = "0.90 20081129";
 
 #define ME "sgdd: "
 
@@ -1392,12 +1392,11 @@ open_if(const char * inf, int64_t skip, int bs, struct flags_t * ifp,
         if (ifp->sync)
             flags |= O_SYNC;
         fl = O_RDWR;
-        if ((infd = open(inf, fl | flags)) < 0) {
+        if ((infd = scsi_pt_open_flags(inf, (fl | flags), verbose)) < 0) {
             fl = O_RDONLY;
-            if ((infd = open(inf, fl | flags)) < 0) {
-                snprintf(ebuff, EBUFF_SZ,
-                         ME "could not open %s for pt reading", inf);
-                perror(ebuff);
+            if ((infd = scsi_pt_open_flags(inf, (fl | flags), verbose)) < 0) {
+                fprintf(stderr, "could not open %s for pt reading: %s\n", inf,
+                        safe_strerror(-infd));
                 goto file_err;
             }
         }
@@ -1513,10 +1512,9 @@ open_of(const char * outf, int64_t seek, int bs, struct flags_t * ofp,
             flags |= O_EXCL;
         if (ofp->sync)
             flags |= O_SYNC;
-        if ((outfd = open(outf, flags)) < 0) {
-            snprintf(ebuff, EBUFF_SZ,
-                     ME "could not open %s for pt writing", outf);
-            perror(ebuff);
+        if ((outfd = scsi_pt_open_flags(outf, flags, verbose)) < 0) {
+            fprintf(stderr, "could not open %s for pt writing: %s\n",
+                    outf, safe_strerror(-outfd));
             goto file_err;
         }
         if (verbose)
