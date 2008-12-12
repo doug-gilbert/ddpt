@@ -1,5 +1,23 @@
 /* config.h.in.  Generated from configure.ac by autoheader.  */
 
+/* ddpt Build Host */
+#undef DDPT_BUILD_HOST
+
+/* ddpt on FreeBSD */
+#undef DDPT_FREEBSD
+
+/* assume ddpt on linux */
+#undef DDPT_LINUX
+
+/* also MinGW environment */
+#undef DDPT_MINGW
+
+/* ddpt on Solaris */
+#undef DDPT_SOLARIS
+
+/* ddpt on Win32 */
+#undef DDPT_WIN32
+
 /* Define to 1 if you have the `posix_fadvise' function. */
 #undef HAVE_POSIX_FADVISE
 
@@ -20,24 +38,6 @@
 
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
-
-/* sgdd Build Host */
-#undef SGDD_BUILD_HOST
-
-/* sgdd on FreeBSD */
-#undef SGDD_FREEBSD
-
-/* assume sgdd on linux */
-#undef SGDD_LINUX
-
-/* also MinGW environment */
-#undef SGDD_MINGW
-
-/* sgdd on Solaris */
-#undef SGDD_SOLARIS
-
-/* sgdd on Win32 */
-#undef SGDD_WIN32
 
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS

@@ -1,31 +1,30 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
 <html>
 <head>
-  <title>Linux sgdd utility (a dd variant)</title>
+  <title>ddpt utility (a Unix dd command variant)</title>
   <meta http-equiv="Content-Type"
  content="text/html; charset=iso-8859-1">
-  <meta name="keywords" content="Linux, SCSI, sgdd, dd variant">
+  <meta name="keywords"
+ content="ddpt, dd variant, pass-through, file copy">
   <meta name="GENERATOR"
  content="Mozilla/4.79 [en] (X11; U; Linux 2.5.31 i686) [Netscape]">
 </head>
 <body alink="#ff0000" background="paper.jpg" bgcolor="#ffffff"
  link="#0000ff" text="#000000" vlink="#000080">
 <center>
-<h1><a class="mozTocH1" name="mozTocId228087"></a> The&nbsp; Linux
-sgdd utility<br>
+<h1><a class="mozTocH1" name="mozTocId228087"></a> The&nbsp;
+ddpt utility<br>
 </h1>
 </center>
 <a href="#Conclusion"></a>
 <ol id="mozToc">
 <!--mozToc h1 1 h2 2 h3 3 h4 4 h5 5 h6 6-->
-  <li><a href="#mozTocId228087"> The&nbsp; Linux
-sgdd utility
-    </a>
+  <li><a href="#mozTocId228087"> The&nbsp; ddpt utility </a>
     <ol>
       <li><a href="#mozTocId370866">Introduction</a></li>
       <li><a href="#mozTocId123443">History</a></li>
       <li><a href="#mozTocId352668">dd like features</a></li>
-      <li><a href="#mozTocId703997">sgdd extras</a></li>
+      <li><a href="#mozTocId703997">ddpt extras</a></li>
       <li><a href="#mozTocId657084">Retries</a></li>
       <li><a href="#mozTocId437677">Continue on error
 (coe)</a></li>
@@ -36,19 +35,23 @@ sgdd utility
   </li>
 </ol>
 <h2><a class="mozTocH2" name="mozTocId370866"></a>Introduction</h2>
-The <span style="font-weight: bold;">sgdd</span> utility is a variant
+The <span style="font-weight: bold;">ddpt</span> utility is a variant
 of the standard Unix command <span style="font-weight: bold;">dd</span>
 which
-copies files. The sgdd utility is specialized for files that are block
+copies files. The <span style="font-weight: bold;">ddpt</span> utility
+is specialized for files that are block
 devices. Even finer grain control can be applied if those block devices
-understand the SCSI commands set. The sgdd utility is
+understand the SCSI command sets which are accessed via a so-called
+"pass-through". The <span style="font-weight: bold;">ddpt</span>
+utility is
 found in the package of the same name. Although it was developed on
-Linux, sgdd targets various Unix based operating systems and (perhaps)
+Linux, <span style="font-weight: bold;">ddpt</span> targets various
+Unix based operating systems and
 Windows.<br>
 <br>
 The supported SCSI peripheral device
 types are direct access devices (e.g. disks) and cd/dvd devices. The
-SCSI tape device type is not be supported. When instructed, the sgdd
+SCSI tape device type is not be supported. When instructed, the ddpt
 utility issues SCSI
 commands that are defined in SPC-4 (primary commands), SBC-3 (commands
 for direct access devices (e.g. disks)) and MMC-5 (commands for CD/DVD
@@ -60,7 +63,7 @@ It is becoming common for non-SCSI storage devices (e.g. ATA disks) to
 appear
 as SCSI devices to an operating system via a protocol conversion in an
 external enclosure or via some transport such as USB or IEEE 1394. The
-sgdd utility should work with most of these devices as it tends to use
+ddpt utility should work with most of these devices as it tends to use
 exactly the same SCSI commands that the operating system's block layer
 would use.
 However, advanced options (e.g. using the cdbsz=16 and iflag=fua) most
@@ -71,14 +74,14 @@ common
 transport for CD/DVD drives is ATAPI (i.e. the ATA packet interface) is
 irrelevant in this context: SCSI command sets are being used.<br>
 <br>
-This page outlines the features of the sgdd utility version 0.90 .<br>
+This page outlines the features of the ddpt utility version 0.90 .<br>
 <br>
 <h2><a class="mozTocH2" name="mozTocId123443"></a>History</h2>
-The sgdd utility is a more generic version of the <a href="sg_dd.html">sg_dd</a>
+The ddpt utility is a more generic version of the <a href="sg_dd.html">sg_dd</a>
 utility found in the <a href="sg3_utils.html">sg3_utils</a> package.
 The sg_dd utility is Linux specific, using the Linux SCSI generic
-driver (called "sg" and hence the first two letters of this utility's
-name) for passing through SCSI commands to block devices. Although SCSI
+driver for passing through SCSI commands to block devices. Although
+SCSI
 command pass-through mechanisms are found in most operating systems,
 the sg_dd utility&nbsp; has options to control some special features
 associated with the sg driver and the SG_IO ioctl in Linux.<br>
@@ -87,21 +90,21 @@ Where a block device could either be accessed via normal UNIX
 read-write commands (the default) or the SCSI pass-through mechanism,
 "sg" appearing in options or flags of sg_dd has been changed to "pt" in
 this utility. For example requesting the SCSI pass-through "if=/dev/sda
-iflag=sgio" in sg_dd has become "if=/dev/sda iflag=pt" in sgdd.<br>
+iflag=sgio" in sg_dd has become "if=/dev/sda iflag=pt" in ddpt.<br>
 <br>
 The restriction that the input block size ('ibs=') and output block
 size ('obs=') be the same value in the sg_dd utility has been relaxed
-in this utility. Other new features such as write sparing or more
+in this utility. Other new features such as write sparing are more
 likely to appear in this utility than the sg_dd utility.<br>
 <br>
 <h2><a class="mozTocH2" name="mozTocId352668"></a>dd like features</h2>
-The basic syntax of the sgdd utility is the same as the dd command in
+The basic syntax of the ddpt utility is the same as the dd command in
 Unix. That said, the syntax of the dd command in Unix is different from
 almost all other Unix commands. Those familiar with the dd
 command
-should not be too surprised by the syntax and semantics of the sgdd
+should not be too surprised by the syntax and semantics of this
 utility. Those not familiar with the dd syntax should be very careful,
-especially with the 'of=' and 'seek=' options, both with dd and sgdd.
+especially with the 'of=' and 'seek=' options, both with dd and ddpt.
 The recent GNU implementation of the dd command is used as a reference
 point. The fundamental options of dd are:<br>
 <br>
@@ -109,7 +112,7 @@ point. The fundamental options of dd are:<br>
  cellspacing="2">
   <caption align="bottom"><span style="font-weight: bold;">Table
 1&nbsp;
-Fundemental dd options</span><br>
+Fundamental dd options</span><br>
   </caption> <tbody>
     <tr>
       <td style="vertical-align: top;"><span style="font-weight: bold;">Basic
@@ -158,14 +161,14 @@ description</span><br>
   </tbody>
 </table>
 <br>
-When either dd or sgdd are given these options with suitable
+When either dd or ddpt are given these options with suitable
 arguments, they will copy
 (<span style="font-style: italic;">BS</span> * <span
  style="font-style: italic;">COUNT</span>) bytes from the beginning
 of <span style="font-style: italic;">IFILE</span> to the
 beginning of <span style="font-style: italic;">OFILE</span>.<br>
 <br>
-The following extensions are found in sgdd. An <span
+The following extensions are found in ddpt. An <span
  style="font-style: italic;">IFILE</span> of
 "-" is interpreted as stdin; an <span style="font-style: italic;">OFILE</span>
 of "-" is
@@ -174,12 +177,12 @@ of "." is
 interpreted as <span style="font-family: monospace;">/dev/null</span>.
 [dd interprets input and output file names of
 "-" literally; dd interprets an output file of "." as the current
-directory and will not accept it.] The sgdd utility does not truncate
+directory and will not accept it.] The ddpt utility does not truncate
 the <span style="font-style: italic;">OFILE</span> before starting the
 copy (the dd command does
 if it is a normal file). Hence a user may need to delete the output
-file before using the sgdd utility (if the size of that file is
-greater than what sgdd is going to copy over it).<br>
+file before using the ddpt utility (if the size of that file is
+greater than what ddpt is going to copy over it).<br>
 <br>
 If the 'count=' option is not given then an attempt is made to
 determine
@@ -195,19 +198,19 @@ calculating the remaining number of blocks in a file, device or
 partition.<br>
 <br>
 If the 'count=' option is given then no further checks regarding the
-remaining length of the input and output files are done and the sgdd
+remaining length of the input and output files are done and the ddpt
 will attempt to copy that number of blocks. A 'count=0' option is valid
 and all the normal preparations are made including files being opened
 but no copy takes place. Hence the 'count=0' option can be used to
 check that the syntax is in order and that the files are present (see
 the
 "<a href="#mozTocId899152">Verbose</a>" section below). Other dd
-options also supported by sgdd:<br>
+options also supported by ddpt:<br>
 <br>
 <table style="width: 750px; text-align: left; height: 304px;" border="1"
  cellpadding="2" cellspacing="2">
   <caption align="bottom"><span style="font-weight: bold;">Table
-2&nbsp; Other dd options also supported by sgdd</span><br>
+2&nbsp; Other dd options also supported by ddpt</span><br>
   </caption> <tbody>
     <tr>
       <td style="vertical-align: top;"><span style="font-weight: bold;">dd
@@ -317,7 +320,7 @@ stream
 (e.g. stdout).<br>
 <br>
 All numeric arguments can take a multiplier suffix. These multiplier
-suffixes are the same as those of GNU's dd (post 2001-12-18):<br>
+suffixes are the same as those of GNU's dd (posted 2001-12-18):<br>
 <br>
 <table style="width: 50%; text-align: left;" border="1" cellpadding="2"
  cellspacing="2">
@@ -404,14 +407,15 @@ suffixes are the same as those of GNU's dd (post 2001-12-18):<br>
 </table>
 <br>
 The pattern that starts with "k" and proceeds to "m", "g" and "t" then
-to "p", "e", "z" and "y"&nbsp; (not shown in above table). sgdd only
-implements as far as "p" (10**15 or 2**50). sgdd only allows
+to "p", "e", "z" and "y"&nbsp; (not shown in above table). ddpt only
+implements as far as "p" (10**15 or 2**50). ddpt only allows
 multipliers based on "t" and "p" for 'count', 'skip' and 'seek'.<br>
 <br>
-sgdd allows numeric arguments to be given in hexadecimal in which case
+ddpt allows numeric arguments to be given in hexadecimal in which case
 they must be prefixed by either "0x" or "0X". A numeric argument cannot
 both be in hex and have a suffix multiplier. Hence "0x9" is interpreted
-as hexadecimal 9 [not (0 * 9)==0]. This is valid "2x4x0xa" and yields
+as hexadecimal 9 [not (0 * 9)==0]. This string is valid: "2x4x0xa" and
+yields
 80 (but it isn't very clear).<br>
 <br>
 Hexadecimal numbers
@@ -425,7 +429,7 @@ separated list of items chosen from one or more entries in this table:<br>
 <table style="width: 705px; text-align: left; height: 494px;" border="1"
  cellpadding="2" cellspacing="2">
   <caption align="bottom"><span style="font-weight: bold;">Table
-4&nbsp; Arguments to sgdd's iflag and oflag options</span><br>
+4&nbsp; Arguments to ddpt's iflag and oflag options</span><br>
   </caption> <tbody>
     <tr>
       <td style="vertical-align: top;"><span style="font-weight: bold;">flag</span><br>
@@ -468,7 +472,7 @@ when "<span style="font-style: italic;">SEEK</span> &gt; 0"<br>
       </td>
       <td style="vertical-align: top;">continue on error; best effort
 recovery then continue. N.B. can be used multiple times (e.g.
-'iflag=coe,coe'). See section on <a href="sgdd.html#mozTocId437677">continue
+'iflag=coe,coe'). See section on <a href="ddpt.html#mozTocId437677">continue
 on error</a>. </td>
     </tr>
     <tr>
@@ -569,7 +573,7 @@ pass-through mechanism<br>
  style="font-style: italic;">OFILE</span></td>
       <td style="vertical-align: top;">don't write output buffers if
 reading the output indicates the data compares equal. See section on <a
- href="sgdd.html#mozTocId836611">sparse writes and write sparing</a> </td>
+ href="ddpt.html#mozTocId836611">sparse writes and write sparing</a> </td>
     </tr>
     <tr>
       <td style="vertical-align: top;">sparse<br>
@@ -616,33 +620,33 @@ command to <span style="font-style: italic;">OFILE</span> after copy<br>
 </table>
 <br>
 Recent versions of GNU's dd command have these flags with similar
-semantics:&nbsp; 'append', 'direct' and 'sync'. These flags are sgdd
+semantics:&nbsp; 'append', 'direct' and 'sync'. These flags are ddpt
 extensions: 'coe', 'dpo', 'excl', 'fua', 'nocache', 'null', 'pt',
-'sparse' and 'ssync'.<br>
+'sparing', 'sparse' and 'ssync'.<br>
 <br>
 The following dd options are <span style="font-weight: bold;">not</span>
-supported by sgdd:<br>
+supported by ddpt:<br>
 <ul>
   <li>cbs=&lt;bytes&gt;</li>
   <li>conv=&lt;keyword(s)&gt;</li>
 </ul>
 with one exception, 'conv=sparse' is accepted as a synonym for
-'oflag=sparse'. Basically sgdd does not support the conversion features
+'oflag=sparse'. Basically ddpt does not support the conversion features
 of dd. If a
-conversion is needed then sgdd could be piped through dd (or
+conversion is needed then ddpt could be piped through dd (or
 vice versa).<br>
-<h2><a class="mozTocH2" name="mozTocId703997"></a>sgdd extras</h2>
-The extra options of sgdd (not found in GNU's dd) are:<br>
+<h2><a class="mozTocH2" name="mozTocId703997"></a>ddpt extras</h2>
+The extra options of ddpt (not found in GNU's dd) are:<br>
 <ul>
 </ul>
 <table style="width: 731px; text-align: left; height: 610px;" border="1"
  cellpadding="2" cellspacing="2">
   <caption align="bottom"><span style="font-weight: bold;">Table
-5&nbsp; Options found in sgdd (sgm_dd and sgp_dd)</span><br>
+5&nbsp; Extra options found in ddpt</span><br>
   </caption> <tbody>
     <tr>
       <td style="vertical-align: top;"><span style="font-weight: bold;">extra
-option in sgdd</span><br>
+option in ddpt</span><br>
       </td>
       <td style="vertical-align: top;"><span style="font-weight: bold;">default</span><br>
       </td>
@@ -699,7 +703,7 @@ instead. An equivalent of coe=2 is 'iflag=coe,coe'. See section on <a
       <td style="vertical-align: top;">number of consecutive "bad"
 block errors allowed when reading and 'coe &gt; 0'. Default of 0 is
 interpreted as no limit. See section on <a
- href="sgdd.html#mozTocId437677">continue on error</a>.<br>
+ href="ddpt.html#mozTocId437677">continue on error</a>.<br>
       </td>
     </tr>
     <tr>
@@ -748,7 +752,7 @@ print the cdbs for all commands<br>
 </table>
 <br>
 <br>
-The sgdd utility examines the files it is given and treats them
+The ddpt utility examines the files it is given and treats them
 differently depending on their file type. Depending on iflag=<span
  style="font-style: italic;">FLAGS</span> and oflag=<span
  style="font-style: italic;">FLAGS</span> settings: O_DIRECT,
@@ -758,7 +762,7 @@ command.<br>
 <table style="width: 740px; text-align: left; height: 375px;" border="1"
  cellpadding="2" cellspacing="2">
   <caption align="bottom"><span style="font-weight: bold;">Table
-6&nbsp; Treatment of various file types by sgdd</span><br>
+6&nbsp; Treatment of various file types by ddpt</span><br>
   </caption> <tbody>
     <tr>
       <td style="vertical-align: top;"><span style="font-weight: bold;">File
@@ -856,8 +860,8 @@ fails</td>
 Some of the above combinations are not sensible (e.g. append=1 on a
 block device). When either 'iflag=direct' or 'oflag=direct' is given
 (hence opening the corresponding file with O_DIRECT) the internal
-buffer used is aligned to the page size. The page size&nbsp; in the
-i386 architecture is 4
+buffer used is aligned to the page size. For example the page size in
+the Linux i386 architecture is 4
 kilobytes.<br>
 <br>
 Depending on the platform when a file is known to be associated with
@@ -867,7 +871,7 @@ there is no need to add 'iflag=pt'. On the other hand if the file
 appears to be a block device (e.g. in Linux "/dev/sdc")<br>
 <br>
 With block and pt devices the operating system may impose an upper
-limit on the size of each IO operation. The size that sgdd will attempt
+limit on the size of each IO operation. The size that ddpt will attempt
 to use is <span style="font-style: italic;">BS*BPT</span> bytes. If
 this limit is exceeded the operating system may well respond with an
 EIO (input/output)
@@ -877,29 +881,29 @@ value.<br>
 If a partition of block device is accessed (e.g. in Linux <span
  style="font-family: monospace;">/dev/sda2</span>) and the "pt" flag is
 not given then logical block address 0 for the
-purposes of sgdd (and its skip and seek options) is the beginning of
+purposes of ddpt (and its skip and seek options) is the beginning of
 that partition while the calculated count (e.g. when a 'count' option
 is not given) is the extent of that partition. However if a partition
 of a block device is accessed (e.g. in Linux<span
  style="font-family: monospace;"> /dev/sda2</span>)
 when the "pt" flag is active then the
 partition is ignored and the underlying device is accessed. This means
-logical block address 0 for the purposes of sgdd (and its skip and
+logical block address 0 for the purposes of ddpt (and its skip and
 seek options) is the beginning of the device while the calculated count
 (e.g. when a 'count=' option is not given) is the extent of that device.<br>
 <br>
 <span style="font-weight: bold;"></span>When a
 CD is accessed via SCSI commands and the 'count=' option is not given
-then the READ CAPACITY SCSI command is used by sgdd to determine the
+then the READ CAPACITY SCSI command is used by ddpt to determine the
 number of blocks to read. Unfortunately some MMC standards allow a few
 of the final blocks to be invalid ("run out" sectors) and this can
-result in IO errors when the sgdd utility is used to copy such a CD.
+result in IO errors when the ddpt utility is used to copy such a CD.
 The isosize utility can be used to determine the actual size of an
 ISO9660 file system residing on such a CD. It is often a few blocks
 shorter than READ CAPACITY reports (for good reason).<br>
 <br>
 If a SIGUSR1 signal is sent to the process identifier (pid) of a
-running sgdd utility then the number of blocks copied to that point is
+running ddpt utility then the number of blocks copied to that point is
 output. The copy continues.<br>
 <br>
 When the 'time=1' option is given, the elapsed time for the copy plus
@@ -907,7 +911,7 @@ the
 throughput measured in megabytes (10**6 bytes)&nbsp; per second is
 output when the copy is complete (or an error stops the copy). If a
 SIGUSR1 signal is sent to the process identifier (pid) of a running
-sgdd utility which has the 'time' option set the elapsed time and the
+ddpt utility which has the 'time' option set the elapsed time and the
 throughput of the copy to that point is output and the copy continues.<br>
 <h2><a class="mozTocH2" name="mozTocId657084"></a>Retries</h2>
 Often retries are of little use, especially on medium errors, since the
@@ -930,16 +934,16 @@ ready errors are not retried and "unit
 attention" conditions are automatically retried (without looking at or
 decrementing <span style="font-style: italic;">RETR</span>). Once the
 number of retries is exhausted on the
-same operation without success then sgdd will refer to the 'coe'
+same operation without success then ddpt will refer to the 'coe'
 option as to what to do next. Each new operation, READ or WRITE, or to
 a different logical block address has its own
 retry count initialized to <span style="font-style: italic;">RETR</span>.<br>
 <h2><a class="mozTocH2" name="mozTocId437677"></a>Continue on error
 (coe)</h2>
-The sgdd utility may be used as a copy "of
+The ddpt utility may be used as a copy "of
 last resort" from failing media. Read errors on an input file
 taking SCSI commands are "tolerated" when the 'coe' option is non-zero.
-Write errors from SCSI commands are reported and ignored and the sgdd
+Write errors from SCSI commands are reported and ignored and the ddpt
 utility continues when the 'coe' option is non-zero. [In the case where
 media errors are causing write errors the user should check the setting
 of the AWRE bit in the SCSI "read write
@@ -951,13 +955,13 @@ Additionally it responds with the logical block address of the first
 (lowest) block that it failed to read in the current READ command. Any
 valid blocks prior to the "bad" block may or may not have been
 transferred (depending on several other settings). If coe=0 then the
-sgdd utility will simply terminate at this point (with a reasonable
+ddpt utility will simply terminate at this point (with a reasonable
 amount of debug information sent to stderr) <span
  style="font-weight: bold;">and</span> good blocks prior to the bad
 block may not be copied (depending on the setting of <span
  style="font-style: italic;">BPT</span>). If 'coe'
 is non-zero then the first
-thing sgdd will try to do is a truncated read up to, but not
+thing ddpt will try to do is a truncated read up to, but not
 including,
 the
 bad block. The remaining discussion in this section assumes 'coe' is
@@ -1001,7 +1005,7 @@ is a CD or DVD then this number will be zero.<br>
 The standard <span style="font-weight: bold;">dd</span> command also
 has a "continue on error" facility. The next two invocations are
 roughly the same:<br>
-<span style="font-family: monospace;">&nbsp; sgdd if=/dev/sda
+<span style="font-family: monospace;">&nbsp; ddpt if=/dev/sda
 iflag=pt of=sda.img bs=512 coe=1</span><br
  style="font-family: monospace;">
 <span style="font-family: monospace;">&nbsp; dd if=/dev/sda
@@ -1014,7 +1018,7 @@ If the latter step is not done the image file will be shorter when
 errors are detected.<br>
 <br>
 The coe_limit=<span style="font-style: italic;">CL</span> option is
-meant to stop sgdd continuing ad
+meant to stop ddpt continuing ad
 nausum if errors are being detected during reading. The input media may
 be blank (unrecorded) or beyond its logical block address limit. The
 coe_limit=<span style="font-style: italic;">CL</span> option is only
@@ -1035,7 +1039,7 @@ user of such a disk may be blissfully unaware that the disk may be
 reaching the end of its useful life. Error counters are maintained in
 the "Read error counter" and "Write error counter" logs pages which can
 be viewed with smartctl (from smartmontools) and sg_logs (from the same
-sg3_utils package that sgdd comes from). Any block that is
+sg3_utils package that sg_dd comes from). Any block that is
 automatically or manually re-assigned adds a new entry to the "grown"
 defect list which can be viewed with '<span
  style="font-family: monospace;">sginfo -G</span>' or '<span
@@ -1045,7 +1049,7 @@ sg3_utils package).<br>
 <br>
 A disk can be instructed to report RECOVERED ERRORs by setting the PER
 bit in the "read write error recover" mode page. Most often this bit is
-clear. When sgdd detects RECOVERED ERRORs it reports them, counts
+clear. When ddpt detects RECOVERED ERRORs it reports them, counts
 them and continues the copy. Only the lba of the last recovered error
 in a READ or WRITE SCSI
 command is reported so there could be more than one recovered error per
@@ -1103,9 +1107,9 @@ Sparse writes cannot be used when a stream (e.g. <span
  style="font-family: monospace;">stderr)</span> is
 used as an output file.<br>
 <br>
-The <span style="font-family: monospace;">sgdd</span> utility
+The <span style="font-family: monospace;">ddpt</span> utility
 supports the '<span style="font-family: monospace;">oflag=sparse</span>'
-flag. When given, <span style="font-family: monospace;">sgdd</span>
+flag. When given, <span style="font-family: monospace;">ddpt</span>
 will check each buffer fetched from <span style="font-style: italic;">IFILE</span>
 for zeros. The size of each buffer, perhaps apart from the last buffer,
 is
@@ -1119,13 +1123,13 @@ the correct length. [Any errors detected when a buffer is fetched from <span
 being written to the <span style="font-style: italic;">OFILE</span>.]<br>
 <br>
 A sparse file may also be created by <span
- style="font-family: monospace;">sgdd</span> by using the '<span
+ style="font-family: monospace;">ddpt</span> by using the '<span
  style="font-family: monospace;">seek=</span><span
  style="font-style: italic; font-family: monospace;">SEEK</span>'
 option.&nbsp; Here
 is an example:<br>
 <br>
-<span style="font-family: monospace;">$ sgdd if=/dev/zero of=t
+<span style="font-family: monospace;">$ ddpt if=/dev/zero of=t
 oflag=sparse seek=1m
 bs=1024 count=1</span><br style="font-family: monospace;">
 <span style="font-family: monospace;">1+0 records in</span><br
@@ -1143,7 +1147,7 @@ fred&nbsp; 1.1G 2007-06-28 22:15 t</span><br
 <br>
 So the above shows that even though the file system knows the sparse
 file is 1.1 GB long, it only consumes 12 KB of space withan the files
-system. In the above case, <span style="font-family: monospace;">sgdd</span>
+system. In the above case, <span style="font-family: monospace;">ddpt</span>
 is producing the same result as the standard
 <span style="font-weight: bold;">dd</span> command. Programs the
 calculate checksums such as <span style="font-weight: bold;">md5sum</span>
@@ -1170,16 +1174,14 @@ sparse writes are checked first and if zeros are found, the check for
 write sparing is skipped on that segment.<br>
 <br>
 <h2><a class="mozTocH2" name="mozTocId899152"></a>Verbose</h2>
-In the Unix style, sgdd doesn't output anything (to stderr) during
+In the Unix style, ddpt doesn't output anything (to stderr) during
 large IO transfers. To get a progress report the SIGUSR1 signal can be
-sent to the sgdd process. In the Unix dd command style, sgdd outputs
+sent to the ddpt process. In the Unix dd command style, ddpt outputs
 two lines on completion that show the number of full and partial
 records
-in (on the first line) and out (on the second line). Some modern
-versions of the dd command also output elapsed time and throughput
-figures (to get this with sgdd use the "time=1" option).<br>
+in (on the first line) and out (on the second line).<br>
 <br>
-The sgdd has a 'verbose' option whose default value is zero. When set
+The ddpt has a 'verbose' option whose default value is zero. When set
 this option has the following actions:<br>
 <ol>
   <li>show categorization and INQUIRY data (where applicable) for the
@@ -1194,7 +1196,7 @@ are repeated. For a large copy this will be a lot of output.</li>
   <li>maximum amount of debug output. For a large copy this will be a
 lot of output.</li>
 </ol>
-All verbose output is sent to stderr (so that sgdd usage with "of=-"
+All verbose output is sent to stderr (so that ddpt usage with "of=-"
 (copy output to stdout) is not corrupted).<br>
 <br>
 Following is an example of using verbose=1 to find information about
@@ -1209,7 +1211,7 @@ standard response data (e.g. "SEAGATE ..." line).
 See the SBC-2 drafts at <a href="http://www.t10.org/">www.t10.org</a>
 for more information.<br>
 <br>
-<span style="font-family: monospace;">$ sgdd if=/dev/sda of=. bs=512
+<span style="font-family: monospace;">$ ddpt if=/dev/sda of=. bs=512
 verbose=1 count=0</span><br style="font-family: monospace;">
 <span style="font-family: monospace;">&nbsp;&gt;&gt; Input file type:
 block device</span><br style="font-family: monospace;">
@@ -1226,7 +1228,7 @@ null device</span><br style="font-family: monospace;">
  style="font-family: monospace;">
 <span style="font-family: monospace;"><br>
 <br>
-$ sgdd if=/dev/sda iflag=pt of=. bs=512 verbose=1 count=0</span><br
+$ ddpt if=/dev/sda iflag=pt of=. bs=512 verbose=1 count=0</span><br
  style="font-family: monospace;">
 <span style="font-family: monospace;">&nbsp;&gt;&gt; Input file type:
 block device</span><br style="font-family: monospace;">
@@ -1254,7 +1256,7 @@ Mode page settings can be examined and changed with a utility like <a
 <br>
 <p>Return to <a href="index.html">main</a> page. </p>
 <center>
-<p>Last updated: 27th November 2008<br>
+<p>Last updated: 12th December 2008<br>
 <br>
 </p>
 </center>

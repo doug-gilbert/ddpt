@@ -27,10 +27,10 @@
  *
  */
 
-/* sgdd is a utility program for copying files. It broadly follows the syntax
- * and semantics of the "dd" program found in Unix. sgdd is specialised for
+/* ddpt is a utility program for copying files. It broadly follows the syntax
+ * and semantics of the "dd" program found in Unix. ddpt is specialised for
  * "files" that represent storage devices, especially those that understand
- * the SCSI command set.
+ * the SCSI command set accessed via a pass-through.
  */
 
 /*
@@ -70,7 +70,7 @@
 #include "config.h"
 #endif
 
-#ifdef SGDD_LINUX
+#ifdef DDPT_LINUX
 #include <sys/sysmacros.h>
 #include <sys/file.h>
 #include <linux/major.h>
@@ -82,9 +82,9 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-static char * version_str = "0.90 20081129";
+static char * version_str = "0.90 20081212";
 
-#define ME "sgdd: "
+#define ME "ddpt: "
 
 
 #define STR_SZ 1024
@@ -112,7 +112,7 @@ static char * version_str = "0.90 20081129";
 
 #define DEF_TIMEOUT 60000       /* 60,000 millisecs == 60 seconds */
 
-#ifdef SGDD_LINUX
+#ifdef DDPT_LINUX
 #ifndef RAW_MAJOR
 #define RAW_MAJOR 255   /*unlikey value */
 #endif
@@ -222,7 +222,7 @@ static void
 usage()
 {
     fprintf(stderr, "Usage: "
-           "sgdd  [bs=BS] [count=COUNT] [ibs=BS] [if=IFILE] [iflag=FLAGS]\n"
+           "ddpt  [bs=BS] [count=COUNT] [ibs=BS] [if=IFILE] [iflag=FLAGS]\n"
            "             [obs=OBS] [of=OFILE] [oflag=FLAGS] [seek=SEEK] "
            "[skip=SKIP]\n"
            "             [--help] [--version]\n\n"
@@ -535,7 +535,7 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
         fprintf(stderr, "ssync flag ignored on input\n");
 
     if (verbose) {      /* report flags used but not supported */
-#ifndef SGDD_LINUX
+#ifndef DDPT_LINUX
         if (optsp->iflagp->flock || optsp->oflagp->flock)
             fprintf(stderr, "warning: 'flock' flag not supported on this "
                     "platform\n");
@@ -577,7 +577,7 @@ dd_filetype(const char * filename)
         //         st.st_size);
         return FT_REG;
     } else if (S_ISCHR(st.st_mode)) {
-#ifdef SGDD_LINUX
+#ifdef DDPT_LINUX
         /* major() and minor() defined in sys/sysmacros.h */
         if ((MEM_MAJOR == major(st.st_rdev)) &&
             (DEV_NULL_MINOR_NUM == minor(st.st_rdev)))
@@ -1458,7 +1458,7 @@ open_if(const char * inf, int64_t skip, int bs, struct flags_t * ifp,
 #endif
         }
     }
-#ifdef SGDD_LINUX
+#ifdef DDPT_LINUX
     if (ifp->flock) {
         int res;
 
@@ -1567,7 +1567,7 @@ open_of(const char * outf, int64_t seek, int bs, struct flags_t * ofp,
                         (uint64_t)offset);
         }
     }
-#ifdef SGDD_LINUX
+#ifdef DDPT_LINUX
     if (ofp->flock) {
         int res;
 
