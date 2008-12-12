@@ -32,7 +32,7 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-bin_PROGRAMS = sgdd$(EXEEXT)
+bin_PROGRAMS = ddpt$(EXEEXT)
 subdir = src
 DIST_COMMON = $(srcdir)/Makefile.am $(srcdir)/Makefile.in
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
@@ -45,10 +45,10 @@ CONFIG_CLEAN_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)"
 binPROGRAMS_INSTALL = $(INSTALL_PROGRAM)
 PROGRAMS = $(bin_PROGRAMS)
-am_sgdd_OBJECTS = sgdd.$(OBJEXT) sg_lib.$(OBJEXT) \
+am_ddpt_OBJECTS = ddpt.$(OBJEXT) sg_lib.$(OBJEXT) \
 	sg_lib_data.$(OBJEXT) sg_cmds_basic.$(OBJEXT) \
 	sg_cmds_extra.$(OBJEXT)
-sgdd_OBJECTS = $(am_sgdd_OBJECTS)
+ddpt_OBJECTS = $(am_ddpt_OBJECTS)
 DEFAULT_INCLUDES = -I.@am__isrc@ -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
@@ -56,8 +56,8 @@ COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
 CCLD = $(CC)
 LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
-SOURCES = $(sgdd_SOURCES) $(EXTRA_sgdd_SOURCES)
-DIST_SOURCES = $(sgdd_SOURCES) $(EXTRA_sgdd_SOURCES)
+SOURCES = $(ddpt_SOURCES) $(EXTRA_ddpt_SOURCES)
+DIST_SOURCES = $(ddpt_SOURCES) $(EXTRA_ddpt_SOURCES)
 ETAGS = etags
 CTAGS = ctags
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
@@ -159,8 +159,7 @@ top_srcdir = @top_srcdir@
 # INCLUDES = -I$(top_srcdir)/include -I$(top_srcdir)/include/scsi
 AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W
 # AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W -pedantic -std=c99
-sgdd_SOURCES = sgdd.c	\
-			sgdd.h	\
+ddpt_SOURCES = ddpt.c	\
 			../lib/sg_lib.c	\
 			../include/sg_lib.h	\
 			../lib/sg_lib_data.c	\
@@ -171,9 +170,9 @@ sgdd_SOURCES = sgdd.c	\
 			../include/sg_cmds_extra.h	\
 			../include/sg_pt.h
 
-sgdd_LDADD = @os_deps@ @os_libs@
-sgdd_DEPENDENCIES = @os_deps@
-EXTRA_sgdd_SOURCES = ../lib/sg_pt_linux.c	\
+ddpt_LDADD = @os_deps@ @os_libs@
+ddpt_DEPENDENCIES = @os_deps@
+EXTRA_ddpt_SOURCES = ../lib/sg_pt_linux.c	\
 			../include/sg_linux_inc.h	\
 			../lib/sg_pt_freebsd.c	\
 			../lib/sg_pt_osf1.c	\
@@ -237,9 +236,9 @@ uninstall-binPROGRAMS:
 
 clean-binPROGRAMS:
 	-test -z "$(bin_PROGRAMS)" || rm -f $(bin_PROGRAMS)
-sgdd$(EXEEXT): $(sgdd_OBJECTS) $(sgdd_DEPENDENCIES) 
-	@rm -f sgdd$(EXEEXT)
-	$(LINK) $(sgdd_OBJECTS) $(sgdd_LDADD) $(LIBS)
+ddpt$(EXEEXT): $(ddpt_OBJECTS) $(ddpt_DEPENDENCIES) 
+	@rm -f ddpt$(EXEEXT)
+	$(LINK) $(ddpt_OBJECTS) $(ddpt_LDADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
@@ -247,6 +246,7 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sg_cmds_basic.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sg_cmds_extra.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sg_lib.Po@am__quote@
@@ -256,7 +256,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sg_pt_osf1.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sg_pt_solaris.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sg_pt_win32.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sgdd.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<

@@ -1,3 +1,3 @@
 
-man_MANS = sgdd.8
+man_MANS = ddpt.8
 
