@@ -1,9 +1,9 @@
-.TH SGDD "8" "November 2008" "sgdd\-0.90" SGDD
+.TH DDPT "8" "December 2008" "ddpt\-0.90" DDPT
 .SH NAME
-sgdd \- copies data to and from files and devices. Specialized for
-devices that understand the SCSI command set.
+ddpt \- copies data to and from files and devices. Specialized for
+pass-through devices that understand the SCSI command set.
 .SH SYNOPSIS
-.B sgdd
+.B ddpt
 [\fIbs=BS\fR] [\fIconv=CONV\fR] [\fIcount=COUNT\fR] [\fIibs=BS\fR]
 [\fIif=IFILE\fR] [\fIiflag=FLAGS\fR] [\fIobs=BS\fR] [\fIof=OFILE\fR]
 [\fIoflag=FLAGS\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fI\-\-help\fR]
@@ -69,7 +69,7 @@ that a 4 byte block number may be exceeded or \fIBPT\fR is greater than
 .TP
 \fBcoe\fR=0 | 1 | 2 | 3
 set to 1 or more for continue on error. Only applies to errors on pt
-devices. Thus errors on other files will stop sgdd. Default is 0 which
+devices. Thus errors on other files will stop ddpt. Default is 0 which
 implies stop on any error. See the 'coe' flag for more information.
 .TP
 \fBcoe_limit\fR=\fICL\fR
@@ -198,7 +198,7 @@ more (also with the command line option 'coe=2'). Further, the READ LONG
 will set its CORRCT bit if 'coe' given thrice. SCSI disks may automatically
 try and remap faulty sectors (see the AWRE and ARRE in the read write
 error recovery mode page (the sdparm utility can access these attributes)).
-Errors occurring on other files types will stop sgdd. Error messages are
+Errors occurring on other files types will stop ddpt. Error messages are
 sent to stderr. This flag is similar to 'conv=noerror,sync' in the
 .B dd(1)
 utility. See note about READ LONG below.
@@ -323,7 +323,7 @@ Disk partition information can often be found with
 .PP
 For pt devices this utility issues SCSI READ and WRITE (SBC) commands which
 are appropriate for disks and reading from CD/DVD/HD-DVD/BD drives. Those
-commands are not formatted correctly for tape devices so sgdd should not be
+commands are not formatted correctly for tape devices so ddpt should not be
 used on tape devices. If the largest block address of the requested transfer
 exceeds a 32 bit block number (i.e 0xffff) then a warning is issued and
 the sg device is accessed via SCSI READ(16) and WRITE(16) commands.
@@ -332,12 +332,12 @@ The attributes of a block device (partition) are ignored when the pt flag
 is used. Hence the whole device is read (rather than just the second
 partition) by this invocation:
 .PP
-   sgdd if=/dev/sdb2 iflag=pt of=t bs=512
+   ddpt if=/dev/sdb2 iflag=pt of=t bs=512
 .SH EXAMPLES
 .PP
 Looks quite similar in usage to dd:
 .PP
-   sgdd if=/dev/sg0 of=t bs=512 count=1MB
+   ddpt if=/dev/sg0 of=t bs=512 count=1MB
 .PP
 This will copy 1 million 512 byte blocks from the device associated with
 /dev/sg0 (which should have 512 byte blocks) to a file called t.
@@ -360,7 +360,7 @@ read from /dev/sg0 are written to /dev/hda (i.e. no padding).
 To time a streaming read of the first 1 GB (2 ** 30 bytes) on a disk
 this utility could be used:
 .PP
-   sgdd if=/dev/sg0 of=/dev/null bs=512 count=2m time=1
+   ddpt if=/dev/sg0 of=/dev/null bs=512 count=2m time=1
 .PP
 On completion this will output a line like:
 "time to transfer data was 18.779506 secs, 57.18 MB/sec". The "MB/sec"
@@ -373,7 +373,7 @@ without needing to re-read the data:
 .br
   md5sum fif &
 .br
-  sgdd if=/dev/sg3 iflag=coe of=sg3.img oflag=sparse of2=fif bs=512
+  ddpt if=/dev/sg3 iflag=coe of=sg3.img oflag=sparse of2=fif bs=512
 .PP
 This will image /dev/sg3 (e.g. an unmounted disk) and place the contents
 in the (sparse) file sg3.img . Without re-reading the data it will also
@@ -385,7 +385,7 @@ the records in + out counts; then they have their default action.
 SIGUSR1 causes the same information to be output and the copy continues.
 All output caused by signals is sent to stderr.
 .SH EXIT STATUS
-To aid scripts that call sgdd, the exit status is set to indicate
+To aid scripts that call ddpt, the exit status is set to indicate
 success (0) or failure (1 or more). Note that some of the lower values
 correspond to the SCSI sense key values. The exit status values are:
 .TP
@@ -470,7 +470,7 @@ Copyright \(co 2008 Douglas Gilbert
 This software is distributed under the GPL version 2. There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 .SH "SEE ALSO"
-There is a web page discussing sgdd at http://sg.danny.cz/sg/sgdd.html
+There is a web page discussing ddpt at http://sg.danny.cz/sg/ddpt.html
 .PP
 The lmbench package contains
 .B lmdd

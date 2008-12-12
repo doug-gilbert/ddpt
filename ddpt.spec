@@ -1,4 +1,4 @@
-%define	name	sgdd
+%define	name	ddpt
 %define	version	0.90
 %define	release	1
 
@@ -8,13 +8,13 @@ Version:	%{version}
 Release:	%{release}
 License:	FreeBSD
 Group:		Utilities/System
-URL:		http://sg.danny.cz/sg/sgdd.html
+URL:		http://sg.danny.cz/sg/ddpt.html
 Source0:	http://sg.danny.cz/sg/p/%{name}-%{version}.tgz
 BuildRoot:	%{_tmppath}/%{name}-%{version}-root
 Packager:	Douglas Gilbert <dgilbert at interlog dot com>
 
 %description
-sgdd is yet another variant of the Unix dd command used to copy
+ddpt is yet another variant of the Unix dd command used to copy
 files. This variant is specialized for moving data to, from or
 between storage devices. If requested SCSI commands can be
 sent to read or write data. Such commands are sent via a pass-through
@@ -51,6 +51,6 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Thu Nov 27 2008 - dgilbert at interlog dot com
+* Fri Dec 12 2008 - dgilbert at interlog dot com
 - initial version
-  * sgdd-0.90
+  * ddpt-0.90
