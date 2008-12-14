@@ -82,7 +82,7 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-static char * version_str = "0.90 20081212";
+static char * version_str = "0.90 20081214";
 
 #define ME "ddpt: "
 
@@ -666,9 +666,13 @@ scsi_read_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
     return 0;
 }
 
-
 /* Return of 0 -> success, -1 -> failure. BLKGETSIZE64, BLKGETSIZE and */
-/* BLKSSZGET macros problematic (from <linux/fs.h> or <sys/mount.h>). */
+/* BLKSSZGET macros problematic (from <linux/fs.h> or <sys/mount.h>).  */
+/* >>> Linux specific.                                                 */
+/* For FreeBSD post suggests that /usr/sbin/diskinfo uses              */
+/* ioctl(fd, DIOCGMEDIASIZE, &mediasize), where mediasize is an off_t. */
+/* also: ioctl(fd, DIOCGSECTORSIZE, &sectorsize)                       */
+/* Windows: GetDiskFreeSpaceEx ?                                       */
 static int
 read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
 {
@@ -1589,6 +1593,123 @@ other_err:
     return -SG_LIB_CAT_OTHER;
 }
 
+/* Calculates the number of blocks associated with the in and out files. */
+/* May also yield the block size in bytes of devices. Returns the file   */
+/* type of the out file (defaults to FT_OTHER).                          */
+static int
+calc_count(struct opts_t * optsp, int infd, int64_t * in_num_sectp,
+           int * in_sect_szp, int outfd, int64_t * out_num_sectp,
+           int * out_sect_szp)
+{
+    int res;
+    struct stat st;
+
+    *in_num_sectp = -1;
+    if (FT_PT & optsp->in_type) {
+        res = scsi_read_capacity(infd, in_num_sectp, in_sect_szp);
+        if (SG_LIB_CAT_UNIT_ATTENTION == res) {
+            fprintf(stderr, "Unit attention (readcap in), continuing\n");
+            res = scsi_read_capacity(infd, in_num_sectp, in_sect_szp);
+        } else if (SG_LIB_CAT_ABORTED_COMMAND == res) {
+            fprintf(stderr, "Aborted command (readcap in), continuing\n");
+            res = scsi_read_capacity(infd, in_num_sectp, in_sect_szp);
+        }
+        if (0 != res) {
+            if (res == SG_LIB_CAT_INVALID_OP)
+                fprintf(stderr, "read capacity not supported on %s\n",
+                        optsp->inf);
+            else if (res == SG_LIB_CAT_NOT_READY)
+                fprintf(stderr, "read capacity failed on %s - not ready\n",
+                        optsp->inf);
+            else
+                fprintf(stderr, "Unable to read capacity on %s\n", optsp->inf);
+            *in_num_sectp = -1;
+        } else if (verbose)
+            fprintf(stderr, "number of input blocks=%"PRId64" [0x%"PRIx64"], "
+                    "block size=%d\n", *in_num_sectp, *in_num_sectp,
+                    *in_sect_szp);
+        if (*in_sect_szp != optsp->ibs)
+            fprintf(stderr, ">> warning: input block size on %s confusion: "
+                    "bs=%d, device claims=%d\n", optsp->inf, optsp->ibs,
+                    *in_sect_szp);
+    } else if (FT_BLOCK & optsp->in_type) {
+        if (0 != read_blkdev_capacity(infd, in_num_sectp, in_sect_szp)) {
+            fprintf(stderr, "Unable to read block capacity on %s\n",
+                    optsp->inf);
+            *in_num_sectp = -1;
+        }
+        if (optsp->ibs != *in_sect_szp) {
+            fprintf(stderr, "input block size on %s confusion: bs=%d, device "
+                    "claims=%d\n", optsp->inf, optsp->ibs, *in_sect_szp);
+            *in_num_sectp = -1;
+        }
+    } else if (FT_REG & optsp->in_type) {
+        if (fstat(infd, &st) < 0) {
+            perror("fstat(infd) error");
+            *in_num_sectp = -1;
+        } else {
+            *in_num_sectp = st.st_size / optsp->ibs;
+            if (0 != (st.st_size % optsp->ibs))
+                ++*in_num_sectp;
+        }
+    }
+    if (*in_num_sectp > optsp->skip)
+        *in_num_sectp -= optsp->skip;
+
+    *out_num_sectp = -1;
+    if (FT_PT & optsp->out_type) {
+        res = scsi_read_capacity(outfd, out_num_sectp, out_sect_szp);
+        if (SG_LIB_CAT_UNIT_ATTENTION == res) {
+            fprintf(stderr, "Unit attention (readcap out), continuing\n");
+            res = scsi_read_capacity(outfd, out_num_sectp, out_sect_szp);
+        } else if (SG_LIB_CAT_ABORTED_COMMAND == res) {
+            fprintf(stderr, "Aborted command (readcap out), continuing\n");
+            res = scsi_read_capacity(outfd, out_num_sectp, out_sect_szp);
+        }
+        if (0 != res) {
+            if (res == SG_LIB_CAT_INVALID_OP)
+                fprintf(stderr, "read capacity not supported on %s\n",
+                        optsp->outf);
+            else
+                fprintf(stderr, "Unable to read capacity on %s\n",
+                        optsp->outf);
+            *out_num_sectp = -1;
+        } else if (verbose)
+            fprintf(stderr, "number of output blocks=%"PRId64" "
+                    "[0x%"PRIx64"], block size=%d\n", *out_num_sectp,
+                    *out_num_sectp, *out_sect_szp);
+
+        if (optsp->obs != *out_sect_szp)
+            fprintf(stderr, ">> warning: output block size on %s "
+                    "confusion: obs=%d, device claims=%d\n", optsp->outf,
+                    optsp->obs, *out_sect_szp);
+    } else if (FT_BLOCK & optsp->out_type) {
+        if (0 != read_blkdev_capacity(outfd, out_num_sectp, out_sect_szp)) {
+            fprintf(stderr, "Unable to read block capacity on %s\n",
+                    optsp->outf);
+            *out_num_sectp = -1;
+        }
+        if (optsp->obs != *out_sect_szp) {
+            fprintf(stderr, "output block size on %s confusion: obs=%d, "
+                    "device claims=%d\n", optsp->outf, optsp->obs,
+                    *out_sect_szp);
+            *out_num_sectp = -1;
+        }
+    } else if (FT_REG & optsp->out_type) {
+        if (fstat(outfd, &st) < 0) {
+            perror("fstat(outfd) error");
+            *out_num_sectp = -1;
+        } else {
+            *out_num_sectp = st.st_size / optsp->obs;
+            if (0 != (st.st_size % optsp->obs))
+                ++*out_num_sectp;
+        }
+    }
+    if (*out_num_sectp > optsp->seek)
+        *out_num_sectp -= optsp->seek;
+    return optsp->out_type;
+}
+
 static int
 do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
         unsigned char * wrkPos, unsigned char * wrkPos2)
@@ -1935,7 +2056,7 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
 int
 main(int argc, char * argv[])
 {
-    int res, infd, outfd, out2fd;
+    int res, infd, outfd, out2fd, oft;
     unsigned char * wrkBuff;
     unsigned char * wrkPos;
     unsigned char * wrkBuff2 = NULL;
@@ -2023,96 +2144,8 @@ main(int argc, char * argv[])
     }
 
     if ((dd_count < 0) || ((verbose > 0) && (0 == dd_count))) {
-        in_num_sect = -1;
-        if (FT_PT & opts.in_type) {
-            res = scsi_read_capacity(infd, &in_num_sect, &in_sect_sz);
-            if (SG_LIB_CAT_UNIT_ATTENTION == res) {
-                fprintf(stderr, "Unit attention (readcap in), continuing\n");
-                res = scsi_read_capacity(infd, &in_num_sect, &in_sect_sz);
-            } else if (SG_LIB_CAT_ABORTED_COMMAND == res) {
-                fprintf(stderr, "Aborted command (readcap in), continuing\n");
-                res = scsi_read_capacity(infd, &in_num_sect, &in_sect_sz);
-            }
-            if (0 != res) {
-                if (res == SG_LIB_CAT_INVALID_OP)
-                    fprintf(stderr, "read capacity not supported on %s\n",
-                            opts.inf);
-                else if (res == SG_LIB_CAT_NOT_READY)
-                    fprintf(stderr, "read capacity failed on %s - not "
-                            "ready\n", opts.inf);
-                else
-                    fprintf(stderr, "Unable to read capacity on %s\n",
-                            opts.inf);
-                in_num_sect = -1;
-            } else if (verbose)
-                fprintf(stderr, "number of input blocks=%"PRId64" "
-                        "[0x%"PRIx64"], block size=%d\n", in_num_sect,
-                        in_num_sect, in_sect_sz);
-            if (in_sect_sz != opts.ibs)
-                fprintf(stderr, ">> warning: input block size on %s "
-                        "confusion: bs=%d, device claims=%d\n", opts.inf,
-                        opts.ibs, in_sect_sz);
-        } else if (FT_BLOCK & opts.in_type) {
-            if (0 != read_blkdev_capacity(infd, &in_num_sect, &in_sect_sz)) {
-                fprintf(stderr, "Unable to read block capacity on %s\n",
-                        opts.inf);
-                in_num_sect = -1;
-            }
-            if (opts.ibs != in_sect_sz) {
-                fprintf(stderr, "input block size on %s confusion: bs=%d, "
-                        "device claims=%d\n", opts.inf, opts.ibs,
-                        in_sect_sz);
-                in_num_sect = -1;
-            }
-        }
-        if (in_num_sect > opts.skip)
-            in_num_sect -= opts.skip;
-
-        out_num_sect = -1;
-        if (FT_PT & opts.out_type) {
-            res = scsi_read_capacity(outfd, &out_num_sect, &out_sect_sz);
-            if (SG_LIB_CAT_UNIT_ATTENTION == res) {
-                fprintf(stderr,
-                        "Unit attention (readcap out), continuing\n");
-                res = scsi_read_capacity(outfd, &out_num_sect, &out_sect_sz);
-            } else if (SG_LIB_CAT_ABORTED_COMMAND == res) {
-                fprintf(stderr,
-                        "Aborted command (readcap out), continuing\n");
-                res = scsi_read_capacity(outfd, &out_num_sect, &out_sect_sz);
-            }
-            if (0 != res) {
-                if (res == SG_LIB_CAT_INVALID_OP)
-                    fprintf(stderr, "read capacity not supported on %s\n",
-                            opts.outf);
-                else
-                    fprintf(stderr, "Unable to read capacity on %s\n",
-                            opts.outf);
-                out_num_sect = -1;
-            } else if (verbose)
-                fprintf(stderr, "number of output blocks=%"PRId64" "
-                        "[0x%"PRIx64"], block size=%d\n", out_num_sect,
-                        out_num_sect, out_sect_sz);
-
-            if (opts.obs != out_sect_sz)
-                fprintf(stderr, ">> warning: output block size on %s "
-                        "confusion: obs=%d, device claims=%d\n", opts.outf,
-                        opts.obs, out_sect_sz);
-        } else if (FT_BLOCK & opts.out_type) {
-            if (0 != read_blkdev_capacity(outfd, &out_num_sect,
-                                          &out_sect_sz)) {
-                fprintf(stderr, "Unable to read block capacity on %s\n",
-                        opts.outf);
-                out_num_sect = -1;
-            }
-            if (opts.obs != out_sect_sz) {
-                fprintf(stderr, "output block size on %s confusion: obs=%d, "
-                        "device claims=%d\n", opts.outf, opts.obs,
-                        out_sect_sz);
-                out_num_sect = -1;
-            }
-        }
-        if (out_num_sect > opts.seek)
-            out_num_sect -= opts.seek;
+        oft = calc_count(&opts, infd, &in_num_sect, &in_sect_sz, outfd,
+                         &out_num_sect, &out_sect_sz);
         if (verbose > 2)
             fprintf(stderr, "Start of loop, count=%"PRId64", in_num_sect"
                     "=%"PRId64", out_num_sect=%"PRId64"\n", dd_count,
@@ -2127,8 +2160,12 @@ main(int argc, char * argv[])
 
                 ibytes = (in_num_sect > 0) ? (opts.ibs * in_num_sect) : 0;
                 obytes = opts.obs * out_num_sect;
-                dd_count = (ibytes > obytes) ? (obytes / opts.ibs)
-                                             : in_num_sect;
+                if (0 == ibytes)
+                    dd_count = obytes / opts.ibs;
+                else if ((ibytes > obytes) && (FT_REG != oft))
+                    dd_count = obytes / opts.ibs;
+                else
+                    dd_count = in_num_sect;
             }
         }
     }
