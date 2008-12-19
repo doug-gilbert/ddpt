@@ -2,16 +2,17 @@ The version number is hardcoded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.90 [20081212] [svn: r24]
+Changelog for ddpt-0.90 [20081218] [svn: r26]
   - converting from sg_dd utility in sg3_utils package
   - change name from sgdd to ddpt (package and utility name)
   - ibs and obs can differ when ((ibs * bpt) % obs) == 0)
   - change 'sg_io' flag to 'pt' (for pass-through)
-  - change 'dsync' flag to 'sync', 'ssync' flag for SCSI
+  - change 'dsync' flag to 'sync'; 'ssync' flag for SCSI
     SYNCHRONIZE CACHE command; add 'nocache' flag
   - if 'nocache' flag call posix_fadvise(SEQUENTIAL) on
     input fd and posix_fadvise(DONTNEED) during copy
   - call sg_set_binary_mode() on fds (for windows)
   - drop Linux raw file support
   - add write sparing support (oflag=sparing)
+  - calculate COUNT for regular files when required
   - accept '-V' as synonym for '--version'
