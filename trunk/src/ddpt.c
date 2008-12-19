@@ -77,12 +77,16 @@
 #include <linux/fs.h>   /* <sys/mount.h> */
 #endif
 
+#ifdef DDPT_FREEBSD
+#include <sys/disk.h>
+#endif
+
 #include "sg_lib.h"
 #include "sg_cmds_basic.h"
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-static char * version_str = "0.90 20081214";
+static char * version_str = "0.90 20081218";
 
 #define ME "ddpt: "
 
@@ -676,6 +680,7 @@ scsi_read_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
 static int
 read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
 {
+#ifdef DDPT_LINUX
 #ifdef BLKSSZGET
     if ((ioctl(sg_fd, BLKSSZGET, sect_sz) < 0) && (*sect_sz > 0)) {
         perror("BLKSSZGET ioctl error");
@@ -716,6 +721,26 @@ read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
     *num_sect = 0;
     *sect_sz = 0;
     return -1;
+#endif
+#endif
+
+#ifdef DDPT_FREEBSD
+// WTF do kernels invent their own typedefs and not use C standards
+#define u_int unsigned int
+    off_t mediasize;
+    unsigned int sectorsize;
+
+    if (ioctl(sg_fd, DIOCGMEDIASIZE, &mediasize) < 0) {
+        perror("DIOCGMEDIASIZE ioctl error");
+        return -1;
+    }
+    *num_sect = mediasize;
+    if (ioctl(sg_fd, DIOCGSECTORSIZE, &sectorsize) < 0) {
+        perror("DIOCGSECTORSIZE ioctl error");
+        return -1;
+    }
+    *sect_sz = sectorsize;
+    return 0;
 #endif
 }
 
