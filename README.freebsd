@@ -1,0 +1,8 @@
+Disk devices in FreeBSD have names like '/dev/da0' while the corresponding
+pass-through devices have names like '/dev/pass0'. See the
+'camcontrol devlist' command for a list of available devices (registered
+with the CAM subsystem) and the mapping between "block" devices names
+and the corresponding pass-through device name.
+
+Doug Gilbert
+19th December 2008
