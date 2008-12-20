@@ -38,9 +38,10 @@
  * with Peter Allworth. With various re-implementations of dd since then
  * the author has named Peter as a co-copyright holder. It is difficult
  * to decide when to stop doing that.
- * The license has also been changed to FreeBSD style from the previous
- * incarnation which was sg_dd in the sg3_utils package. sg_dd has a
- * GPL style license. Both licenses are considered "open source".
+ * The ddpt utility is a rewritten and extended version of the sg_dd utility
+ * found in the sg3_utils package. sg_dd has a GPL (version 2) which has been
+ * changed to a somewhat freer FreeBSD style license in ddpt.
+ * Both licenses are considered "open source".
  */
 
 #define _XOPEN_SOURCE 600
@@ -78,7 +79,13 @@
 #endif
 
 #ifdef DDPT_FREEBSD
+#include <libgen.h>
 #include <sys/disk.h>
+#include <sys/filio.h>
+#ifndef SIGINFO
+/* hack to undo hiding by _XOPEN_SOURCE and _GNU_SOURCE */
+#define SIGINFO         29
+#endif
 #endif
 
 #include "sg_lib.h"
@@ -86,7 +93,7 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-static char * version_str = "0.90 20081218";
+static char * version_str = "0.90 20081219";
 
 #define ME "ddpt: "
 
@@ -290,13 +297,14 @@ static void
 install_handler(int sig_num, void (*sig_handler) (int sig))
 {
     struct sigaction sigact;
-    sigaction (sig_num, NULL, &sigact);
-    if (sigact.sa_handler != SIG_IGN)
-    {
+
+    sigaction(sig_num, NULL, &sigact);
+    if (((SIGINT != sig_num) && (SIGQUIT != sig_num)) ||
+        (sigact.sa_handler != SIG_IGN)) {
         sigact.sa_handler = sig_handler;
-        sigemptyset (&sigact.sa_mask);
+        sigemptyset(&sigact.sa_mask);
         sigact.sa_flags = 0;
-        sigaction (sig_num, &sigact, NULL);
+        sigaction(sig_num, &sigact, NULL);
     }
 }
 
@@ -591,6 +599,21 @@ dd_filetype(const char * filename)
         if (SCSI_TAPE_MAJOR == major(st.st_rdev))
             return FT_TAPE;
         return FT_OTHER;
+#elif DDPT_FREEBSD
+        {
+            /* int d_flags;  for FIOFTYPE ioctl see sys/filio.h */
+            char s[STR_SZ];
+            char * bname;
+
+            strcpy(s, filename);
+            bname = basename(s);
+            if (0 == strcmp("null", bname))
+                return FT_DEV_NULL;
+            else if (0 == memcmp("pass", bname, 4))
+                return FT_PT;
+            else
+                return FT_BLOCK;  /* freebsd doesn't have block devices! */
+        }
 #else
         return FT_PT;
 #endif
@@ -730,16 +753,19 @@ read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
     off_t mediasize;
     unsigned int sectorsize;
 
-    if (ioctl(sg_fd, DIOCGMEDIASIZE, &mediasize) < 0) {
-        perror("DIOCGMEDIASIZE ioctl error");
-        return -1;
-    }
-    *num_sect = mediasize;
     if (ioctl(sg_fd, DIOCGSECTORSIZE, &sectorsize) < 0) {
         perror("DIOCGSECTORSIZE ioctl error");
         return -1;
     }
     *sect_sz = sectorsize;
+    if (ioctl(sg_fd, DIOCGMEDIASIZE, &mediasize) < 0) {
+        perror("DIOCGMEDIASIZE ioctl error");
+        return -1;
+    }
+    if (sectorsize)
+        *num_sect = mediasize / sectorsize;
+    else
+        *num_sect = 0;
     return 0;
 #endif
 }
@@ -2116,6 +2142,10 @@ main(int argc, char * argv[])
     install_handler(SIGQUIT, interrupt_handler);
     install_handler(SIGPIPE, interrupt_handler);
     install_handler(SIGUSR1, siginfo_handler);
+#ifdef SIGINFO
+    if (SIGUSR1 != SIGINFO)
+        install_handler(SIGINFO, siginfo_handler);
+#endif
 
     infd = STDIN_FILENO;
     outfd = STDOUT_FILENO;
