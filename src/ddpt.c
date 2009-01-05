@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008 Douglas Gilbert.
+ * Copyright (c) 2008-2009 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -93,7 +93,7 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-static char * version_str = "0.90 20081219";
+static char * version_str = "0.90 20090104";
 
 #define ME "ddpt: "
 
