@@ -117,9 +117,6 @@ static char * version_str = "0.90 20090104";
 #define SENSE_BUFF_LEN 32       /* Arbitrary, could be larger */
 #define READ_CAP_REPLY_LEN 8
 #define RCAP16_REPLY_LEN 32
-#define READ_LONG_OPCODE 0x3E
-#define READ_LONG_CMD_LEN 10
-#define READ_LONG_DEF_BLK_INC 8
 
 #define DEF_TIMEOUT 60000       /* 60,000 millisecs == 60 seconds */
 
@@ -167,7 +164,6 @@ static int out_partial = 0;
 static int64_t out_sparse = 0;
 static int recovered_errs = 0;
 static int unrecovered_errs = 0;
-static int read_longs = 0;
 static int num_retries = 0;
 
 static int do_time = 1;         /* default was 0 in sg_dd */
@@ -181,7 +177,6 @@ static int coe_limit = 0;
 static int coe_count = 0;
 
 static unsigned char * zeros_buff = NULL;
-static int read_long_blk_inc = READ_LONG_DEF_BLK_INC;
 
 
 struct flags_t {
@@ -237,7 +232,7 @@ usage()
            "             [obs=OBS] [of=OFILE] [oflag=FLAGS] [seek=SEEK] "
            "[skip=SKIP]\n"
            "             [--help] [--version]\n\n"
-           "             [bpt=BPT] [cdbsz=6|10|12|16] [coe=0|1|2|3] "
+           "             [bpt=BPT] [cdbsz=6|10|12|16] [coe=0|1] "
            "[coe_limit=CL]\n"
            "             [of2=OFILE2] [retries=RETR] [time=0|1] "
            "[verbose=VERB]\n"
@@ -250,9 +245,7 @@ usage()
            "10)\n"
            "    coe         0->exit on error (def), 1->continue on pt "
            "error (zero\n"
-           "                fill), 2->also try read_long on unrecovered "
-           "reads,\n"
-           "                3->and set the CORRCT bit on the read long\n"
+           "                fill)\n"
            "    coe_limit   limit consecutive 'bad' blocks on reads to CL "
            "times\n"
            "                when COE>1 (default: 0 which is no limit)\n"
@@ -324,13 +317,9 @@ print_stats(const char * str)
         fprintf(stderr, "%s%d recovered errors\n", str, recovered_errs);
     if (num_retries > 0)
         fprintf(stderr, "%s%d retries attempted\n", str, num_retries);
-    if (iflag.coe || oflag.coe) {
-        fprintf(stderr, "%s%d unrecovered errors\n", str, unrecovered_errs);
-        fprintf(stderr, "%s%d read_longs fetched part of unrecovered "
-                "read errors\n", str, read_longs);
-    } else if (unrecovered_errs)
-        fprintf(stderr, "%s%d unrecovered error(s)\n", str,
-                unrecovered_errs);
+    if (iflag.coe || oflag.coe || unrecovered_errs)
+        fprintf(stderr, "%s%d unrecovered error%s\n", str, unrecovered_errs,
+                ((1 == unrecovered_errs) ? "" : "s"));
 }
 
 
@@ -877,7 +866,7 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
    -2 -> ENOMEM
    -1 other errors */
 static int
-pt_read_low(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
+pt_low_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
             int bs, const struct flags_t * ifp, uint64_t * io_addrp)
 {
     unsigned char rdCmd[MAX_SCSI_CDBSZ];
@@ -903,7 +892,7 @@ pt_read_low(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
 
     ptvp = construct_scsi_pt_obj();
     if (NULL == ptvp) {
-        fprintf(stderr, "pt_read_low: construct_scsi_pt_obj: out "
+        fprintf(stderr, "pt_low_read: construct_scsi_pt_obj: out "
                 "of memory\n");
         return -1;
     }
@@ -986,7 +975,8 @@ pt_read_low(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
 }
 
 
-/* 0 -> successful, SG_LIB_SYNTAX_ERROR -> unable to build cdb,
+/* Control pass-through read retries and coe (continue on error)
+   0 -> successful, SG_LIB_SYNTAX_ERROR -> unable to build cdb,
    SG_LIB_CAT_UNIT_ATTENTION -> try again, SG_LIB_CAT_NOT_READY,
    SG_LIB_CAT_MEDIUM_HARD, SG_LIB_CAT_ABORTED_COMMAND,
    -2 -> ENOMEM, -1 other errors */
@@ -996,7 +986,7 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
 {
     uint64_t io_addr;
     int64_t lba;
-    int res, blks, repeat, xferred;
+    int res, blks, use_io_addr, xferred;
     unsigned char * bp;
     int retries_tmp;
     int ret = 0;
@@ -1006,11 +996,11 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
     for (xferred = 0, blks = blocks, lba = from_block, bp = buff;
          blks > 0; blks = blocks - xferred) {
         io_addr = 0;
-        repeat = 0;
+        use_io_addr = 0;
         may_coe = 0;
-        res = pt_read_low(sg_fd, bp, blks, lba, bs, ifp, &io_addr);
+        res = pt_low_read(sg_fd, bp, blks, lba, bs, ifp, &io_addr);
         switch (res) {
-        case 0:
+        case 0:         /* this is the fast path after good pt_low_read() */
             if (blks_readp)
                 *blks_readp = xferred + blks;
             if (coe_limit > 0)
@@ -1022,19 +1012,17 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
             fprintf(stderr, "Device (r) not ready\n");
             return res;
         case SG_LIB_CAT_ABORTED_COMMAND:
-            if (--max_aborted > 0) {
+            if (--max_aborted > 0)
                 fprintf(stderr, "Aborted command, continuing (r)\n");
-                repeat = 1;
-            } else {
+            else {
                 fprintf(stderr, "Aborted command, too many (r)\n");
                 return res;
             }
             break;
         case SG_LIB_CAT_UNIT_ATTENTION:
-            if (--max_uas > 0) {
+            if (--max_uas > 0)
                 fprintf(stderr, "Unit attention, continuing (r)\n");
-                repeat = 1;
-            } else {
+            else {
                 fprintf(stderr, "Unit attention, too many (r)\n");
                 return res;
             }
@@ -1047,8 +1035,8 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
                 ++num_retries;
                 if (unrecovered_errs > 0)
                     --unrecovered_errs;
-                repeat = 1;
-            }
+            } else
+                use_io_addr = 1;
             ret = SG_LIB_CAT_MEDIUM_HARD;
             break; /* unrecovered read error at lba=io_addr */
         case SG_LIB_SYNTAX_ERROR:
@@ -1060,6 +1048,7 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
             goto err_out;
         case SG_LIB_CAT_MEDIUM_HARD:
             may_coe = 1;
+            /* fall through */
         default:
             if (retries_tmp > 0) {
                 fprintf(stderr, ">>> retrying a pt read, lba=0x%"PRIx64"\n",
@@ -1068,13 +1057,12 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
                 ++num_retries;
                 if (unrecovered_errs > 0)
                     --unrecovered_errs;
-                repeat = 1;
                 break;
             }
             ret = res;
             goto err_out;
         }
-        if (repeat)
+        if (! use_io_addr)
             continue;
         if ((io_addr < (uint64_t)lba) ||
             (io_addr >= (uint64_t)(lba + blks))) {
@@ -1090,7 +1078,7 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
             if (verbose)
                 fprintf(stderr, "  partial read of %d blocks prior to "
                         "medium error\n", blks);
-            res = pt_read_low(sg_fd, bp, blks, lba, bs, ifp, &io_addr);
+            res = pt_low_read(sg_fd, bp, blks, lba, bs, ifp, &io_addr);
             switch (res) {
             case 0:
                 break;
@@ -1117,7 +1105,7 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
             case SG_LIB_SYNTAX_ERROR:
             default:
                 fprintf(stderr, ">> unexpected result=%d from "
-                        "pt_read_low() 2\n", res);
+                        "pt_low_read() 2\n", res);
                 ret = res;
                 goto err_out;
             }
@@ -1129,86 +1117,11 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
                 *blks_readp = xferred;
             return ret;
         }
-        if (bs < 32) {
-            fprintf(stderr, ">> bs=%d too small for read_long\n", bs);
-            return -1;  /* nah, block size can't be that small */
-        }
         bp += (blks * bs);
         lba += blks;
-        if ((0 != ifp->pdt) || (ifp->coe < 2)) {
-            fprintf(stderr, ">> unrecovered read error at blk=%"PRId64", "
-                    "pdt=%d, use zeros\n", lba, ifp->pdt);
-            memset(bp, 0, bs);
-        } else if (io_addr < UINT_MAX) {
-            unsigned char * buffp;
-            int offset, nl, r, ok, corrct;
-
-            buffp = (unsigned char*)calloc(bs * 2, 1);
-            if (NULL == buffp) {
-                fprintf(stderr, ">> heap problems\n");
-                return -1;
-            }
-            corrct = (ifp->coe > 2) ? 1 : 0;
-            res = sg_ll_read_long10(sg_fd, /* pblock */0, corrct, lba, buffp,
-                                    bs + read_long_blk_inc, &offset, 1,
-                                    verbose);
-            ok = 0;
-            switch (res) {
-            case 0:
-                ok = 1;
-                ++read_longs;
-                break;
-            case SG_LIB_CAT_ILLEGAL_REQ_WITH_INFO:
-                nl = bs + read_long_blk_inc - offset;
-                if ((nl < 32) || (nl > (bs * 2))) {
-                    fprintf(stderr, ">> read_long(10) len=%d unexpected\n",
-                            nl);
-                    break;
-                }
-                /* remember for next read_long attempt, if required */
-                read_long_blk_inc = nl - bs;
-
-                if (verbose)
-                    fprintf(stderr, "read_long(10): adjusted len=%d\n", nl);
-                r = sg_ll_read_long10(sg_fd, 0, corrct, lba, buffp, nl,
-                                      &offset, 1, verbose);
-                if (0 == r) {
-                    ok = 1;
-                    ++read_longs;
-                    break;
-                } else
-                    fprintf(stderr, ">> unexpected result=%d on second "
-                            "read_long(10)\n", r);
-                break;
-            case SG_LIB_CAT_INVALID_OP:
-                fprintf(stderr, ">> read_long(10); not supported\n");
-                break;
-            case SG_LIB_CAT_ILLEGAL_REQ:
-                fprintf(stderr, ">> read_long(10): bad cdb field\n");
-                break;
-            case SG_LIB_CAT_NOT_READY:
-                fprintf(stderr, ">> read_long(10): device not ready\n");
-                break;
-            case SG_LIB_CAT_UNIT_ATTENTION:
-                fprintf(stderr, ">> read_long(10): unit attention\n");
-                break;
-            case SG_LIB_CAT_ABORTED_COMMAND:
-                fprintf(stderr, ">> read_long(10): aborted command\n");
-                break;
-            default:
-                fprintf(stderr, ">> read_long(10): problem (%d)\n", res);
-                break;
-            }
-            if (ok)
-                memcpy(bp, buffp, bs);
-            else
-                memset(bp, 0, bs);
-            free(buffp);
-        } else {
-            fprintf(stderr, ">> read_long(10) cannot handle blk=%"PRId64", "
-                    "use zeros\n", lba);
-            memset(bp, 0, bs);
-        }
+        fprintf(stderr, ">> unrecovered read error at blk=%"PRId64", "
+                "pdt=%d, use zeros\n", lba, ifp->pdt);
+        memset(bp, 0, bs);
         ++xferred;
         bp += bs;
         ++lba;
