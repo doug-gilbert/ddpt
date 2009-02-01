@@ -19,18 +19,23 @@ ddpt utility<br>
 <a href="#Conclusion"></a>
 <ol id="mozToc">
 <!--mozToc h1 1 h2 2 h3 3 h4 4 h5 5 h6 6-->
-  <li><a href="#mozTocId228087"> The&nbsp; ddpt utility </a>
+  <li><a href="#mozTocId228087"> The&nbsp;
+ddpt utility
+    </a>
     <ol>
       <li><a href="#mozTocId370866">Introduction</a></li>
       <li><a href="#mozTocId123443">History</a></li>
       <li><a href="#mozTocId352668">dd like features</a></li>
-      <li><a href="#mozTocId703997">ddpt extras</a></li>
+      <li><a href="#mozTocId703997">ddpt extra options</a></li>
       <li><a href="#mozTocId657084">Retries</a></li>
       <li><a href="#mozTocId437677">Continue on error
 (coe)</a></li>
       <li><a href="#mozTocId566094">Recovered errors</a></li>
-      <li><a href="#mozTocId836611">Sparse writes and write sparing</a></li>
+      <li><a href="#mozTocId836611">Sparse writes and
+write sparing
+        </a></li>
       <li><a href="#mozTocId899152">Verbose</a></li>
+      <li><a href="#mozTocId415792">Examples</a></li>
     </ol>
   </li>
 </ol>
@@ -94,7 +99,7 @@ iflag=sgio" in sg_dd has become "if=/dev/sda iflag=pt" in ddpt.<br>
 <br>
 The restriction that the input block size ('ibs=') and output block
 size ('obs=') be the same value in the sg_dd utility has been relaxed
-in this utility. Other new features such as write sparing are more
+in this utility. New features such as write sparing are more
 likely to appear in this utility than the sg_dd utility.<br>
 <br>
 <h2><a class="mozTocH2" name="mozTocId352668"></a>dd like features</h2>
@@ -200,7 +205,7 @@ partition.<br>
 If the 'count=' option is given then no further checks regarding the
 remaining length of the input and output files are done and the ddpt
 will attempt to copy that number of blocks. A 'count=0' option is valid
-and all the normal preparations are made including files being opened
+and all the normal preparations are made including opening files
 but no copy takes place. Hence the 'count=0' option can be used to
 check that the syntax is in order and that the files are present (see
 the
@@ -309,7 +314,8 @@ date then exit<br>
   </tbody>
 </table>
 <br>
-The 'bs=BS' and 'ibs=BS' options can be viewed as synonyms. If 'ibs=BS'
+The 'bs=BS' and 'ibs=BS' options can be viewed as synonyms. If both
+'ibs=BS'
 and 'obs=OBS' are given and differ then (BS * BPT) must be divisible by
 OBS, without any remainder. [BPT is input "blocks per transfer" and is
 explained below.]&nbsp; The 'skip=SKIP' option
@@ -330,54 +336,55 @@ suffixes are the same as those of GNU's dd (posted 2001-12-18):<br>
     <tr>
       <td style="vertical-align: top;"><span style="font-weight: bold;">Multiplier</span><br>
       </td>
-      <td style="vertical-align: top;"><span style="font-weight: bold;">Meaning</span><br>
+      <td style="vertical-align: top;"><span style="font-weight: bold;">Meaning
+multiply associated number by</span><br>
       </td>
     </tr>
     <tr>
       <td style="vertical-align: top;">x&lt;n&gt;<br>
       </td>
-      <td style="vertical-align: top;">*&lt;n&gt;<br>
+      <td style="vertical-align: top;">&lt;n&gt;<br>
       </td>
     </tr>
     <tr>
       <td style="vertical-align: top;">c<br>
       </td>
-      <td style="vertical-align: top;">*1<br>
+      <td style="vertical-align: top;">1<br>
       </td>
     </tr>
     <tr>
       <td style="vertical-align: top;">w<br>
       </td>
-      <td style="vertical-align: top;">*2<br>
+      <td style="vertical-align: top;">2<br>
       </td>
     </tr>
     <tr>
       <td style="vertical-align: top;">b<br>
       </td>
-      <td style="vertical-align: top;">*512<br>
+      <td style="vertical-align: top;">512<br>
       </td>
     </tr>
     <tr>
       <td style="vertical-align: top;">k&nbsp; K&nbsp; KiB<br>
       </td>
-      <td style="vertical-align: top;">*1024<br>
+      <td style="vertical-align: top;">1024<br>
       </td>
     </tr>
     <tr>
       <td style="vertical-align: top;">KB<br>
       </td>
-      <td style="vertical-align: top;">*1000<br>
+      <td style="vertical-align: top;">1000<br>
       </td>
     </tr>
     <tr>
       <td style="vertical-align: top;">m&nbsp; M&nbsp; MiB<br>
       </td>
-      <td style="vertical-align: top;">*1048576 </td>
+      <td style="vertical-align: top;">1048576 </td>
     </tr>
     <tr>
       <td style="vertical-align: top;">MB<br>
       </td>
-      <td style="vertical-align: top;">*1000000<br>
+      <td style="vertical-align: top;">1000000<br>
       </td>
     </tr>
     <tr>
@@ -485,7 +492,7 @@ on error</a>. </td>
       <td style="vertical-align: top;">applied<br>
       </td>
       <td style="vertical-align: top;">use O_DIRECT open flag, no
-effect with sg devices<br>
+effect with pass-through devices<br>
       </td>
     </tr>
     <tr>
@@ -533,8 +540,9 @@ and/or WRITE SCSI commands<br>
       <td style="vertical-align: top;">applied<br>
       </td>
       <td style="vertical-align: top;">Use
-posix_fadvise(POSIX_FADV_DONTNEED) to suggest file buffers (kernel
-cache) associated with files being copied is minimized.<br>
+posix_fadvise(POSIX_FADV_DONTNEED) to suggest minimal use of file
+buffers (kernel
+cache) associated with files being copied.<br>
       </td>
     </tr>
     <tr>
@@ -554,7 +562,7 @@ cache) associated with files being copied is minimized.<br>
       </td>
       <td style="vertical-align: top;">active<br>
       </td>
-      <td style="vertical-align: top;">-<br>
+      <td style="vertical-align: top;">try<br>
       </td>
       <td style="vertical-align: top;">-<br>
       </td>
@@ -635,7 +643,7 @@ with one exception, 'conv=sparse' is accepted as a synonym for
 of dd. If a
 conversion is needed then ddpt could be piped through dd (or
 vice versa).<br>
-<h2><a class="mozTocH2" name="mozTocId703997"></a>ddpt extras</h2>
+<h2><a class="mozTocH2" name="mozTocId703997"></a>ddpt extra options</h2>
 The extra options of ddpt (not found in GNU's dd) are:<br>
 <ul>
 </ul>
@@ -756,8 +764,10 @@ The ddpt utility examines the files it is given and treats them
 differently depending on their file type. Depending on iflag=<span
  style="font-style: italic;">FLAGS</span> and oflag=<span
  style="font-style: italic;">FLAGS</span> settings: O_DIRECT,
-O_SYNC, O_APPEND and O_EXCL flags may be added to the relevant open()
-command.<br>
+O_SYNC, O_APPEND and O_EXCL flags may be added to the relevant open
+system
+call. In Unix see 'man 2 open' or 'man -s 2 open' for more information
+on the open system call.<br>
 <br>
 <table style="width: 740px; text-align: left; height: 375px;" border="1"
  cellpadding="2" cellspacing="2">
@@ -868,7 +878,9 @@ Depending on the platform when a file is known to be associated with
 the pass-through interface (e.g. in Linux "/dev/sg2") the "pt" flag is
 assumed. This implies that in Linux if 'if=/dev/sg2' is specified then
 there is no need to add 'iflag=pt'. On the other hand if the file
-appears to be a block device (e.g. in Linux "/dev/sdc")<br>
+appears to be a block device (e.g. in Linux "/dev/sdc") then the normal
+read()/write() system calls will be used unless 'iflag=pt' (or
+'oflag=pt') is given.<br>
 <br>
 With block and pt devices the operating system may impose an upper
 limit on the size of each IO operation. The size that ddpt will attempt
@@ -892,26 +904,16 @@ logical block address 0 for the purposes of ddpt (and its skip and
 seek options) is the beginning of the device while the calculated count
 (e.g. when a 'count=' option is not given) is the extent of that device.<br>
 <br>
-<span style="font-weight: bold;"></span>When a
-CD is accessed via SCSI commands and the 'count=' option is not given
-then the READ CAPACITY SCSI command is used by ddpt to determine the
-number of blocks to read. Unfortunately some MMC standards allow a few
-of the final blocks to be invalid ("run out" sectors) and this can
-result in IO errors when the ddpt utility is used to copy such a CD.
-The isosize utility can be used to determine the actual size of an
-ISO9660 file system residing on such a CD. It is often a few blocks
-shorter than READ CAPACITY reports (for good reason).<br>
-<br>
 If a SIGUSR1 signal is sent to the process identifier (pid) of a
 running ddpt utility then the number of blocks copied to that point is
 output. The copy continues.<br>
 <br>
-When the 'time=1' option is given, the elapsed time for the copy plus
+Unless the 'time=0' option is given, the elapsed time for the copy plus
 the
 throughput measured in megabytes (10**6 bytes)&nbsp; per second is
 output when the copy is complete (or an error stops the copy). If a
 SIGUSR1 signal is sent to the process identifier (pid) of a running
-ddpt utility which has the 'time' option set the elapsed time and the
+ddpt utility then the elapsed time and the
 throughput of the copy to that point is output and the copy continues.<br>
 <h2><a class="mozTocH2" name="mozTocId657084"></a>Retries</h2>
 Often retries are of little use, especially on medium errors, since the
@@ -923,7 +925,8 @@ device and a retry may quickly solve the problem. In SAS a Transport
 Layer Retries (TLR) state machine is optional and requires both the
 initiator and target to implement the capability. Most first generation
 SAS disks do not implement TLR. So transport errors in the form of
-"aborted commands" can be reported due to corruption (marginal cables)
+"aborted commands" can be reported due to corruption (e.g. due to
+marginal cables)
 or congestion.<br>
 <br>
 When the retries=<span style="font-style: italic;">RETR</span> option
@@ -978,7 +981,7 @@ READ LONG is not attempted and the "bad" block is replaced by zeros.
 When coe=2'(or 'iflag=coe,coe') then a READ LONG is attempted. When
 coe=3 then a READ LONG with its CORRCT bit set is attempted. Only SBC
 devices (primarily SCSI disks) optionally support READ LONG. CD/DVD
-devices (covered in the MMC-4 (draft) standard) do not, so a block of
+devices (covered in the MMC-5 standard) do not, so a block of
 zeros is substituted for them. Even if READ LONG succeeds on a "bad"
 block, the recovered data may not be useful. There are no guarantees
 that the user data will appear "as is" in the first 512 bytes.<br>
@@ -1006,14 +1009,14 @@ The standard <span style="font-weight: bold;">dd</span> command also
 has a "continue on error" facility. The next two invocations are
 roughly the same:<br>
 <span style="font-family: monospace;">&nbsp; ddpt if=/dev/sda
-iflag=pt of=sda.img bs=512 coe=1</span><br
- style="font-family: monospace;">
+iflag=pt,coe of=sda.img bs=512</span><br style="font-family: monospace;">
 <span style="font-family: monospace;">&nbsp; dd if=/dev/sda
 iflag=direct of=sda.img bs=512 conv=noerror,sync</span><br>
 Without 'count=&lt;n&gt;' options the whole of /dev/sda will be copied
 to <span style="font-family: monospace;">sda.img</span> . The
 'noerror' argument to 'conv=' tells <span style="font-weight: bold;">dd</span>
-to continue on error and the 'sync' tells it to supply zeros instead.
+to continue on error and the 'sync' tells it to supply zeros for blocks
+that can not be read.
 If the latter step is not done the image file will be shorter when
 errors are detected.<br>
 <br>
@@ -1025,7 +1028,7 @@ coe_limit=<span style="font-style: italic;">CL</span> option is only
 active on read operations when
 'coe &gt; 0' which itself is only active on pt device nodes.<br>
 <br>
-Another utility called <span style="font-weight: bold;">dd_rescue</span>
+Another dd variant called <span style="font-weight: bold;">dd_rescue</span>
 (see <a href="http://www.garloff.de/kurt/linux/ddrescue/">www.garloff.de/kurt/linux/ddrescue/
 </a>) has similar "continue on error" facilities. <br>
 <br>
@@ -1038,8 +1041,8 @@ bits are set in the "read write error recovery" mode page).&nbsp; The
 user of such a disk may be blissfully unaware that the disk may be
 reaching the end of its useful life. Error counters are maintained in
 the "Read error counter" and "Write error counter" logs pages which can
-be viewed with smartctl (from smartmontools) and sg_logs (from the same
-sg3_utils package that sg_dd comes from). Any block that is
+be viewed with smartctl (from smartmontools) and sg_logs (from the
+sg3_utils package). Any block that is
 automatically or manually re-assigned adds a new entry to the "grown"
 defect list which can be viewed with '<span
  style="font-family: monospace;">sginfo -G</span>' or '<span
@@ -1079,9 +1082,10 @@ file system needs to create a file of the same size as the disk or
 partition. With the availability of 1 terabyte disks that would be a
 very big file which might be 99% full of zeros.<br>
 <br>
-Unix file systems usually allow the file pointer to be moved (with the
-<span style="font-family: monospace;">lseek()</span> system call or one
-of its variants) around arbitrarily. Moving
+Unix file systems usually allow the file pointer to be moved (e.g. with
+the
+<span style="font-family: monospace;">lseek()</span> system call)
+around arbitrarily. Moving
 the file pointer around can result in "holes" or overwriting of
 existing data in a file being written. It is an output file containing
 "holes" that the term <span style="font-style: italic;">sparse writes</span>
@@ -1146,19 +1150,21 @@ fred&nbsp; 1.1G 2007-06-28 22:15 t</span><br
 <span style="font-family: monospace;">12K&nbsp;&nbsp;&nbsp;&nbsp; t</span><br>
 <br>
 So the above shows that even though the file system knows the sparse
-file is 1.1 GB long, it only consumes 12 KB of space withan the files
+file is (logically) 1.1 GB long, it only consumes 12 KB of space within
+the files
 system. In the above case, <span style="font-family: monospace;">ddpt</span>
 is producing the same result as the standard
-<span style="font-weight: bold;">dd</span> command. Programs the
+<span style="font-weight: bold;">dd</span> command. Programs that
 calculate checksums such as <span style="font-weight: bold;">md5sum</span>
 and <span style="font-weight: bold;">sha1sum</span> should give the
 same result when applied to either a sparse file or the corresponding
-source file.<br>
+non-sparse file.<br>
 <br>
 Writing sparing is a related mechanism in which, after reading the <span
  style="font-style: italic;">IFILE</span>, the corresponding segment in
 the <span style="font-style: italic;">OFILE</span> is read into
-another buffer and the two are compared. If unequal, the write of the
+another buffer and the two buffers are compared. If unequal, the write
+of the
 original buffer to<span style="font-style: italic;"> OFILE</span> takes
 place as normal. If equal then the write to<span
  style="font-style: italic;"> OFILE</span> is skipped. This may be
@@ -1167,8 +1173,9 @@ useful when a write operation is more "expensive" than a read operation
 should exist and be readable and seekable (hence stdout is no
 appropriate).<br>
 <br>
-If may not be useful to have both sparse writes and write sparing
-active at the same time. If they are both given (i.e. '<span
+It seems unlikely that it would be useful to have both sparse writes
+and write sparing
+active on the same OFILE. If they are both given (i.e. '<span
  style="font-family: monospace;">oflag=sparing,sparse</span>') then
 sparse writes are checked first and if zeros are found, the check for
 write sparing is skipped on that segment.<br>
@@ -1181,8 +1188,8 @@ two lines on completion that show the number of full and partial
 records
 in (on the first line) and out (on the second line).<br>
 <br>
-The ddpt has a 'verbose' option whose default value is zero. When set
-this option has the following actions:<br>
+ddpt has a 'verbose' option whose default value is zero. When set
+to these values 'verbose' has the following actions:<br>
 <ol>
   <li>show categorization and INQUIRY data (where applicable) for the
 input and output files. For files, other than streams, the file/device
@@ -1196,7 +1203,7 @@ are repeated. For a large copy this will be a lot of output.</li>
   <li>maximum amount of debug output. For a large copy this will be a
 lot of output.</li>
 </ol>
-All verbose output is sent to stderr (so that ddpt usage with "of=-"
+All verbose output is sent to stderr (so that ddpt&nbsp; with "of=-"
 (copy output to stdout) is not corrupted).<br>
 <br>
 Following is an example of using verbose=1 to find information about
@@ -1206,7 +1213,7 @@ that. Since <span style="font-family: monospace;">/dev/sda</span> is a
 block device then it would normally be
 accessed via Unix system commands. The verbose=1 output is relatively
 short to non pt devices. The second invocation is
-with "iflag=pt" and a lot more is output. That includes INQUIRY
+with "iflag=pt" and more is output. That includes INQUIRY
 standard response data (e.g. "SEAGATE ..." line).
 See the SBC-2 drafts at <a href="http://www.t10.org/">www.t10.org</a>
 for more information.<br>
@@ -1252,11 +1259,14 @@ blocks=17781521 [0x10f5311], block size=512</span><br
 Mode page settings can be examined and changed with a utility like <a
  href="sdparm.html">sdparm</a> .<br>
 <br>
+<h2><a class="mozTocH2" name="mozTocId415792"></a>Examples</h2>
+Some examples are shown in the ddpt man page.<br>
+<br>
 <br>
 <br>
 <p>Return to <a href="index.html">main</a> page. </p>
 <center>
-<p>Last updated: 12th December 2008<br>
+<p>Last updated: 6th January 2009<br>
 <br>
 </p>
 </center>

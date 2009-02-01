@@ -9,7 +9,7 @@ pass-through devices that understand the SCSI command set.
 [\fIoflag=FLAGS\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fI\-\-help\fR]
 [\fI\-\-version\fR]
 .PP
-[\fIbpt=BPT\fR] [\fIcdbsz=\fR6|10|12|16] [\fIcoe=\fR0|1|2|3]
+[\fIbpt=BPT\fR] [\fIcdbsz=\fR6|10|12|16] [\fIcoe=\fR0|1]
 [\fIcoe_limit=CL\fR] [\fIof2=OFILE2\fR] [\fIretries=RETR\fR]
 [\fItime=\fR0|1] [\fIverbose=VERB\fR]
 .SH DESCRIPTION
@@ -67,14 +67,14 @@ Default is 10 byte SCSI command blocks (unless calculations indicate
 that a 4 byte block number may be exceeded or \fIBPT\fR is greater than
 16 bits (65535), in which case it defaults to 16 byte SCSI commands).
 .TP
-\fBcoe\fR=0 | 1 | 2 | 3
-set to 1 or more for continue on error. Only applies to errors on pt
+\fBcoe\fR=0 | 1
+set to 1 for continue on error. Only applies to errors on pt
 devices. Thus errors on other files will stop ddpt. Default is 0 which
 implies stop on any error. See the 'coe' flag for more information.
 .TP
 \fBcoe_limit\fR=\fICL\fR
 where \fICL\fR is the maximum number of consecutive bad blocks stepped
-over (due to "coe>0") on reads before the copy terminates. This only
+over (due to "coe=1") on reads before the copy terminates. This only
 applies when \fIIFILE\fR is a pt device. The default is 0 which is
 interpreted as no limit. This option is meant to stop the copy soon after
 unrecorded media is detected while still offering "continue on error"
@@ -198,16 +198,13 @@ have the same action as the 'coe=2'. A medium, hardware or blank check error
 while reading will re\-read blocks prior to the bad block, then try to
 recover the bad block, supplying zeros if that fails, and finally reread
 the blocks after the bad block. A medium, hardware or blank check error
-while writing is noted and ignored. The recovery of the bad block when
-reading uses the SCSI READ LONG command if 'coe' given twice or
-more (also with the command line option 'coe=2'). Further, the READ LONG
-will set its CORRCT bit if 'coe' given thrice. SCSI disks may automatically
-try and remap faulty sectors (see the AWRE and ARRE in the read write
+while writing is noted and ignored. SCSI disks may automatically try
+and remap faulty sectors (see the AWRE and ARRE in the read write
 error recovery mode page (the sdparm utility can access these attributes)).
 Errors occurring on other files types will stop ddpt. Error messages are
 sent to stderr. This flag is similar to 'conv=noerror,sync' in the
 .B dd(1)
-utility. See note about READ LONG below.
+utility.
 .TP
 direct
 causes the O_DIRECT flag to be added to the open of \fIIFILE\fR and/or
@@ -318,10 +315,6 @@ a signed 32 bit number.
 All informative, warning and error output is sent to stderr so that
 dd's output file can be stdout and remain unpolluted. If no options
 are given, then the usage message is output and nothing else happens.
-.PP
-Even if READ LONG succeeds on a "bad" block when 'coe=2' (or 'coe=3')
-is given, the recovered data may not be useful. There are no guarantees
-that the user data will appear "as is" in the first 512 bytes.
 .PP
 Disk partition information can often be found with
 .B fdisk(8)
