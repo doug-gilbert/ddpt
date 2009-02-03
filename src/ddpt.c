@@ -93,7 +93,7 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-static char * version_str = "0.90 20090104";
+static char * version_str = "0.90 20090202";
 
 #define ME "ddpt: "
 
@@ -899,7 +899,9 @@ pt_low_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
     set_scsi_pt_cdb(ptvp, rdCmd, ifp->cdbsz);
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_in(ptvp, buff, bs * blocks);
-    res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, verbose);
+    while (((res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, verbose)) < 0) &&
+           (-EINTR == res))
+        ;       /* resubmit if interrupted system call */
 
     vt = ((verbose > 1) ? (verbose - 1) : verbose);
     ret = sg_cmds_process_resp(ptvp, "READ", res, bs * blocks, sense_b,
@@ -1196,7 +1198,9 @@ pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
     set_scsi_pt_cdb(ptvp, wrCmd, ofp->cdbsz);
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_out(ptvp, buff, bs * blocks);
-    res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, verbose);
+    while (((res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, verbose)) < 0) &&
+           (-EINTR == res))
+        ;       /* resubmit if interrupted system call */
 
     vt = ((verbose > 1) ? (verbose - 1) : verbose);
     ret = sg_cmds_process_resp(ptvp, "WRITE", res, bs * blocks, sense_b,

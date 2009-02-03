@@ -14,7 +14,8 @@ ddpt_SOURCES =		ddpt.c	\
 			../include/sg_cmds_basic.h	\
 			../lib/sg_cmds_extra.c	\
 			../include/sg_cmds_extra.h	\
-			../include/sg_pt.h
+			../include/sg_pt.h	\
+			../lib/sg_pt_common.c
 
 ddpt_LDADD = @os_deps@ @os_libs@
 ddpt_DEPENDENCIES = @os_deps@
