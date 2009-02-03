@@ -20,8 +20,7 @@ ddpt utility<br>
 <ol id="mozToc">
 <!--mozToc h1 1 h2 2 h3 3 h4 4 h5 5 h6 6-->
   <li><a href="#mozTocId228087"> The&nbsp;
-ddpt utility
-    </a>
+ddpt utility </a>
     <ol>
       <li><a href="#mozTocId370866">Introduction</a></li>
       <li><a href="#mozTocId123443">History</a></li>
@@ -32,8 +31,7 @@ ddpt utility
 (coe)</a></li>
       <li><a href="#mozTocId566094">Recovered errors</a></li>
       <li><a href="#mozTocId836611">Sparse writes and
-write sparing
-        </a></li>
+write sparing </a></li>
       <li><a href="#mozTocId899152">Verbose</a></li>
       <li><a href="#mozTocId415792">Examples</a></li>
     </ol>
@@ -478,8 +476,8 @@ when "<span style="font-style: italic;">SEEK</span> &gt; 0"<br>
       <td style="vertical-align: top;">ignored<br>
       </td>
       <td style="vertical-align: top;">continue on error; best effort
-recovery then continue. N.B. can be used multiple times (e.g.
-'iflag=coe,coe'). See section on <a href="ddpt.html#mozTocId437677">continue
+recovery then continue. See section on <a
+ href="ddpt.html#mozTocId437677">continue
 on error</a>. </td>
     </tr>
     <tr>
@@ -528,6 +526,19 @@ and/or WRITE SCSI commands</td>
       </td>
       <td style="vertical-align: top;">"force unit access" set for READ
 and/or WRITE SCSI commands<br>
+      </td>
+    </tr>
+    <tr>
+      <td style="vertical-align: top;">fua_nv<br>
+      </td>
+      <td style="vertical-align: top;">applied<br>
+      </td>
+      <td style="vertical-align: top;">ignored<br>
+      </td>
+      <td style="vertical-align: top;">ignored<br>
+      </td>
+      <td style="vertical-align: top;">"force unit access non-volatile
+cache" set for READ and/or WRITE SCSI commands<br>
       </td>
     </tr>
     <tr>
@@ -691,15 +702,14 @@ case a 16 cdb is used.<br>
       </td>
     </tr>
     <tr>
-      <td style="vertical-align: top;">coe=0 | 1 | 2 | 3<br>
+      <td style="vertical-align: top;">coe=0 | 1<br>
       </td>
       <td style="vertical-align: top;">0<br>
       </td>
       <td style="vertical-align: top;">when non-zero, continue_on_error
 for pt devices. May use iflag=coe
 and/or oflag=coe
-instead. An equivalent of coe=2 is 'iflag=coe,coe'. See section on <a
- href="#mozTocId437677">continue on error</a>.<br>
+instead. See section on <a href="#mozTocId437677">continue on error</a>.<br>
       </td>
     </tr>
     <tr>
@@ -967,43 +977,18 @@ is non-zero then the first
 thing ddpt will try to do is a truncated read up to, but not
 including,
 the
-bad block. The remaining discussion in this section assumes 'coe' is
-non-zero.<br>
-<br>
-The "bad" block may or may not be readable by the device. If it is
-readable then most likely the associated ECC data indicates that it is
-corrupt and the ECC data cannot recover it. [It is possible that all
-the corruption is in the ECC data and the payload data is ok.] Such
-blocks can be retrieved with the READ LONG command. If the READ LONG
-fails then a block of zeros is
-substituted for the bad block in the transfer buffer. When 'coe=1' then
-READ LONG is not attempted and the "bad" block is replaced by zeros.
-When coe=2'(or 'iflag=coe,coe') then a READ LONG is attempted. When
-coe=3 then a READ LONG with its CORRCT bit set is attempted. Only SBC
-devices (primarily SCSI disks) optionally support READ LONG. CD/DVD
-devices (covered in the MMC-5 standard) do not, so a block of
-zeros is substituted for them. Even if READ LONG succeeds on a "bad"
-block, the recovered data may not be useful. There are no guarantees
-that the user data will appear "as is" in the first 512 bytes.<br>
+bad block. <br>
 <br>
 There still remain blocks after the "bad" block that need to be
 fetched. Further bad blocks may be detected and if so
-the algorithm in the last two paragraphs is repeated. The result of
+the algorithm in the last paragraph is repeated. The result of
 this
 process is an imperfect copy with blocks that were read properly placed
 in the correct relative position in the output. When the coe=1 option
-is given two addition counters are output on completion:<br>
-<ul>
-  <li>unrecovered errors (number of bad blocks)<br>
-  </li>
-  <li>read_longs that "successfully" fetched part of those bad blocks<br>
-  </li>
-</ul>
-The first counter is the number of unrecovered (read) errors
-encountered. Any number greater than zero flags an imperfect copy. The
-second counter (always less than or equal to the first) is the number
-of "successful" READ LONG SCSI commands performed. If the source media
-is a CD or DVD then this number will be zero.<br>
+is given an additional counter is <br>
+output on completion: unrecovered errors. This is the number of
+unrecovered (read) errors
+encountered. Any number greater than zero indicates an imperfect copy.<br>
 <br>
 The standard <span style="font-weight: bold;">dd</span> command also
 has a "continue on error" facility. The next two invocations are
@@ -1266,7 +1251,7 @@ Some examples are shown in the ddpt man page.<br>
 <br>
 <p>Return to <a href="index.html">main</a> page. </p>
 <center>
-<p>Last updated: 6th January 2009<br>
+<p>Last updated: 3rd February 2009<br>
 <br>
 </p>
 </center>

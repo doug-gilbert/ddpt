@@ -93,7 +93,7 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-static char * version_str = "0.90 20090202";
+static char * version_str = "0.90 20090203";
 
 #define ME "ddpt: "
 
@@ -138,7 +138,6 @@ static char * version_str = "0.90 20090202";
 #define FT_BLOCK 32             /* filetype is block device */
 #define FT_FIFO 64              /* filetype is a fifo (name pipe) */
 #define FT_ERROR 128            /* couldn't "stat" file */
-
 
 /* If O_DIRECT or O_SYNC not supported then define harmlessly */
 #ifndef O_DIRECT
@@ -188,6 +187,7 @@ struct flags_t {
     int excl;
     int flock;
     int fua;
+    int fua_nv;
     int pdt;
     int nocache;
     int pt;
@@ -256,7 +256,7 @@ usage()
            "    if          file or device to read from (def: stdin)\n"
            "    iflag       comma separated list from: [coe,direct,"
            "dpo,excl,flock,\n"
-           "                fua,nosync,null,pt,sync]\n"
+           "                fua,fua_nv,nocache,null,pt,sync]\n"
            "    obs         output block size ((((BS*BPT)%%OBS)==0) "
            "required\n"
            "    of          file or device to write to (def: stdout), "
@@ -268,8 +268,8 @@ usage()
            "                normal file or pipe\n"
            "    oflag       comma separated list from: [append,coe,direct,"
            "dpo,excl,\n"
-           "                flock,fua,nosync,null,pt,sparing,sparse,ssync,"
-           "sync]\n"
+           "                flock,fua,fua_nv,nocache,null,pt,sparing,sparse,"
+           "ssync,sync]\n"
            "    retries     retry pt errors RETR times (def: 0)\n"
            "    seek        block position to start writing to OFILE\n"
            "    skip        block position to start reading from IFILE\n"
@@ -283,7 +283,6 @@ usage()
            "dd command.\nSupport for block devices, especially those "
            "accessed via a SCSI pass-through.\n");
 }
-
 
 
 static void
@@ -300,7 +299,6 @@ install_handler(int sig_num, void (*sig_handler) (int sig))
         sigaction(sig_num, &sigact, NULL);
     }
 }
-
 
 static void
 print_stats(const char * str)
@@ -322,7 +320,6 @@ print_stats(const char * str)
                 ((1 == unrecovered_errs) ? "" : "s"));
 }
 
-
 static void
 interrupt_handler(int sig)
 {
@@ -339,7 +336,6 @@ interrupt_handler(int sig)
     kill(getpid (), sig);
 }
 
-
 static void
 siginfo_handler(int sig)
 {
@@ -350,6 +346,7 @@ siginfo_handler(int sig)
     print_stats("  ");
 }
 
+/* Process options on the command line. */
 static int
 process_cl(struct opts_t * optsp, int argc, char * argv[])
 {
@@ -364,7 +361,6 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
         fprintf(stderr, "For more information use '--help'\n");
         return SG_LIB_SYNTAX_ERROR;
     }
-
     for (k = 1; k < argc; ++k) {
         if (argv[k]) {
             strncpy(str, argv[k], STR_SZ);
@@ -562,7 +558,7 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
     return 0;
 }
 
-
+/* Attempt to categorize the file type from the given filename. */
 static int
 dd_filetype(const char * filename)
 {
@@ -606,17 +602,12 @@ dd_filetype(const char * filename)
 #else
         return FT_PT;
 #endif
-    } else if (S_ISBLK(st.st_mode)) {
-        // fprintf(stderr, "dd_filetype: block device, st_size=%"PRId64"\n",
-        //         st.st_size);
-        // fprintf(stderr, "dd_filetype: block device, st_blocks=%"PRId64"\n",
-        //         st.st_blocks);
+    } else if (S_ISBLK(st.st_mode))
         return FT_BLOCK;
-    } else if (S_ISFIFO(st.st_mode))
+    else if (S_ISFIFO(st.st_mode))
         return FT_FIFO;
     return FT_OTHER;
 }
-
 
 static char *
 dd_filetype_str(int ft, char * buff)
@@ -682,13 +673,13 @@ scsi_read_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
     return 0;
 }
 
-/* Return of 0 -> success, -1 -> failure. BLKGETSIZE64, BLKGETSIZE and */
-/* BLKSSZGET macros problematic (from <linux/fs.h> or <sys/mount.h>).  */
-/* >>> Linux specific.                                                 */
-/* For FreeBSD post suggests that /usr/sbin/diskinfo uses              */
-/* ioctl(fd, DIOCGMEDIASIZE, &mediasize), where mediasize is an off_t. */
-/* also: ioctl(fd, DIOCGSECTORSIZE, &sectorsize)                       */
-/* Windows: GetDiskFreeSpaceEx ?                                       */
+/* Return of 0 -> success, -1 -> failure. BLKGETSIZE64, BLKGETSIZE and
+ * BLKSSZGET macros problematic (from <linux/fs.h> or <sys/mount.h>).
+ * >>> Linux specific.
+ * For FreeBSD post suggests that /usr/sbin/diskinfo uses
+ * ioctl(fd, DIOCGMEDIASIZE, &mediasize), where mediasize is an off_t.
+ * also: ioctl(fd, DIOCGSECTORSIZE, &sectorsize)
+ * Windows: GetDiskFreeSpaceEx ?                                       */
 static int
 read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
 {
@@ -737,7 +728,7 @@ read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
 #endif
 
 #ifdef DDPT_FREEBSD
-// WTF do kernels invent their own typedefs and not use C standards
+// Why do kernels invent their own typedefs and not use C standards?
 #define u_int unsigned int
     off_t mediasize;
     unsigned int sectorsize;
@@ -759,7 +750,7 @@ read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
 #endif
 }
 
-
+/* Build a SCSI READ or WRITE CDB. */
 static int
 pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
                   int64_t start_block, int write_true, int fua, int fua_nv,
@@ -857,14 +848,14 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
     return 0;
 }
 
-
-/* 0 -> successful, SG_LIB_SYNTAX_ERROR -> unable to build cdb,
-   SG_LIB_CAT_UNIT_ATTENTION -> try again,
-   SG_LIB_CAT_MEDIUM_HARD_WITH_INFO -> 'io_addrp' written to,
-   SG_LIB_CAT_MEDIUM_HARD -> no info field,
-   SG_LIB_CAT_NOT_READY, SG_LIB_CAT_ABORTED_COMMAND,
-   -2 -> ENOMEM
-   -1 other errors */
+/* Read using the pass-through. No retries or remedial work here.
+ * 0 -> successful, SG_LIB_SYNTAX_ERROR -> unable to build cdb,
+ * SG_LIB_CAT_UNIT_ATTENTION -> try again,
+ * SG_LIB_CAT_MEDIUM_HARD_WITH_INFO -> 'io_addrp' written to,
+ * SG_LIB_CAT_MEDIUM_HARD -> no info field,
+ * SG_LIB_CAT_NOT_READY, SG_LIB_CAT_ABORTED_COMMAND,
+ * -2 -> ENOMEM
+ * -1 other errors */
 static int
 pt_low_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
             int bs, const struct flags_t * ifp, uint64_t * io_addrp)
@@ -875,7 +866,7 @@ pt_low_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
     struct sg_pt_base * ptvp;
 
     if (pt_build_scsi_cdb(rdCmd, ifp->cdbsz, blocks, from_block, 0,
-                          ifp->fua, 0 /* fua_nv */, ifp->dpo)) {
+                          ifp->fua, ifp->fua_nv, ifp->dpo)) {
         fprintf(stderr, ME "bad rd cdb build, from_block=%"PRId64", "
                 "blocks=%d\n", from_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
@@ -976,12 +967,11 @@ pt_low_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
     return ret;
 }
 
-
-/* Control pass-through read retries and coe (continue on error)
-   0 -> successful, SG_LIB_SYNTAX_ERROR -> unable to build cdb,
-   SG_LIB_CAT_UNIT_ATTENTION -> try again, SG_LIB_CAT_NOT_READY,
-   SG_LIB_CAT_MEDIUM_HARD, SG_LIB_CAT_ABORTED_COMMAND,
-   -2 -> ENOMEM, -1 other errors */
+/* Control pass-through read retries and coe (continue on error).
+ * 0 -> successful, SG_LIB_SYNTAX_ERROR -> unable to build cdb,
+ * SG_LIB_CAT_UNIT_ATTENTION -> try again, SG_LIB_CAT_NOT_READY,
+ * SG_LIB_CAT_MEDIUM_HARD, SG_LIB_CAT_ABORTED_COMMAND,
+ * -2 -> ENOMEM, -1 other errors */
 static int
 pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
         int bs, struct flags_t * ifp, int * blks_readp)
@@ -1159,10 +1149,11 @@ err_out:
 }
 
 
-/* 0 -> successful, SG_LIB_SYNTAX_ERROR -> unable to build cdb,
-   SG_LIB_CAT_NOT_READY, SG_LIB_CAT_UNIT_ATTENTION, SG_LIB_CAT_MEDIUM_HARD,
-   SG_LIB_CAT_ABORTED_COMMAND, -2 -> recoverable (ENOMEM),
-   -1 -> unrecoverable error + others */
+/* Write block(s) via the pass-through.
+ * 0 -> successful, SG_LIB_SYNTAX_ERROR -> unable to build cdb,
+ * SG_LIB_CAT_NOT_READY, SG_LIB_CAT_UNIT_ATTENTION, SG_LIB_CAT_MEDIUM_HARD,
+ * SG_LIB_CAT_ABORTED_COMMAND, -2 -> recoverable (ENOMEM),
+ * -1 -> unrecoverable error + others */
 static int
 pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
          int bs, const struct flags_t * ofp)
@@ -1174,7 +1165,7 @@ pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
     struct sg_pt_base * ptvp;
 
     if (pt_build_scsi_cdb(wrCmd, ofp->cdbsz, blocks, to_block, 1, ofp->fua,
-                          0 /* fua_nv */, ofp->dpo)) {
+                          ofp->fua_nv, ofp->dpo)) {
         fprintf(stderr, ME "bad wr cdb build, to_block=%"PRId64", blocks=%d\n",
                 to_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
@@ -1274,7 +1265,7 @@ calc_duration_throughput(int contin)
     }
 }
 
-
+/* Process arguments given to 'iflag=" and 'oflag=" options. */
 static int
 process_flags(const char * arg, struct flags_t * fp)
 {
@@ -1305,6 +1296,8 @@ process_flags(const char * arg, struct flags_t * fp)
             ++fp->excl;
         else if (0 == strcmp(cp, "flock"))
             ++fp->flock;
+        else if (0 == strcmp(cp, "fua_nv"))     /* check fua_nv before fua */
+            ++fp->fua_nv;
         else if (0 == strcmp(cp, "fua"))
             ++fp->fua;
         else if (0 == strcmp(cp, "nocache"))
@@ -1561,9 +1554,9 @@ other_err:
     return -SG_LIB_CAT_OTHER;
 }
 
-/* Calculates the number of blocks associated with the in and out files. */
-/* May also yield the block size in bytes of devices. Returns the file   */
-/* type of the out file (defaults to FT_OTHER).                          */
+/* Calculates the number of blocks associated with the in and out files.
+ * May also yield the block size in bytes of devices. Returns the file
+ * type of the out file (defaults to FT_OTHER). */
 static int
 calc_count(struct opts_t * optsp, int infd, int64_t * in_num_sectp,
            int * in_sect_szp, int outfd, int64_t * out_num_sectp,
@@ -1678,6 +1671,8 @@ calc_count(struct opts_t * optsp, int infd, int64_t * in_num_sectp,
     return optsp->out_type;
 }
 
+/* This is the main copy loop. Attempts to copy 'dd_count' (a static)
+ * blocks (size given by bs or ibs) in chunks of optsp->bpt_i blocks.  */
 static int
 do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
         unsigned char * wrkPos, unsigned char * wrkPos2)
@@ -2047,13 +2042,11 @@ main(int argc, char * argv[])
     opts.out2f[0] = '\0';
     iflag.cdbsz = DEF_SCSI_CDBSZ;
     oflag.cdbsz = DEF_SCSI_CDBSZ;
-
     res = process_cl(&opts, argc, argv);
     if (res < 0)
         return 0;
     else if (res > 0)
         return res;
-
 
     install_handler(SIGINT, interrupt_handler);
     install_handler(SIGQUIT, interrupt_handler);
@@ -2199,9 +2192,12 @@ main(int argc, char * argv[])
         }
     }
 
-    if (verbose > 3)
-        fprintf(stderr, "Start of loop, count=%"PRId64", blocks_per=%d\n",
-                dd_count, opts.bpt_i);
+    if (verbose) {
+        fprintf(stderr, "skip=%"PRId64" (blocks on input), seek=%"PRId64" "
+                "(blocks on output)\n", opts.skip, opts.seek);
+        fprintf(stderr, "  initial count=%"PRId64" (blocks of input), "
+                "blocks_per_transfer=%d\n", dd_count, opts.bpt_i);
+    }
     if (do_time) {
         start_tm.tv_sec = 0;
         start_tm.tv_usec = 0;
