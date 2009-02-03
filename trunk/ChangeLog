@@ -2,7 +2,7 @@ The version number is hardcoded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.90 [20090131] [svn: r31]
+Changelog for ddpt-0.90 [20090202] [svn: r31]
   - copied from sg_dd utility in sg3_utils package
   - change name from sgdd to ddpt (package and utility name)
   - ibs and obs can differ when ((ibs * bpt) % obs) == 0)
@@ -12,6 +12,7 @@ Changelog for ddpt-0.90 [20090131] [svn: r31]
   - if 'nocache' flag call posix_fadvise(SEQUENTIAL) on
     input fd and posix_fadvise(DONTNEED) during copy
   - call sg_set_binary_mode() on fds (for windows)
+  - resubmit pass-through reads and writes if interrupted
   - drop Linux raw file support
   - drop READ LONG logic (coe=2 and coe=3)
   - add write sparing support (oflag=sparing)
