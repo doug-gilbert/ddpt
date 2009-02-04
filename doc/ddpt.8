@@ -193,16 +193,18 @@ a disk) will usually be ignored or may cause an error to be reported.
 .TP
 coe
 continue on error. Only active for pt devices. 'iflag=coe oflag=coe'
-and 'coe=1' are equivalent. Use this flag twice (e.g. 'iflag=coe,coe') to
-have the same action as the 'coe=2'. A medium, hardware or blank check error
+and 'coe=1' are equivalent. A medium, hardware or blank check error
 while reading will re\-read blocks prior to the bad block, then try to
 recover the bad block, supplying zeros if that fails, and finally reread
 the blocks after the bad block. A medium, hardware or blank check error
 while writing is noted and ignored. SCSI disks may automatically try
 and remap faulty sectors (see the AWRE and ARRE in the read write
 error recovery mode page (the sdparm utility can access these attributes)).
-Errors occurring on other files types will stop ddpt. Error messages are
-sent to stderr. This flag is similar to 'conv=noerror,sync' in the
+Unrecovered errors are counted and output in the summary at the end of
+the copy. If bad LBAs are reported by the pass-through then the LBA of the
+lowest and highest bad block is also output. Errors occurring on other
+file types will stop ddpt. Error messages are sent to stderr. This flag
+is similar to 'conv=noerror,sync' in the
 .B dd(1)
 utility.
 .TP
