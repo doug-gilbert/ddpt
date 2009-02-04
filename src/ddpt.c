@@ -890,7 +890,8 @@ pt_low_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
     set_scsi_pt_cdb(ptvp, rdCmd, ifp->cdbsz);
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_in(ptvp, buff, bs * blocks);
-    while (((res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, verbose)) < 0) &&
+    vt = (verbose ? (verbose - 1) : 0);
+    while (((res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, vt)) < 0) &&
            (-EINTR == res))
         ;       /* resubmit if interrupted system call */
 
@@ -1189,7 +1190,8 @@ pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
     set_scsi_pt_cdb(ptvp, wrCmd, ofp->cdbsz);
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_out(ptvp, buff, bs * blocks);
-    while (((res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, verbose)) < 0) &&
+    vt = (verbose ? (verbose - 1) : 0);
+    while (((res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, vt)) < 0) &&
            (-EINTR == res))
         ;       /* resubmit if interrupted system call */
 
