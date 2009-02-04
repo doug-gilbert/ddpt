@@ -897,7 +897,7 @@ pt_low_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
 
     vt = ((verbose > 1) ? (verbose - 1) : verbose);
     ret = sg_cmds_process_resp(ptvp, "READ", res, bs * blocks, sense_b,
-                               1 /* noisy */, vt, &sense_cat);
+                               0 /* noisy */, vt, &sense_cat);
     if (-1 == ret)
         ;
     else if (-2 == ret) {
@@ -1197,7 +1197,7 @@ pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
 
     vt = ((verbose > 1) ? (verbose - 1) : verbose);
     ret = sg_cmds_process_resp(ptvp, "WRITE", res, bs * blocks, sense_b,
-                               1 /* noisy */, vt, &sense_cat);
+                               0 /* noisy */, vt, &sense_cat);
     if (-1 == ret)
         ;
     else if (-2 == ret) {
