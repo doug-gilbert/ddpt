@@ -44,6 +44,8 @@
  * Both licenses are considered "open source".
  */
 
+static char * version_str = "0.90 20090204";
+
 #define _XOPEN_SOURCE 600
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -93,7 +95,6 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-static char * version_str = "0.90 20090203";
 
 #define ME "ddpt: "
 
@@ -152,7 +153,6 @@ static char * version_str = "0.90 20090203";
 #define MAX_UNIT_ATTENTIONS 10
 #define MAX_ABORTED_CMDS 256
 
-static int sum_of_resids = 0;
 
 static int64_t dd_count = -1;   /* of input blocks */
 static int64_t req_count = 0;
@@ -163,7 +163,13 @@ static int out_partial = 0;
 static int64_t out_sparse = 0;
 static int recovered_errs = 0;
 static int unrecovered_errs = 0;
+static int64_t lowest_unrecovered = 0;
+static int64_t highest_unrecovered = -1;
 static int num_retries = 0;
+static int sum_of_resids = 0;
+
+static struct sg_pt_base * if_ptvp = NULL;
+static struct sg_pt_base * of_ptvp = NULL;
 
 static int do_time = 1;         /* default was 0 in sg_dd */
 static int verbose = 0;
@@ -307,10 +313,11 @@ print_stats(const char * str)
         fprintf(stderr, "  remaining block count=%"PRId64"\n", dd_count);
     fprintf(stderr, "%s%"PRId64"+%d records in\n", str, in_full - in_partial,
             in_partial);
-    fprintf(stderr, "%s%"PRId64"+%d records out\n", str, out_full - out_partial,
-            out_partial);
+    fprintf(stderr, "%s%"PRId64"+%d records out\n", str,
+            out_full - out_partial, out_partial);
     if (out_sparse)
-        fprintf(stderr, "%s%"PRId64" bypassed records out\n", str, out_sparse);
+        fprintf(stderr, "%s%"PRId64" bypassed records out\n", str,
+                out_sparse);
     if (recovered_errs > 0)
         fprintf(stderr, "%s%d recovered errors\n", str, recovered_errs);
     if (num_retries > 0)
@@ -318,6 +325,10 @@ print_stats(const char * str)
     if (iflag.coe || oflag.coe || unrecovered_errs)
         fprintf(stderr, "%s%d unrecovered error%s\n", str, unrecovered_errs,
                 ((1 == unrecovered_errs) ? "" : "s"));
+    if (unrecovered_errs && (highest_unrecovered >= 0))
+        fprintf(stderr, "lowest unrecovered lba=%"PRId64", highest "
+                "unrecovered lba=%"PRId64"\n", lowest_unrecovered,
+                highest_unrecovered);
 }
 
 static void
@@ -863,7 +874,7 @@ pt_low_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
     unsigned char rdCmd[MAX_SCSI_CDBSZ];
     unsigned char sense_b[SENSE_BUFF_LEN];
     int res, k, info_valid, slen, sense_cat, ret, vt;
-    struct sg_pt_base * ptvp;
+    struct sg_pt_base * ptvp = if_ptvp;
 
     if (pt_build_scsi_cdb(rdCmd, ifp->cdbsz, blocks, from_block, 0,
                           ifp->fua, ifp->fua_nv, ifp->dpo)) {
@@ -881,12 +892,11 @@ pt_low_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
     if (NULL == sg_warnings_strm)
         sg_warnings_strm = stderr;
 
-    ptvp = construct_scsi_pt_obj();
     if (NULL == ptvp) {
-        fprintf(stderr, "pt_low_read: construct_scsi_pt_obj: out "
-                "of memory\n");
+        fprintf(stderr, "pt_low_read: if_ptvp NULL?\n");
         return -1;
     }
+    clear_scsi_pt_obj(ptvp);
     set_scsi_pt_cdb(ptvp, rdCmd, ifp->cdbsz);
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_in(ptvp, buff, bs * blocks);
@@ -964,7 +974,6 @@ pt_low_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
         ret = 0;
 
     sum_of_resids += get_scsi_pt_resid(ptvp);
-    destruct_scsi_pt_obj(ptvp);
     return ret;
 }
 
@@ -1066,6 +1075,15 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
             may_coe = 1;
             goto err_out;
         }
+        if (highest_unrecovered < 0) {
+            highest_unrecovered = io_addr;
+            lowest_unrecovered = io_addr;
+        } else {
+            if ((int64_t)io_addr < lowest_unrecovered)
+                lowest_unrecovered = io_addr;
+            if ((int64_t)io_addr > highest_unrecovered)
+                highest_unrecovered = io_addr;
+        }
         blks = (int)(io_addr - (uint64_t)lba);
         if (blks > 0) {
             if (verbose)
@@ -1113,7 +1131,7 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
         bp += (blks * bs);
         lba += blks;
         fprintf(stderr, ">> unrecovered read error at blk=%"PRId64", "
-                "pdt=%d, use zeros\n", lba, ifp->pdt);
+                "substitute zeros\n", lba);
         memset(bp, 0, bs);
         ++xferred;
         bp += bs;
@@ -1163,7 +1181,7 @@ pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
     unsigned char sense_b[SENSE_BUFF_LEN];
     int res, k, info_valid, ret, sense_cat, slen, vt;
     uint64_t io_addr = 0;
-    struct sg_pt_base * ptvp;
+    struct sg_pt_base * ptvp = of_ptvp;
 
     if (pt_build_scsi_cdb(wrCmd, ofp->cdbsz, blocks, to_block, 1, ofp->fua,
                           ofp->fua_nv, ofp->dpo)) {
@@ -1181,12 +1199,11 @@ pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
     if (NULL == sg_warnings_strm)
         sg_warnings_strm = stderr;
 
-    ptvp = construct_scsi_pt_obj();
     if (NULL == ptvp) {
-        fprintf(stderr, "pt_write: construct_scsi_pt_obj: out "
-                "of memory\n");
+        fprintf(stderr, "pt_write: of_ptvp NULL?\n");
         return -1;
     }
+    clear_scsi_pt_obj(ptvp);
     set_scsi_pt_cdb(ptvp, wrCmd, ofp->cdbsz);
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_out(ptvp, buff, bs * blocks);
@@ -1674,7 +1691,8 @@ calc_count(struct opts_t * optsp, int infd, int64_t * in_num_sectp,
 }
 
 /* This is the main copy loop. Attempts to copy 'dd_count' (a static)
- * blocks (size given by bs or ibs) in chunks of optsp->bpt_i blocks.  */
+ * blocks (size given by bs or ibs) in chunks of optsp->bpt_i blocks.
+ * Returns 0 if good.  */
 static int
 do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
         unsigned char * wrkPos, unsigned char * wrkPos2)
@@ -1719,6 +1737,15 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
             }
         }
         if (FT_PT & optsp->in_type) {
+            if (NULL == if_ptvp) {
+                if_ptvp = construct_scsi_pt_obj();
+                if (NULL == if_ptvp) {
+                    fprintf(stderr, "do_copy: if construct_scsi_pt_obj: out "
+                            "of memory\n");
+                    ret = -1;
+                    break;
+                }
+            }
             res = pt_read(infd, wrkPos, iblocks, optsp->skip, optsp->ibs,
                           optsp->iflagp, &blks_read);
             if (res) {
@@ -1881,6 +1908,15 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
         } else if (FT_PT & optsp->out_type) {
             retries_tmp = oflag.retries;
             first = 1;
+            if (NULL == of_ptvp) {
+                of_ptvp = construct_scsi_pt_obj();
+                if (NULL == of_ptvp) {
+                    fprintf(stderr, "do_copy: of construct_scsi_pt_obj: out "
+                            "of memory\n");
+                    ret = -1;
+                    break;
+                }
+            }
             while (1) {
                 ret = pt_write(outfd, wrkPos, oblocks, optsp->seek,
                                optsp->obs, &oflag);
@@ -2013,6 +2049,14 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
                 perror(ebuff);
             }
         }
+    }
+    if (if_ptvp) {
+        destruct_scsi_pt_obj(if_ptvp);
+        if_ptvp = NULL;
+    }
+    if (of_ptvp) {
+        destruct_scsi_pt_obj(of_ptvp);
+        of_ptvp = NULL;
     }
     return ret;
 }
