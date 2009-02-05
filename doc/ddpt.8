@@ -88,11 +88,11 @@ See the FLAGS section below.
 .TP
 \fBcount\fR=\fICOUNT\fR
 copy \fICOUNT\fR input blocks from \fIIFILE\fR to \fIOFILE\fR. If this
-option is not given then the \fICOUNT\fR may be deduced as follows.
-When both or either \fIIFILE\fR and \fIOFILE\fR are block devices, then
-the minimum size, expressed in units of input blocks, is used.
-When both or either \fIIFILE\fR and \fIOFILE\fR are pass-through devices,
-then the minimum size, expressed in units of input blocks, is used.
+option is not given (or \fICOUNT\fR is '-1') then the \fICOUNT\fR may be
+deduced as follows. When both or either \fIIFILE\fR and \fIOFILE\fR are
+block devices, then the minimum size, expressed in units of input blocks,
+is used. When both or either \fIIFILE\fR and \fIOFILE\fR are pass-through
+devices, then the minimum size, expressed in units of input blocks, is used.
 If a regular file is used as input, its size, expressed in units of input
 blocks (and rounded up if necessary) is used. If a regular file is used as
 output, its size, expressed in units of input blocks (and rounded up if
@@ -125,7 +125,8 @@ this is the \fIOFILE\fR block size. If not supplied the \fIBS\fR value is
 assumed. If \fIOBS\fR is given then is has the following restriction:
 the integer expression (((\fIBS\fR * \fIBPT\fR) % \fIOBS\fR) == 0) must
 be true. Stated another way: the input buffer size must be an integral
-multiple of \fIOBS\fR. 
+multiple of \fIOBS\fR. If \fIof2=OFILE2\fR is given then \fIOBS\fR is
+its block size as well.
 .TP
 \fBof\fR=\fIOFILE\fR
 write to \fIOFILE\fR instead of stdout. If \fIOFILE\fR is '\-' then writes

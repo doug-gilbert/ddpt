@@ -44,7 +44,7 @@
  * Both licenses are considered "open source".
  */
 
-static char * version_str = "0.90 20090204";
+static char * version_str = "0.90 20090205";
 
 #define _XOPEN_SOURCE 600
 #ifndef _GNU_SOURCE
@@ -416,11 +416,13 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strcmp(key, "count")) {
-            dd_count = sg_get_llnum(buf);
-            if (-1LL == dd_count) {
-                fprintf(stderr, ME "bad argument to 'count='\n");
-                return SG_LIB_SYNTAX_ERROR;
-            }
+            if (0 != strcmp("-1", buf)) {
+                dd_count = sg_get_llnum(buf);
+                if (-1LL == dd_count) {
+                    fprintf(stderr, ME "bad argument to 'count='\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+            }   /* 'count=-1' is accepted, means calculate count */
         } else if (0 == strcmp(key, "ibs")) {
             optsp->ibs = sg_get_num(buf);
             if (-1 == optsp->ibs) {
@@ -501,7 +503,7 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
     if ((0 == optsp->ibs) && (0 == optsp->obs)) {
         optsp->ibs = DEF_BLOCK_SIZE;
         optsp->obs = DEF_BLOCK_SIZE;
-        fprintf(stderr, "Assume default block size of %d bytes for both "
+        fprintf(stderr, "Assume block size of %d bytes for both "
                 "input and output\n", DEF_BLOCK_SIZE);
     } else if (0 == optsp->obs)
         optsp->obs = optsp->ibs;
