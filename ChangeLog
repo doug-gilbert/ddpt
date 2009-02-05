@@ -2,7 +2,7 @@ The version number is hardcoded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.90 [20090204] [svn: r39]
+Changelog for ddpt-0.90 [20090205] [svn: r40]
   - copied from sg_dd utility in sg3_utils package
   - change name from sgdd to ddpt (package and utility name)
   - ibs and obs can differ when ((ibs * bpt) % obs) == 0)
