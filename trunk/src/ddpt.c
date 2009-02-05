@@ -160,6 +160,7 @@ static int64_t in_full = 0;
 static int in_partial = 0;
 static int64_t out_full = 0;
 static int out_partial = 0;
+static int out_sparse_active = 0;
 static int64_t out_sparse = 0;
 static int recovered_errs = 0;
 static int unrecovered_errs = 0;
@@ -313,7 +314,7 @@ print_stats(const char * str)
             in_partial);
     fprintf(stderr, "%s%"PRId64"+%d records out\n", str,
             out_full - out_partial, out_partial);
-    if (out_sparse)
+    if (out_sparse_active)
         fprintf(stderr, "%s%"PRId64" bypassed records out\n", str,
                 out_sparse);
     if (recovered_errs > 0)
@@ -1529,8 +1530,10 @@ open_of(const char * outf, int64_t seek, int bs, struct flags_t * ofp,
         int * out_typep, int verbose)
 {
     int outfd, flags, verb;
+    int outf_exists = 0;
     char ebuff[EBUFF_SZ];
     struct sg_simple_inquiry_resp sir;
+    struct stat st;
 
     verb = (verbose ? verbose - 1: 0);
     *out_typep = dd_filetype(outf);
@@ -1570,7 +1573,11 @@ open_of(const char * outf, int64_t seek, int bs, struct flags_t * ofp,
                     outf, sir.vendor, sir.product, sir.revision, ofp->pdt);
     } else if (FT_DEV_NULL & *out_typep)
         outfd = -1; /* don't bother opening */
-    else {
+    else {      /* typically regular file or block device node */
+        if (verbose) {
+            if (0 == stat(outf, &st))
+                outf_exists = 1;
+        }
         flags = ofp->sparing ? (O_RDWR | O_CREAT) : (O_WRONLY | O_CREAT);
         if (ofp->direct)
             flags |= O_DIRECT;
@@ -1590,7 +1597,7 @@ open_of(const char * outf, int64_t seek, int bs, struct flags_t * ofp,
             perror("sg_set_binary_mode");
         if (verbose)
             fprintf(stderr, "        %s output, flags=0x%x\n",
-                    ((O_CREAT & flags) ? "create" : "open"), flags);
+                    (outf_exists ? "open" : "create"), flags);
         if (seek > 0) {
             off_t offset = seek;
 
@@ -1748,7 +1755,7 @@ calc_count(struct opts_t * optsp, int infd, int64_t * in_num_sectp,
 
 /* This is the main copy loop. Attempts to copy 'dd_count' (a static)
  * blocks (size given by bs or ibs) in chunks of optsp->bpt_i blocks.
- * Returns 0 if good.  */
+ * Returns 0 if successful.  */
 static int
 do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
         unsigned char * wrkPos, unsigned char * wrkPos2)
@@ -2171,6 +2178,7 @@ main(int argc, char * argv[])
             fprintf(stderr, "oflag=sparse needs seekable output file\n");
             return SG_LIB_SYNTAX_ERROR;
         }
+        out_sparse_active = 1;
     }
     if (oflag.sparing) {
         if (STDOUT_FILENO == outfd) {
