@@ -4,5 +4,9 @@ pass-through devices have names like '/dev/pass0'. See the
 with the CAM subsystem) and the mapping between "block" devices names
 and the corresponding pass-through device name.
 
+The usual sequence of "./configure ; make ; make install" can be used
+to build and install this package. If that fails try the "./autogen.sh"
+script prior to that sequence.
+
 Doug Gilbert
-19th December 2008
+5th February 2009
