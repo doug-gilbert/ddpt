@@ -1031,8 +1031,9 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
             break;
         case SG_LIB_CAT_MEDIUM_HARD_WITH_INFO:
             if (retries_tmp > 0) {
-                fprintf(stderr, ">>> retrying a pt read, lba=%"PRId64" "
-                        "[0x%"PRIx64"]\n", lba, (uint64_t)lba);
+                fprintf(stderr, ">>> retrying pt read: starting "
+                        "lba=%"PRId64" [0x%"PRIx64"] blocks=%d\n", lba,
+                        (uint64_t)lba, blks);
                 --retries_tmp;
                 ++num_retries;
                 if (unrecovered_errs > 0)
@@ -1053,8 +1054,9 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
             /* fall through */
         default:
             if (retries_tmp > 0) {
-                fprintf(stderr, ">>> retrying a pt read, lba=%"PRId64" "
-                        "[0x%"PRIx64"]\n", lba, (uint64_t)lba);
+                fprintf(stderr, ">>> retrying pt read: starting "
+                        "lba=%"PRId64" [0x%"PRIx64"] blocks=%d\n", lba,
+                        (uint64_t)lba, blks);
                 --retries_tmp;
                 ++num_retries;
                 if (unrecovered_errs > 0)
@@ -1294,8 +1296,9 @@ pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
         } else if (ret < 0)
             break;
         else if (retries_tmp > 0) {
-            fprintf(stderr, ">>> retrying a pt write, lba=%"PRId64" "
-                    "[0x%"PRIx64"]\n", to_block, (uint64_t)to_block);
+            fprintf(stderr, ">>> retrying pt write: starting lba=%"PRId64" "
+                    "[0x%"PRIx64"] blocks=%d\n", to_block,
+                    (uint64_t)to_block, blocks);
             --retries_tmp;
             ++num_retries;
             if (unrecovered_errs > 0)
