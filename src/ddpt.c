@@ -180,6 +180,7 @@ static int max_uas = MAX_UNIT_ATTENTIONS;
 static int max_aborted = MAX_ABORTED_CMDS;
 static int coe_limit = 0;
 static int coe_count = 0;
+static int some_coe_set = 0;
 
 static unsigned char * zeros_buff = NULL;
 
@@ -222,9 +223,6 @@ struct opts_t {
     struct flags_t * iflagp;
     struct flags_t * oflagp;
 };
-
-static struct flags_t iflag;
-static struct flags_t oflag;
 
 static void calc_duration_throughput(int contin);
 static int process_flags(const char * arg, struct flags_t * fp);
@@ -322,7 +320,7 @@ print_stats(const char * str)
         fprintf(stderr, "%s%d recovered errors\n", str, recovered_errs);
     if (num_retries > 0)
         fprintf(stderr, "%s%d retries attempted\n", str, num_retries);
-    if (iflag.coe || oflag.coe || unrecovered_errs)
+    if (some_coe_set || unrecovered_errs)
         fprintf(stderr, "%s%d unrecovered error%s\n", str, unrecovered_errs,
                 ((1 == unrecovered_errs) ? "" : "s"));
     if (unrecovered_errs && (highest_unrecovered >= 0))
@@ -458,7 +456,7 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
             } else
                 strncpy(optsp->out2f, buf, INOUTF_SZ);
         } else if (0 == strcmp(key, "oflag")) {
-            if (process_flags(buf, &oflag)) {
+            if (process_flags(buf, optsp->oflagp)) {
                 fprintf(stderr, ME "bad argument to 'oflag='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
@@ -566,6 +564,8 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
                     "on this platform\n");
 #endif
     }
+    if ((optsp->iflagp->coe > 0) || (optsp->oflagp->coe > 0))
+        some_coe_set = 1;
     return 0;
 }
 
@@ -1031,8 +1031,8 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
             break;
         case SG_LIB_CAT_MEDIUM_HARD_WITH_INFO:
             if (retries_tmp > 0) {
-                fprintf(stderr, ">>> retrying a pt read, lba=0x%"PRIx64"\n",
-                        (uint64_t)lba);
+                fprintf(stderr, ">>> retrying a pt read, lba=%"PRId64" "
+                        "[0x%"PRIx64"]\n", lba, (uint64_t)lba);
                 --retries_tmp;
                 ++num_retries;
                 if (unrecovered_errs > 0)
@@ -1053,8 +1053,8 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
             /* fall through */
         default:
             if (retries_tmp > 0) {
-                fprintf(stderr, ">>> retrying a pt read, lba=0x%"PRIx64"\n",
-                        (uint64_t)lba);
+                fprintf(stderr, ">>> retrying a pt read, lba=%"PRId64" "
+                        "[0x%"PRIx64"]\n", lba, (uint64_t)lba);
                 --retries_tmp;
                 ++num_retries;
                 if (unrecovered_errs > 0)
@@ -1142,6 +1142,7 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
             fprintf(stderr, ">> coe_limit on consecutive reads exceeded\n");
             return SG_LIB_CAT_MEDIUM_HARD;
         }
+        retries_tmp = ifp->retries;
     }
     if (blks_readp)
         *blks_readp = xferred;
@@ -1174,8 +1175,8 @@ err_out:
  * SG_LIB_CAT_ABORTED_COMMAND, -2 -> recoverable (ENOMEM),
  * -1 -> unrecoverable error + others */
 static int
-pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
-         int bs, const struct flags_t * ofp)
+pt_low_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
+             int bs, const struct flags_t * ofp)
 {
     unsigned char wrCmd[MAX_SCSI_CDBSZ];
     unsigned char sense_b[SENSE_BUFF_LEN];
@@ -1200,7 +1201,7 @@ pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
         sg_warnings_strm = stderr;
 
     if (NULL == ptvp) {
-        fprintf(stderr, "pt_write: of_ptvp NULL?\n");
+        fprintf(stderr, "pt_low_write: of_ptvp NULL?\n");
         return -1;
     }
     clear_scsi_pt_obj(ptvp);
@@ -1251,6 +1252,58 @@ pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
     } else
         ret = 0;
 
+    return ret;
+}
+
+
+/* Control pass-through write retries.
+ * 0 -> successful, SG_LIB_SYNTAX_ERROR -> unable to build cdb,
+ * SG_LIB_CAT_UNIT_ATTENTION -> try again, SG_LIB_CAT_NOT_READY,
+ * SG_LIB_CAT_MEDIUM_HARD, SG_LIB_CAT_ABORTED_COMMAND,
+ * -2 -> ENOMEM, -1 other errors */
+static int
+pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
+         int bs, struct flags_t * ofp)
+{
+    int retries_tmp;
+    int first = 1;
+    int ret = 0;
+
+    retries_tmp = ofp->retries;
+    while (1) {
+        ret = pt_low_write(sg_fd, buff, blocks, to_block, bs, ofp);
+        if (0 == ret)
+            break;
+        if ((SG_LIB_CAT_NOT_READY == ret) ||
+            (SG_LIB_SYNTAX_ERROR == ret))
+            break;
+        else if ((SG_LIB_CAT_UNIT_ATTENTION == ret) && first) {
+            if (--max_uas > 0)
+                fprintf(stderr, "Unit attention, continuing (w)\n");
+            else {
+                fprintf(stderr, "Unit attention, too many (w)\n");
+                break;
+            }
+        } else if ((SG_LIB_CAT_ABORTED_COMMAND == ret) && first) {
+            if (--max_aborted > 0)
+                fprintf(stderr, "Aborted command, continuing (w)\n");
+            else {
+                fprintf(stderr, "Aborted command, too many (w)\n");
+                break;
+            }
+        } else if (ret < 0)
+            break;
+        else if (retries_tmp > 0) {
+            fprintf(stderr, ">>> retrying a pt write, lba=%"PRId64" "
+                    "[0x%"PRIx64"]\n", to_block, (uint64_t)to_block);
+            --retries_tmp;
+            ++num_retries;
+            if (unrecovered_errs > 0)
+                --unrecovered_errs;
+        } else
+            break;
+        first = 0;
+    }
     return ret;
 }
 
@@ -1697,7 +1750,7 @@ static int
 do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
         unsigned char * wrkPos, unsigned char * wrkPos2)
 {
-    int ibpt, obpt, res, n, retries_tmp, first;
+    int ibpt, obpt, res, n;
     int bytes_read, bytes_of, bytes_of2;
     int blks_read = 0;
     int iblocks = 0;
@@ -1906,8 +1959,6 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
             } else
                 out_sparse += oblocks;
         } else if (FT_PT & optsp->out_type) {
-            retries_tmp = oflag.retries;
-            first = 1;
             if (NULL == of_ptvp) {
                 of_ptvp = construct_scsi_pt_obj();
                 if (NULL == of_ptvp) {
@@ -1917,41 +1968,8 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
                     break;
                 }
             }
-            while (1) {
-                ret = pt_write(outfd, wrkPos, oblocks, optsp->seek,
-                               optsp->obs, &oflag);
-                if (0 == ret)
-                    break;
-                if ((SG_LIB_CAT_NOT_READY == ret) ||
-                    (SG_LIB_SYNTAX_ERROR == ret))
-                    break;
-                else if ((SG_LIB_CAT_UNIT_ATTENTION == ret) && first) {
-                    if (--max_uas > 0)
-                        fprintf(stderr, "Unit attention, continuing (w)\n");
-                    else {
-                        fprintf(stderr, "Unit attention, too many (w)\n");
-                        break;
-                    }
-                } else if ((SG_LIB_CAT_ABORTED_COMMAND == ret) && first) {
-                    if (--max_aborted > 0)
-                        fprintf(stderr, "Aborted command, continuing (w)\n");
-                    else {
-                        fprintf(stderr, "Aborted command, too many (w)\n");
-                        break;
-                    }
-                } else if (ret < 0)
-                    break;
-                else if (retries_tmp > 0) {
-                    fprintf(stderr, ">>> retrying a pt write, "
-                            "lba=0x%"PRIx64"\n", (uint64_t)optsp->seek);
-                    --retries_tmp;
-                    ++num_retries;
-                    if (unrecovered_errs > 0)
-                        --unrecovered_errs;
-                } else
-                    break;
-                first = 0;
-            }
+            ret = pt_write(outfd, wrkPos, oblocks, optsp->seek, optsp->obs,
+                           optsp->oflagp);
             if (0 != ret) {
                 fprintf(stderr, "pt_write failed,%s seek=%"PRId64"\n",
                         ((-2 == ret) ? " try reducing bpt," : ""),
@@ -2076,6 +2094,8 @@ main(int argc, char * argv[])
     char ebuff[EBUFF_SZ];
     int ret = 0;
     struct opts_t opts;
+    struct flags_t iflag;
+    struct flags_t oflag;
 
     memset(&opts, 0, sizeof(opts));
     opts.bpt_i = DEF_BLOCKS_PER_TRANSFER;
