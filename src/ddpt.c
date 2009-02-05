@@ -2101,6 +2101,8 @@ main(int argc, char * argv[])
     opts.bpt_i = DEF_BLOCKS_PER_TRANSFER;
     opts.out_type = FT_OTHER;
     opts.in_type = FT_OTHER;
+    memset(&iflag, 0, sizeof(iflag));
+    memset(&oflag, 0, sizeof(oflag));
     opts.iflagp = &iflag;
     opts.oflagp = &oflag;
     opts.inf[0] = '\0';
