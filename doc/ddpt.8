@@ -142,7 +142,8 @@ write (i.e. when this option is not given). \fIOFILE2\fR is assumed to be
 a normal file or a fifo (i.e. a named pipe). \fIOFILE2\fR is opened for
 writing and is created if necessary. If \fIOFILE2\fR is a fifo (named pipe)
 then some other command should be consuming that data (e.g. 'md5sum OFILE2'),
-otherwise this utility will block.
+otherwise this utility will block. Both the 'sparse' and 'sparing' flags
+are ignored on \fIOFILE2\fR, so everything read is written to \fIOFILE2\fR.
 .TP
 \fBoflag\fR=\fIFLAGS\fR
 where \fIFLAGS\fR is a comma separated list of one or more flags outlined
