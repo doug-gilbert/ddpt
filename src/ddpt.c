@@ -64,7 +64,6 @@ static char * version_str = "0.90 20090205";
 #include <fcntl.h>
 #define __STDC_FORMAT_MACROS 1
 #include <inttypes.h>
-#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -74,6 +73,7 @@ static char * version_str = "0.90 20090205";
 #endif
 
 #ifdef DDPT_LINUX
+#include <sys/ioctl.h>
 #include <sys/sysmacros.h>
 #include <sys/file.h>
 #include <linux/major.h>
@@ -81,12 +81,28 @@ static char * version_str = "0.90 20090205";
 #endif
 
 #ifdef DDPT_FREEBSD
+#include <sys/ioctl.h>
 #include <libgen.h>
 #include <sys/disk.h>
 #include <sys/filio.h>
 #ifndef SIGINFO
 /* hack to undo hiding by _XOPEN_SOURCE and _GNU_SOURCE */
 #define SIGINFO         29
+#endif
+#endif
+
+#ifdef DDPT_SOLARIS
+#include <sys/ioctl.h>
+#endif
+
+#ifdef DDPT_WIN32
+#ifdef DDPT_MINGW
+#define SIGPIPE 13
+#define SIGQUIT 3
+#define SIGUSR1 25
+#else   /* cygwin */
+#include <sys/ioctl.h>
+
 #endif
 #endif
 
@@ -146,6 +162,9 @@ static char * version_str = "0.90 20090205";
 #endif
 #ifndef O_SYNC
 #define O_SYNC 0
+#endif
+#ifndef O_NONBLOCK
+#define O_NONBLOCK 0
 #endif
 
 #define MIN_RESERVED_SIZE 8192
@@ -291,21 +310,6 @@ usage()
 
 
 static void
-install_handler(int sig_num, void (*sig_handler) (int sig))
-{
-    struct sigaction sigact;
-
-    sigaction(sig_num, NULL, &sigact);
-    if (((SIGINT != sig_num) && (SIGQUIT != sig_num)) ||
-        (sigact.sa_handler != SIG_IGN)) {
-        sigact.sa_handler = sig_handler;
-        sigemptyset(&sigact.sa_mask);
-        sigact.sa_flags = 0;
-        sigaction(sig_num, &sigact, NULL);
-    }
-}
-
-static void
 print_stats(const char * str)
 {
     if (0 != dd_count)
@@ -331,8 +335,36 @@ print_stats(const char * str)
 }
 
 static void
+register_handler(int sig_num, void (*sig_handler) (int sig))
+{
+#ifdef DDPT_MINGW
+    if (signal(sig_num, sig_handler) == SIG_ERR)
+        fprintf(stderr, "register_handler: failed in sig_num=%d\n");
+
+#else
+    struct sigaction sigact;
+
+    sigaction(sig_num, NULL, &sigact);
+    if (((SIGINT != sig_num) && (SIGQUIT != sig_num)) ||
+        (sigact.sa_handler != SIG_IGN)) {
+        sigact.sa_handler = sig_handler;
+        sigemptyset(&sigact.sa_mask);
+        sigact.sa_flags = 0;
+        sigaction(sig_num, &sigact, NULL);
+    }
+#endif
+}
+
+static void
 interrupt_handler(int sig)
 {
+#ifdef DDPT_MINGW
+    fprintf(stderr, "Interrupted by signal,");
+    if (do_time)
+        calc_duration_throughput(0);
+    print_stats("");
+    kill(getpid(), sig);
+#else
     struct sigaction sigact;
 
     sigact.sa_handler = SIG_DFL;
@@ -343,7 +375,8 @@ interrupt_handler(int sig)
     if (do_time)
         calc_duration_throughput(0);
     print_stats("");
-    kill(getpid (), sig);
+    kill(getpid(), sig);
+#endif
 }
 
 static void
@@ -762,6 +795,8 @@ read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
         *num_sect = 0;
     return 0;
 #endif
+
+    return 0;   /* win32 + solaris */
 }
 
 /* Build a SCSI READ or WRITE CDB. */
@@ -2128,13 +2163,13 @@ main(int argc, char * argv[])
     else if (res > 0)
         return res;
 
-    install_handler(SIGINT, interrupt_handler);
-    install_handler(SIGQUIT, interrupt_handler);
-    install_handler(SIGPIPE, interrupt_handler);
-    install_handler(SIGUSR1, siginfo_handler);
+    register_handler(SIGINT, interrupt_handler);
+    register_handler(SIGQUIT, interrupt_handler);
+    register_handler(SIGPIPE, interrupt_handler);
+    register_handler(SIGUSR1, siginfo_handler);
 #ifdef SIGINFO
     if (SIGUSR1 != SIGINFO)
-        install_handler(SIGINFO, siginfo_handler);
+        register_handler(SIGINFO, siginfo_handler);
 #endif
 
     infd = STDIN_FILENO;
@@ -2237,7 +2272,13 @@ main(int argc, char * argv[])
     }
 
     if (opts.iflagp->direct || opts.oflagp->direct) {
-        size_t psz = sysconf(_SC_PAGESIZE); /* was getpagesize() */
+        size_t psz;
+
+#ifdef DDPT_MINGW
+        psz = getpagesize();
+#else
+        psz = sysconf(_SC_PAGESIZE); /* was getpagesize() */
+#endif
 
         wrkBuff = (unsigned char*)calloc(opts.ibs * opts.bpt_i + psz, 1);
         if (0 == wrkBuff) {
