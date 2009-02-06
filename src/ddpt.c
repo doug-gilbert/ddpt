@@ -339,7 +339,7 @@ register_handler(int sig_num, void (*sig_handler) (int sig))
 {
 #ifdef DDPT_MINGW
     if (signal(sig_num, sig_handler) == SIG_ERR)
-        fprintf(stderr, "register_handler: failed in sig_num=%d\n");
+        fprintf(stderr, "register_handler: failed in sig_num=%d\n", sig_num);
 
 #else
     struct sigaction sigact;
@@ -363,7 +363,7 @@ interrupt_handler(int sig)
     if (do_time)
         calc_duration_throughput(0);
     print_stats("");
-    kill(getpid(), sig);
+    /* kill(getpid(), sig); */
 #else
     struct sigaction sigact;
 
