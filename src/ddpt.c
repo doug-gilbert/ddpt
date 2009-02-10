@@ -35,7 +35,7 @@
 
 /*
  * Note: Over 10 years ago the author's first dd implementation was done
- * with Peter Allworth. With various re-implementations of dd since then
+ * with Peter Allworth. With re-implementations of dd variants since then
  * the author has named Peter as a co-copyright holder. It is difficult
  * to decide when to stop doing that.
  * The ddpt utility is a rewritten and extended version of the sg_dd utility
@@ -44,7 +44,7 @@
  * Both licenses are considered "open source".
  */
 
-static char * version_str = "0.90 20090205";
+static char * version_str = "0.90 20090209";
 
 #define _XOPEN_SOURCE 600
 #ifndef _GNU_SOURCE
@@ -1453,7 +1453,7 @@ open_if(const char * inf, int64_t skip, int bs, struct flags_t * ifp,
         fprintf(stderr, " >> Input file type: %s\n",
                 dd_filetype_str(*in_typep, ebuff));
     if (FT_ERROR & *in_typep) {
-        fprintf(stderr, ME "unable access %s\n", inf);
+        fprintf(stderr, ME "unable to access %s\n", inf);
         goto file_err;
     } else if ((FT_BLOCK & *in_typep) && ifp->pt)
         *in_typep |= FT_PT;
