@@ -214,7 +214,7 @@ direct
 causes the O_DIRECT flag to be added to the open of \fIIFILE\fR and/or
 \fIOFILE\fR. This flag requires some memory alignment on IO. Hence user
 memory buffers are aligned to the page size. May have no effect on pt
-devices.
+devices. See open(2) man page.
 .TP
 dpo
 set the DPO bit (disable page out) in SCSI READ and WRITE commands. Not
@@ -225,7 +225,7 @@ on other device users.
 .TP
 excl
 causes the O_EXCL flag to be added to the open of \fIIFILE\fR and/or
-\fIOFILE\fR.
+\fIOFILE\fR. See open(2) man page.
 .TP
 flock
 after opening the associated file (i.e. \fIIFILE\fR and/or \fIOFILE\fR)
@@ -233,7 +233,7 @@ an attempt is made to get an advisory exclusive lock with the flock()
 system call. The flock arguments are "FLOCK_EX | FLOCK_NB" which will
 cause the lock to be taken if available else a "temporarily unavailable"
 error is generated. An exit status of 90 is produced in the latter case
-and no copy is done.
+and no copy is done. See flock(2) man page.
 .TP
 fua
 causes the FUA (force unit access) bit to be set in SCSI READ and/or WRITE
@@ -295,7 +295,7 @@ with the "oflag=" option.
 .TP
 sync
 causes the O_SYNC flag to be added to the open of \fIIFILE\fR and/or
-\fIOFILE\fR.
+\fIOFILE\fR. See open(2) man page.
 .SH NOTES
 Block devices (e.g. /dev/sda and /dev/hda) can be given for \fIIFILE\fR.
 If neither 'iflag=direct' nor 'iflag=pt' is given then normal block IO
@@ -492,4 +492,4 @@ recovery see
 .B sdparm(sdparm)
 .PP
 Additional references:
-.B dd(1), ddrescue(GNU), sg_dd(sg3_utils)
+.B dd(1), ddrescue(GNU), open(2), flock(2), sg_dd(sg3_utils)
