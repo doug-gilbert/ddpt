@@ -44,7 +44,7 @@
  * Both licenses are considered "open source".
  */
 
-static char * version_str = "0.90 20090209";
+static char * version_str = "0.90 20090301";
 
 #define _XOPEN_SOURCE 600
 #ifndef _GNU_SOURCE
@@ -273,16 +273,18 @@ usage()
            "    coe_limit   limit consecutive 'bad' blocks on reads to CL "
            "times\n"
            "                when COE>1 (default: 0 which is no limit)\n"
-           "    count       number of input blocks to copy (def: device "
-           "size)\n"
+           "    count       number of input blocks to copy (def: "
+           "(remaining) \n"
+           "                device size)\n"
            "    ibs         input block size (if given must be same as "
            "'bs=')\n"
            "    if          file or device to read from (def: stdin)\n"
            "    iflag       comma separated list from: [coe,direct,"
            "dpo,excl,flock,\n"
            "                fua,fua_nv,nocache,null,pt,sync]\n"
-           "    obs         output block size ((((BS*BPT)%%OBS)==0) "
+           "    obs         output block size [ (((BS * BPT) %% OBS) == 0) "
            "required\n"
+           "                if OBS is not equal to BS] (def: BS)\n"
            "    of          file or device to write to (def: stdout), "
            "OFILE of '.'\n");
     fprintf(stderr,
@@ -294,7 +296,8 @@ usage()
            "dpo,excl,\n"
            "                flock,fua,fua_nv,nocache,null,pt,sparing,sparse,"
            "ssync,sync]\n"
-           "    retries     retry pt errors RETR times (def: 0)\n"
+           "    retries     retry pass-through (pt) errors RETR times "
+           "(def: 0)\n"
            "    seek        block position to start writing to OFILE\n"
            "    skip        block position to start reading from IFILE\n"
            "    time        0->no timing, 1->time plus calculate "
