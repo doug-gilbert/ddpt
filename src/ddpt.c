@@ -44,7 +44,7 @@
  * Both licenses are considered "open source".
  */
 
-static char * version_str = "0.90 20090301";
+static char * version_str = "0.90 20090308";
 
 #define _XOPEN_SOURCE 600
 #ifndef _GNU_SOURCE
@@ -1458,7 +1458,7 @@ open_if(const char * inf, int64_t skip, int bs, struct flags_t * ifp,
     if (FT_ERROR & *in_typep) {
         fprintf(stderr, ME "unable to access %s\n", inf);
         goto file_err;
-    } else if ((FT_BLOCK & *in_typep) && ifp->pt)
+    } else if (((FT_BLOCK | FT_OTHER) & *in_typep) && ifp->pt)
         *in_typep |= FT_PT;
 
     if (FT_TAPE & *in_typep) {
@@ -1581,7 +1581,7 @@ open_of(const char * outf, int64_t seek, int bs, struct flags_t * ofp,
         fprintf(stderr, " >> Output file type: %s\n",
                 dd_filetype_str(*out_typep, ebuff));
 
-    if ((FT_BLOCK & *out_typep) && ofp->pt)
+    if (((FT_BLOCK | FT_OTHER) & *out_typep) && ofp->pt)
         *out_typep |= FT_PT;
 
     if (FT_TAPE & *out_typep) {
