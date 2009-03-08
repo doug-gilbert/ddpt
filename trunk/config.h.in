@@ -18,8 +18,17 @@
 /* ddpt on Win32 */
 #undef DDPT_WIN32
 
+/* Define to 1 if you have the <linux/bsg.h> header file. */
+#undef HAVE_LINUX_BSG_H
+
+/* Define to 1 if you have the <linux/types.h> header file. */
+#undef HAVE_LINUX_TYPES_H
+
 /* Define to 1 if you have the `posix_fadvise' function. */
 #undef HAVE_POSIX_FADVISE
+
+/* ignore linux bsg */
+#undef IGNORE_LINUX_BSG
 
 /* Name of package */
 #undef PACKAGE
