@@ -1,0 +1,4 @@
+Some suggestions:
+
+  - look into supporting the SCSI EXTENDED COPY command. Syntax should be
+    interesting [20090320]

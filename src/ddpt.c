@@ -44,7 +44,7 @@
  * Both licenses are considered "open source".
  */
 
-static char * version_str = "0.90 20090308";
+static char * version_str = "0.90 20090420";
 
 #define _XOPEN_SOURCE 600
 #ifndef _GNU_SOURCE
@@ -608,7 +608,75 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
     return 0;
 }
 
-/* Attempt to categorize the file type from the given filename. */
+/* Attempt to categorize the file type from the given filename.
+ * Separate version for Windows and Unix. Windows version does some
+ * file name processing. */
+#ifdef DDPT_WIN32
+static int
+dd_filetype(const char * fn)
+{
+    size_t len = strlen(fn);
+
+    if ((1 == len) && ('.' == fn[0]))
+        return FT_DEV_NULL;
+    else if ((3 == len) && (
+             (0 == strcmp("NUL", fn)) || (0 == strcmp("nul", fn))))
+        return FT_DEV_NULL;
+    else if ((len > 4) && (0 == strncmp("\\\\.\\", fn, 4)))
+        return FT_BLOCK;
+    else if ((len > 2) && (
+             (0 == strncmp("PD", fn, 2)) || (0 == strncmp("pd", fn, 2))))
+        return FT_BLOCK;
+    else if ((len > 5) && (
+             (0 == strncmp("CDROM", fn, 5)) || (0 == strncmp("cdrom", fn, 5))))
+        return FT_BLOCK;
+    else if ((len > 4) && (
+             (0 == strncmp("TAPE", fn, 4)) || (0 == strncmp("tape", fn, 4))))
+        return FT_TAPE;
+    else
+        return FT_REG;
+}
+
+static void
+win32_adjust_fns(struct opts_t * optsp)
+{
+    char b[INOUTF_SZ];
+    char * fn_arr[2];
+    char * cp;
+    int k, j, len;
+
+    memset(fn_arr, 0 , sizeof(fn_arr));
+    fn_arr[0] = optsp->inf;
+    fn_arr[1] = optsp->outf;
+    for (k = 0; k < 2; ++k) {
+        cp = fn_arr[k];
+        if (NULL == cp)
+            continue;
+        len = strlen(cp);
+        if (len < 2)
+            continue;
+        if ('\\' == cp[0])
+            continue;
+        for (j = 0; j < len; ++j)
+            b[j] = toupper(cp[j]);
+        b[len] = '\0';
+        if (0 == strncmp(b, "PD", 2)) {
+            strcpy(cp, "\\\\.\\PHYSICALDRIVE");
+            if (b[2])
+                strncat(cp, b + 2, len - 2);
+        } else if ((0 == strncmp(b, "CDROM", 5)) ||
+                   (0 == strncmp(b, "PHYSICALDRIVE", 13)) ||
+                   (0 == strncmp(b, "TAPE", 4))) {
+            strcpy(cp, "\\\\.\\");
+            strncat(cp, b, len);
+        } else if ((2 == len) && isalpha(b[0]) && (':' == b[1])) {
+            strcpy(cp, "\\\\.\\");
+            strncat(cp, b, len);
+        }
+    }
+}
+
+#else /* Unix versions */
 static int
 dd_filetype(const char * filename)
 {
@@ -658,6 +726,7 @@ dd_filetype(const char * filename)
         return FT_FIFO;
     return FT_OTHER;
 }
+#endif
 
 static char *
 dd_filetype_str(int ft, char * buff)
@@ -2175,6 +2244,9 @@ main(int argc, char * argv[])
         register_handler(SIGINFO, siginfo_handler);
 #endif
 
+#ifdef DDPT_WIN32
+    win32_adjust_fns(&opts);
+#endif
     infd = STDIN_FILENO;
     outfd = STDOUT_FILENO;
     opts.iflagp->pdt = -1;
