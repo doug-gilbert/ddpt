@@ -72,7 +72,7 @@ static char * version_str = "0.90 20090420";
 #include "config.h"
 #endif
 
-#ifdef DDPT_LINUX
+#ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
 #include <sys/sysmacros.h>
 #include <sys/file.h>
@@ -80,7 +80,7 @@ static char * version_str = "0.90 20090420";
 #include <linux/fs.h>   /* <sys/mount.h> */
 #endif
 
-#ifdef DDPT_FREEBSD
+#ifdef SG_LIB_FREEBSD
 #include <sys/ioctl.h>
 #include <libgen.h>
 #include <sys/disk.h>
@@ -91,12 +91,12 @@ static char * version_str = "0.90 20090420";
 #endif
 #endif
 
-#ifdef DDPT_SOLARIS
+#ifdef SG_LIB_SOLARIS
 #include <sys/ioctl.h>
 #endif
 
-#ifdef DDPT_WIN32
-#ifdef DDPT_MINGW
+#ifdef SG_LIB_WIN32
+#ifdef SG_LIB_MINGW
 #define SIGPIPE 13
 #define SIGQUIT 3
 #define SIGUSR1 25
@@ -137,7 +137,7 @@ static char * version_str = "0.90 20090420";
 
 #define DEF_TIMEOUT 60000       /* 60,000 millisecs == 60 seconds */
 
-#ifdef DDPT_LINUX
+#ifdef SG_LIB_LINUX
 #ifndef RAW_MAJOR
 #define RAW_MAJOR 255   /*unlikey value */
 #endif
@@ -340,7 +340,7 @@ print_stats(const char * str)
 static void
 register_handler(int sig_num, void (*sig_handler) (int sig))
 {
-#ifdef DDPT_MINGW
+#ifdef SG_LIB_MINGW
     if (signal(sig_num, sig_handler) == SIG_ERR)
         fprintf(stderr, "register_handler: failed in sig_num=%d\n", sig_num);
 
@@ -361,7 +361,7 @@ register_handler(int sig_num, void (*sig_handler) (int sig))
 static void
 interrupt_handler(int sig)
 {
-#ifdef DDPT_MINGW
+#ifdef SG_LIB_MINGW
     fprintf(stderr, "Interrupted by signal,");
     if (do_time)
         calc_duration_throughput(0);
@@ -580,7 +580,7 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
         fprintf(stderr, "ssync flag ignored on input\n");
 
     if (verbose) {      /* report flags used but not supported */
-#ifndef DDPT_LINUX
+#ifndef SG_LIB_LINUX
         if (optsp->iflagp->flock || optsp->oflagp->flock)
             fprintf(stderr, "warning: 'flock' flag not supported on this "
                     "platform\n");
@@ -611,7 +611,7 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
 /* Attempt to categorize the file type from the given filename.
  * Separate version for Windows and Unix. Windows version does some
  * file name processing. */
-#ifdef DDPT_WIN32
+#ifdef SG_LIB_WIN32
 static int
 dd_filetype(const char * fn)
 {
@@ -692,7 +692,7 @@ dd_filetype(const char * filename)
         //         st.st_size);
         return FT_REG;
     } else if (S_ISCHR(st.st_mode)) {
-#ifdef DDPT_LINUX
+#ifdef SG_LIB_LINUX
         /* major() and minor() defined in sys/sysmacros.h */
         if ((MEM_MAJOR == major(st.st_rdev)) &&
             (DEV_NULL_MINOR_NUM == minor(st.st_rdev)))
@@ -702,7 +702,7 @@ dd_filetype(const char * filename)
         if (SCSI_TAPE_MAJOR == major(st.st_rdev))
             return FT_TAPE;
         return FT_OTHER;
-#elif DDPT_FREEBSD
+#elif SG_LIB_FREEBSD
         {
             /* int d_flags;  for FIOFTYPE ioctl see sys/filio.h */
             char s[STR_SZ];
@@ -802,7 +802,7 @@ scsi_read_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
 static int
 read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
 {
-#ifdef DDPT_LINUX
+#ifdef SG_LIB_LINUX
 #ifdef BLKSSZGET
     if ((ioctl(sg_fd, BLKSSZGET, sect_sz) < 0) && (*sect_sz > 0)) {
         perror("BLKSSZGET ioctl error");
@@ -846,7 +846,7 @@ read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
 #endif
 #endif
 
-#ifdef DDPT_FREEBSD
+#ifdef SG_LIB_FREEBSD
 // Why do kernels invent their own typedefs and not use C standards?
 #define u_int unsigned int
     off_t mediasize;
@@ -1608,7 +1608,7 @@ open_if(const char * inf, int64_t skip, int bs, struct flags_t * ifp,
 #endif
         }
     }
-#ifdef DDPT_LINUX
+#ifdef SG_LIB_LINUX
     if (ifp->flock) {
         int res;
 
@@ -1723,7 +1723,7 @@ open_of(const char * outf, int64_t seek, int bs, struct flags_t * ofp,
                         (uint64_t)offset);
         }
     }
-#ifdef DDPT_LINUX
+#ifdef SG_LIB_LINUX
     if (ofp->flock) {
         int res;
 
@@ -2244,7 +2244,7 @@ main(int argc, char * argv[])
         register_handler(SIGINFO, siginfo_handler);
 #endif
 
-#ifdef DDPT_WIN32
+#ifdef SG_LIB_WIN32
     win32_adjust_fns(&opts);
 #endif
     infd = STDIN_FILENO;
@@ -2349,7 +2349,7 @@ main(int argc, char * argv[])
     if (opts.iflagp->direct || opts.oflagp->direct) {
         size_t psz;
 
-#ifdef DDPT_MINGW
+#ifdef SG_LIB_MINGW
         psz = getpagesize();
 #else
         psz = sysconf(_SC_PAGESIZE); /* was getpagesize() */
