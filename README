@@ -13,7 +13,7 @@ and Windows.
 
 Relationship to sg3_utils
 -------------------------
-The sg3_utils (version 1.26) package contains several utilities that mimic
+The sg3_utils (version 1.27) package contains several utilities that mimic
 the standard Unix dd command. Currently those utilities are sg_dd, sgm_dd
 and sgp_dd. Even though most of the other utilities in the sg3_utils package
 are ported to other operating systems, sg_dd and friends are not ported
@@ -25,7 +25,7 @@ the command line syntax which is still based on the distinctive dd command
 command line syntax. Note that the dd command line syntax is unlike any
 other Unix command (probably imported from some IBM OS many years ago).
 
-This package shares code with sg3_utils (version 1.26). With the subversion
+This package shares code with sg3_utils (version 1.27). With the subversion
 revision control system this is done by having ddpt's "include/" and "lib/"
 subdirectories pointing to the correspondingly named directories in the
 sg3_utils package using the "svn:externals" property. These two "external"
@@ -102,4 +102,4 @@ Work in progress ...
 
 
 Douglas Gilbert
-5th February 2009
+22nd April 2009
