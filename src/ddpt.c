@@ -44,7 +44,7 @@
  * Both licenses are considered "open source".
  */
 
-static char * version_str = "0.90 20090420";
+static char * version_str = "0.90 20090423";
 
 #define _XOPEN_SOURCE 600
 #ifndef _GNU_SOURCE
@@ -341,7 +341,7 @@ static void
 register_handler(int sig_num, void (*sig_handler) (int sig))
 {
 #ifdef SG_LIB_MINGW
-    if (signal(sig_num, sig_handler) == SIG_ERR)
+    if ((signal(sig_num, sig_handler) == SIG_ERR) && verbose)
         fprintf(stderr, "register_handler: failed in sig_num=%d\n", sig_num);
 
 #else
@@ -367,6 +367,8 @@ interrupt_handler(int sig)
         calc_duration_throughput(0);
     print_stats("");
     /* kill(getpid(), sig); */
+    sig = sig;
+    exit(127);
 #else
     struct sigaction sigact;
 
@@ -868,7 +870,25 @@ read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
     return 0;
 #endif
 
-    return 0;   /* win32 + solaris */
+#ifdef SG_LIB_WIN32
+    sg_fd = sg_fd;      // silence warning
+    if (verbose)
+        fprintf(stderr, "      how to get block device size in Win32\n");
+    *num_sect = 0;
+    *sect_sz = 0;
+    return -1;
+#endif
+
+#ifdef SG_LIB_SOLARIS
+    sg_fd = sg_fd;      // silence warning
+    if (verbose)
+        fprintf(stderr, "      how to get block device size in Solaris\n");
+    *num_sect = 0;
+    *sect_sz = 0;
+    return -1;
+#endif
+
+    return 0;   /* should have returned by now */
 }
 
 /* Build a SCSI READ or WRITE CDB. */
