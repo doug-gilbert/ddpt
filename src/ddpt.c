@@ -44,7 +44,7 @@
  * Both licenses are considered "open source".
  */
 
-static char * version_str = "0.90 20090423";
+static char * version_str = "0.90 20090428";
 
 #define _XOPEN_SOURCE 600
 #ifndef _GNU_SOURCE
@@ -614,6 +614,45 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
  * Separate version for Windows and Unix. Windows version does some
  * file name processing. */
 #ifdef SG_LIB_WIN32
+
+/* Return 1 for filenames starting with '\', or of the form '<letter>:'
+ * or of the form PD<n>, PHYSICALDRIVE<n>, CDROM<n> or TAPE<n>. The <n>
+ * is one or two digits with no following characters. Otherwise return 0. */
+static int
+is_win_blk_dev(const char * fn)
+{
+    int len, off;
+
+    len = strlen(fn);
+    if ((2 == len) && isalpha(fn[0]) && (':' == fn[1]))
+	return 1;
+    if (len < 3)
+	return 0;
+    if ('\\' == fn[0])
+	return 1;
+    if (0 == strncmp(fn, "PD", 2))
+	off = 2;
+    else if (0 == strncmp(fn, "CDROM", 5))
+	off = 5;
+    else if (0 == strncmp(fn, "PHYSICALDRIVE", 13))
+	off = 13;
+    else if (0 == strncmp(fn, "TAPE", 4))
+	off = 4;
+    else
+	return 0;
+
+    if (len <= off)
+	return 0;
+    if (! isdigit(fn[off]))
+	return 0;
+    if (len == (off + 1))
+	return 1;
+    if ((len != off + 2) || (! isdigit(fn[off + 1])))
+	return 0;
+    else
+	return 1;
+}
+
 static int
 dd_filetype(const char * fn)
 {
@@ -624,17 +663,10 @@ dd_filetype(const char * fn)
     else if ((3 == len) && (
              (0 == strcmp("NUL", fn)) || (0 == strcmp("nul", fn))))
         return FT_DEV_NULL;
+    else if ((len > 8) && (0 == strncmp("\\\\.\\TAPE", fn, 8)))
+        return FT_TAPE;
     else if ((len > 4) && (0 == strncmp("\\\\.\\", fn, 4)))
         return FT_BLOCK;
-    else if ((len > 2) && (
-             (0 == strncmp("PD", fn, 2)) || (0 == strncmp("pd", fn, 2))))
-        return FT_BLOCK;
-    else if ((len > 5) && (
-             (0 == strncmp("CDROM", fn, 5)) || (0 == strncmp("cdrom", fn, 5))))
-        return FT_BLOCK;
-    else if ((len > 4) && (
-             (0 == strncmp("TAPE", fn, 4)) || (0 == strncmp("tape", fn, 4))))
-        return FT_TAPE;
     else
         return FT_REG;
 }
@@ -662,19 +694,16 @@ win32_adjust_fns(struct opts_t * optsp)
         for (j = 0; j < len; ++j)
             b[j] = toupper(cp[j]);
         b[len] = '\0';
-        if (0 == strncmp(b, "PD", 2)) {
-            strcpy(cp, "\\\\.\\PHYSICALDRIVE");
-            if (b[2])
-                strncat(cp, b + 2, len - 2);
-        } else if ((0 == strncmp(b, "CDROM", 5)) ||
-                   (0 == strncmp(b, "PHYSICALDRIVE", 13)) ||
-                   (0 == strncmp(b, "TAPE", 4))) {
-            strcpy(cp, "\\\\.\\");
-            strncat(cp, b, len);
-        } else if ((2 == len) && isalpha(b[0]) && (':' == b[1])) {
-            strcpy(cp, "\\\\.\\");
-            strncat(cp, b, len);
-        }
+	if (is_win_blk_dev(b)) {
+            if (0 == strncmp(b, "PD", 2)) {
+                strcpy(cp, "\\\\.\\PHYSICALDRIVE");
+                if (b[2])
+                    strncat(cp, b + 2, len - 2);
+            } else {
+                strcpy(cp, "\\\\.\\");
+                strncat(cp, b, len);
+	    }
+	}
     }
 }
 
