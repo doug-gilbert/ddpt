@@ -2,7 +2,7 @@ The version number is hardcoded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.90 [20090429] [svn: r55]
+Changelog for ddpt-0.90 [20090523] [svn: r56]
   - copied from sg_dd utility in sg3_utils package
   - change name from sgdd to ddpt (package and utility name)
   - ibs and obs can differ when ((ibs * bpt) % obs) == 0)
@@ -20,6 +20,7 @@ Changelog for ddpt-0.90 [20090429] [svn: r55]
   - drop READ LONG logic (coe=2 and coe=3)
   - add write sparing support (oflag=sparing)
   - add linux bsg support
+  - sg_pt_win32: define WIN32_SPT_DIRECT via config.h
   - calculate COUNT for regular files when required
   - accept 'count=-1' to mean calculate COUNT
   - accept '-V' as synonym for '--version'

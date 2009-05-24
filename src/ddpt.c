@@ -42,9 +42,13 @@
  * found in the sg3_utils package. sg_dd has a GPL (version 2) which has been
  * changed to a somewhat freer FreeBSD style license in ddpt.
  * Both licenses are considered "open source".
+ *
+ * Windows "block" devices, when _not_ accessed via the pass-through, don't
+ * seem to work when POSIX/Unix like IO calls are used (e.g. write()).
+ * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.90 20090428";
+static char * version_str = "0.90 20090523";
 
 #define _XOPEN_SOURCE 600
 #ifndef _GNU_SOURCE
@@ -625,32 +629,32 @@ is_win_blk_dev(const char * fn)
 
     len = strlen(fn);
     if ((2 == len) && isalpha(fn[0]) && (':' == fn[1]))
-	return 1;
+        return 1;
     if (len < 3)
-	return 0;
+        return 0;
     if ('\\' == fn[0])
-	return 1;
+        return 1;
     if (0 == strncmp(fn, "PD", 2))
-	off = 2;
+        off = 2;
     else if (0 == strncmp(fn, "CDROM", 5))
-	off = 5;
+        off = 5;
     else if (0 == strncmp(fn, "PHYSICALDRIVE", 13))
-	off = 13;
+        off = 13;
     else if (0 == strncmp(fn, "TAPE", 4))
-	off = 4;
+        off = 4;
     else
-	return 0;
+        return 0;
 
     if (len <= off)
-	return 0;
+        return 0;
     if (! isdigit(fn[off]))
-	return 0;
+        return 0;
     if (len == (off + 1))
-	return 1;
+        return 1;
     if ((len != off + 2) || (! isdigit(fn[off + 1])))
-	return 0;
+        return 0;
     else
-	return 1;
+        return 1;
 }
 
 static int
@@ -694,7 +698,7 @@ win32_adjust_fns(struct opts_t * optsp)
         for (j = 0; j < len; ++j)
             b[j] = toupper(cp[j]);
         b[len] = '\0';
-	if (is_win_blk_dev(b)) {
+        if (is_win_blk_dev(b)) {
             if (0 == strncmp(b, "PD", 2)) {
                 strcpy(cp, "\\\\.\\PHYSICALDRIVE");
                 if (b[2])
@@ -702,8 +706,8 @@ win32_adjust_fns(struct opts_t * optsp)
             } else {
                 strcpy(cp, "\\\\.\\");
                 strncat(cp, b, len);
-	    }
-	}
+            }
+        }
     }
 }
 
