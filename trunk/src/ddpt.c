@@ -408,12 +408,6 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
     char * buf;
     int k;
 
-    if (argc < 2) {
-        fprintf(stderr,
-                "Won't default both IFILE to stdin _and_ OFILE to stdout\n");
-        fprintf(stderr, "For more information use '--help'\n");
-        return SG_LIB_SYNTAX_ERROR;
-    }
     for (k = 1; k < argc; ++k) {
         if (argv[k]) {
             strncpy(str, argv[k], STR_SZ);
@@ -546,8 +540,9 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
     if ((0 == optsp->ibs) && (0 == optsp->obs)) {
         optsp->ibs = DEF_BLOCK_SIZE;
         optsp->obs = DEF_BLOCK_SIZE;
-        fprintf(stderr, "Assume block size of %d bytes for both "
-                "input and output\n", DEF_BLOCK_SIZE);
+        if (optsp->inf[0])
+            fprintf(stderr, "Assume block size of %d bytes for both "
+                    "input and output\n", DEF_BLOCK_SIZE);
     } else if (0 == optsp->obs)
         optsp->obs = optsp->ibs;
     else if (0 == optsp->ibs)
@@ -2313,7 +2308,7 @@ main(int argc, char * argv[])
                 return -infd;
         }
     } else {
-        fprintf(stderr, "'if=IFILE' option must be given. To use stdin as "
+        fprintf(stderr, "'if=IFILE' option must be given. For stdin as "
                 "input use 'if=-'\n");
         return SG_LIB_SYNTAX_ERROR;
     }
