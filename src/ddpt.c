@@ -48,7 +48,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.90 20090523";
+static char * version_str = "0.90 20090607";
 
 #define _XOPEN_SOURCE 600
 #ifndef _GNU_SOURCE
@@ -256,7 +256,7 @@ static void
 usage()
 {
     fprintf(stderr, "Usage: "
-           "ddpt  [bs=BS] [count=COUNT] [ibs=BS] [if=IFILE] [iflag=FLAGS]\n"
+           "ddpt  [bs=BS] [count=COUNT] [ibs=BS] if=IFILE [iflag=FLAGS]\n"
            "             [obs=OBS] [of=OFILE] [oflag=FLAGS] [seek=SEEK] "
            "[skip=SKIP]\n"
            "             [--help] [--version]\n\n"
@@ -282,14 +282,15 @@ usage()
            "                device size)\n"
            "    ibs         input block size (if given must be same as "
            "'bs=')\n"
-           "    if          file or device to read from (def: stdin)\n"
+           "    if          file or device to read from (for stdin use "
+           "'-')\n"
            "    iflag       comma separated list from: [coe,direct,"
            "dpo,excl,flock,\n"
            "                fua,fua_nv,nocache,null,pt,sync]\n"
            "    obs         output block size [ (((BS * BPT) %% OBS) == 0) "
            "required\n"
            "                if OBS is not equal to BS] (def: BS)\n"
-           "    of          file or device to write to (def: stdout), "
+           "    of          file or device to write to (def: /dev/null), "
            "OFILE of '.'\n");
     fprintf(stderr,
            "                treated as /dev/null\n"
@@ -2300,18 +2301,28 @@ main(int argc, char * argv[])
 #ifdef SG_LIB_WIN32
     win32_adjust_fns(&opts);
 #endif
-    infd = STDIN_FILENO;
-    outfd = STDOUT_FILENO;
     opts.iflagp->pdt = -1;
     opts.oflagp->pdt = -1;
-    if (opts.inf[0] && ('-' != opts.inf[0])) {
-        infd = open_if(opts.inf, opts.skip, opts.ibs, opts.iflagp,
-                       &opts.in_type, verbose);
-        if (infd < 0)
-            return -infd;
+    if (opts.inf[0]) {
+        if ('-' == opts.inf[0])
+            infd = STDIN_FILENO;
+        else {
+            infd = open_if(opts.inf, opts.skip, opts.ibs, opts.iflagp,
+                           &opts.in_type, verbose);
+            if (infd < 0)
+                return -infd;
+        }
+    } else {
+        fprintf(stderr, "'if=IFILE' option must be given. To use stdin as "
+                "input use 'if=-'\n");
+        return SG_LIB_SYNTAX_ERROR;
     }
 
-    if (opts.outf[0] && ('-' != opts.outf[0])) {
+    if ('\0' == opts.outf[0])
+        strcpy(opts.outf, "."); /* treat no 'of=OFILE' option as /dev/null */
+    if ('-' == opts.outf[0])
+        outfd = STDOUT_FILENO;
+    else {
         outfd = open_of(opts.outf, opts.seek, opts.obs, opts.oflagp,
                         &opts.out_type, verbose);
         if (outfd < -1)
@@ -2413,6 +2424,7 @@ main(int argc, char * argv[])
             fprintf(stderr, "Not enough user memory for aligned usage\n");
             return SG_LIB_CAT_OTHER;
         }
+        // posix_memalign() could be a better way to do this
         wrkPos = (unsigned char *)(((unsigned long)wrkBuff + psz - 1) &
                                    (~(psz - 1)));
         if (opts.oflagp->sparing) {
