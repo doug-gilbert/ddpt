@@ -1,11 +1,11 @@
-.TH DDPT "8" "February 2009" "ddpt\-0.90" DDPT
+.TH DDPT "8" "June 2009" "ddpt\-0.90" DDPT
 .SH NAME
 ddpt \- copies data to and from files and storage devices. Specialized for
 pass-through devices that understand the SCSI command set.
 .SH SYNOPSIS
 .B ddpt
 [\fIbs=BS\fR] [\fIconv=CONV\fR] [\fIcount=COUNT\fR] [\fIibs=BS\fR]
-[\fIif=IFILE\fR] [\fIiflag=FLAGS\fR] [\fIobs=BS\fR] [\fIof=OFILE\fR]
+\fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIobs=BS\fR] [\fIof=OFILE\fR]
 [\fIoflag=FLAGS\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fI\-\-help\fR]
 [\fI\-\-version\fR]
 .PP
@@ -111,9 +111,9 @@ where \fIBS\fR is the \fIIFILE\fR block size. If given it must be the same
 as \fIBS\fR given to 'bs=' option.
 .TP
 \fBif\fR=\fIIFILE\fR
-read from \fIIFILE\fR instead of stdin. If \fIIFILE\fR is '\-' then stdin
-is read. Starts reading at the beginning of \fIIFILE\fR unless \fISKIP\fR
-is given.
+read from \fIIFILE\fR. This option must be given (i.e. it is mandatory). If
+\fIIFILE\fR is '\-' then stdin is read. Starts reading at the beginning of
+\fIIFILE\fR unless \fISKIP\fR is given.
 .TP
 \fBiflag\fR=\fIFLAGS\fR
 where \fIFLAGS\fR is a comma separated list of one or more flags outlined
@@ -129,9 +129,9 @@ multiple of \fIOBS\fR. If \fIof2=OFILE2\fR is given then \fIOBS\fR is
 its block size as well.
 .TP
 \fBof\fR=\fIOFILE\fR
-write to \fIOFILE\fR instead of stdout. If \fIOFILE\fR is '\-' then writes
-to stdout.  If \fIOFILE\fR is /dev/null then no actual writes are performed.
-If \fIOFILE\fR is '.' (period) then it is treated the same way as
+write to \fIOFILE\fR. The default value is /dev/null . If \fIOFILE\fR is '\-'
+then writes to stdout. If \fIOFILE\fR is /dev/null then no actual writes are
+performed. If \fIOFILE\fR is '.' (period) then it is treated the same way as
 /dev/null (this is a shorthand notation). If \fIOFILE\fR exists then it
 is _not_ truncated; it is overwritten from the start of \fIOFILE\fR
 unless 'oflag=append' or \fISEEK\fR is given.
