@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2009 Douglas Gilbert.
+ * Copyright (c) 2008-2010 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -34,10 +34,6 @@
  */
 
 /*
- * Note: Over 10 years ago the author's first dd implementation was done
- * with Peter Allworth. With re-implementations of dd variants since then
- * the author has named Peter as a co-copyright holder. It is difficult
- * to decide when to stop doing that.
  * The ddpt utility is a rewritten and extended version of the sg_dd utility
  * found in the sg3_utils package. sg_dd has a GPL (version 2) which has been
  * changed to a somewhat freer FreeBSD style license in ddpt.
@@ -48,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.90 20090607";
+static char * version_str = "0.90 20100202";
 
 #define _XOPEN_SOURCE 600
 #ifndef _GNU_SOURCE
@@ -76,6 +72,8 @@ static char * version_str = "0.90 20090607";
 #include "config.h"
 #endif
 
+#include "ddpt.h"
+
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
 #include <sys/sysmacros.h>
@@ -89,10 +87,6 @@ static char * version_str = "0.90 20090607";
 #include <libgen.h>
 #include <sys/disk.h>
 #include <sys/filio.h>
-#ifndef SIGINFO
-/* hack to undo hiding by _XOPEN_SOURCE and _GNU_SOURCE */
-#define SIGINFO         29
-#endif
 #endif
 
 #ifdef SG_LIB_SOLARIS
@@ -100,13 +94,9 @@ static char * version_str = "0.90 20090607";
 #endif
 
 #ifdef SG_LIB_WIN32
-#ifdef SG_LIB_MINGW
-#define SIGPIPE 13
-#define SIGQUIT 3
-#define SIGUSR1 25
-#else   /* cygwin */
+#ifndef SG_LIB_MINGW
+/* cygwin */
 #include <sys/ioctl.h>
-
 #endif
 #endif
 
@@ -114,67 +104,6 @@ static char * version_str = "0.90 20090607";
 #include "sg_cmds_basic.h"
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
-
-
-#define ME "ddpt: "
-
-
-#define STR_SZ 1024
-#define INOUTF_SZ 512
-#define EBUFF_SZ 512
-
-#define DEF_BLOCK_SIZE 512
-#define DEF_BLOCKS_PER_TRANSFER 128     /* of input */
-#define DEF_BLOCKS_PER_2048TRANSFER 32
-#define DEF_SCSI_CDBSZ 10
-#define MAX_SCSI_CDBSZ 16
-
-#define DEF_MODE_CDB_SZ 10
-#define DEF_MODE_RESP_LEN 252
-#define RW_ERR_RECOVERY_MP 1
-#define CACHING_MP 8
-#define CONTROL_MP 0xa
-
-#define SENSE_BUFF_LEN 32       /* Arbitrary, could be larger */
-#define READ_CAP_REPLY_LEN 8
-#define RCAP16_REPLY_LEN 32
-
-#define DEF_TIMEOUT 60000       /* 60,000 millisecs == 60 seconds */
-
-#ifdef SG_LIB_LINUX
-#ifndef RAW_MAJOR
-#define RAW_MAJOR 255   /*unlikey value */
-#endif
-#define DEV_NULL_MINOR_NUM 3
-#endif
-
-#define SG_LIB_FLOCK_ERR 90
-
-#define FT_OTHER 1              /* filetype is unknown (unexpected) */
-#define FT_PT 2                 /* filetype is a device that SCSI */
-                                /* commands can be sent via a pass-through */
-#define FT_REG 4                /* a normal (regular) file */
-#define FT_DEV_NULL 8           /* either "/dev/null" or "." as filename */
-#define FT_TAPE 16              /* filetype is tape style device */
-#define FT_BLOCK 32             /* filetype is block device */
-#define FT_FIFO 64              /* filetype is a fifo (name pipe) */
-#define FT_ERROR 128            /* couldn't "stat" file */
-
-/* If O_DIRECT or O_SYNC not supported then define harmlessly */
-#ifndef O_DIRECT
-#define O_DIRECT 0
-#endif
-#ifndef O_SYNC
-#define O_SYNC 0
-#endif
-#ifndef O_NONBLOCK
-#define O_NONBLOCK 0
-#endif
-
-#define MIN_RESERVED_SIZE 8192
-
-#define MAX_UNIT_ATTENTIONS 10
-#define MAX_ABORTED_CMDS 256
 
 
 static int64_t dd_count = -1;   /* of input blocks */
@@ -208,45 +137,6 @@ static int some_coe_set = 0;
 
 static unsigned char * zeros_buff = NULL;
 
-
-struct flags_t {
-    int append;
-    int cdbsz;
-    int coe;
-    int direct;
-    int dpo;
-    int excl;
-    int flock;
-    int fua;
-    int fua_nv;
-    int pdt;
-    int nocache;
-    int pt;
-    int retries;
-    int sparing;
-    int sparse;
-    int ssync;
-    int sync;
-};
-
-struct opts_t {
-    int64_t skip;
-    int64_t seek;
-    int64_t out2_off;
-    int ibs;
-    int obs;
-    int bpt_i;          /* blocks (of input) per transfer */
-    int bpt_given;
-    char inf[INOUTF_SZ];
-    int in_type;
-    char outf[INOUTF_SZ];
-    char out2f[INOUTF_SZ];
-    int out_type;
-    int out2_type;
-    int cdbsz_given;
-    struct flags_t * iflagp;
-    struct flags_t * oflagp;
-};
 
 static void calc_duration_throughput(int contin);
 static int process_flags(const char * arg, struct flags_t * fp);
@@ -613,102 +503,9 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
 /* Attempt to categorize the file type from the given filename.
  * Separate version for Windows and Unix. Windows version does some
  * file name processing. */
-#ifdef SG_LIB_WIN32
+#ifndef SG_LIB_WIN32
 
-/* Return 1 for filenames starting with '\', or of the form '<letter>:'
- * or of the form PD<n>, PHYSICALDRIVE<n>, CDROM<n> or TAPE<n>. The <n>
- * is one or two digits with no following characters. Otherwise return 0. */
-static int
-is_win_blk_dev(const char * fn)
-{
-    int len, off;
-
-    len = strlen(fn);
-    if ((2 == len) && isalpha(fn[0]) && (':' == fn[1]))
-        return 1;
-    if (len < 3)
-        return 0;
-    if ('\\' == fn[0])
-        return 1;
-    if (0 == strncmp(fn, "PD", 2))
-        off = 2;
-    else if (0 == strncmp(fn, "CDROM", 5))
-        off = 5;
-    else if (0 == strncmp(fn, "PHYSICALDRIVE", 13))
-        off = 13;
-    else if (0 == strncmp(fn, "TAPE", 4))
-        off = 4;
-    else
-        return 0;
-
-    if (len <= off)
-        return 0;
-    if (! isdigit(fn[off]))
-        return 0;
-    if (len == (off + 1))
-        return 1;
-    if ((len != off + 2) || (! isdigit(fn[off + 1])))
-        return 0;
-    else
-        return 1;
-}
-
-static int
-dd_filetype(const char * fn)
-{
-    size_t len = strlen(fn);
-
-    if ((1 == len) && ('.' == fn[0]))
-        return FT_DEV_NULL;
-    else if ((3 == len) && (
-             (0 == strcmp("NUL", fn)) || (0 == strcmp("nul", fn))))
-        return FT_DEV_NULL;
-    else if ((len > 8) && (0 == strncmp("\\\\.\\TAPE", fn, 8)))
-        return FT_TAPE;
-    else if ((len > 4) && (0 == strncmp("\\\\.\\", fn, 4)))
-        return FT_BLOCK;
-    else
-        return FT_REG;
-}
-
-static void
-win32_adjust_fns(struct opts_t * optsp)
-{
-    char b[INOUTF_SZ];
-    char * fn_arr[2];
-    char * cp;
-    int k, j, len;
-
-    memset(fn_arr, 0 , sizeof(fn_arr));
-    fn_arr[0] = optsp->inf;
-    fn_arr[1] = optsp->outf;
-    for (k = 0; k < 2; ++k) {
-        cp = fn_arr[k];
-        if (NULL == cp)
-            continue;
-        len = strlen(cp);
-        if (len < 2)
-            continue;
-        if ('\\' == cp[0])
-            continue;
-        for (j = 0; j < len; ++j)
-            b[j] = toupper(cp[j]);
-        b[len] = '\0';
-        if (is_win_blk_dev(b)) {
-            if (0 == strncmp(b, "PD", 2)) {
-                strcpy(cp, "\\\\.\\PHYSICALDRIVE");
-                if (b[2])
-                    strncat(cp, b + 2, len - 2);
-            } else {
-                strcpy(cp, "\\\\.\\");
-                strncat(cp, b, len);
-            }
-        }
-    }
-}
-
-#else /* Unix versions */
-static int
+int
 dd_filetype(const char * filename)
 {
     struct stat st;
@@ -1910,6 +1707,46 @@ calc_count(struct opts_t * optsp, int infd, int64_t * in_num_sectp,
         *out_num_sectp -= optsp->seek;
     return optsp->out_type;
 }
+        
+#ifdef HAVE_POSIX_FADVISE
+static void
+do_fadvise(const struct opts_t * optsp, int infd, int bytes_read,
+           int outfd, int bytes_of, int out2fd, int bytes_of2)
+{
+    int rt, in_valid, out2_valid, out_valid;
+
+    in_valid = ((FT_REG == optsp->in_type) ||
+                (FT_BLOCK == optsp->in_type));
+    out2_valid = ((FT_REG == optsp->out2_type) ||
+                  (FT_BLOCK == optsp->out2_type));
+    out_valid = ((FT_REG == optsp->out_type) ||
+                 (FT_BLOCK == optsp->out_type));
+    if (optsp->iflagp->nocache && (bytes_read > 0) && in_valid) {
+        rt = posix_fadvise(infd, 0, (optsp->skip * optsp->ibs) +
+                                    bytes_read, POSIX_FADV_DONTNEED);
+        // rt = posix_fadvise(infd, (optsp->skip * optsp->ibs),
+                           // bytes_read, POSIX_FADV_DONTNEED);
+        // rt = posix_fadvise(infd, 0, 0, POSIX_FADV_DONTNEED);
+        if (rt)         /* returns error as result */
+            fprintf(stderr, "posix_fadvise on read, skip="
+                    "%"PRId64" ,err=%d\n", optsp->skip, rt);
+    }
+    if ((optsp->oflagp->nocache & 2) && (bytes_of2 > 0) &&
+        out2_valid) {
+        rt = posix_fadvise(out2fd, 0, 0, POSIX_FADV_DONTNEED);
+        if (rt)
+            fprintf(stderr, "posix_fadvise on of2, seek="
+                    "%"PRId64" ,err=%d\n", optsp->seek, rt);
+    }
+    if ((optsp->oflagp->nocache & 1) && (bytes_of > 0) && out_valid) {
+        rt = posix_fadvise(outfd, 0, 0, POSIX_FADV_DONTNEED);
+        if (rt)
+            fprintf(stderr, "posix_fadvise on output, seek="
+                    "%"PRId64" ,err=%d\n", optsp->seek, rt);
+    }
+}
+#endif
+
 
 /* This is the main copy loop. Attempts to copy 'dd_count' (a static)
  * blocks (size given by bs or ibs) in chunks of optsp->bpt_i blocks.
@@ -2177,39 +2014,8 @@ do_copy(struct opts_t * optsp, int infd, int outfd, int out2fd,
             }
         }
 #ifdef HAVE_POSIX_FADVISE
-        {
-            int rt, in_valid, out2_valid, out_valid;
-
-            in_valid = ((FT_REG == optsp->in_type) ||
-                        (FT_BLOCK == optsp->in_type));
-            out2_valid = ((FT_REG == optsp->out2_type) ||
-                          (FT_BLOCK == optsp->out2_type));
-            out_valid = ((FT_REG == optsp->out_type) ||
-                         (FT_BLOCK == optsp->out_type));
-            if (optsp->iflagp->nocache && (bytes_read > 0) && in_valid) {
-                rt = posix_fadvise(infd, 0, (optsp->skip * optsp->ibs) +
-                                            bytes_read, POSIX_FADV_DONTNEED);
-                // rt = posix_fadvise(infd, (optsp->skip * optsp->ibs),
-                                   // bytes_read, POSIX_FADV_DONTNEED);
-                // rt = posix_fadvise(infd, 0, 0, POSIX_FADV_DONTNEED);
-                if (rt)         /* returns error as result */
-                    fprintf(stderr, "posix_fadvise on read, skip="
-                            "%"PRId64" ,err=%d\n", optsp->skip, rt);
-            }
-            if ((optsp->oflagp->nocache & 2) && (bytes_of2 > 0) &&
-                out2_valid) {
-                rt = posix_fadvise(out2fd, 0, 0, POSIX_FADV_DONTNEED);
-                if (rt)
-                    fprintf(stderr, "posix_fadvise on of2, seek="
-                            "%"PRId64" ,err=%d\n", optsp->seek, rt);
-            }
-            if ((optsp->oflagp->nocache & 1) && (bytes_of > 0) && out_valid) {
-                rt = posix_fadvise(outfd, 0, 0, POSIX_FADV_DONTNEED);
-                if (rt)
-                    fprintf(stderr, "posix_fadvise on output, seek="
-                            "%"PRId64" ,err=%d\n", optsp->seek, rt);
-            }
-        }
+        do_fadvise(optsp, infd, bytes_read, outfd, bytes_of, out2fd,
+                   bytes_of2);
 #endif
         if (dd_count > 0)
             dd_count -= iblocks;
@@ -2310,6 +2116,7 @@ main(int argc, char * argv[])
     } else {
         fprintf(stderr, "'if=IFILE' option must be given. For stdin as "
                 "input use 'if=-'\n");
+        fprintf(stderr, "For more information use '--help'\n");
         return SG_LIB_SYNTAX_ERROR;
     }
 

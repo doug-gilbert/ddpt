@@ -6,6 +6,8 @@ AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
 # AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W -pedantic -std=c99
 
 ddpt_SOURCES =		ddpt.c	\
+			ddpt.h	\
+			ddpt_win32.c	\
 			../lib/sg_lib.c	\
 			../include/sg_lib.h	\
 			../lib/sg_lib_data.c	\
