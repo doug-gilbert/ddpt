@@ -45,7 +45,7 @@ CONFIG_CLEAN_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)"
 binPROGRAMS_INSTALL = $(INSTALL_PROGRAM)
 PROGRAMS = $(bin_PROGRAMS)
-am_ddpt_OBJECTS = ddpt.$(OBJEXT) sg_lib.$(OBJEXT) \
+am_ddpt_OBJECTS = ddpt.$(OBJEXT) ddpt_win32.$(OBJEXT) sg_lib.$(OBJEXT) \
 	sg_lib_data.$(OBJEXT) sg_cmds_basic.$(OBJEXT) \
 	sg_cmds_extra.$(OBJEXT) sg_pt_common.$(OBJEXT)
 ddpt_OBJECTS = $(am_ddpt_OBJECTS)
@@ -160,6 +160,8 @@ top_srcdir = @top_srcdir@
 AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W
 # AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W -pedantic -std=c99
 ddpt_SOURCES = ddpt.c	\
+			ddpt.h	\
+			ddpt_win32.c	\
 			../lib/sg_lib.c	\
 			../include/sg_lib.h	\
 			../lib/sg_lib_data.c	\
@@ -248,6 +250,7 @@ distclean-compile:
 	-rm -f *.tab.c
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt_win32.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sg_cmds_basic.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sg_cmds_extra.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sg_lib.Po@am__quote@
