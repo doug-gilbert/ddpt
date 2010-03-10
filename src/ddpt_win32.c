@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2010 Douglas Gilbert.
+ * Copyright (c) 2010 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -60,6 +60,8 @@
 #include "ddpt.h"
 
 #ifdef SG_LIB_WIN32
+#include <windows.h>
+#include <winioctl.h>
 #ifndef SG_LIB_MINGW
 /* cygwin */
 #include <sys/ioctl.h>
@@ -165,6 +167,76 @@ win32_adjust_fns(struct opts_t * optsp)
             }
         }
     }
+}
+
+/* Returns 0 on success */
+int
+win32_open_if(struct opts_t * optsp, int verbose)
+{
+    DISK_GEOMETRY g;
+    DWORD count;
+
+    optsp->ib_fh = CreateFile(optsp->inf,
+                              GENERIC_READ | GENERIC_WRITE,
+                              FILE_SHARE_WRITE | FILE_SHARE_READ,
+                              NULL,
+                              OPEN_EXISTING,
+                              0,
+                              NULL);
+    if (INVALID_HANDLE_VALUE == optsp->ib_fh) {
+        if (verbose)
+            fprintf(stderr, "CreateFile(in) error=%ld\n", GetLastError());
+        return 1;
+    }
+    if (0 == DeviceIoControl(optsp->ib_fh, IOCTL_DISK_GET_DRIVE_GEOMETRY,
+                             NULL, 0, &g, sizeof(g), &count, NULL)) {
+        if (verbose)
+            fprintf(stderr, "DeviceIoControl(in, geometry) error=%ld\n",
+                    GetLastError());
+        return 1;
+    }
+    if ((int)g.BytesPerSector != optsp->ibs) {
+        fprintf(stderr, "Specified in block size (%d) doesn't match device "
+                "geometry block size: %d\n", optsp->ibs,
+                (int)g.BytesPerSector);
+        return 1;
+    }
+    return 0;
+}
+
+/* Returns 0 on success */
+int
+win32_open_of(struct opts_t * optsp, int verbose)
+{
+    DISK_GEOMETRY g;
+    DWORD count;
+
+    optsp->ob_fh = CreateFile(optsp->outf,
+                              GENERIC_READ | GENERIC_WRITE,
+                              FILE_SHARE_WRITE | FILE_SHARE_READ,
+                              NULL,
+                              OPEN_EXISTING,
+                              0,
+                              NULL);
+    if (INVALID_HANDLE_VALUE == optsp->ob_fh) {
+        if (verbose)
+            fprintf(stderr, "CreateFile(out) error=%ld\n", GetLastError());
+        return 1;
+    }
+    if (0 == DeviceIoControl(optsp->ob_fh, IOCTL_DISK_GET_DRIVE_GEOMETRY,
+                             NULL, 0, &g, sizeof(g), &count, NULL)) {
+        if (verbose)
+            fprintf(stderr, "DeviceIoControl(out, geometry) error=%ld\n",
+                    GetLastError());
+        return 1;
+    }
+    if ((int)g.BytesPerSector != optsp->obs) {
+        fprintf(stderr, "Specified out block size (%d) doesn't match device "
+                "geometry block size: %d\n", optsp->obs,
+                (int)g.BytesPerSector);
+        return 1;
+    }
+    return 0;
 }
 
 #endif
