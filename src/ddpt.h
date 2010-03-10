@@ -21,6 +21,10 @@
 #include "config.h"
 #endif
 
+#ifdef SG_LIB_WIN32
+#include <windows.h>
+#endif
+
 #ifdef SG_LIB_FREEBSD
 #ifndef SIGINFO
 /* hack to undo hiding by _XOPEN_SOURCE and _GNU_SOURCE */
@@ -127,17 +131,26 @@ struct opts_t {
     int bpt_given;
     char inf[INOUTF_SZ];
     int in_type;
+    int infd;
     char outf[INOUTF_SZ];
     char out2f[INOUTF_SZ];
     int out_type;
+    int outfd;
     int out2_type;
+    int out2fd;
     int cdbsz_given;
     struct flags_t * iflagp;
     struct flags_t * oflagp;
+#ifdef SG_LIB_WIN32
+    HANDLE ib_fh;
+    HANDLE ob_fh;
+#endif
 };
 
 
 extern int dd_filetype(const char * fn);
 extern void win32_adjust_fns(struct opts_t * optsp);
+extern int win32_open_if(struct opts_t * optsp, int verbose);
+extern int win32_open_of(struct opts_t * optsp, int verbose);
 
 #endif
