@@ -239,4 +239,78 @@ win32_open_of(struct opts_t * optsp, int verbose)
     return 0;
 }
 
+/* Returns 0 on success */
+int
+win32_set_file_pos(struct opts_t * optsp, int if0_of1, int64_t pos,
+                   int verbose)
+{
+    LONG lo32 = pos & 0xffffffff;
+    LONG hi32 = (pos >> 32) & 0xffffffff;
+    DWORD err;
+    DWORD lo_ret;
+    HANDLE fh;
+
+    fh = if0_of1 ? optsp->ob_fh : optsp->ib_fh;
+    lo_ret = SetFilePointer(fh, lo32, &hi32, FILE_BEGIN);
+    if ((INVALID_SET_FILE_POINTER == lo_ret) &&
+	(NO_ERROR != (err = GetLastError()))) {
+        if (verbose)
+            fprintf(stderr, "SetFilePointer failed to set "
+                    "pos=[0x%"PRIx64"], error=%ld\n", pos, err);
+        return 1;
+    }
+    return 0;
+}
+
+/* Returns number read, -1 on error */
+int
+win32_block_read(struct opts_t * optsp, unsigned char * bp, int num_bytes,
+                 int verbose)
+{
+    DWORD num = num_bytes;
+    DWORD howMany;
+
+    if (ReadFile(optsp->ib_fh, bp, num, &howMany, NULL) == 0) {
+        if (verbose)
+            fprintf(stderr, "ReadFile failed, error=%ld\n",
+                    GetLastError());
+        return -1;
+    }
+    return (int)howMany;
+}
+
+/* Returns number read, -1 on error */
+int
+win32_block_read_from_of(struct opts_t * optsp, unsigned char * bp,
+                         int num_bytes, int verbose)
+{
+    DWORD num = num_bytes;
+    DWORD howMany;
+
+    if (ReadFile(optsp->ob_fh, bp, num, &howMany, NULL) == 0) {
+        if (verbose)
+            fprintf(stderr, "ReadFile failed, error=%ld\n",
+                    GetLastError());
+        return -1;
+    }
+    return (int)howMany;
+}
+
+/* Returns number written, -1 on error */
+int
+win32_block_write(struct opts_t * optsp, const unsigned char * bp,
+                  int num_bytes, int verbose)
+{
+    DWORD num = num_bytes;
+    DWORD howMany;
+
+    if (WriteFile(optsp->ob_fh, bp, num, &howMany, NULL) == 0) {
+        if (verbose)
+            fprintf(stderr, "WriteFile failed, error=%ld\n",
+                    GetLastError());
+        return -1;
+    }
+    return (int)howMany;
+}
+
 #endif

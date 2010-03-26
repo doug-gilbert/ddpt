@@ -148,9 +148,27 @@ struct opts_t {
 };
 
 
+#ifdef SG_LIB_WIN32
 extern int dd_filetype(const char * fn);
 extern void win32_adjust_fns(struct opts_t * optsp);
 extern int win32_open_if(struct opts_t * optsp, int verbose);
 extern int win32_open_of(struct opts_t * optsp, int verbose);
+extern int win32_set_file_pos(struct opts_t * optsp, int if0_of1,
+                              int64_t pos, int verbose);
+extern int win32_block_read(struct opts_t * optsp, unsigned char * bp,
+                            int num_bytes, int verbose);
+extern int win32_block_read_from_of(struct opts_t * optsp, unsigned char * bp,
+                                    int num_bytes, int verbose);
+extern int win32_block_write(struct opts_t * optsp, const unsigned char * bp,
+                             int num_bytes, int verbose);
+
+#ifdef SG_LIB_MINGW
+/* Without this gives a warning about implicit declaration.
+ * This stop the warning but if getpagesize() appears may need to
+ * remove this declaration. */
+extern int getpagesize(void);
+#endif
+
+#endif
 
 #endif
