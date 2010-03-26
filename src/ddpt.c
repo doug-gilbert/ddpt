@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.90 20100309";
+static char * version_str = "0.90 20100323";
 
 #define _XOPEN_SOURCE 600
 #ifndef _GNU_SOURCE
@@ -505,7 +505,7 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
  * file name processing. */
 #ifndef SG_LIB_WIN32
 
-int
+static int
 dd_filetype(const char * filename)
 {
     struct stat st;
@@ -856,6 +856,9 @@ pt_low_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
     set_scsi_pt_cdb(ptvp, rdCmd, ifp->cdbsz);
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_in(ptvp, buff, bs * blocks);
+#ifdef SCSI_PT_FLAGS_FUNCTION
+    set_scsi_pt_flags(ptvp, SCSI_PT_FLAGS_QUEUE_AT_TAIL);
+#endif
     vt = (verbose ? (verbose - 1) : 0);
     while (((res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, vt)) < 0) &&
            (-EINTR == res))
@@ -1413,6 +1416,20 @@ open_if(struct opts_t * optsp, int verbose)
     } else if (FT_BLOCK & optsp->in_type) {
         if (win32_open_if(optsp, verbose))
             goto file_err;
+        if (optsp->skip > 0) {
+            off_t offset = optsp->skip;
+
+            offset *= optsp->ibs;       /* could exceed 32 bits here! */
+            if (win32_set_file_pos(optsp, 0, offset, verbose)) {
+                fprintf(stderr, ME "couldn't skip to "
+                         "required position on %s", inf);
+                goto file_err;
+            }
+            if (verbose)
+                fprintf(stderr, "  >> skip: lseek SEEK_SET, "
+                        "byte offset=0x%"PRIx64"\n",
+                        (uint64_t)offset);
+        }
 #endif
     } else {
         flags = O_RDONLY;
@@ -1541,6 +1558,20 @@ open_of(struct opts_t * optsp, int verbose)
     } else if (FT_BLOCK & optsp->out_type) {
         if (win32_open_of(optsp, verbose))
             goto file_err;
+        if (optsp->seek > 0) {
+            off_t offset = optsp->seek;
+
+            offset *= optsp->obs;       /* could exceed 32 bits here! */
+            if (win32_set_file_pos(optsp, 1, offset, verbose)) {
+                fprintf(stderr, ME "couldn't seek to required position "
+                        "on %s", outf);
+                goto file_err;
+            }
+            if (verbose)
+                fprintf(stderr, "   >> seek: lseek SEEK_SET, "
+                        "byte offset=0x%"PRIx64"\n",
+                        (uint64_t)offset);
+        }
 #endif
     } else {      /* typically regular file or block device node */
         if (verbose) {
@@ -1837,6 +1868,23 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
                 }
                 in_full += iblocks;
             }
+#ifdef SG_LIB_WIN32
+        } else if (FT_BLOCK & optsp->in_type) {
+            res = win32_block_read(optsp, wrkPos, iblocks * optsp->ibs,
+                                   verbose);
+            if (res < 0) {
+                fprintf(stderr, ME "read(win32_block), skip=%"PRId64" ",
+                         optsp->skip);
+                ret = -1;
+                break;
+            } else {
+                if (res < (iblocks * optsp->ibs)) {
+                    dd_count = 0;   /* force exit after write */
+                    iblocks = blks_read;
+                }
+                in_full += iblocks;
+            }
+#endif
         } else {
             while (((res = read(optsp->infd, wrkPos, iblocks * optsp->ibs))
                    < 0) && (EINTR == errno))
@@ -1913,6 +1961,32 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
                 else if ((blks_read == oblocks) &&
                          (0 == memcmp(wrkPos, wrkPos2, oblocks * optsp->obs)))
                     sparing_skip = 1;
+#ifdef SG_LIB_WIN32
+            } else if (FT_BLOCK & optsp->out_type) {
+                res = win32_block_read_from_of(optsp, wrkPos2,
+                           oblocks * optsp->obs, verbose);
+                if (verbose > 2)
+                    fprintf(stderr, "read(sparing): requested bytes=%d, res=%d\n",
+                            oblocks * optsp->obs, res);
+                if (res < 0) {
+                    fprintf(stderr, ME "read(sparing), seek=%"PRId64" ",
+                            optsp->seek);
+                } else if ((res == oblocks * optsp->obs) &&
+                           (0 == memcmp(wrkPos, wrkPos2, oblocks * optsp->obs)))
+                    sparing_skip = 1;
+                else if (res > 0) {  /* need to back up pointer */
+                    off_t offset = optsp->seek;
+
+                    offset *= optsp->obs;   /* could exceed 32 bits here! */
+                    if (verbose > 2)
+                        fprintf(stderr, "sparing backing up: (re-)seek="
+                                "%"PRId64"\n", offset);
+                    if (win32_set_file_pos(optsp, 1, offset, verbose)) {
+                        ret = SG_LIB_FILE_ERROR;
+                        break;
+                    }
+                }
+#endif
             } else {
                 while (((res = read(optsp->outfd, wrkPos2,
                                     oblocks * optsp->obs)) < 0) &&
@@ -2000,9 +2074,21 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
                 break;
             } else
                 out_full += oblocks;
-        } else if (FT_DEV_NULL & optsp->out_type)
+        } else if (FT_DEV_NULL & optsp->out_type) {
             out_full += oblocks; /* act as if written out without error */
-        else {
+#ifdef SG_LIB_WIN32
+        } else if (FT_BLOCK & optsp->out_type) {
+            res = win32_block_write(optsp, wrkPos, oblocks * optsp->obs,
+                                    verbose);
+            if (res < 0) {
+                fprintf(stderr, ME "write(win32_block, seek=%"PRId64" ",
+                        optsp->seek);
+                ret = -1;
+                break;
+            } else if (res < (oblocks * optsp->obs))
+                goto short_write;
+#endif
+        } else {
             while (((res = write(optsp->outfd, wrkPos, oblocks * optsp->obs))
                     < 0) && (EINTR == errno))
                 ;
@@ -2016,6 +2102,9 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
                 ret = -1;
                 break;
             } else if (res < (oblocks * optsp->obs)) {
+#ifdef SG_LIB_WIN32
+short_write:
+#endif
                 fprintf(stderr, "output file probably full, seek=%"PRId64" ",
                         optsp->seek);
                 oblocks = res / optsp->obs;
@@ -2234,7 +2323,7 @@ main(int argc, char * argv[])
         size_t psz;
 
 #ifdef SG_LIB_MINGW
-        psz = getpagesize();	// implicit but links okay
+        psz = getpagesize();    // implicit but links okay
 #else
         psz = sysconf(_SC_PAGESIZE); /* was getpagesize() */
 #endif
