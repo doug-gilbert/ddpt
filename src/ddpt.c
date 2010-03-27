@@ -64,12 +64,17 @@ static char * version_str = "0.90 20100327";
 #include <fcntl.h>
 #define __STDC_FORMAT_MACROS 1
 #include <inttypes.h>
-#include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
+#endif
+
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+#include <time.h>
+#elif defined(HAVE_GETTIMEOFDAY)
+#include <sys/time.h>
 #endif
 
 #include "ddpt.h"
@@ -126,9 +131,12 @@ static struct sg_pt_base * of_ptvp = NULL;
 
 static int do_time = 1;         /* default was 0 in sg_dd */
 static int verbose = 0;
-#if defined(HAVE_CLOCK_GETTIME) && define(CLOCK_MONOTONIC)
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
 static int start_tm_valid = 0;
 static struct timespec start_tm;
+#elif defined(HAVE_GETTIMEOFDAY)
+static int start_tm_valid = 0;
+static struct timeval start_tm;
 #endif
 static int ibs_hold = 0;
 static int max_uas = MAX_UNIT_ATTENTIONS;
@@ -1274,7 +1282,7 @@ pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
 static void
 calc_duration_throughput(int contin)
 {
-#if defined(HAVE_CLOCK_GETTIME) && define(CLOCK_MONOTONIC)
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
     struct timespec end_tm, res_tm;
     double a, b;
     int64_t blks;
@@ -1295,6 +1303,32 @@ calc_duration_throughput(int contin)
         fprintf(stderr, "time to transfer data%s: %d.%06d secs",
                 (contin ? " so far" : ""), (int)res_tm.tv_sec,
                 (int)(res_tm.tv_nsec / 1000));
+        if ((a > 0.00001) && (b > 511))
+            fprintf(stderr, " at %.2f MB/sec\n", b / (a * 1000000.0));
+        else
+            fprintf(stderr, "\n");
+    }
+#elif defined(HAVE_GETTIMEOFDAY)
+    struct timeval end_tm, res_tm;
+    double a, b;
+    int64_t blks;
+
+    if (start_tm_valid && (start_tm.tv_sec || start_tm.tv_usec)) {
+        // blks = (in_full > out_full) ? in_full : out_full;
+        blks = in_full;
+        gettimeofday(&end_tm, NULL);
+        res_tm.tv_sec = end_tm.tv_sec - start_tm.tv_sec;
+        res_tm.tv_usec = end_tm.tv_usec - start_tm.tv_usec;
+        if (res_tm.tv_usec < 0) {
+            --res_tm.tv_sec;
+            res_tm.tv_usec += 1000000;
+        }
+        a = res_tm.tv_sec;
+        a += (0.000001 * res_tm.tv_usec);
+        b = (double)ibs_hold * blks;
+        fprintf(stderr, "time to transfer data%s: %d.%06d secs",
+                (contin ? " so far" : ""), (int)res_tm.tv_sec,
+                (int)res_tm.tv_usec);
         if ((a > 0.00001) && (b > 511))
             fprintf(stderr, " at %.2f MB/sec\n", b / (a * 1000000.0));
         else
@@ -2377,12 +2411,19 @@ main(int argc, char * argv[])
         fprintf(stderr, "  initial count=%"PRId64" (blocks of input), "
                 "blocks_per_transfer=%d\n", dd_count, opts.bpt_i);
     }
-#if defined(HAVE_CLOCK_GETTIME) && define(CLOCK_MONOTONIC)
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
     if (do_time) {
         start_tm.tv_sec = 0;
         start_tm.tv_nsec = 0;
         if (0 == clock_gettime(CLOCK_MONOTONIC, &start_tm))
             start_tm_valid = 1;
+    }
+#elif defined(HAVE_GETTIMEOFDAY)
+    if (do_time) {
+        start_tm.tv_sec = 0;
+        start_tm.tv_usec = 0;
+        gettimeofday(&start_tm, NULL);
+        start_tm_valid = 1;
     }
 #endif
     req_count = dd_count;
