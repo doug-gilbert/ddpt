@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.90 20100323";
+static char * version_str = "0.90 20100327";
 
 #define _XOPEN_SOURCE 600
 #ifndef _GNU_SOURCE
@@ -64,9 +64,9 @@ static char * version_str = "0.90 20100323";
 #include <fcntl.h>
 #define __STDC_FORMAT_MACROS 1
 #include <inttypes.h>
+#include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/time.h>
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -126,8 +126,10 @@ static struct sg_pt_base * of_ptvp = NULL;
 
 static int do_time = 1;         /* default was 0 in sg_dd */
 static int verbose = 0;
+#if defined(HAVE_CLOCK_GETTIME) && define(CLOCK_MONOTONIC)
 static int start_tm_valid = 0;
-static struct timeval start_tm;
+static struct timespec start_tm;
+#endif
 static int ibs_hold = 0;
 static int max_uas = MAX_UNIT_ATTENTIONS;
 static int max_aborted = MAX_ABORTED_CMDS;
@@ -1272,31 +1274,35 @@ pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
 static void
 calc_duration_throughput(int contin)
 {
-    struct timeval end_tm, res_tm;
+#if defined(HAVE_CLOCK_GETTIME) && define(CLOCK_MONOTONIC)
+    struct timespec end_tm, res_tm;
     double a, b;
     int64_t blks;
 
-    if (start_tm_valid && (start_tm.tv_sec || start_tm.tv_usec)) {
+    if (start_tm_valid && (start_tm.tv_sec || start_tm.tv_nsec)) {
         // blks = (in_full > out_full) ? in_full : out_full;
         blks = in_full;
-        gettimeofday(&end_tm, NULL);
+        clock_gettimeofday(CLOCK_MONOTONIC, &end_tm);
         res_tm.tv_sec = end_tm.tv_sec - start_tm.tv_sec;
-        res_tm.tv_usec = end_tm.tv_usec - start_tm.tv_usec;
-        if (res_tm.tv_usec < 0) {
+        res_tm.tv_nsec = end_tm.tv_nsec - start_tm.tv_nsec;
+        if (res_tm.tv_nsec < 0) {
             --res_tm.tv_sec;
-            res_tm.tv_usec += 1000000;
+            res_tm.tv_nsec += 1000000000;
         }
         a = res_tm.tv_sec;
-        a += (0.000001 * res_tm.tv_usec);
+        a += (0.000001 * (res_tm.tv_nsec / 1000));
         b = (double)ibs_hold * blks;
         fprintf(stderr, "time to transfer data%s: %d.%06d secs",
                 (contin ? " so far" : ""), (int)res_tm.tv_sec,
-                (int)res_tm.tv_usec);
+                (int)(res_tm.tv_nsec / 1000));
         if ((a > 0.00001) && (b > 511))
             fprintf(stderr, " at %.2f MB/sec\n", b / (a * 1000000.0));
         else
             fprintf(stderr, "\n");
     }
+#else
+    contin = contin;    // suppress warning
+#endif
 }
 
 /* Process arguments given to 'iflag=" and 'oflag=" options. */
@@ -1430,6 +1436,7 @@ open_if(struct opts_t * optsp, int verbose)
                         "byte offset=0x%"PRIx64"\n",
                         (uint64_t)offset);
         }
+        fd = 0;
 #endif
     } else {
         flags = O_RDONLY;
@@ -1572,6 +1579,7 @@ open_of(struct opts_t * optsp, int verbose)
                         "byte offset=0x%"PRIx64"\n",
                         (uint64_t)offset);
         }
+        fd = 0;
 #endif
     } else {      /* typically regular file or block device node */
         if (verbose) {
@@ -1980,7 +1988,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
                     offset *= optsp->obs;   /* could exceed 32 bits here! */
                     if (verbose > 2)
                         fprintf(stderr, "sparing backing up: (re-)seek="
-                                "%"PRId64"\n", offset);
+                                "%"PRId64"\n", (int64_t)offset);
                     if (win32_set_file_pos(optsp, 1, offset, verbose)) {
                         ret = SG_LIB_FILE_ERROR;
                         break;
@@ -2369,12 +2377,14 @@ main(int argc, char * argv[])
         fprintf(stderr, "  initial count=%"PRId64" (blocks of input), "
                 "blocks_per_transfer=%d\n", dd_count, opts.bpt_i);
     }
+#if defined(HAVE_CLOCK_GETTIME) && define(CLOCK_MONOTONIC)
     if (do_time) {
         start_tm.tv_sec = 0;
-        start_tm.tv_usec = 0;
-        gettimeofday(&start_tm, NULL);
-        start_tm_valid = 1;
+        start_tm.tv_nsec = 0;
+        if (0 == clock_gettime(CLOCK_MONOTONIC, &start_tm))
+            start_tm_valid = 1;
     }
+#endif
     req_count = dd_count;
 
     ret = do_copy(&opts, wrkPos, wrkPos2);

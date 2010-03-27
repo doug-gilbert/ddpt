@@ -176,6 +176,8 @@ win32_open_if(struct opts_t * optsp, int verbose)
     DISK_GEOMETRY g;
     DWORD count;
 
+    if (verbose)
+        fprintf(stderr, "CreateFile(%s , in)\n", optsp->inf);
     optsp->ib_fh = CreateFile(optsp->inf,
                               GENERIC_READ | GENERIC_WRITE,
                               FILE_SHARE_WRITE | FILE_SHARE_READ,
@@ -211,6 +213,8 @@ win32_open_of(struct opts_t * optsp, int verbose)
     DISK_GEOMETRY g;
     DWORD count;
 
+    if (verbose)
+        fprintf(stderr, "CreateFile(%s , out)\n", optsp->outf);
     optsp->ob_fh = CreateFile(optsp->outf,
                               GENERIC_READ | GENERIC_WRITE,
                               FILE_SHARE_WRITE | FILE_SHARE_READ,
@@ -250,10 +254,14 @@ win32_set_file_pos(struct opts_t * optsp, int if0_of1, int64_t pos,
     DWORD lo_ret;
     HANDLE fh;
 
+    if (verbose > 2)
+        fprintf(stderr, "SetFilePointer( 0x%"PRIx64", %s)\n", pos,
+                (if0_of1 ? "out" : "in"));
+                "pos=[0x%"PRIx64"], error=%ld\n", pos, err);
     fh = if0_of1 ? optsp->ob_fh : optsp->ib_fh;
     lo_ret = SetFilePointer(fh, lo32, &hi32, FILE_BEGIN);
     if ((INVALID_SET_FILE_POINTER == lo_ret) &&
-	(NO_ERROR != (err = GetLastError()))) {
+        (NO_ERROR != (err = GetLastError()))) {
         if (verbose)
             fprintf(stderr, "SetFilePointer failed to set "
                     "pos=[0x%"PRIx64"], error=%ld\n", pos, err);
@@ -270,6 +278,8 @@ win32_block_read(struct opts_t * optsp, unsigned char * bp, int num_bytes,
     DWORD num = num_bytes;
     DWORD howMany;
 
+    if (verbose > 2)
+        fprintf(stderr, "ReadFile(num=%d, in)\n", num_bytes);
     if (ReadFile(optsp->ib_fh, bp, num, &howMany, NULL) == 0) {
         if (verbose)
             fprintf(stderr, "ReadFile failed, error=%ld\n",
@@ -287,6 +297,8 @@ win32_block_read_from_of(struct opts_t * optsp, unsigned char * bp,
     DWORD num = num_bytes;
     DWORD howMany;
 
+    if (verbose > 2)
+        fprintf(stderr, "ReadFile(num=%d, out)\n", num_bytes);
     if (ReadFile(optsp->ob_fh, bp, num, &howMany, NULL) == 0) {
         if (verbose)
             fprintf(stderr, "ReadFile failed, error=%ld\n",
@@ -304,6 +316,8 @@ win32_block_write(struct opts_t * optsp, const unsigned char * bp,
     DWORD num = num_bytes;
     DWORD howMany;
 
+    if (verbose > 2)
+        fprintf(stderr, "WriteFile(num=%d, out)\n", num_bytes);
     if (WriteFile(optsp->ob_fh, bp, num, &howMany, NULL) == 0) {
         if (verbose)
             fprintf(stderr, "WriteFile failed, error=%ld\n",

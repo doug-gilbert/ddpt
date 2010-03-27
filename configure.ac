@@ -16,6 +16,7 @@ AC_CHECK_HEADERS([linux/types.h linux/bsg.h], [], [],
      ]])
 
 AC_CHECK_FUNCS(posix_fadvise)
+AC_CHECK_FUNCS(clock_gettime)
 
 AC_CANONICAL_HOST
 
