@@ -2129,6 +2129,10 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
                 break;
             } else if (res < (oblocks * optsp->obs))
                 goto short_write;
+            else {
+                out_full += oblocks;
+                bytes_of = res;
+            }
 #endif
         } else {
             while (((res = write(optsp->outfd, wrkPos, oblocks * optsp->obs))
