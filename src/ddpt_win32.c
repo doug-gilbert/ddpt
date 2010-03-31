@@ -257,7 +257,6 @@ win32_set_file_pos(struct opts_t * optsp, int if0_of1, int64_t pos,
     if (verbose > 2)
         fprintf(stderr, "SetFilePointer( 0x%"PRIx64", %s)\n", pos,
                 (if0_of1 ? "out" : "in"));
-                "pos=[0x%"PRIx64"], error=%ld\n", pos, err);
     fh = if0_of1 ? optsp->ob_fh : optsp->ib_fh;
     lo_ret = SetFilePointer(fh, lo32, &hi32, FILE_BEGIN);
     if ((INVALID_SET_FILE_POINTER == lo_ret) &&

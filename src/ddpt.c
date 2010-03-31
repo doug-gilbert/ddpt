@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.90 20100327";
+static char * version_str = "0.90 20100330";
 
 #define _XOPEN_SOURCE 600
 #ifndef _GNU_SOURCE
