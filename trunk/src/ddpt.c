@@ -1465,10 +1465,6 @@ open_if(struct opts_t * optsp, int verbose)
                          "required position on %s", inf);
                 goto file_err;
             }
-            if (verbose)
-                fprintf(stderr, "  >> skip: lseek SEEK_SET, "
-                        "byte offset=0x%"PRIx64"\n",
-                        (uint64_t)offset);
         }
         fd = 0;
 #endif
@@ -1608,10 +1604,6 @@ open_of(struct opts_t * optsp, int verbose)
                         "on %s", outf);
                 goto file_err;
             }
-            if (verbose)
-                fprintf(stderr, "   >> seek: lseek SEEK_SET, "
-                        "byte offset=0x%"PRIx64"\n",
-                        (uint64_t)offset);
         }
         fd = 0;
 #endif
