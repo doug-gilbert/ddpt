@@ -126,7 +126,9 @@ struct opts_t {
     int64_t seek;
     int64_t out2_off;
     int ibs;
+    int ibs_given;
     int obs;
+    int obs_given;
     int bpt_i;          /* blocks (of input) per transfer */
     int bpt_given;
     char inf[INOUTF_SZ];

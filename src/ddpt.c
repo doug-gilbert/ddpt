@@ -44,9 +44,11 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.90 20100330";
+static char * version_str = "0.90 20100407";
 
-#define _XOPEN_SOURCE 600
+/* Was needed for posix_fadvise() */
+/* #define _XOPEN_SOURCE 600 */
+/* Need _GNU_SOURCE for O_DIRECT */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -366,6 +368,7 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
                 fprintf(stderr, ME "bad argument to 'ibs='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
+            ++optsp->ibs_given;
         } else if (strcmp(key, "if") == 0) {
             if ('\0' != optsp->inf[0]) {
                 fprintf(stderr, "Second IFILE argument??\n");
@@ -383,6 +386,7 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
                 fprintf(stderr, ME "bad argument to 'obs='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
+            ++optsp->obs_given;
         } else if (strcmp(key, "of") == 0) {
             if ('\0' != optsp->outf[0]) {
                 fprintf(stderr, "Second OFILE argument??\n");
@@ -437,16 +441,24 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
             return SG_LIB_SYNTAX_ERROR;
         }
     }
+
     if ((0 == optsp->ibs) && (0 == optsp->obs)) {
         optsp->ibs = DEF_BLOCK_SIZE;
         optsp->obs = DEF_BLOCK_SIZE;
         if (optsp->inf[0])
             fprintf(stderr, "Assume block size of %d bytes for both "
                     "input and output\n", DEF_BLOCK_SIZE);
-    } else if (0 == optsp->obs)
+    } else if (0 == optsp->obs) {
         optsp->obs = optsp->ibs;
-    else if (0 == optsp->ibs)
+        if (verbose && (optsp->ibs != DEF_BLOCK_SIZE) && optsp->outf[0])
+            fprintf(stderr, "warning: obs not given and ibs=%d so set "
+                    "obs=%d\n", optsp->ibs, optsp->obs); 
+    } else if (0 == optsp->ibs) {
         optsp->ibs = optsp->obs;
+        if (verbose && (optsp->obs != DEF_BLOCK_SIZE))
+            fprintf(stderr, "warning: ibs not given and obs=%d so set "
+                    "ibs=%d\n", optsp->obs, optsp->ibs); 
+    }
     ibs_hold = optsp->ibs;
     /* defaulting transfer size to 128*2048 for CD/DVDs is too large
        for the block layer in lk 2.6 and results in an EIO on the
@@ -638,18 +650,22 @@ scsi_read_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
  * also: ioctl(fd, DIOCGSECTORSIZE, &sectorsize)
  * Windows: GetDiskFreeSpaceEx ?                                       */
 static int
-read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
+read_blkdev_capacity(int blk_fd, const char * fname, int64_t * num_sect,
+                     int * sect_sz)
 {
+    blk_fd = blk_fd;    // suppress warnings
+    if (verbose > 2)
+        fprintf(stderr, "read_blkdev_capacity: for %s\n", fname);
 #ifdef SG_LIB_LINUX
 #ifdef BLKSSZGET
-    if ((ioctl(sg_fd, BLKSSZGET, sect_sz) < 0) && (*sect_sz > 0)) {
+    if ((ioctl(blk_fd, BLKSSZGET, sect_sz) < 0) && (*sect_sz > 0)) {
         perror("BLKSSZGET ioctl error");
         return -1;
     } else {
  #ifdef BLKGETSIZE64
         uint64_t ull;
 
-        if (ioctl(sg_fd, BLKGETSIZE64, &ull) < 0) {
+        if (ioctl(blk_fd, BLKGETSIZE64, &ull) < 0) {
 
             perror("BLKGETSIZE64 ioctl error");
             return -1;
@@ -662,7 +678,7 @@ read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
  #else
         unsigned long ul;
 
-        if (ioctl(sg_fd, BLKGETSIZE, &ul) < 0) {
+        if (ioctl(blk_fd, BLKGETSIZE, &ul) < 0) {
             perror("BLKGETSIZE ioctl error");
             return -1;
         }
@@ -675,7 +691,6 @@ read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
     }
     return 0;
 #else
-    sg_fd = sg_fd;      // silence warning
     if (verbose)
         fprintf(stderr, "      BLKSSZGET+BLKGETSIZE ioctl not available\n");
     *num_sect = 0;
@@ -690,12 +705,12 @@ read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
     off_t mediasize;
     unsigned int sectorsize;
 
-    if (ioctl(sg_fd, DIOCGSECTORSIZE, &sectorsize) < 0) {
+    if (ioctl(blk_fd, DIOCGSECTORSIZE, &sectorsize) < 0) {
         perror("DIOCGSECTORSIZE ioctl error");
         return -1;
     }
     *sect_sz = sectorsize;
-    if (ioctl(sg_fd, DIOCGMEDIASIZE, &mediasize) < 0) {
+    if (ioctl(blk_fd, DIOCGMEDIASIZE, &mediasize) < 0) {
         perror("DIOCGMEDIASIZE ioctl error");
         return -1;
     }
@@ -707,7 +722,6 @@ read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
 #endif
 
 #ifdef SG_LIB_WIN32
-    sg_fd = sg_fd;      // silence warning
     if (verbose)
         fprintf(stderr, "      how to get block device size in Win32\n");
     *num_sect = 0;
@@ -716,7 +730,6 @@ read_blkdev_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
 #endif
 
 #ifdef SG_LIB_SOLARIS
-    sg_fd = sg_fd;      // silence warning
     if (verbose)
         fprintf(stderr, "      how to get block device size in Solaris\n");
     *num_sect = 0;
@@ -1709,7 +1722,7 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
                     "bs=%d, device claims=%d\n", optsp->inf, optsp->ibs,
                     *in_sect_szp);
     } else if (FT_BLOCK & optsp->in_type) {
-        if (0 != read_blkdev_capacity(optsp->infd, in_num_sectp,
+        if (0 != read_blkdev_capacity(optsp->infd, optsp->inf, in_num_sectp,
                                       in_sect_szp)) {
             fprintf(stderr, "Unable to read block capacity on %s\n",
                     optsp->inf);
@@ -1763,8 +1776,8 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
                     "confusion: obs=%d, device claims=%d\n", optsp->outf,
                     optsp->obs, *out_sect_szp);
     } else if (FT_BLOCK & optsp->out_type) {
-        if (0 != read_blkdev_capacity(optsp->outfd, out_num_sectp,
-                                      out_sect_szp)) {
+        if (0 != read_blkdev_capacity(optsp->outfd, optsp->outf,
+                                      out_num_sectp, out_sect_szp)) {
             fprintf(stderr, "Unable to read block capacity on %s\n",
                     optsp->outf);
             *out_num_sectp = -1;

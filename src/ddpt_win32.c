@@ -31,10 +31,11 @@
  * utility.
  */
 
-#define _XOPEN_SOURCE 600
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
+#ifdef HAVE_CONFIG_H
+#include "config.h"
 #endif
+
+#ifdef SG_LIB_WIN32
 
 #include <unistd.h>
 #include <stdio.h>
@@ -53,19 +54,14 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 #include "ddpt.h"
 
-#ifdef SG_LIB_WIN32
 #include <windows.h>
 #include <winioctl.h>
+
 #ifndef SG_LIB_MINGW
 /* cygwin */
 #include <sys/ioctl.h>
-#endif
 #endif
 
 #include "sg_lib.h"
@@ -74,7 +70,6 @@
 #include "sg_pt.h"
 
 
-#ifdef SG_LIB_WIN32
 
 /* Return 1 for filenames starting with '\', or of the form '<letter>:'
  * or of the form PD<n>, PHYSICALDRIVE<n>, CDROM<n> or TAPE<n>. The <n>
