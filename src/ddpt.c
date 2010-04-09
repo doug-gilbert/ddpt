@@ -44,10 +44,11 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.90 20100407";
+static char * version_str = "0.90 20100408";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
+
 /* Need _GNU_SOURCE for O_DIRECT */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -98,6 +99,7 @@ static char * version_str = "0.90 20100407";
 
 #ifdef SG_LIB_SOLARIS
 #include <sys/ioctl.h>
+#include <sys/dkio.h>
 #endif
 
 #ifdef SG_LIB_WIN32
@@ -567,6 +569,9 @@ dd_filetype(const char * filename)
             else
                 return FT_BLOCK;  /* freebsd doesn't have block devices! */
         }
+#elif SG_LIB_SOLARIS
+	/* might be /dev/rdsk or /dev/scsi , require pt override */
+	return FT_BLOCK;  
 #else
         return FT_PT;
 #endif
@@ -730,11 +735,20 @@ read_blkdev_capacity(int blk_fd, const char * fname, int64_t * num_sect,
 #endif
 
 #ifdef SG_LIB_SOLARIS
-    if (verbose)
-        fprintf(stderr, "      how to get block device size in Solaris\n");
-    *num_sect = 0;
-    *sect_sz = 0;
-    return -1;
+    {
+	struct dk_minfo info;
+
+	/* this work on "char" block devs (e.g. in /dev/rdsk) */
+	if (ioctl(blk_fd, DKIOCGMEDIAINFO , &info) < 0) {
+            perror("DKIOCGMEDIAINFO ioctl error");
+            *num_sect = 0;
+            *sect_sz = 0;
+            return -1;
+        }
+        *num_sect = info.dki_capacity;
+        *sect_sz = info.dki_lbsize;
+        return 0;
+    }
 #endif
 
     return 0;   /* should have returned by now */
