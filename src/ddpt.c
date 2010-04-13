@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.90 20100408";
+static char * version_str = "0.90 20100409";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -570,8 +570,8 @@ dd_filetype(const char * filename)
                 return FT_BLOCK;  /* freebsd doesn't have block devices! */
         }
 #elif SG_LIB_SOLARIS
-	/* might be /dev/rdsk or /dev/scsi , require pt override */
-	return FT_BLOCK;  
+        /* might be /dev/rdsk or /dev/scsi , require pt override */
+        return FT_BLOCK;  
 #else
         return FT_PT;
 #endif
@@ -647,21 +647,20 @@ scsi_read_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
     return 0;
 }
 
-/* Return of 0 -> success, -1 -> failure. BLKGETSIZE64, BLKGETSIZE and
- * BLKSSZGET macros problematic (from <linux/fs.h> or <sys/mount.h>).
- * >>> Linux specific.
- * For FreeBSD post suggests that /usr/sbin/diskinfo uses
- * ioctl(fd, DIOCGMEDIASIZE, &mediasize), where mediasize is an off_t.
- * also: ioctl(fd, DIOCGSECTORSIZE, &sectorsize)
- * Windows: GetDiskFreeSpaceEx ?                                       */
+/* read_blkdev_capacity() returns 0 -> success or -1 -> failure. If
+ * successful writes back sector size (logical block size) using the sect_sz
+ * pointer. Also writes back the number of sectors (logical blocks) on the
+ * block device using num_sect pointer. */
+
+#ifdef SG_LIB_LINUX
 static int
 read_blkdev_capacity(int blk_fd, const char * fname, int64_t * num_sect,
                      int * sect_sz)
 {
-    blk_fd = blk_fd;    // suppress warnings
     if (verbose > 2)
         fprintf(stderr, "read_blkdev_capacity: for %s\n", fname);
-#ifdef SG_LIB_LINUX
+    /* BLKGETSIZE64, BLKGETSIZE and BLKSSZGET macros problematic (from
+     *  <linux/fs.h> or <sys/mount.h>). */
 #ifdef BLKSSZGET
     if ((ioctl(blk_fd, BLKSSZGET, sect_sz) < 0) && (*sect_sz > 0)) {
         perror("BLKSSZGET ioctl error");
@@ -696,20 +695,32 @@ read_blkdev_capacity(int blk_fd, const char * fname, int64_t * num_sect,
     }
     return 0;
 #else
+    blk_fd = blk_fd;
     if (verbose)
         fprintf(stderr, "      BLKSSZGET+BLKGETSIZE ioctl not available\n");
     *num_sect = 0;
     *sect_sz = 0;
     return -1;
 #endif
+}
 #endif
 
 #ifdef SG_LIB_FREEBSD
+static int
+read_blkdev_capacity(int blk_fd, const char * fname, int64_t * num_sect,
+                     int * sect_sz)
+{
 // Why do kernels invent their own typedefs and not use C standards?
 #define u_int unsigned int
     off_t mediasize;
     unsigned int sectorsize;
 
+    if (verbose > 2)
+        fprintf(stderr, "read_blkdev_capacity: for %s\n", fname);
+
+    /* For FreeBSD post suggests that /usr/sbin/diskinfo uses
+     * ioctl(fd, DIOCGMEDIASIZE, &mediasize), where mediasize is an off_t.
+     * also: ioctl(fd, DIOCGSECTORSIZE, &sectorsize) */
     if (ioctl(blk_fd, DIOCGSECTORSIZE, &sectorsize) < 0) {
         perror("DIOCGSECTORSIZE ioctl error");
         return -1;
@@ -724,35 +735,49 @@ read_blkdev_capacity(int blk_fd, const char * fname, int64_t * num_sect,
     else
         *num_sect = 0;
     return 0;
+}
+#endif
+
+#ifdef SG_LIB_SOLARIS
+static int
+read_blkdev_capacity(int blk_fd, const char * fname, int64_t * num_sect,
+                     int * sect_sz)
+{
+    struct dk_minfo info;
+
+    if (verbose > 2)
+        fprintf(stderr, "read_blkdev_capacity: for %s\n", fname);
+
+    /* this works on "char" block devs (e.g. in /dev/rdsk) but not /dev/dsk */
+    if (ioctl(blk_fd, DKIOCGMEDIAINFO , &info) < 0) {
+        perror("DKIOCGMEDIAINFO ioctl error");
+        *num_sect = 0;
+        *sect_sz = 0;
+        return -1;
+    }
+    *num_sect = info.dki_capacity;
+    *sect_sz = info.dki_lbsize;
+    return 0;
+}
 #endif
 
 #ifdef SG_LIB_WIN32
+static int
+read_blkdev_capacity(int blk_fd, const char * fname, int64_t * num_sect,
+                     int * sect_sz)
+{
+    if (verbose > 2)
+        fprintf(stderr, "read_blkdev_capacity: for %s\n", fname);
+    blk_fd = blk_fd;    // suppress warnings
+    /* Windows: GetDiskFreeSpaceEx ?                                       */
     if (verbose)
         fprintf(stderr, "      how to get block device size in Win32\n");
     *num_sect = 0;
     *sect_sz = 0;
     return -1;
-#endif
-
-#ifdef SG_LIB_SOLARIS
-    {
-	struct dk_minfo info;
-
-	/* this work on "char" block devs (e.g. in /dev/rdsk) */
-	if (ioctl(blk_fd, DKIOCGMEDIAINFO , &info) < 0) {
-            perror("DKIOCGMEDIAINFO ioctl error");
-            *num_sect = 0;
-            *sect_sz = 0;
-            return -1;
-        }
-        *num_sect = info.dki_capacity;
-        *sect_sz = info.dki_lbsize;
-        return 0;
-    }
-#endif
-
-    return 0;   /* should have returned by now */
 }
+#endif
+
 
 /* Build a SCSI READ or WRITE CDB. */
 static int
@@ -2388,7 +2413,7 @@ main(int argc, char * argv[])
         size_t psz;
 
 #ifdef SG_LIB_MINGW
-        psz = getpagesize();    // implicit but links okay
+        psz = getpagesize();    // implicit definition but links okay
 #else
         psz = sysconf(_SC_PAGESIZE); /* was getpagesize() */
 #endif
