@@ -1,0 +1,46 @@
+In Solaris, SCSI device names below the '/dev' directory have a
+form like: c5t4d3s2 where the number following "c" is the controller
+(HBA) number, the number following "t" is the target number (from
+the SCSI parallel interface days) and the number following "d" is
+the LUN. Following the "s" is the slice number which is related to
+a partition and by convention "s2" is the whole disk.
+
+OpenSolaris also has a c5t4d3p2 form where the number following
+the "p" is the partition number apart from "p0" which is the whole
+disk. So a whole disk may be referred to as either:
+  - c5t4d3
+  - c5t4d3s2
+  - c5t4d3p0
+
+And these device names are duplicated in the /dev/dsk and /dev/rdsk
+directories. The former is the block device name and the latter
+is for "raw" (or char device) access. For performance and flexibility
+it is better for ddpt to use the raw device names (e.g.
+/dev/rdsk/c5t4d3p0).  A safe way to check things is:
+   ddpt if=/dev/rdsk/c5t4d3p0 bs=512 count=0 verbose=4
+If it did read anything (it won't due to the "count=0") the
+normal Unix read() call would be used. To do the same thing at the
+SCSI pass-through level:
+   ddpt if=/dev/rdsk/c5t4d3p0 iflag=pt bs=512 count=0 verbose=4
+The latter won't work on the /dev/dsk/c5t4d3p0 variant device name
+resulting in an inappropriate ioctl for device error.
+
+The device names within the /dev directory are typically symbolic
+links to much longer topological names in the /device directory.
+
+In Solaris cd/dvd/bd players seem to be treated as disks and so are
+found in the /dev/rdsk directory.
+
+There is also a sgen (SCSI generic) driver which by default does not
+attach to any device. See the /kernel/drv/sgen.conf file to control
+what is attached. Any attached device will have a device name of
+the form /dev/scsi/c5t4d3 .
+
+Listing available SCSI devices in Solaris seems to be a challenge.
+"Use the 'format' command" advice works but seems a very dangerous
+way to list devices. [It does prompt again before doing any damage.]
+'devfsadm -Cv' cleans out the clutter in the /dev/rdsk directory,
+only leaving what is "live". The "cfgadm -v" command looks promising.
+
+
+8th April 2010
