@@ -240,7 +240,7 @@ win32_open_of(struct opts_t * optsp, int verbose)
 
 /* Returns 0 on success */
 int
-win32_set_file_pos(struct opts_t * optsp, int if0_of1, int64_t pos,
+win32_set_file_pos(struct opts_t * optsp, int which_arg, int64_t pos,
                    int verbose)
 {
     LONG lo32 = pos & 0xffffffff;
@@ -248,11 +248,12 @@ win32_set_file_pos(struct opts_t * optsp, int if0_of1, int64_t pos,
     DWORD err;
     DWORD lo_ret;
     HANDLE fh;
+    const char * cp;
 
+    fh = (DDPT_ARG_IN == which_arg) ? optsp->ib_fh : optsp->ob_fh;
+    cp = (DDPT_ARG_IN == which_arg) ? "in" : "out";
     if (verbose > 2)
-        fprintf(stderr, "SetFilePointer( 0x%"PRIx64", %s)\n", pos,
-                (if0_of1 ? "out" : "in"));
-    fh = if0_of1 ? optsp->ob_fh : optsp->ib_fh;
+        fprintf(stderr, "SetFilePointer( 0x%"PRIx64", %s)\n", pos, cp);
     lo_ret = SetFilePointer(fh, lo32, &hi32, FILE_BEGIN);
     if ((INVALID_SET_FILE_POINTER == lo_ret) &&
         (NO_ERROR != (err = GetLastError()))) {
@@ -319,6 +320,51 @@ win32_block_write(struct opts_t * optsp, const unsigned char * bp,
         return -1;
     }
     return (int)howMany;
+}
+
+/* get_blkdev_capacity() returns 0 -> success or -1 -> failure. If
+ * successful writes back sector size (logical block size) using the sect_sz
+ * pointer. Also writes back the number of sectors (logical blocks) on the
+ * block device using num_sect pointer. Win32 version. */
+int
+get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
+                    int * sect_sz)
+{
+    DISK_GEOMETRY g;
+    GET_LENGTH_INFORMATION gli;
+    HANDLE fh;
+    const char * fname;
+    int64_t byte_len;
+
+    fh = (DDPT_ARG_IN == which_arg) ? optsp->ib_fh : optsp->ob_fh;
+    fname = (DDPT_ARG_IN == which_arg) ? optsp->inf : optsp->outf;
+    if (verbose > 2)
+        fprintf(stderr, "get_blkdev_capacity: for %s\n", fname);
+    if (0 == DeviceIoControl(fh, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0, &g,
+                             sizeof(g), &count, NULL)) {
+        if (verbose)
+            fprintf(stderr, "DeviceIoControl(blkdev, geometry) error=%ld\n",
+                    GetLastError());
+        *num_sect = 0;
+        *sect_sz = 0;
+        return -1;
+    }
+    *sect_sz = (int)g.BytesPerSector;
+    if (0 == DeviceIoControl(fh, IOCTL_DISK_GET_LENGTH_INFO, NULL, 0, &gli,
+                             sizeof(g), &count, NULL)) {
+        if (verbose)
+            fprintf(stderr, "DeviceIoControl(blkdev, length_info) "
+                    "error=%ld\n", GetLastError());
+        *num_sect = 0;
+        return -1;
+    }
+    byte_len = gli.Length.QuadPart;
+    *num_sect = byte_len / (int)g.BytesPerSector;
+    if (verbose)
+        fprintf(stderr, "      number of blocks=%"PRId64" "
+                "[0x%"PRIx64"], block size=%d\n", *num_sect, *num_sect,
+                *sect_sz);
+    return 0;
 }
 
 #endif
