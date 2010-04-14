@@ -332,17 +332,14 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
 {
     DISK_GEOMETRY g;
     GET_LENGTH_INFORMATION gli;
-    ULARGE total_bytes;
+    ULARGE_INTEGER total_bytes;
     DWORD count;
     HANDLE fh;
     const char * fname;
-    int64_t byte_len;
+    int64_t byte_len, blks;
+    int fname_len;
+    char dirName[64];
 
-// What a fucking MS mess.
-// IOCTL_DISK_GET_DRIVE_GEOMETRY gives block size and
-// crappy cylinders*heads*sector in w2000
-// XP++ adds IOCTL_DISK_GET_DRIVE_GEOMETRY_EX which gives more (too much)
-// And for non-disks may need GetDiskFreeSpaceEx ...
     fh = (DDPT_ARG_IN == which_arg) ? optsp->ib_fh : optsp->ob_fh;
     fname = (DDPT_ARG_IN == which_arg) ? optsp->inf : optsp->outf;
     if (verbose > 2)
@@ -357,28 +354,48 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
         return -1;
     }
     *sect_sz = (int)g.BytesPerSector;
-#if 0
-    /* not defined before XP */
-    if (0 == DeviceIoControl(fh, IOCTL_DISK_GET_LENGTH_INFO, NULL, 0, &gli,
-                             sizeof(gli), &count, NULL)) {
-        if (verbose)
-            fprintf(stderr, "DeviceIoControl(blkdev, length_info) "
-                    "error=%ld\n", GetLastError());
+
+    /* IOCTL_DISK_GET_LENGTH_INFO not defined before XP */
+    if (DeviceIoControl(fh, IOCTL_DISK_GET_LENGTH_INFO, NULL, 0, &gli,
+                        sizeof(gli), &count, NULL)) {
+        byte_len = gli.Length.QuadPart;
+        *num_sect = byte_len / (int)g.BytesPerSector;
+        goto good;
+    } else if (verbose > 1)
+        fprintf(stderr, "DeviceIoControl(blkdev, length_info) "
+                "error=%ld\n", GetLastError());
+
+    /* Assume if device name finishes in digit then its physical */
+    fname_len = (int)strlen(fname);
+    if (isdigit(fname[fname_len - 1])) {
+        blks = g.Cylinders;
+        blks *= g.TracksPerCylinder;
+        blks *= g.SectorsPerTrack;
+        *num_sect = blks;
+        goto good;
+    }
+    if ((fname_len < 4) || (fname_len > (int)sizeof(dirName))) {
+        fprintf(stderr, "get_blkdev_capacity: unable to process %s into "
+                "directory name\n", fname);
         *num_sect = 0;
         return -1;
     }
-    byte_len = gli.Length.QuadPart;
-#else
-    if (0 == GetDiskFreeSpaceEx(fname, NULL, &total_bytes, NULL)) {
-        if (verbose)
+    memcpy(dirName, fname + 4, fname_len - 4);
+    dirName[fname_len - 4] = '\\';
+    dirName[fname_len - 3] = '\0';
+
+    if (GetDiskFreeSpaceEx(fname, NULL, &total_bytes, NULL)) {
+        byte_len = total_bytes.QuadPart;
+        *num_sect = byte_len / (int)g.BytesPerSector;
+        goto good;
+    } else if (verbose > 1) {
             fprintf(stderr, "GetDiskFreeSpaceEx(%s) "
                     "error=%ld\n", fname, GetLastError());
         *num_sect = 0;
         return -1;
     }
-    byte_len = (int64_t)total_bytes;
-#endif
-    *num_sect = byte_len / (int)g.BytesPerSector;
+
+good:
     if (verbose)
         fprintf(stderr, "      number of blocks=%"PRId64" "
                 "[0x%"PRIx64"], block size=%d\n", *num_sect, *num_sect,
