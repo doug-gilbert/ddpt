@@ -328,10 +328,11 @@ win32_block_write(struct opts_t * optsp, const unsigned char * bp,
  * block device using num_sect pointer. Win32 version. */
 int
 get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
-                    int * sect_sz)
+                    int * sect_sz, int verbose)
 {
     DISK_GEOMETRY g;
     GET_LENGTH_INFORMATION gli;
+    DWORD count;
     HANDLE fh;
     const char * fname;
     int64_t byte_len;
@@ -351,7 +352,7 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
     }
     *sect_sz = (int)g.BytesPerSector;
     if (0 == DeviceIoControl(fh, IOCTL_DISK_GET_LENGTH_INFO, NULL, 0, &gli,
-                             sizeof(g), &count, NULL)) {
+                             sizeof(gli), &count, NULL)) {
         if (verbose)
             fprintf(stderr, "DeviceIoControl(blkdev, length_info) "
                     "error=%ld\n", GetLastError());
