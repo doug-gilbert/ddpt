@@ -1758,7 +1758,7 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
                     *in_sect_szp);
     } else if (FT_BLOCK & optsp->in_type) {
         if (0 != get_blkdev_capacity(optsp, DDPT_ARG_IN, in_num_sectp,
-                                    in_sect_szp)) {
+                                    in_sect_szp, verbose)) {
             fprintf(stderr, "Unable to read block capacity on %s\n",
                     optsp->inf);
             *in_num_sectp = -1;
@@ -1812,7 +1812,7 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
                     optsp->obs, *out_sect_szp);
     } else if (FT_BLOCK & optsp->out_type) {
         if (0 != get_blkdev_capacity(optsp, DDPT_ARG_OUT, out_num_sectp,
-                                     out_sect_szp)) {
+                                     out_sect_szp, verbose)) {
             fprintf(stderr, "Unable to read block capacity on %s\n",
                     optsp->outf);
             *out_num_sectp = -1;
