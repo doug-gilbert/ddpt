@@ -655,14 +655,14 @@ scsi_read_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
 #ifdef SG_LIB_LINUX
 static int
 get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
-                    int * sect_sz)
+                    int * sect_sz, int verb)
 {
     int blk_fd;
     const char * fname;
 
     blk_fd = (DDPT_ARG_IN == which_arg) ? optsp->infd : optsp->outfd;
     fname = (DDPT_ARG_IN == which_arg) ? optsp->inf : optsp->outf;
-    if (verbose > 2)
+    if (verb > 2)
         fprintf(stderr, "get_blkdev_capacity: for %s\n", fname);
     /* BLKGETSIZE64, BLKGETSIZE and BLKSSZGET macros problematic (from
      *  <linux/fs.h> or <sys/mount.h>). */
@@ -680,7 +680,7 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
             return -1;
         }
         *num_sect = ((int64_t)ull / (int64_t)*sect_sz);
-        if (verbose)
+        if (verb)
             fprintf(stderr, "      [bgs64] number of blocks=%"PRId64" "
                     "[0x%"PRIx64"], block size=%d\n", *num_sect, *num_sect,
                     *sect_sz);
@@ -692,7 +692,7 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
             return -1;
         }
         *num_sect = (int64_t)ul;
-        if (verbose)
+        if (verb)
             fprintf(stderr, "      [bgs] number of blocks=%"PRId64" "
                     "[0x%"PRIx64"],  block size=%d\n", *num_sect, *num_sect,
                     *sect_sz);
@@ -701,7 +701,7 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
     return 0;
 #else
     blk_fd = blk_fd;
-    if (verbose)
+    if (verb)
         fprintf(stderr, "      BLKSSZGET+BLKGETSIZE ioctl not available\n");
     *num_sect = 0;
     *sect_sz = 0;
@@ -713,7 +713,7 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
 #ifdef SG_LIB_FREEBSD
 static int
 get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
-                    int * sect_sz)
+                    int * sect_sz, int verb)
 {
 // Why do kernels invent their own typedefs and not use C standards?
 #define u_int unsigned int
@@ -724,7 +724,7 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
 
     blk_fd = (DDPT_ARG_IN == which_arg) ? optsp->infd : optsp->outfd;
     fname = (DDPT_ARG_IN == which_arg) ? optsp->inf : optsp->outf;
-    if (verbose > 2)
+    if (verb > 2)
         fprintf(stderr, "get_blkdev_capacity: for %s\n", fname);
 
     /* For FreeBSD post suggests that /usr/sbin/diskinfo uses
@@ -750,7 +750,7 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
 #ifdef SG_LIB_SOLARIS
 static int
 get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
-                    int * sect_sz)
+                    int * sect_sz, int verb)
 {
     struct dk_minfo info;
     int blk_fd;
@@ -758,7 +758,7 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
 
     blk_fd = (DDPT_ARG_IN == which_arg) ? optsp->infd : optsp->outfd;
     fname = (DDPT_ARG_IN == which_arg) ? optsp->inf : optsp->outf;
-    if (verbose > 2)
+    if (verb > 2)
         fprintf(stderr, "get_blkdev_capacity: for %s\n", fname);
 
     /* this works on "char" block devs (e.g. in /dev/rdsk) but not /dev/dsk */
