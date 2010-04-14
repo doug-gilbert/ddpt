@@ -368,7 +368,7 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
     /* Assume if device name finishes in digit then its physical */
     fname_len = (int)strlen(fname);
     if (isdigit(fname[fname_len - 1])) {
-        blks = g.Cylinders;
+        blks = g.Cylinders.QuadPart;
         blks *= g.TracksPerCylinder;
         blks *= g.SectorsPerTrack;
         *num_sect = blks;
@@ -384,13 +384,13 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
     dirName[fname_len - 4] = '\\';
     dirName[fname_len - 3] = '\0';
 
-    if (GetDiskFreeSpaceEx(fname, NULL, &total_bytes, NULL)) {
+    if (GetDiskFreeSpaceEx(dirName, NULL, &total_bytes, NULL)) {
         byte_len = total_bytes.QuadPart;
         *num_sect = byte_len / (int)g.BytesPerSector;
         goto good;
     } else if (verbose > 1) {
             fprintf(stderr, "GetDiskFreeSpaceEx(%s) "
-                    "error=%ld\n", fname, GetLastError());
+                    "error=%ld\n", dirName, GetLastError());
         *num_sect = 0;
         return -1;
     }
