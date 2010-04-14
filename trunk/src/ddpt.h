@@ -95,6 +95,10 @@
 #define O_NONBLOCK 0
 #endif
 
+#define DDPT_ARG_IN 0
+#define DDPT_ARG_OUT 1
+#define DDPT_ARG_OUT2 2
+
 #define MIN_RESERVED_SIZE 8192
 
 #define MAX_UNIT_ATTENTIONS 10
@@ -152,6 +156,8 @@ struct opts_t {
 
 #ifdef SG_LIB_WIN32
 extern int dd_filetype(const char * fn);
+extern int get_blkdev_capacity(struct opts_t * optsp, int which_arg,
+                               int64_t * num_sect, int * sect_sz);
 extern void win32_adjust_fns(struct opts_t * optsp);
 extern int win32_open_if(struct opts_t * optsp, int verbose);
 extern int win32_open_of(struct opts_t * optsp, int verbose);

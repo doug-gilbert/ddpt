@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.90 20100409";
+static char * version_str = "0.90 20100413";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -647,18 +647,23 @@ scsi_read_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
     return 0;
 }
 
-/* read_blkdev_capacity() returns 0 -> success or -1 -> failure. If
+/* get_blkdev_capacity() returns 0 -> success or -1 -> failure. If
  * successful writes back sector size (logical block size) using the sect_sz
  * pointer. Also writes back the number of sectors (logical blocks) on the
  * block device using num_sect pointer. */
 
 #ifdef SG_LIB_LINUX
 static int
-read_blkdev_capacity(int blk_fd, const char * fname, int64_t * num_sect,
-                     int * sect_sz)
+get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
+                    int * sect_sz)
 {
+    int blk_fd;
+    const char * fname;
+
+    blk_fd = (DDPT_ARG_IN == which_arg) ? optsp->infd : optsp->outfd;
+    fname = (DDPT_ARG_IN == which_arg) ? optsp->inf : optsp->outf;
     if (verbose > 2)
-        fprintf(stderr, "read_blkdev_capacity: for %s\n", fname);
+        fprintf(stderr, "get_blkdev_capacity: for %s\n", fname);
     /* BLKGETSIZE64, BLKGETSIZE and BLKSSZGET macros problematic (from
      *  <linux/fs.h> or <sys/mount.h>). */
 #ifdef BLKSSZGET
@@ -707,16 +712,20 @@ read_blkdev_capacity(int blk_fd, const char * fname, int64_t * num_sect,
 
 #ifdef SG_LIB_FREEBSD
 static int
-read_blkdev_capacity(int blk_fd, const char * fname, int64_t * num_sect,
-                     int * sect_sz)
+get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
+                    int * sect_sz)
 {
 // Why do kernels invent their own typedefs and not use C standards?
 #define u_int unsigned int
     off_t mediasize;
     unsigned int sectorsize;
+    int blk_fd;
+    const char * fname;
 
+    blk_fd = (DDPT_ARG_IN == which_arg) ? optsp->infd : optsp->outfd;
+    fname = (DDPT_ARG_IN == which_arg) ? optsp->inf : optsp->outf;
     if (verbose > 2)
-        fprintf(stderr, "read_blkdev_capacity: for %s\n", fname);
+        fprintf(stderr, "get_blkdev_capacity: for %s\n", fname);
 
     /* For FreeBSD post suggests that /usr/sbin/diskinfo uses
      * ioctl(fd, DIOCGMEDIASIZE, &mediasize), where mediasize is an off_t.
@@ -740,13 +749,17 @@ read_blkdev_capacity(int blk_fd, const char * fname, int64_t * num_sect,
 
 #ifdef SG_LIB_SOLARIS
 static int
-read_blkdev_capacity(int blk_fd, const char * fname, int64_t * num_sect,
-                     int * sect_sz)
+get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
+                    int * sect_sz)
 {
     struct dk_minfo info;
+    int blk_fd;
+    const char * fname;
 
+    blk_fd = (DDPT_ARG_IN == which_arg) ? optsp->infd : optsp->outfd;
+    fname = (DDPT_ARG_IN == which_arg) ? optsp->inf : optsp->outf;
     if (verbose > 2)
-        fprintf(stderr, "read_blkdev_capacity: for %s\n", fname);
+        fprintf(stderr, "get_blkdev_capacity: for %s\n", fname);
 
     /* this works on "char" block devs (e.g. in /dev/rdsk) but not /dev/dsk */
     if (ioctl(blk_fd, DKIOCGMEDIAINFO , &info) < 0) {
@@ -758,23 +771,6 @@ read_blkdev_capacity(int blk_fd, const char * fname, int64_t * num_sect,
     *num_sect = info.dki_capacity;
     *sect_sz = info.dki_lbsize;
     return 0;
-}
-#endif
-
-#ifdef SG_LIB_WIN32
-static int
-read_blkdev_capacity(int blk_fd, const char * fname, int64_t * num_sect,
-                     int * sect_sz)
-{
-    if (verbose > 2)
-        fprintf(stderr, "read_blkdev_capacity: for %s\n", fname);
-    blk_fd = blk_fd;    // suppress warnings
-    /* Windows: GetDiskFreeSpaceEx ?                                       */
-    if (verbose)
-        fprintf(stderr, "      how to get block device size in Win32\n");
-    *num_sect = 0;
-    *sect_sz = 0;
-    return -1;
 }
 #endif
 
@@ -1512,7 +1508,7 @@ open_if(struct opts_t * optsp, int verbose)
             off_t offset = optsp->skip;
 
             offset *= optsp->ibs;       /* could exceed 32 bits here! */
-            if (win32_set_file_pos(optsp, 0, offset, verbose)) {
+            if (win32_set_file_pos(optsp, DDPT_ARG_IN, offset, verbose)) {
                 fprintf(stderr, ME "couldn't skip to "
                          "required position on %s", inf);
                 goto file_err;
@@ -1651,7 +1647,7 @@ open_of(struct opts_t * optsp, int verbose)
             off_t offset = optsp->seek;
 
             offset *= optsp->obs;       /* could exceed 32 bits here! */
-            if (win32_set_file_pos(optsp, 1, offset, verbose)) {
+            if (win32_set_file_pos(optsp, DDPT_ARG_OUT, offset, verbose)) {
                 fprintf(stderr, ME "couldn't seek to required position "
                         "on %s", outf);
                 goto file_err;
@@ -1761,8 +1757,8 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
                     "bs=%d, device claims=%d\n", optsp->inf, optsp->ibs,
                     *in_sect_szp);
     } else if (FT_BLOCK & optsp->in_type) {
-        if (0 != read_blkdev_capacity(optsp->infd, optsp->inf, in_num_sectp,
-                                      in_sect_szp)) {
+        if (0 != get_blkdev_capacity(optsp, DDPT_ARG_IN, in_num_sectp,
+                                    in_sect_szp)) {
             fprintf(stderr, "Unable to read block capacity on %s\n",
                     optsp->inf);
             *in_num_sectp = -1;
@@ -1815,8 +1811,8 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
                     "confusion: obs=%d, device claims=%d\n", optsp->outf,
                     optsp->obs, *out_sect_szp);
     } else if (FT_BLOCK & optsp->out_type) {
-        if (0 != read_blkdev_capacity(optsp->outfd, optsp->outf,
-                                      out_num_sectp, out_sect_szp)) {
+        if (0 != get_blkdev_capacity(optsp, DDPT_ARG_OUT, out_num_sectp,
+                                     out_sect_szp)) {
             fprintf(stderr, "Unable to read block capacity on %s\n",
                     optsp->outf);
             *out_num_sectp = -1;
@@ -2067,7 +2063,8 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
                     if (verbose > 2)
                         fprintf(stderr, "sparing backing up: (re-)seek="
                                 "%"PRId64"\n", (int64_t)offset);
-                    if (win32_set_file_pos(optsp, 1, offset, verbose)) {
+                    if (win32_set_file_pos(optsp, DDPT_ARG_OUT, offset,
+                                           verbose)) {
                         ret = SG_LIB_FILE_ERROR;
                         break;
                     }
