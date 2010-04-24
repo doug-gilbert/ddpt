@@ -361,7 +361,7 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
         byte_len = gli.Length.QuadPart;
         *num_sect = byte_len / (int)g.BytesPerSector;
         goto good;
-    } else if (verbose > 1)
+    } else if (verbose > 2)
         fprintf(stderr, "DeviceIoControl(blkdev, length_info) "
                 "error=%ld\n", GetLastError());
 

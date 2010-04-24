@@ -1,7 +1,7 @@
-.TH DDPT "8" "March 2010" "ddpt\-0.90" DDPT
+.TH DDPT "8" "April 2010" "ddpt\-0.90" DDPT
 .SH NAME
-ddpt \- copies data to and from files and storage devices. Specialized for
-pass-through devices that understand the SCSI command set.
+ddpt \- copies data between files and storage devices. Support for
+devices that understand the SCSI command set.
 .SH SYNOPSIS
 .B ddpt
 [\fIbs=BS\fR] [\fIconv=CONV\fR] [\fIcount=COUNT\fR] [\fIibs=BS\fR]
@@ -17,24 +17,23 @@ pass-through devices that understand the SCSI command set.
 .PP
 Copy data to and from any files. Specialized for "files" that are
 SCSI (or SCSI like) direct access storage devices (e.g. SATA and SAS disks,
-plus DVD drives). Can issue SCSI commands in pass-through ("pt") mode.
-Similar syntax and semantics to
+plus DVD drives). Can issue SCSI commands in pass\-through ("pt") mode.
+Similar syntax and semantics to the Unix
 .B dd(1)
-but only one type of "conversion" is supported. That optional conversion is
-sparse writing of the output file.
+command.
 .PP
 The first grouping in the synopsis above lists recent GNU
 .B dd(1)
 options. The second grouping contains extra options added by this utility.
 Both groupings are merged below and defined in alphabetical order.
 .PP
-The term "pt device" is used for a pass-through device to which SCSI
+The term "pt device" is used for a pass\-through device to which SCSI
 commands like READ(10) and WRITE(10) may be sent. A pt device may only be
 able to process SCSI commands in which case the "pt" flag is assumed. The
 ability to recognize such a pt only device may vary depending on the
 operating system (e.g. in Linux '/dev/sg2' is recognized). However
 if a device can process either normal UNIX read()/write() calls or
-pass-through SCSI commands then the default is to use UNIX read()/write()
+pass\-through SCSI commands then the default is to use UNIX read()/write()
 calls. That default can be overridden by using the "pt"
 flag (e.g. "if=/dev/sdc iflag=pt").
 .SH OPTIONS
@@ -88,10 +87,10 @@ See the FLAGS section below.
 .TP
 \fBcount\fR=\fICOUNT\fR
 copy \fICOUNT\fR input blocks from \fIIFILE\fR to \fIOFILE\fR. If this
-option is not given (or \fICOUNT\fR is '-1') then the \fICOUNT\fR may be
+option is not given (or \fICOUNT\fR is '\-1') then the \fICOUNT\fR may be
 deduced as follows. When both or either \fIIFILE\fR and \fIOFILE\fR are
 block devices, then the minimum size, expressed in units of input blocks,
-is used. When both or either \fIIFILE\fR and \fIOFILE\fR are pass-through
+is used. When both or either \fIIFILE\fR and \fIOFILE\fR are pass\-through
 devices, then the minimum size, expressed in units of input blocks, is used.
 If a regular file is used as input, its size, expressed in units of input
 blocks (and rounded up if necessary) is used. If a regular file is used as
@@ -203,7 +202,7 @@ while writing is noted and ignored. SCSI disks may automatically try
 and remap faulty sectors (see the AWRE and ARRE in the read write
 error recovery mode page (the sdparm utility can access these attributes)).
 Unrecovered errors are counted and output in the summary at the end of
-the copy. If bad LBAs are reported by the pass-through then the LBA of the
+the copy. If bad LBAs are reported by the pass\-through then the LBA of the
 lowest and highest bad block is also output. Errors occurring on other
 file types will stop ddpt. Error messages are sent to stderr. This flag
 is similar to 'conv=noerror,sync' in the
@@ -241,7 +240,7 @@ commands. This only has an effect with pt devices. The 6 byte variants of
 the SCSI READ and WRITE commands do not support the FUA bit.
 .TP
 fua_nv
-causes the FUA_NV (force unit access non-volatile cache) bit to be set in
+causes the FUA_NV (force unit access non\-volatile cache) bit to be set in
 SCSI READ and/or WRITE commands. This only has an effect with pt devices.
 The 6 byte variants of the SCSI READ and WRITE commands do not support the
 FUA_NV bit.
@@ -331,7 +330,7 @@ Disk partition information can often be found with
 [the "\-ul" argument is useful in this respect].
 .PP
 For pt devices this utility issues SCSI READ and WRITE (SBC) commands which
-are appropriate for disks and reading from CD/DVD/HD-DVD/BD drives. Those
+are appropriate for disks and reading from CD/DVD/HD\-DVD/BD drives. Those
 commands are not formatted correctly for tape devices so ddpt should not be
 used on tape devices. If the largest block address of the requested transfer
 exceeds a 32 bit block number (i.e 0xffff) then a warning is issued and
@@ -359,24 +358,25 @@ although dd's speed may improve if bs was larger and count was suitably
 reduced. The use of the 'iflag=direct' option bypasses the buffering and
 caching that is usually done on a block device.
 .PP
-This assumes a valid partition is found on the SCSI disk at the given
-skip block address (past the 5 GB point of that disk) and that
-the partition goes to the end of the SCSI disk. An explicit count
-is probably a safer option. The partition is copied to /dev/hda3 which
-is an offset into the ATA disk /dev/hda . The exact number of blocks
-read from /dev/sg0 are written to /dev/hda (i.e. no padding).
+The dd command's bs argument can be thought of as roughly equivalent to
+ddpt's bs*bpt . dd almost assumes buffering on a block device and will
+work as long as bs is a multiple of the actual logical block size.
+Since dd can work at a lower level in some case the bs argument must be
+a disk's actual logical block size. This the bpt argument was introduced
+to make the copy more efficient. So these two invocations are roughly
+equivalent:
 .PP
-To time a streaming read of the first 1 GB (2 ** 30 bytes) on a disk
-this utility could be used:
+   dd if=/dev/sda of=t bs=8k count=64
+.br
+   ddpt if=/dev/sda of=t bs=512 bpt=16 count=1k
 .PP
-   ddpt if=/dev/sg0 of=/dev/null bs=512 count=2m time=1
-.PP
-On completion this will output a line like:
-"time to transfer data was 18.779506 secs, 57.18 MB/sec". The "MB/sec"
-in this case is 1,000,000 bytes per second.
+In both cases the total number of bytes moved is bs*count . And that will
+be done by reading 8k (8192 bytes) into a buffer than writing out that
+buffer to the file t. The read write sequence continues until the
+count is complete or an error occurs.
 .PP
 The 'of2=' option can be used to copy data and take a md5sum of it
-without needing to re-read the data:
+without needing to re\-read the data:
 .PP
   mkfifo fif
 .br
@@ -385,7 +385,7 @@ without needing to re-read the data:
   ddpt if=/dev/sg3 iflag=coe of=sg3.img oflag=sparse of2=fif bs=512
 .PP
 This will image /dev/sg3 (e.g. an unmounted disk) and place the contents
-in the (sparse) file sg3.img . Without re-reading the data it will also
+in the (sparse) file sg3.img . Without re\-reading the data it will also
 perform a md5sum calculation on the image.
 .SH SIGNALS
 The signal handling has been borrowed from dd: SIGINT, SIGQUIT and
