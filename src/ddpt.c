@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.90 20100413";
+static char * version_str = "0.90 20100424";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -129,6 +129,7 @@ static int64_t lowest_unrecovered = 0;
 static int64_t highest_unrecovered = -1;
 static int num_retries = 0;
 static int sum_of_resids = 0;
+static int interrupted_retries = 0;
 
 static struct sg_pt_base * if_ptvp = NULL;
 static struct sg_pt_base * of_ptvp = NULL;
@@ -244,6 +245,9 @@ print_stats(const char * str)
         fprintf(stderr, "lowest unrecovered lba=%"PRId64", highest "
                 "unrecovered lba=%"PRId64"\n", lowest_unrecovered,
                 highest_unrecovered);
+    if (interrupted_retries > 0)
+        fprintf(stderr, "%s%d retries after interrupted system call(s)\n",
+                str, num_retries);
 }
 
 static void
@@ -920,7 +924,7 @@ pt_low_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
     vt = (verbose ? (verbose - 1) : 0);
     while (((res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, vt)) < 0) &&
            (-EINTR == res))
-        ;       /* resubmit if interrupted system call */
+        ++interrupted_retries;     /* resubmit if interrupted system call */
 
     vt = ((verbose > 1) ? (verbose - 1) : verbose);
     ret = sg_cmds_process_resp(ptvp, "READ", res, bs * blocks, sense_b,
@@ -1230,7 +1234,7 @@ pt_low_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
     vt = (verbose ? (verbose - 1) : 0);
     while (((res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, vt)) < 0) &&
            (-EINTR == res))
-        ;       /* resubmit if interrupted system call */
+        ++interrupted_retries;     /* resubmit if interrupted system call */
 
     vt = ((verbose > 1) ? (verbose - 1) : verbose);
     ret = sg_cmds_process_resp(ptvp, "WRITE", res, bs * blocks, sense_b,
@@ -1970,7 +1974,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
         } else {
             while (((res = read(optsp->infd, wrkPos, iblocks * optsp->ibs))
                    < 0) && (EINTR == errno))
-                ;
+                ++interrupted_retries;
             if (verbose > 2)
                 fprintf(stderr, "read(unix): requested bytes=%d, res=%d\n",
                         iblocks * optsp->ibs, res);
@@ -2004,7 +2008,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
         if (optsp->out2f[0]) {
             while (((res = write(optsp->out2fd, wrkPos, oblocks * optsp->obs))
                     < 0) && (EINTR == errno))
-                ;
+                ++interrupted_retries;
             if (verbose > 2)
                 fprintf(stderr, "write to of2: count=%d, res=%d\n",
                         oblocks * optsp->obs, res);
@@ -2074,7 +2078,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
                 while (((res = read(optsp->outfd, wrkPos2,
                                     oblocks * optsp->obs)) < 0) &&
                        (EINTR == errno))
-                    ;
+                    ++interrupted_retries;
                 if (verbose > 2)
                     fprintf(stderr, "read(sparing): requested bytes=%d, res=%d\n",
                             oblocks * optsp->obs, res);
@@ -2178,7 +2182,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
         } else {
             while (((res = write(optsp->outfd, wrkPos, oblocks * optsp->obs))
                     < 0) && (EINTR == errno))
-                ;
+                ++interrupted_retries;
             if (verbose > 2)
                 fprintf(stderr, "write(unix): requested bytes=%d, res=%d\n",
                         oblocks * optsp->obs, res);
@@ -2224,7 +2228,7 @@ short_write:
             /* ... try writing to extend ofile to length prior to error */
             while (((res = write(optsp->outfd, zeros_buff,
                          penult_blocks * optsp->obs)) < 0) && (EINTR == errno))
-                ;
+                ++interrupted_retries;
             if (verbose > 2)
                 fprintf(stderr, "write(unix, sparse after error): count=%d, "
                         "res=%d\n", penult_blocks * optsp->obs, res);
