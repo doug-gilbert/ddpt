@@ -51,6 +51,6 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Sat Apr 24 2010 - dgilbert at interlog dot com
+* Thu Apr 29 2010 - dgilbert at interlog dot com
 - initial version
   * ddpt-0.90
