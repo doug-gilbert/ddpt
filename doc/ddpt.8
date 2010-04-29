@@ -6,12 +6,12 @@ devices that understand the SCSI command set.
 .B ddpt
 [\fIbs=BS\fR] [\fIconv=CONV\fR] [\fIcount=COUNT\fR] [\fIibs=BS\fR]
 \fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIobs=BS\fR] [\fIof=OFILE\fR]
-[\fIoflag=FLAGS\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fI\-\-help\fR]
-[\fI\-\-version\fR]
+[\fIoflag=FLAGS\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR]
+[\fI\-\-help\fR] [\fI\-\-version\fR]
 .PP
 [\fIbpt=BPT\fR] [\fIcdbsz=\fR6|10|12|16] [\fIcoe=\fR0|1]
 [\fIcoe_limit=CL\fR] [\fIof2=OFILE2\fR] [\fIretries=RETR\fR]
-[\fItime=\fR0|1] [\fIverbose=VERB\fR]
+[\fIverbose=VERB\fR] [\fI\-\-verbose\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
@@ -162,9 +162,11 @@ Default is block 0 (i.e. start of file).
 start reading \fISKIP\fR bs\-sized blocks from the start of \fIIFILE\fR.
 Default is block 0 (i.e. start of file).
 .TP
-\fBtime\fR=0 | 1
-when 1, times transfer and does throughput calculation, outputting the
-results (to stderr) at completion. When 0 (default) doesn't perform timing.
+\fBstatus\fR=\fISTAT\fR
+the \fISTAT\fR value of 'noxfer' suppresses the throughput calculation and
+the elapsed time output. As a convenience the value 'null' is accepted and
+does nothing. The default action is to show the throughput calculation and
+the elapsed time output and the end of the copy.
 .TP
 \fBverbose\fR=\fIVERB\fR
 as \fIVERB\fR increases so does the amount of debug output sent to stderr.
@@ -172,13 +174,18 @@ Default value is zero which yields the minimum amount of debug output.
 A value of 1 reports extra information that is not repetitive. A value
 2 reports cdbs and responses for SCSI commands that are not repetitive
 (i.e. other that READ and WRITE). Error processing is not considered
-repetitive. Values of 3 and 4 yield output for all SCSI commands (and
-Unix read() and write() calls) so there can be a lot of output.
+repetitive. Values of 3 and 4 yield output for all SCSI commands, plus
+Unix read() and write() calls, so there can be a lot of output.
 .TP
-\fB\-\-help\fR
+\fB\-h\fR, \fB\-\-help\fR
 outputs usage message and exits.
 .TP
-\fB\-\-version\fR
+\fB\-v\fR, \fB\-\-verbose\fR
+equivalent of \fIverbose=1\fR. If \fI\-\-verbose\fR appears twice then
+that is equivalent to \fIverbose=2\fR. Also \fI\-vv\fR is equivalent to
+\fIverbose=2\fR.
+.TP
+\fB\-V\fR, \fB\-\-version\fR
 outputs version number information and exits.
 .SH FLAGS
 Here is a list of flags and their meanings:
