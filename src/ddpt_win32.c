@@ -360,7 +360,7 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
                         sizeof(gli), &count, NULL)) {
         byte_len = gli.Length.QuadPart;
         *num_sect = byte_len / (int)g.BytesPerSector;
-        goto good;
+        return 0;
     } else if (verbose > 2)
         fprintf(stderr, "DeviceIoControl(blkdev, length_info) "
                 "error=%ld\n", GetLastError());
@@ -372,7 +372,7 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
         blks *= g.TracksPerCylinder;
         blks *= g.SectorsPerTrack;
         *num_sect = blks;
-        goto good;
+        return 0;
     }
     if ((fname_len < 4) || (fname_len > (int)sizeof(dirName))) {
         fprintf(stderr, "get_blkdev_capacity: unable to process %s into "
@@ -387,19 +387,12 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
     if (GetDiskFreeSpaceEx(dirName, NULL, &total_bytes, NULL)) {
         byte_len = total_bytes.QuadPart;
         *num_sect = byte_len / (int)g.BytesPerSector;
-        goto good;
     } else if (verbose > 1) {
             fprintf(stderr, "GetDiskFreeSpaceEx(%s) "
                     "error=%ld\n", dirName, GetLastError());
         *num_sect = 0;
         return -1;
     }
-
-good:
-    if (verbose)
-        fprintf(stderr, "      number of blocks=%"PRId64" "
-                "[0x%"PRIx64"], block size=%d\n", *num_sect, *num_sect,
-                *sect_sz);
     return 0;
 }
 

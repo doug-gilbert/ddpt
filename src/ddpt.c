@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.90 20100424";
+static char * version_str = "0.90 20100429";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -164,11 +164,11 @@ usage()
            "ddpt  [bs=BS] [count=COUNT] [ibs=BS] if=IFILE [iflag=FLAGS]\n"
            "             [obs=OBS] [of=OFILE] [oflag=FLAGS] [seek=SEEK] "
            "[skip=SKIP]\n"
-           "             [--help] [--version]\n\n"
+           "             [status=STAT] [--help] [--version]\n\n"
            "             [bpt=BPT] [cdbsz=6|10|12|16] [coe=0|1] "
            "[coe_limit=CL]\n"
-           "             [of2=OFILE2] [retries=RETR] [time=0|1] "
-           "[verbose=VERB]\n"
+           "             [of2=OFILE2] [retries=RETR] [verbose=VERB] "
+           "[--verbose]\n"
            "  where:\n"
            "    bpt         input blocks_per_transfer (default 128 if "
            "BS<2048, else 32)\n"
@@ -177,13 +177,12 @@ usage()
            "    cdbsz       size of SCSI READ or WRITE cdb (default is "
            "10)\n"
            "    coe         0->exit on error (def), 1->continue on pt "
-           "error (zero\n"
-           "                fill)\n"
+           "error (zero fill)\n"
            "    coe_limit   limit consecutive 'bad' blocks on reads to CL "
            "times\n"
-           "                when COE>1 (default: 0 which is no limit)\n"
+           "                when coe=1 (default: 0 which is no limit)\n"
            "    count       number of input blocks to copy (def: "
-           "(remaining) \n"
+           "(remaining)\n"
            "                device size)\n"
            "    ibs         input block size (if given must be same as "
            "'bs=')\n"
@@ -195,10 +194,8 @@ usage()
            "    obs         output block size [ (((BS * BPT) %% OBS) == 0) "
            "required\n"
            "                if OBS is not equal to BS] (def: BS)\n"
-           "    of          file or device to write to (def: /dev/null), "
-           "OFILE of '.'\n");
+           "    of          file or device to write to (def: /dev/null)\n");
     fprintf(stderr,
-           "                treated as /dev/null\n"
            "    of2         additional output file (def: /dev/null), "
            "OFILE2 should be\n"
            "                normal file or pipe\n"
@@ -206,15 +203,16 @@ usage()
            "dpo,excl,\n"
            "                flock,fua,fua_nv,nocache,null,pt,sparing,sparse,"
            "ssync,sync]\n"
-           "    retries     retry pass-through (pt) errors RETR times "
+           "    retries     retry pass-through errors RETR times "
            "(def: 0)\n"
            "    seek        block position to start writing to OFILE\n"
            "    skip        block position to start reading from IFILE\n"
-           "    time        0->no timing, 1->time plus calculate "
-           "throughput(def)\n"
+           "    status      value: 'noxfer' suppresses throughput "
+           "calculation\n"
            "    verbose     0->quiet(def), 1->some noise, 2->more noise, "
            "etc\n"
            "    --help      print out this usage message then exit\n"
+           "    --verbose   equivalent to verbose=1\n"
            "    --version   print version information then exit\n\n"
            "Copy from IFILE to OFILE, BS*BPT bytes at a time. Similar to "
            "dd command.\nSupport for block devices, especially those "
@@ -276,9 +274,9 @@ interrupt_handler(int sig)
 {
 #ifdef SG_LIB_MINGW
     fprintf(stderr, "Interrupted by signal,");
+    print_stats("");
     if (do_time)
         calc_duration_throughput(0);
-    print_stats("");
     /* kill(getpid(), sig); */
     sig = sig;
     exit(127);
@@ -290,9 +288,9 @@ interrupt_handler(int sig)
     sigact.sa_flags = 0;
     sigaction(sig, &sigact, NULL);
     fprintf(stderr, "Interrupted by signal,");
+    print_stats("");
     if (do_time)
         calc_duration_throughput(0);
-    print_stats("");
     kill(getpid(), sig);
 #endif
 }
@@ -302,9 +300,9 @@ siginfo_handler(int sig)
 {
     sig = sig;  /* dummy to stop -W warning messages */
     fprintf(stderr, "Progress report, continuing ...\n");
+    print_stats("  ");
     if (do_time)
         calc_duration_throughput(1);
-    print_stats("  ");
 }
 
 /* Process options on the command line. */
@@ -429,12 +427,30 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
                 fprintf(stderr, ME "bad argument to 'skip='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-        } else if (0 == strcmp(key, "time"))
-            do_time = sg_get_num(buf);
-        else if (0 == strncmp(key, "verb", 4))
+        } else if (0 == strcmp(key, "status")) {
+            if (strncmp(buf, "null", 4))
+                ;
+            else if (strncmp(buf, "noxfer", 6))
+                do_time = 0;
+            else {
+                fprintf(stderr, ME "status=' expects 'noxfer' or 'null'\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (0 == strncmp(key, "verb", 4))
             verbose = sg_get_num(buf);
+        else if (0 == strncmp(key, "--verb", 6))
+            ++verbose;
+        else if (0 == strncmp(key, "-vvvv", 5))
+            verbose += 4;
+        else if (0 == strncmp(key, "-vvv", 4))
+            verbose += 3;
+        else if (0 == strncmp(key, "-vv", 3))
+            verbose += 2;
+        else if (0 == strncmp(key, "-v", 2))
+            ++verbose;
         else if ((0 == strncmp(key, "--help", 7)) ||
-                   (0 == strcmp(key, "-?"))) {
+                 (0 == strncmp(key, "-h", 2)) ||
+                 (0 == strcmp(key, "-?"))) {
             usage();
             return -1;
         } else if ((0 == strncmp(key, "--vers", 6)) ||
@@ -595,11 +611,11 @@ dd_filetype_str(int ft, char * buff)
     if (FT_DEV_NULL & ft)
         off += snprintf(buff + off, 32, "null device ");
     if (FT_PT & ft)
-        off += snprintf(buff + off, 32, "pass-through (pt) device ");
+        off += snprintf(buff + off, 32, "pass-through [pt] device ");
     if (FT_BLOCK & ft)
         off += snprintf(buff + off, 32, "block device ");
     if (FT_FIFO & ft)
-        off += snprintf(buff + off, 32, "fifo (named pipe) ");
+        off += snprintf(buff + off, 32, "fifo [named pipe] ");
     if (FT_TAPE & ft)
         off += snprintf(buff + off, 32, "SCSI tape device ");
     if (FT_REG & ft)
@@ -684,10 +700,8 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
             return -1;
         }
         *num_sect = ((int64_t)ull / (int64_t)*sect_sz);
-        if (verb)
-            fprintf(stderr, "      [bgs64] number of blocks=%"PRId64" "
-                    "[0x%"PRIx64"], block size=%d\n", *num_sect, *num_sect,
-                    *sect_sz);
+        if (verb > 5)
+            fprintf(stderr, "Used Linux BLKGETSIZE64 ioctl\n");
  #else
         unsigned long ul;
 
@@ -696,10 +710,8 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
             return -1;
         }
         *num_sect = (int64_t)ul;
-        if (verb)
-            fprintf(stderr, "      [bgs] number of blocks=%"PRId64" "
-                    "[0x%"PRIx64"],  block size=%d\n", *num_sect, *num_sect,
-                    *sect_sz);
+        if (verb > 5)
+            fprintf(stderr, "Used Linux BLKGETSIZE ioctl\n");
  #endif
     }
     return 0;
@@ -1331,6 +1343,41 @@ pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
     return ret;
 }
 
+/* Print number of blocks, block size and size in GB (10**9 bytes) (if large
+ * enough) to stderr. */
+static void
+print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
+                int sect_sz)
+{
+    int sect_per_gb, gb, mib;
+    int64_t n;
+
+    gb = 0;
+    if ((num_sect <= 0) || (sect_sz <= 0))
+        goto cont;
+    sect_per_gb = 1073741824 / sect_sz;
+    if ((1073741824 != (sect_per_gb * sect_sz)) || (sect_per_gb <= 0))
+        goto cont;
+    n = num_sect / sect_per_gb;
+    n = (n * 43) / 40;  /* rough correction for decimal gigabyte */
+    gb = ((n > INT_MAX) || (n < 0)) ? INT_MAX : (int)n;
+
+cont:
+    if (gb)
+        fprintf(stderr, "%s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
+                "block_size=%d, %d GB approx\n", fname, access_typ, num_sect,
+                num_sect, sect_sz, gb);
+    if ((num_sect > 0) && (sect_sz > 0)) {
+        mib = (int)num_sect * sect_sz / 1048576;
+        fprintf(stderr, "%s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
+                "block_size=%d, %d MiB approx\n", fname, access_typ, num_sect,
+                num_sect, sect_sz, mib);
+    } else
+        fprintf(stderr, "%s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
+                "block_size=%d\n", fname, access_typ, num_sect, num_sect,
+                sect_sz);
+}
+
 static void
 calc_duration_throughput(int contin)
 {
@@ -1493,9 +1540,6 @@ open_if(struct opts_t * optsp, int verbose)
                 goto file_err;
             }
         }
-        if (verbose)
-            fprintf(stderr, "        open input(pt), flags=0x%x\n",
-                    fl | flags);
         if (sg_simple_inquiry(fd, &sir, 0, verb)) {
             fprintf(stderr, "INQUIRY failed on %s\n", inf);
             goto other_err;
@@ -1630,9 +1674,6 @@ open_of(struct opts_t * optsp, int verbose)
                     outf, safe_strerror(-fd));
             goto file_err;
         }
-        if (verbose)
-            fprintf(stderr, "        open output(pt), flags=0x%x\n",
-                    flags);
         if (sg_simple_inquiry(fd, &sir, 0, verb)) {
             fprintf(stderr, "INQUIRY failed on %s\n", outf);
             goto other_err;
@@ -1732,6 +1773,9 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
     int res;
     struct stat st;
 
+    if (verbose > 4)
+        fprintf(stderr, "calc_count: enter, in: %s, out: %s\n", optsp->inf,
+                optsp->outf);
     *in_num_sectp = -1;
     if (FT_PT & optsp->in_type) {
         res = scsi_read_capacity(optsp->infd, in_num_sectp, in_sect_szp);
@@ -1753,12 +1797,10 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
                 fprintf(stderr, "Unable to read capacity on %s\n", optsp->inf);
             *in_num_sectp = -1;
         } else if (verbose)
-            fprintf(stderr, "number of input blocks=%"PRId64" [0x%"PRIx64"], "
-                    "block size=%d\n", *in_num_sectp, *in_num_sectp,
-                    *in_sect_szp);
+            print_blk_sizes(optsp->inf, "pt", *in_num_sectp, *in_sect_szp);
         if (*in_sect_szp != optsp->ibs)
-            fprintf(stderr, ">> warning: input block size on %s confusion: "
-                    "bs=%d, device claims=%d\n", optsp->inf, optsp->ibs,
+            fprintf(stderr, ">> warning: %s block size confusion: bs=%d, "
+                    "device claims=%d\n", optsp->inf, optsp->ibs,
                     *in_sect_szp);
     } else if (FT_BLOCK & optsp->in_type) {
         if (0 != get_blkdev_capacity(optsp, DDPT_ARG_IN, in_num_sectp,
@@ -1767,9 +1809,12 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
                     optsp->inf);
             *in_num_sectp = -1;
         }
+        if (verbose)
+            print_blk_sizes(optsp->inf, "blk", *in_num_sectp, *in_sect_szp);
         if (optsp->ibs != *in_sect_szp) {
-            fprintf(stderr, "input block size on %s confusion: bs=%d, device "
-                    "claims=%d\n", optsp->inf, optsp->ibs, *in_sect_szp);
+            fprintf(stderr, ">> warning: %s block size confusion: bs=%d, "
+                    "device claims=%d\n", optsp->inf, optsp->ibs,
+                     *in_sect_szp);
             *in_num_sectp = -1;
         }
     } else if (FT_REG & optsp->in_type) {
@@ -1806,14 +1851,12 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
                         optsp->outf);
             *out_num_sectp = -1;
         } else if (verbose)
-            fprintf(stderr, "number of output blocks=%"PRId64" "
-                    "[0x%"PRIx64"], block size=%d\n", *out_num_sectp,
-                    *out_num_sectp, *out_sect_szp);
+            print_blk_sizes(optsp->outf, "pt", *out_num_sectp, *out_sect_szp);
 
         if (optsp->obs != *out_sect_szp)
-            fprintf(stderr, ">> warning: output block size on %s "
-                    "confusion: obs=%d, device claims=%d\n", optsp->outf,
-                    optsp->obs, *out_sect_szp);
+            fprintf(stderr, ">> warning: %s block size confusion: obs=%d, "
+                    "device claims=%d\n", optsp->outf, optsp->obs,
+                     *out_sect_szp);
     } else if (FT_BLOCK & optsp->out_type) {
         if (0 != get_blkdev_capacity(optsp, DDPT_ARG_OUT, out_num_sectp,
                                      out_sect_szp, verbose)) {
@@ -1821,8 +1864,11 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
                     optsp->outf);
             *out_num_sectp = -1;
         }
+        if (verbose)
+            print_blk_sizes(optsp->outf, "blk", *out_num_sectp,
+                            *out_sect_szp);
         if (optsp->obs != *out_sect_szp) {
-            fprintf(stderr, "output block size on %s confusion: obs=%d, "
+            fprintf(stderr, ">> warning: %s block size confusion: obs=%d, "
                     "device claims=%d\n", optsp->outf, optsp->obs,
                     *out_sect_szp);
             *out_num_sectp = -1;
@@ -2479,6 +2525,10 @@ main(int argc, char * argv[])
 
     ret = do_copy(&opts, wrkPos, wrkPos2);
 
+    print_stats("");
+    if (sum_of_resids)
+        fprintf(stderr, ">> Non-zero sum of residual counts=%d\n",
+                sum_of_resids);
     if (do_time)
         calc_duration_throughput(0);
 
@@ -2515,9 +2565,5 @@ main(int argc, char * argv[])
         if (0 == ret)
             ret = SG_LIB_CAT_OTHER;
     }
-    print_stats("");
-    if (sum_of_resids)
-        fprintf(stderr, ">> Non-zero sum of residual counts=%d\n",
-                sum_of_resids);
     return (ret >= 0) ? ret : SG_LIB_CAT_OTHER;
 }
