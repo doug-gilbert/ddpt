@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.90 20100429";
+static char * version_str = "0.90 20100502";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -1367,7 +1367,7 @@ cont:
         fprintf(stderr, "%s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
                 "block_size=%d, %d GB approx\n", fname, access_typ, num_sect,
                 num_sect, sect_sz, gb);
-    if ((num_sect > 0) && (sect_sz > 0)) {
+    else if ((num_sect > 0) && (sect_sz > 0)) {
         mib = (int)num_sect * sect_sz / 1048576;
         fprintf(stderr, "%s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
                 "block_size=%d, %d MiB approx\n", fname, access_typ, num_sect,
