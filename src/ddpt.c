@@ -122,7 +122,8 @@ static int in_partial = 0;
 static int64_t out_full = 0;
 static int out_partial = 0;
 static int out_sparse_active = 0;
-static int64_t out_sparse = 0;
+static int out_sparing_active = 0;
+static int64_t out_sparse = 0;  /* used for both sparse + sparing */
 static int recovered_errs = 0;
 static int unrecovered_errs = 0;
 static int64_t lowest_unrecovered = 0;
@@ -231,7 +232,7 @@ print_stats(const char * str)
             in_partial);
     fprintf(stderr, "%s%"PRId64"+%d records out\n", str,
             out_full - out_partial, out_partial);
-    if (out_sparse_active)
+    if (out_sparse_active || out_sparing_active)
         fprintf(stderr, "%s%"PRId64" bypassed records out\n", str,
                 out_sparse);
     if (recovered_errs > 0)
@@ -2059,10 +2060,9 @@ cp_read_of_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                      unsigned char * wrkPos2)
 {
     int res;
-    off_t offset = optsp->seek;
+    off_t offset = optsp->seek * optsp->obs;
     int numbytes = csp->oblocks * optsp->obs;
 
-    offset *= optsp->obs;
 #ifdef SG_LIB_WIN32
     if (FT_BLOCK & optsp->out_type) {
         if (offset != csp->of_filepos) {
@@ -2153,7 +2153,7 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp, int blks,
                    unsigned char * wrkPos)
 {
     int res;
-    off_t offset = optsp->seek;
+    off_t offset = optsp->seek * optsp->obs;
     int numbytes = blks * optsp->obs;
 
 #ifdef SG_LIB_WIN32
@@ -2231,6 +2231,46 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp, int blks,
     }
 }
 
+static int
+cp_construct_pt_zero(struct opts_t * optsp, int obpt)
+{
+    if ((FT_PT & optsp->in_type) && (NULL == if_ptvp)) {
+        if_ptvp = construct_scsi_pt_obj();
+        if (NULL == if_ptvp) {
+            fprintf(stderr, "if construct_scsi_pt_obj: out of memory\n");
+            return -1;
+        }
+    }
+    if ((FT_PT & optsp->out_type) && (NULL == of_ptvp)) {
+        of_ptvp = construct_scsi_pt_obj();
+        if (NULL == of_ptvp) {
+            fprintf(stderr, "of construct_scsi_pt_obj: out of memory\n");
+            return -1;
+        }
+    }
+    if ((optsp->oflagp->sparse) && (NULL == zeros_buff)) {
+        zeros_buff = (unsigned char *)calloc(obpt * optsp->obs, 1);
+        if (NULL == zeros_buff) {
+            fprintf(stderr, "zeros_buff calloc failed\n");
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static void
+cp_destruct_pt(void)
+{
+    if (if_ptvp) {
+        destruct_scsi_pt_obj(if_ptvp);
+        if_ptvp = NULL;
+    }
+    if (of_ptvp) {
+        destruct_scsi_pt_obj(of_ptvp);
+        of_ptvp = NULL;
+    }
+}
+
 /* This is the main copy loop. Attempts to copy 'dd_count' (a static)
  * blocks (size given by bs or ibs) in chunks of optsp->bpt_i blocks.
  * Returns 0 if successful.  */
@@ -2249,32 +2289,8 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
     memset(csp, 0, sizeof(struct cp_state_t));
     ibpt = optsp->bpt_i;
     obpt = (optsp->ibs * optsp->bpt_i) / optsp->obs;
-    if ((FT_PT & optsp->in_type) && (NULL == if_ptvp)) {
-        if_ptvp = construct_scsi_pt_obj();
-        if (NULL == if_ptvp) {
-            fprintf(stderr, "do_copy: if construct_scsi_pt_obj: out of "
-                    "memory\n");
-            ret = -1;
-            goto loop_end;
-        }
-    }
-    if ((FT_PT & optsp->out_type) && (NULL == of_ptvp)) {
-        of_ptvp = construct_scsi_pt_obj();
-        if (NULL == of_ptvp) {
-            fprintf(stderr, "do_copy: of construct_scsi_pt_obj: out "
-                    "of memory\n");
-            ret = -1;
-            goto loop_end;
-        }
-    }
-    if ((optsp->oflagp->sparse) && (NULL == zeros_buff)) {
-        zeros_buff = (unsigned char *)calloc(csp->oblocks * optsp->obs, 1);
-        if (NULL == zeros_buff) {
-            fprintf(stderr, "zeros_buff calloc failed\n");
-            ret = -1;
-            goto loop_end;
-        }
-    }
+    if ((ret = cp_construct_pt_zero(optsp, obpt)))
+        goto loop_end;
     csp->of_filepos = optsp->seek * optsp->obs;
 
     /* <<< main loop that does the copy >>> */
@@ -2296,9 +2312,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
             csp->oblocks = n / optsp->obs;
             if (n % optsp->obs) {
                 ++csp->oblocks;
-                // ++out_partial;
-                /* make sure pad is zeros */
-                memset(wrkPos, 0, optsp->ibs * optsp->bpt_i);
+                memset(wrkPos, 0, optsp->ibs * ibpt);
             }
         }
         iblocks_hold = csp->iblocks;
@@ -2348,7 +2362,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
                 out_full += csp->oblocks; /* as if written out */
             else if ((ret = cp_write_block_reg(optsp, csp, csp->oblocks,
                                                wrkPos)))
-                    break;
+                break;
         }
 #ifdef HAVE_POSIX_FADVISE
         do_fadvise(optsp, csp->bytes_read, csp->bytes_of, csp->bytes_of2);
@@ -2373,14 +2387,7 @@ loop_end:
                         "seek=%"PRId64"\n", optsp->seek);
         }
     }
-    if (if_ptvp) {
-        destruct_scsi_pt_obj(if_ptvp);
-        if_ptvp = NULL;
-    }
-    if (of_ptvp) {
-        destruct_scsi_pt_obj(of_ptvp);
-        of_ptvp = NULL;
-    }
+    cp_destruct_pt();
     return ret;
 }
 
@@ -2502,6 +2509,7 @@ main(int argc, char * argv[])
             fprintf(stderr, "oflag=sparing needs seekable output file\n");
             return SG_LIB_SYNTAX_ERROR;
         }
+        out_sparing_active = 1;
     }
 
     if ((dd_count < 0) || ((verbose > 0) && (0 == dd_count))) {
