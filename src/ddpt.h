@@ -128,7 +128,6 @@ struct flags_t {
 struct opts_t {
     int64_t skip;
     int64_t seek;
-    int64_t out2_off;
     int ibs;
     int ibs_given;
     int obs;
@@ -153,12 +152,23 @@ struct opts_t {
 #endif
 };
 
+struct cp_state_t {
+    int64_t of_filepos;
+    int iblocks;
+    int oblocks;
+    int bytes_read;
+    int bytes_of;
+    int bytes_of2;
+    int sparing_skip;
+    int sparse_skip;
+};
+
 
 #ifdef SG_LIB_WIN32
 extern int dd_filetype(const char * fn);
 extern int get_blkdev_capacity(struct opts_t * optsp, int which_arg,
                                int64_t * num_sect, int * sect_sz,
-			       int verbose);
+                               int verbose);
 extern void win32_adjust_fns(struct opts_t * optsp);
 extern int win32_open_if(struct opts_t * optsp, int verbose);
 extern int win32_open_of(struct opts_t * optsp, int verbose);
