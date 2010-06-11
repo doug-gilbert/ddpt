@@ -1,15 +1,15 @@
-.TH DDPT "8" "April 2010" "ddpt\-0.90" DDPT
+.TH DDPT "8" "June 2010" "ddpt\-0.91" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
 .SH SYNOPSIS
 .B ddpt
 [\fIbs=BS\fR] [\fIconv=CONV\fR] [\fIcount=COUNT\fR] [\fIibs=BS\fR]
-\fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIobs=BS\fR] [\fIof=OFILE\fR]
+\fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIobs=OBS\fR] [\fIof=OFILE\fR]
 [\fIoflag=FLAGS\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR]
 [\fI\-\-help\fR] [\fI\-\-version\fR]
 .PP
-[\fIbpt=BPT\fR] [\fIcdbsz=\fR6|10|12|16] [\fIcoe=\fR0|1]
+[\fIbpt=BPT[,OBPC]\fR] [\fIcdbsz=\fR6|10|12|16] [\fIcoe=\fR0|1]
 [\fIcoe_limit=CL\fR] [\fIof2=OFILE2\fR] [\fIretries=RETR\fR]
 [\fIverbose=VERB\fR] [\fI\-\-verbose\fR]
 .SH DESCRIPTION
@@ -38,14 +38,20 @@ calls. That default can be overridden by using the "pt"
 flag (e.g. "if=/dev/sdc iflag=pt").
 .SH OPTIONS
 .TP
-\fBbpt\fR=\fIBPT\fR
+\fBbpt\fR=\fIBPT[,OBPC]\fR
 each IO transaction on \fIIFILE\fR will be made using \fIBPT\fR
-blocks (or less if near the end of the copy). Default is 128 for block
-sizes less that 2048 bytes, otherwise the default is 32. So for bs=512
-the reads will each convey 64 KiB of data by default (less if near the
-end of the transfer or memory restrictions). For example the media in
-cd/dvd drives has a block size of 2048 bytes so bpt defaults to 32
-which again implies 64 KiB transfers.
+blocks (or less if near the end of the copy). The default \fIBPT\fR value
+is 128 for block sizes less that 2048 bytes, otherwise the default is
+32. If \fIBPT\fR is given as 0 it is treated as the default value.
+So for bs=512 the reads will each convey 64 KiB of data by default (less
+if near the end of the transfer or memory restrictions). For example
+the media in cd/dvd drives has a block size of 2048 bytes so bpt defaults
+to 32 which again implies 64 KiB transfers.
+The default granularity for sparse writes and write sparing comparisons
+is \fIBPT*BS\fR bytes.
+That can be reduced by giving \fIOBPC\fR with the finest granularity being
+when \fIOBPC\fR is 1 which implies the unit of comparisons is \fIOBS\fR
+bytes. When \fIOBPC\fR is 0 or not given the default granularity is used, 
 .TP
 \fBbs\fR=\fIBS\fR
 where \fIBS\fR is the \fIIFILE\fR block size. If \fIOBS\fR is not supplied
@@ -58,7 +64,7 @@ Note that this differs from
 which permits \fIBS\fR to be an integral multiple. Default is 512 which
 is usually correct for disks but incorrect for dvds (which normally
 have 2048 byte blocks). For this utility the maximum size of each individual
-IO operation is \fIBS\fR * \fIBPT\fR bytes.
+IO operation is \fIBS*BPT\fR bytes.
 .TP
 \fBcdbsz\fR=6 | 10 | 12 | 16
 size of SCSI READ and/or WRITE commands issued on pt devices.
@@ -279,7 +285,10 @@ is skipped. This flag is only active with the oflag option. For write
 sparing, the output file must exist, be readable and seekable. Write
 sparing is useful when a write operation is more "expensive" than a read.
 For example flash memory devices have an upper limit on the number of
-times a block can be written.
+times a block can be written. The granularity of the comparison can be
+reduced from the default \fIBS\fR * \fIBPT\fR byte segment with the
+the \fIOBPC\fR value given to the "bpt=" option. The finest granularity
+is when \fIOBPC\fR is 1 which implies \fIOBS\fR bytes.
 .TP
 sparse
 after each \fIBS\fR * \fIBPT\fR byte segment is read from the input, it is
@@ -292,7 +301,9 @@ to write to it. Hence it may be advantageous to manually remove the
 \fIOFILE\fR if it is large prior to using oflag=sparse. The last segment
 is always written so regular files will show the same length and so
 programs like md5sum and sha1sum will generate the same value regardless
-of whether oflag=sparse is given or not.
+of whether oflag=sparse is given or not. The granularity of the comparison
+can be reduced from the default \fIBS\fR * \fIBPT\fR byte segment with the 
+the \fIOBPC\fR value given to the "bpt=" option.
 .TP
 ssync
 if \fIOFILE\fR is in "pt" mode the the SCSI SYNCHRONIZE CACHE command is

@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100610";
+static char * version_str = "0.91 20100611";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -167,13 +167,15 @@ usage()
            "             [obs=OBS] [of=OFILE] [oflag=FLAGS] [seek=SEEK] "
            "[skip=SKIP]\n"
            "             [status=STAT] [--help] [--version]\n\n"
-           "             [bpt=BPT] [cdbsz=6|10|12|16] [coe=0|1] "
+           "             [bpt=BPT[,OBPC]] [cdbsz=6|10|12|16] [coe=0|1] "
            "[coe_limit=CL]\n"
            "             [of2=OFILE2] [retries=RETR] [verbose=VERB] "
            "[--verbose]\n"
            "  where:\n"
-           "    bpt         input blocks_per_transfer (default 128 if "
+           "    bpt         input Blocks Per Transfer (BPT) (def: 128 if "
            "BS<2048, else 32)\n"
+           "                Output Blocks Per Check (OBPC) (def: 0 implies "
+           "BPT*BS/OBS)\n"
            "    bs          input block size (default is 512)\n");
     fprintf(stderr,
            "    cdbsz       size of SCSI READ or WRITE cdb (default is "
@@ -315,7 +317,8 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
     char str[STR_SZ];
     char * key;
     char * buf;
-    int k;
+    char * cp;
+    int k, n;
 
     for (k = 1; k < argc; ++k) {
         if (argv[k]) {
@@ -331,12 +334,25 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
             optsp->iflagp->append = sg_get_num(buf);
             optsp->oflagp->append = optsp->iflagp->append;
         } else if (0 == strcmp(key, "bpt")) {
-            optsp->bpt_i = sg_get_num(buf);
-            if (-1 == optsp->bpt_i) {
-                fprintf(stderr, ME "bad argument to 'bpt='\n");
+            cp = strchr(buf, ',');
+            if (cp)
+                *cp = '\0';
+            if ((n = sg_get_num(buf)) < 0) {
+                fprintf(stderr, ME "bad BPT argument to 'bpt='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-            optsp->bpt_given = 1;
+            if (n > 0) {
+                optsp->bpt_i = n;
+                optsp->bpt_given = 1;
+            }
+            if (cp) {
+                n = sg_get_num(cp + 1);
+                if (n < 0) {
+                    fprintf(stderr, ME "bad OBPC argument to 'bpt='\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+                optsp->obpc = n;
+            }
         } else if (0 == strcmp(key, "bs")) {
             optsp->ibs = sg_get_num(buf);
             if (-1 == optsp->ibs) {
@@ -2067,7 +2083,7 @@ cp_read_of_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
     if (FT_BLOCK & optsp->out_type) {
         if (offset != csp->of_filepos) {
             if (verbose > 2)
-                fprintf(stderr, "moving filepos: (re-)seek="
+                fprintf(stderr, "moving filepos: new_pos="
                         "%"PRId64"\n", (int64_t)offset);
             if (win32_set_file_pos(optsp, DDPT_ARG_OUT, offset, verbose))
                 return SG_LIB_FILE_ERROR;
@@ -2098,11 +2114,11 @@ cp_read_of_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
             off_t off_res;
 
             if (verbose > 2)
-                fprintf(stderr, "moving filepos: (re-)seek="
+                fprintf(stderr, "moving filepos: new_pos="
                         "%"PRId64"\n", (int64_t)offset);
             off_res = lseek(optsp->outfd, offset, SEEK_SET);
             if (off_res < 0) {
-                fprintf(stderr, "failed moving filepos: (re-)seek="
+                fprintf(stderr, "failed moving filepos: new_pos="
                         "%"PRId64"\n", (int64_t)offset);
                 perror("lseek on output");
                 return SG_LIB_FILE_ERROR;
@@ -2132,16 +2148,17 @@ cp_read_of_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
 }
 
 static int
-cp_write_pt(struct opts_t * optsp, int blks, unsigned char * wrkPos)
+cp_write_pt(struct opts_t * optsp, int seek_delta, int blks,
+            unsigned char * wrkPos)
 {
     int res;
+    int64_t aseek = optsp->seek + seek_delta;
 
-    res = pt_write(optsp->outfd, wrkPos, blks, optsp->seek,
-                   optsp->obs, optsp->oflagp);
+    res = pt_write(optsp->outfd, wrkPos, blks, aseek, optsp->obs,
+                   optsp->oflagp);
     if (0 != res) {
         fprintf(stderr, "pt_write failed,%s seek=%"PRId64"\n",
-                ((-2 == res) ? " try reducing bpt," : ""),
-                optsp->seek);
+                ((-2 == res) ? " try reducing bpt," : ""), aseek);
         return res;
     } else
         out_full += blks;
@@ -2149,18 +2166,20 @@ cp_write_pt(struct opts_t * optsp, int blks, unsigned char * wrkPos)
 }
 
 static int
-cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp, int blks,
-                   unsigned char * wrkPos)
+cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
+                   int seek_delta, int blks, unsigned char * wrkPos)
 {
     int res;
-    off_t offset = optsp->seek * optsp->obs;
     int numbytes = blks * optsp->obs;
+    off_t offset;
+    int64_t aseek = optsp->seek + seek_delta;
 
+    offset = aseek * optsp->obs;
 #ifdef SG_LIB_WIN32
     if (FT_BLOCK & optsp->out_type) {
         if (offset != csp->of_filepos) {
             if (verbose > 2)
-                fprintf(stderr, "moving filepos: (re-)seek="
+                fprintf(stderr, "moving filepos: new_pos="
                         "%"PRId64"\n", (int64_t)offset);
             if (win32_set_file_pos(optsp, DDPT_ARG_OUT, offset, verbose))
                 return SG_LIB_FILE_ERROR;
@@ -2168,12 +2187,11 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp, int blks,
         }
         res = win32_block_write(optsp, wrkPos, numbytes, verbose);
         if (res < 0) {
-            fprintf(stderr, ME "write(win32_block, seek=%"PRId64" ",
-                    optsp->seek);
+            fprintf(stderr, ME "write(win32_block, seek=%"PRId64" ", aseek);
             return -1;
         } else if (res < numbytes) {
             fprintf(stderr, "output file probably full, seek=%"PRId64" ",
-                    optsp->seek);
+                    aseek);
             out_full += res / optsp->obs;
             if ((res % optsp->obs) > 0)
                 ++out_partial;
@@ -2193,11 +2211,11 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp, int blks,
             off_t off_res;
 
             if (verbose > 2)
-                fprintf(stderr, "moving filepos: (re-)seek="
+                fprintf(stderr, "moving filepos: new_pos="
                         "%"PRId64"\n", (int64_t)offset);
             off_res = lseek(optsp->outfd, offset, SEEK_SET);
             if (off_res < 0) {
-                fprintf(stderr, "failed moving filepos: (re-)seek="
+                fprintf(stderr, "failed moving filepos: new_pos="
                         "%"PRId64"\n", (int64_t)offset);
                 perror("lseek on output");
                 return SG_LIB_FILE_ERROR;
@@ -2211,13 +2229,12 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp, int blks,
             fprintf(stderr, "write(unix): requested bytes=%d, res=%d\n",
                     numbytes, res);
         if (res < 0) {
-            snprintf(ebuff, EBUFF_SZ, ME "writing, seek=%"PRId64" ",
-                     optsp->seek);
+            snprintf(ebuff, EBUFF_SZ, ME "writing, seek=%"PRId64" ", aseek);
             perror(ebuff);
             return -1;
         } else if (res < numbytes) {
             fprintf(stderr, "output file probably full, seek=%"PRId64" ",
-                    optsp->seek);
+                    aseek);
             out_full += res / optsp->obs;
             if ((res % optsp->obs) > 0)
                 ++out_partial;
@@ -2229,6 +2246,60 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp, int blks,
         }
         return 0;
     }
+}
+
+static int
+cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
+                 unsigned char * b1p, unsigned char * b2p)
+{
+    int res, k, n, oblks, numbytes, chunk, need_wr, wr_len, wr_k, obs;
+
+    oblks = csp->oblocks;
+    obs = optsp->obs;
+    if (optsp->obpc >= oblks) {
+        if (FT_PT & optsp->out_type) {
+            if ((res = cp_write_pt(optsp, 0, oblks, b1p)))
+                return res;
+        } else if ((res = cp_write_block_reg(optsp, csp, 0, oblks, b1p)))
+            return res;
+        return 0;
+    }
+    numbytes = oblks * obs;
+    chunk = optsp->obpc * obs;
+    for (k = 0, need_wr = 0, wr_len = 0, wr_k = 0; k < numbytes; k += chunk) {
+        n = ((k + chunk) < numbytes) ? chunk : (numbytes - k);
+        if (0 == memcmp(b1p + k, b2p + k, n)) {
+            if (need_wr) {
+                if (FT_PT & optsp->out_type) {
+                    if ((res = cp_write_pt(optsp, wr_k / obs, wr_len / obs,
+                                           b1p + wr_k)))
+                        return res;
+                } else if ((res = cp_write_block_reg(optsp, csp,
+                                wr_k / obs, wr_len / obs, b1p + wr_k)))
+                    return res;
+                need_wr = 0;
+            }
+            out_sparse += (n / obs);
+        } else {   /* look for a sequence of unequals */
+            if (need_wr)
+                wr_len += n;
+            else {
+                need_wr = 1;
+                wr_len = n;
+                wr_k = k;
+            }
+        }
+    }
+    if (need_wr) {
+        if (FT_PT & optsp->out_type) {
+            if ((res = cp_write_pt(optsp, wr_k / obs, wr_len / obs,
+                                   b1p + wr_k)))
+                return res;
+        } else if ((res = cp_write_block_reg(optsp, csp, wr_k / obs,
+                                             wr_len / obs, b1p + wr_k)))
+            return res;
+    }
+    return 0;
 }
 
 static int
@@ -2336,6 +2407,12 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
             (! (FT_DEV_NULL & optsp->out_type))) {
             if (0 == memcmp(wrkPos, zeros_buff, csp->oblocks * optsp->obs))
                 csp->sparse_skip = 1;
+            else if (optsp->obpc) {
+                ret = cp_finer_comp_wr(optsp, csp, wrkPos, zeros_buff);
+                if (ret)
+                    break;
+                goto bypass_write;
+            }
         }
         if (optsp->oflagp->sparing && (! csp->sparse_skip)) {
             /* In write sparing, we read from the output */
@@ -2343,27 +2420,35 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
                 res = cp_read_of_pt(optsp, csp, wrkPos2);
             else
                 res = cp_read_of_block_reg(optsp, csp, wrkPos2);
-            if ((0 == res) &&
-                (0 == memcmp(wrkPos, wrkPos2, csp->oblocks * optsp->obs)))
-                csp->sparing_skip = 1;
+            if (0 == res) {
+                if (0 == memcmp(wrkPos, wrkPos2, csp->oblocks * optsp->obs))
+                    csp->sparing_skip = 1;
+                else if (optsp->obpc) {
+                    ret = cp_finer_comp_wr(optsp, csp, wrkPos, wrkPos2);
+                    if (ret)
+                        break;
+                    goto bypass_write;
+                }
+            }
         }
         /* Start of writing section */
         if (csp->sparing_skip || csp->sparse_skip) {
             if (verbose > 2)
-                fprintf(stderr, "%s bypassing pt_write: seek blk=%" PRId64
+                fprintf(stderr, "%s bypassing write: seek blk=%" PRId64
                         ", offset blks=%d\n", (csp->sparing_skip ?
                          "sparing" : "sparse"), optsp->seek, csp->oblocks);
             out_sparse += csp->oblocks;
         } else {
             if (FT_PT & optsp->out_type) {
-                if ((ret = cp_write_pt(optsp, csp->oblocks, wrkPos)))
+                if ((ret = cp_write_pt(optsp, 0, csp->oblocks, wrkPos)))
                     break;
             } else if (FT_DEV_NULL & optsp->out_type)
                 out_full += csp->oblocks; /* as if written out */
-            else if ((ret = cp_write_block_reg(optsp, csp, csp->oblocks,
+            else if ((ret = cp_write_block_reg(optsp, csp, 0, csp->oblocks,
                                                wrkPos)))
                 break;
         }
+bypass_write:
 #ifdef HAVE_POSIX_FADVISE
         do_fadvise(optsp, csp->bytes_read, csp->bytes_of, csp->bytes_of2);
 #endif
@@ -2381,7 +2466,7 @@ loop_end:
             ;
         else { /* write zeros to extend ofile to length prior to error */
             csp->of_filepos -= penult_blocks * optsp->obs;
-            res = cp_write_block_reg(optsp, csp, penult_blocks, zeros_buff);
+            res = cp_write_block_reg(optsp, csp, 0, penult_blocks, zeros_buff);
             if (res < 0)
                 fprintf(stderr, "writing(sparse after error) error, "
                         "seek=%"PRId64"\n", optsp->seek);
