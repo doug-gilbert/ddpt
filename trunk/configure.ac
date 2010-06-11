@@ -1,4 +1,4 @@
-AC_INIT(ddpt, 0.90, dgilbert@interlog.com)
+AC_INIT(ddpt, 0.91, dgilbert@interlog.com)
 
 AM_INIT_AUTOMAKE
 AM_CONFIG_HEADER(config.h)
