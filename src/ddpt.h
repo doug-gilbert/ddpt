@@ -134,6 +134,7 @@ struct opts_t {
     int obs_given;
     int bpt_i;          /* blocks (of input) per transfer */
     int bpt_given;
+    int obpc;
     char inf[INOUTF_SZ];
     int in_type;
     int infd;

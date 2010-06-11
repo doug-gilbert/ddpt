@@ -2,8 +2,9 @@ The version number is hardcoded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.91 [20100510] [svn: r87]
+Changelog for ddpt-0.91 [20100511] [svn: r88]
   - rework copy loop.
+  - extend bpt=BPT to bpt=BPR[,OBPC] spare+sparse granularity
 
 Changelog for ddpt-0.90 [20100508] [svn: r85]
   - copied from sg_dd utility in sg3_utils package
