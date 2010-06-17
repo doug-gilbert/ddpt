@@ -275,6 +275,17 @@ via standard UNIX read() and write() commands as well as SCSI commands.
 Such devices default standard UNIX read() and write() commands in the
 absence of this flag.
 .TP
+resume
+when a copy is interrupted (e.g. with Control-C from the keyboard)
+then using the same invocation again with the addition of "oflag=resume"
+will attempt to restart the copy from the point of the interrupt (or
+just before that point). \fIOFILE\fR is required to be a regular file
+and this flag is only active with the oflag option. It is harmless
+to use "oflag=resume" when \fIOFILE\fR doesn't exist or is zero length.
+If the length of \fIOFILE\fR is greater than or equal to the length
+implied by a copy invocation that includes "oflag=resume" then no
+further data is copied.
+.TP
 sparing
 during the copy each \fIBS\fR * \fIBPT\fR byte segment is read from
 input into a buffer. Then, instead of writing that buffer to output, the
