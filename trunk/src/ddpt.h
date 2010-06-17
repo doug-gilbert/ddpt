@@ -118,6 +118,7 @@ struct flags_t {
     int pdt;
     int nocache;
     int pt;
+    int resume;
     int retries;
     int sparing;
     int sparse;
@@ -154,6 +155,7 @@ struct opts_t {
 };
 
 struct cp_state_t {
+    int64_t if_filepos;
     int64_t of_filepos;
     int iblocks;
     int oblocks;
