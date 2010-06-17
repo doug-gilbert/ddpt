@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100616";
+static char * version_str = "0.91 20100617";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -162,7 +162,7 @@ static void
 usage()
 {
     fprintf(stderr, "Usage: "
-           "ddpt  [bs=BS] [count=COUNT] [ibs=BS] if=IFILE [iflag=FLAGS]\n"
+           "ddpt  [bs=BS] [count=COUNT] [ibs=IBS] if=IFILE [iflag=FLAGS]\n"
            "             [obs=OBS] [of=OFILE] [oflag=FLAGS] [seek=SEEK] "
            "[skip=SKIP]\n"
            "             [status=STAT] [--help] [--version]\n\n"
@@ -172,10 +172,11 @@ usage()
            "[--verbose]\n"
            "  where:\n"
            "    bpt         input Blocks Per Transfer (BPT) (def: 128 if "
-           "BS<2048, else 32)\n"
+           "IBS<2048, else 32)\n"
            "                Output Blocks Per Check (OBPC) (def: 0 implies "
-           "BPT*BS/OBS)\n"
-           "    bs          input block size (default is 512)\n");
+           "BPT*IBS/OBS)\n"
+           "    bs          block size for input and output (overrides "
+           "ibs and obs)\n");
     fprintf(stderr,
            "    cdbsz       size of SCSI READ or WRITE cdb (default is "
            "10)\n"
@@ -187,25 +188,21 @@ usage()
            "    count       number of input blocks to copy (def: "
            "(remaining)\n"
            "                device size)\n"
-           "    ibs         input block size (if given must be same as "
-           "'bs=')\n"
+           "    ibs         input block size (default 512 bytes)\n"
            "    if          file or device to read from (for stdin use "
            "'-')\n"
-           "    iflag       comma separated list from: [coe,direct,"
-           "dpo,excl,flock,\n"
-           "                fua,fua_nv,nocache,null,pt,sync]\n"
-           "    obs         output block size [ (((BS * BPT) %% OBS) == 0) "
-           "required\n"
-           "                if OBS is not equal to BS] (def: BS)\n"
+           "    iflag       input flags, comma separated list from FLAGS "
+           "(see below)\n"
+           "    obs         output block size (def: 512), when IBS is "
+           "not equal OBS\n"
+           "                [ (((IBS * BPT) %% OBS) == 0) is required\n"
            "    of          file or device to write to (def: /dev/null)\n");
     fprintf(stderr,
            "    of2         additional output file (def: /dev/null), "
            "OFILE2 should be\n"
            "                normal file or pipe\n"
-           "    oflag       comma separated list from: [append,coe,direct,"
-           "dpo,excl,\n"
-           "                flock,fua,fua_nv,nocache,null,pt,sparing,sparse,"
-           "ssync,sync]\n"
+           "    oflag       output flags, comma separated list from FLAGS "
+           "(see below)\n"
            "    retries     retry pass-through errors RETR times "
            "(def: 0)\n"
            "    seek        block position to start writing to OFILE\n"
@@ -218,9 +215,11 @@ usage()
            "    --help      print out this usage message then exit\n"
            "    --verbose   equivalent to verbose=1\n"
            "    --version   print version information then exit\n\n"
-           "Copy from IFILE to OFILE, BS*BPT bytes at a time. Similar to "
+           "Copy from IFILE to OFILE, IBS*BPT bytes at a time. Similar to "
            "dd command.\nSupport for block devices, especially those "
-           "accessed via a SCSI pass-through.\n");
+           "accessed via a SCSI pass-through.\n"
+           "FLAGS: append(o),coe,direct,dpo,excl,flock,fua,fua_nv,nocache,"
+           "null,pt,\nresume(o),sparing(o),sparse(o),ssync(o),sync\n");
 }
 
 
@@ -416,11 +415,23 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
                 optsp->obpc = n;
             }
         } else if (0 == strcmp(key, "bs")) {
-            optsp->ibs = sg_get_num(buf);
-            if (-1 == optsp->ibs) {
+            n = sg_get_num(buf);
+            if (n < 0) {
                 fprintf(stderr, ME "bad argument to 'bs='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
+            if (optsp->bs_given) {
+                fprintf(stderr, ME "second 'bs=' option given, dangerous\n");
+                return SG_LIB_SYNTAX_ERROR;
+            } else
+                optsp->bs_given = 1;
+            if ((optsp->ibs_given) || (optsp->obs_given)) {
+                fprintf(stderr, ME "'bs=' option cannot be combined with "
+                        "'ibs=' or 'obs='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            optsp->ibs = n;
+            optsp->obs = n;
         } else if (0 == strcmp(key, "cdbsz")) {
             optsp->iflagp->cdbsz = sg_get_num(buf);
             optsp->oflagp->cdbsz = optsp->iflagp->cdbsz;
@@ -448,12 +459,18 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
                 }
             }   /* 'count=-1' is accepted, means calculate count */
         } else if (0 == strcmp(key, "ibs")) {
-            optsp->ibs = sg_get_num(buf);
-            if (-1 == optsp->ibs) {
+            n = sg_get_num(buf);
+            if (n < 0) {
                 fprintf(stderr, ME "bad argument to 'ibs='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
+            if (optsp->bs_given) {
+                fprintf(stderr, ME "'ibs=' option cannot be combined with "
+                        "'bs='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
             ++optsp->ibs_given;
+            optsp->ibs = n;
         } else if (strcmp(key, "if") == 0) {
             if ('\0' != optsp->inf[0]) {
                 fprintf(stderr, "Second IFILE argument??\n");
@@ -466,12 +483,18 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strcmp(key, "obs")) {
-            optsp->obs = sg_get_num(buf);
-            if (-1 == optsp->obs) {
+            n = sg_get_num(buf);
+            if (n < 0) {
                 fprintf(stderr, ME "bad argument to 'obs='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
+            if (optsp->bs_given) {
+                fprintf(stderr, ME "'obs=' option cannot be combined with "
+                        "'bs='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
             ++optsp->obs_given;
+            optsp->obs = n;
         } else if (strcmp(key, "of") == 0) {
             if ('\0' != optsp->outf[0]) {
                 fprintf(stderr, "Second OFILE argument??\n");
@@ -2323,6 +2346,86 @@ cp_destruct_pt(void)
     }
 }
 
+static int
+resume_calc_count(struct opts_t * op)
+{
+    int64_t in_num_sect = -1;
+    int64_t out_num_sect = -1;
+    int64_t ibytes, obytes, ibk;
+    int valid_resume = 0;
+    int in_sect_sz, out_sect_sz;
+
+    calc_count(op, &in_num_sect, &in_sect_sz, &out_num_sect,
+               &out_sect_sz);
+    if (verbose > 2)
+        fprintf(stderr, "Start of loop, count=%"PRId64", in_num_sect"
+                "=%"PRId64", out_num_sect=%"PRId64"\n", dd_count,
+                in_num_sect, out_num_sect);
+    if (op->skip && (FT_REG == op->in_type) &&
+        (op->skip > in_num_sect)) {
+        fprintf(stderr, "cannot skip to specified offset on %s\n",
+                op->inf);
+        dd_count = 0;
+        return -1;
+    }
+    if (op->oflagp->resume) {
+        if (FT_REG == op->out_type) {
+            if (out_num_sect < 0)
+                fprintf(stderr, "resume cannot determine size of OFILE, "
+                        "ignore\n");
+            else
+                valid_resume = 1;
+        } else
+            fprintf(stderr, "resume expects OFILE to be regular, ignore\n");
+    }
+    if ((dd_count < 0) && (! valid_resume)) {
+        /* Scale back in_num_sect by value of skip */
+        if (op->skip && (in_num_sect > op->skip))
+            in_num_sect -= op->skip;
+        /* Scale back out_num_sect by value of seek */
+        if (op->seek && (out_num_sect > op->seek))
+            out_num_sect -= op->seek;
+        if ((out_num_sect < 0) && (in_num_sect > 0))
+            dd_count = in_num_sect;
+        else if ((out_num_sect < 0) && (in_num_sect <= 0))
+            ;
+        else {
+            ibytes = (in_num_sect > 0) ? (op->ibs * in_num_sect) : 0;
+            obytes = op->obs * out_num_sect;
+            if (0 == ibytes)
+                dd_count = obytes / op->ibs;
+            else if ((ibytes > obytes) && (FT_REG != op->out_type)) {
+                dd_count = obytes / op->ibs;
+            } else
+                dd_count = in_num_sect;
+        }
+    }
+    if (valid_resume) {
+        if (dd_count < 0)
+            dd_count = in_num_sect - op->skip;
+        if (out_num_sect <= op->seek)
+            fprintf(stderr, "resume finds no previous copy, restarting\n");
+        else {
+            obytes = op->obs * (out_num_sect - op->seek);
+            ibk = obytes / op->ibs;
+            if (ibk >= dd_count) {
+                fprintf(stderr, "resume finds copy complete, exiting\n");
+                dd_count = 0;
+                return -1;
+            }
+            /* align to bpt multiple */
+            ibk = (ibk / op->bpt_i) * op->bpt_i;
+            op->skip += ibk;
+            op->seek += (ibk * op->ibs) / op->obs;
+            dd_count -= ibk;
+            fprintf(stderr, "resume adjusting skip=%"PRId64", seek=%"
+                    PRId64", and count=%"PRId64"\n", op->skip, op->seek,
+                    dd_count);
+        }
+    }
+    return 0;
+}
+
 /* This is the main copy loop. Attempts to copy 'dd_count' (a static)
  * blocks (size given by bs or ibs) in chunks of optsp->bpt_i blocks.
  * Returns 0 if successful.  */
@@ -2461,13 +2564,11 @@ loop_end:
 int
 main(int argc, char * argv[])
 {
-    int res, fd, in_sect_sz, out_sect_sz;
+    int res, fd;
     unsigned char * wrkBuff = NULL;
     unsigned char * wrkPos;
     unsigned char * wrkBuff2 = NULL;
     unsigned char * wrkPos2 = NULL;
-    int64_t in_num_sect = -1;
-    int64_t out_num_sect = -1;
     char ebuff[EBUFF_SZ];
     int ret = 0;
     struct opts_t opts;
@@ -2579,79 +2680,8 @@ main(int argc, char * argv[])
 
     if ((dd_count < 0) || opts.oflagp->resume ||
         ((verbose > 0) && (0 == dd_count))) {
-        int64_t ibytes, obytes, ibk;
-        int valid_resume = 0;
-
-        calc_count(&opts, &in_num_sect, &in_sect_sz, &out_num_sect,
-                   &out_sect_sz);
-        if (verbose > 2)
-            fprintf(stderr, "Start of loop, count=%"PRId64", in_num_sect"
-                    "=%"PRId64", out_num_sect=%"PRId64"\n", dd_count,
-                    in_num_sect, out_num_sect);
-        if (opts.skip && (FT_REG == opts.in_type) &&
-            (opts.skip > in_num_sect)) {
-            fprintf(stderr, "cannot skip to specified offset on %s\n",
-                    opts.inf);
-            dd_count = 0;
+        if (resume_calc_count(&opts))
             goto cleanup;
-        }
-        if (opts.oflagp->resume) {
-            if (FT_REG == opts.out_type) {
-                if (out_num_sect < 0)
-                    fprintf(stderr, "resume cannot determine size of OFILE, "
-                            "ignore\n");
-                else
-                    valid_resume = 1;
-            } else
-                fprintf(stderr, "resume expects OFILE to be regular, "
-                        "ignore\n");
-        }
-        if ((dd_count < 0) && (! valid_resume)) {
-            /* Scale back in_num_sect by value of skip */
-            if (opts.skip && (in_num_sect > opts.skip))
-                in_num_sect -= opts.skip;
-            /* Scale back out_num_sect by value of seek */
-            if (opts.seek && (out_num_sect > opts.seek))
-                out_num_sect -= opts.seek;
-            if ((out_num_sect < 0) && (in_num_sect > 0))
-                dd_count = in_num_sect;
-            else if ((out_num_sect < 0) && (in_num_sect <= 0))
-                ;
-            else {
-                ibytes = (in_num_sect > 0) ? (opts.ibs * in_num_sect) : 0;
-                obytes = opts.obs * out_num_sect;
-                if (0 == ibytes)
-                    dd_count = obytes / opts.ibs;
-                else if ((ibytes > obytes) && (FT_REG != opts.out_type)) {
-                    dd_count = obytes / opts.ibs;
-                } else
-                    dd_count = in_num_sect;
-            }
-        }
-        if (valid_resume) {
-            if (dd_count < 0)
-                dd_count = in_num_sect - opts.skip;
-            if (out_num_sect <= opts.seek)
-                fprintf(stderr, "resume finds no previous copy, "
-                        "restarting\n");
-            else {
-                obytes = opts.obs * (out_num_sect - opts.seek);
-                ibk = obytes / opts.ibs;
-                if (ibk >= dd_count) {
-                    fprintf(stderr, "resume finds copy complete, exiting\n");
-                    dd_count = 0;
-                    goto cleanup;
-                }
-                /* align to bpt multiple */
-                ibk = (ibk / opts.bpt_i) * opts.bpt_i;
-                opts.skip += ibk;
-                opts.seek += (ibk * opts.ibs) / opts.obs;
-                dd_count -= ibk;
-                fprintf(stderr, "resume adjusting skip=%"PRId64", seek=%"
-                        PRId64", and count=%"PRId64"\n", opts.skip,
-                        opts.seek, dd_count);
-            }
-        }
     }
     if (dd_count < 0) {
         fprintf(stderr, "Couldn't calculate count, please give one\n");

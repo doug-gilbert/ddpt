@@ -2,8 +2,9 @@ The author of ddpt would like to thank the following people who
 have made contributions:
 
 Mark Knibbs <markk at clara dot co dot uk>
-        suggested support for write sparing and sparse writing.
-        [20081212]
+        proposed write sparing and sparse writing. [20081212]
+        proposed granularity control for sparing+sparse; oflag=resume
+        and lazy seeks. [20100601]
 
 Peter Allworth <linsol at zeta dot org dot au>
         original dd clone design used by sg3_utils's dd variants
@@ -12,4 +13,4 @@ Peter Allworth <linsol at zeta dot org dot au>
 
 
 Doug Gilbert
-6th January 2009
+17th June 2010
