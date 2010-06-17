@@ -129,6 +129,7 @@ struct flags_t {
 struct opts_t {
     int64_t skip;
     int64_t seek;
+    int bs_given;
     int ibs;
     int ibs_given;
     int obs;
