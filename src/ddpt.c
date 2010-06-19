@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100617";
+static char * version_str = "0.91 20100618";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -162,10 +162,10 @@ static void
 usage()
 {
     fprintf(stderr, "Usage: "
-           "ddpt  [bs=BS] [count=COUNT] [ibs=IBS] if=IFILE [iflag=FLAGS]\n"
-           "             [obs=OBS] [of=OFILE] [oflag=FLAGS] [seek=SEEK] "
-           "[skip=SKIP]\n"
-           "             [status=STAT] [--help] [--version]\n\n"
+           "ddpt  [bs=BS] [conv=CONVS] [count=COUNT] [ibs=IBS] if=IFILE\n"
+           "             [iflag=FLAGS] [obs=OBS] [of=OFILE] [oflag=FLAGS] "
+           "[seek=SEEK]\n"
+           "             [skip=SKIP] [status=STAT] [--help] [--version]\n\n"
            "             [bpt=BPT[,OBPC]] [cdbsz=6|10|12|16] [coe=0|1] "
            "[coe_limit=CL]\n"
            "             [of2=OFILE2] [retries=RETR] [verbose=VERB] "
@@ -185,6 +185,7 @@ usage()
            "    coe_limit   limit consecutive 'bad' blocks on reads to CL "
            "times\n"
            "                when coe=1 (default: 0 which is no limit)\n"
+           "    conv        one or conversions (see below)\n"
            "    count       number of input blocks to copy (def: "
            "(remaining)\n"
            "                device size)\n"
@@ -219,7 +220,8 @@ usage()
            "dd command.\nSupport for block devices, especially those "
            "accessed via a SCSI pass-through.\n"
            "FLAGS: append(o),coe,direct,dpo,excl,flock,fua,fua_nv,nocache,"
-           "null,pt,\nresume(o),sparing(o),sparse(o),ssync(o),sync\n");
+           "null,pt,\nresume(o),sparing(o),sparse(o),ssync(o),sync\n"
+           "CONVS: noerror,null,resume,sparing,sparse,sync\n");
 }
 
 
@@ -309,6 +311,47 @@ siginfo_handler(int sig)
     print_stats("  ");
     if (do_time)
         calc_duration_throughput(1);
+}
+
+/* Process arguments given to 'conv=" option. */
+static int
+process_conv(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
+{
+    char buff[256];
+    char * cp;
+    char * np;
+
+    strncpy(buff, arg, sizeof(buff));
+    buff[sizeof(buff) - 1] = '\0';
+    if ('\0' == buff[0]) {
+        fprintf(stderr, "no conversions found\n");
+        return 1;
+    }
+    cp = buff;
+    do {
+        np = strchr(cp, ',');
+        if (np)
+            *np++ = '\0';
+        if (0 == strcmp(cp, "noerror"))
+            ++ifp->coe;         /* will fail on write error */
+        else if (0 == strcmp(cp, "null"))
+            ;
+        else if (0 == strcmp(cp, "resume"))
+            ++ofp->resume;
+        else if (0 == strcmp(cp, "sparing"))
+            ++ofp->sparing;
+        else if (0 == strcmp(cp, "sparse"))
+            ++ofp->sparse;
+        else if (0 == strcmp(cp, "sync"))
+            ;   /* dd(susv4): pad errored block with zeros but ddpt does
+                 * that by default. Typical dd use: 'dd conv=noerror,sync' */
+        else {
+            fprintf(stderr, "unrecognised flag: %s\n", cp);
+            return 1;
+        }
+        cp = np;
+    } while (cp);
+    return 0;
 }
 
 /* Process arguments given to 'iflag=" and 'oflag=" options. */
@@ -446,7 +489,7 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strcmp(key, "conv")) {
-            if ((0 != strcmp(buf, "sparse")) || process_flags(buf, optsp->oflagp)) {
+            if (process_conv(buf, optsp->iflagp, optsp->oflagp)) {
                 fprintf(stderr, ME "bad argument to 'conv='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
@@ -2346,6 +2389,10 @@ cp_destruct_pt(void)
     }
 }
 
+/* Look at IFILE and OFILE lengths and blocks sizes. If dd_count
+ * not given, try to deduce a value for it. If oflag=resume do skip,
+ * seek, dd_count adjustments. Returns 0 to start copy, returns -1
+ * to bypass copy and exit */
 static int
 resume_calc_count(struct opts_t * op)
 {
