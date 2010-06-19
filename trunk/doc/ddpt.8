@@ -4,7 +4,7 @@ ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
 .SH SYNOPSIS
 .B ddpt
-[\fIbs=BS\fR] [\fIconv=CONV\fR] [\fIcount=COUNT\fR] [\fIibs=IBS\fR]
+[\fIbs=BS\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR] [\fIibs=IBS\fR]
 \fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIobs=OBS\fR] [\fIof=OFILE\fR]
 [\fIoflag=FLAGS\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR]
 [\fI\-\-help\fR] [\fI\-\-version\fR]
@@ -39,19 +39,22 @@ flag (e.g. "if=/dev/sdc iflag=pt").
 .SH OPTIONS
 .TP
 \fBbpt\fR=\fIBPT[,OBPC]\fR
-each IO transaction on \fIIFILE\fR will be made using \fIBPT\fR
-blocks (or less if near the end of the copy). The default \fIBPT\fR value
-is 128 for block sizes less that 2048 bytes, otherwise the default is
-32. If \fIBPT\fR is given as 0 it is treated as the default value.
-So for bs=512 the reads will each convey 64 KiB of data by default (less
-if near the end of the transfer or memory restrictions). For example
-the media in cd/dvd drives has a block size of 2048 bytes so bpt defaults
-to 32 which again implies 64 KiB transfers.
-The default granularity for sparse writes and write sparing comparisons
-is \fIBPT*IBS\fR bytes.
-That can be reduced by giving \fIOBPC\fR with the finest granularity being
-when \fIOBPC\fR is 1 which implies the unit of comparisons is \fIOBS\fR
-bytes. When \fIOBPC\fR is 0 or not given the default granularity is used, 
+where \fIBPT\fR is Blocks Per Transfer optionally followed by \fIOBPC\fR
+which is Output Blocks Per Check. The copy is made up of multiple
+transfer, each first reading \fIBPT\fR input blocks (i.e. \fIBPT*IBS\fR
+bytes) and then writing \fIBPT*IBS/OBS\fR output blocks. This continues
+until the copy is finished, with the last transfer being potentially smaller.
+The default \fIBPT\fR value is 128 for block sizes less that 2048 bytes,
+otherwise the default is 32. If \fIBPT\fR is given as 0 it is treated as
+the default value.  So for "bs=512" the reads will each convey 64 KiB of
+data by default (less if near the end of the transfer or memory
+restrictions). For example the media in cd/dvd drives has a block size of
+2048 bytes so bpt defaults to 32 which again implies 64 KiB transfers.
+The default granularity for sparse writes and write sparing checks (i.e.
+comparisons) is \fIBPT*IBS\fR bytes. That can be reduced by giving
+\fIOBPC\fR with the finest granularity being when \fIOBPC\fR is 1 which
+implies the unit of comparisons is \fIOBS\fR bytes. When \fIOBPC\fR is 0
+or not given the default granularity is used, 
 .TP
 \fBbs\fR=\fIBS\fR
 where \fIBS\fR is the \fIIFILE\fR and \fIOFILE\fR block size in bytes.
@@ -59,7 +62,7 @@ Cannot be used with either "ibs=" or "obs=" options. The value of \fIBS\fR
 is placed in \fIIBS\fR and \fIOBS\fR.
 If \fIIFILE\fR or \fIOFILE\fR is a "pt" device then \fIBS\fR
 .B must
-be the block size of the physical input device.
+be the logical block size of the physical input device.
 Note that this differs from
 .B dd(1)
 which permits \fIBS\fR to be an integral multiple. Default is 512 which
@@ -86,31 +89,13 @@ interpreted as no limit. This option is meant to stop the copy soon after
 unrecorded media is detected while still offering "continue on error"
 capability.
 .TP
-\fBconv\fR=\fBsparse\fR
-only one conversion is permitted: sparse writing of the \fIOFILE\fR.
-This option has the same action as 'oflag=sparse'. This alternate
-syntax was added for FreeBSD which uses this syntax in its dd command.
-See the FLAGS section below.
+\fBconv\fR=\fICONVS\fR
+see the CONVERSIONS sections below.
 .TP
 \fBcount\fR=\fICOUNT\fR
 copy \fICOUNT\fR input blocks from \fIIFILE\fR to \fIOFILE\fR. If this
 option is not given (or \fICOUNT\fR is '\-1') then the \fICOUNT\fR may be
-deduced as follows. When both or either \fIIFILE\fR and \fIOFILE\fR are
-block devices, then the minimum size, expressed in units of input blocks,
-is used. When both or either \fIIFILE\fR and \fIOFILE\fR are pass\-through
-devices, then the minimum size, expressed in units of input blocks, is used.
-If a regular file is used as input, its size, expressed in units of input
-blocks (and rounded up if necessary) is used. If a regular file is used as
-output, its size, expressed in units of input blocks (and rounded up if
-necessary) is only used when no size can be deduced for the input file.
-The size of pt devices is deduced from the SCSI READ CAPACITY command.
-Block device sizes (or their partition sizes) are obtained from the
-operating system, if available. If \fIskip=SKIP\fR or \fIskip=SEEK\fR are
-given and the \fICOUNT\fR is deduced (i.e. not explicitly given) then that
-size is scaled back so that the copy will not overrun the device. If
-\fICOUNT\fR is not given and cannot be deduced then an error message is
-issued and no copy takes place. Note that output regular files are not
-truncated.
+deduced from either \fIIFILE\fR or \fIOFILE\fR. See the COUNT section below.
 .TP
 \fBibs\fR=\fIIBS\fR
 where \fIIBS\fR is the \fIIFILE\fR block size in bytes. The default value
@@ -146,11 +131,12 @@ unless 'oflag=append' or \fISEEK\fR is given.
 \fBof2\fR=\fIOFILE2\fR
 write output to \fIOFILE2\fR. The default action is not to do this additional
 write (i.e. when this option is not given). \fIOFILE2\fR is assumed to be
-a normal file or a fifo (i.e. a named pipe). \fIOFILE2\fR is opened for
+a regular file or a fifo (i.e. a named pipe). \fIOFILE2\fR is opened for
 writing and is created if necessary. If \fIOFILE2\fR is a fifo (named pipe)
 then some other command should be consuming that data (e.g. 'md5sum OFILE2'),
-otherwise this utility will block. Both the 'sparse' and 'sparing' flags
-are ignored on \fIOFILE2\fR, so everything read is written to \fIOFILE2\fR.
+otherwise this utility will block. The write to \fIOFILE2\fR occurs before
+the write to \fIOFILE\fR and prior to sparse writing and write sparing
+logic. So everything read is written to \fIOFILE2\fR.
 .TP
 \fBoflag\fR=\fIFLAGS\fR
 where \fIFLAGS\fR is a comma separated list of one or more flags outlined
@@ -197,10 +183,64 @@ that is equivalent to \fIverbose=2\fR. Also \fI\-vv\fR is equivalent to
 .TP
 \fB\-V\fR, \fB\-\-version\fR
 outputs version number information and exits.
-.SH FLAGS
-Here is a list of flags and their meanings:
+.SH COUNT
+When the \fIcount=COUNT\fR option is not given (or \fICOUNT\fR is '\-1')
+then an attempt is made to deduce \fICOUNT\fR as follows.
+.PP
+When both or either \fIIFILE\fR and \fIOFILE\fR are block devices, then
+the minimum size, expressed in units of input blocks, is used. When both or
+either \fIIFILE\fR and \fIOFILE\fR are pass\-through devices, then the
+minimum size, expressed in units of input blocks, is used.
+.PP
+If a regular file is used as input, its size, expressed in units of input
+blocks (and rounded up if necessary) is used. If a regular file is used as
+output, its size, expressed in units of input blocks (and rounded up if
+necessary) is only used when no size can be deduced for the input file.
+.PP
+The size of pt devices is deduced from the SCSI READ CAPACITY command.
+Block device sizes (or their partition sizes) are obtained from the
+operating system, if available.
+.PP
+If \fIskip=SKIP\fR or \fIskip=SEEK\fR are given and the \fICOUNT\fR is
+deduced (i.e. not explicitly given) then that size is scaled back so
+that the copy will not overrun the file or device.
+.PP
+If \fICOUNT\fR is not given and cannot be deduced then an error message
+is issued and no copy takes place. Note that output regular files are not
+truncated.
+.SH CONVERSIONS
+One or more conversions can be given to the "conv=" option. If more than
+one is given, they should be comma separated. ddpt does not perform the
+traditional dd conversions (e.g. ASCII to EBCDIC). Recently added
+conversions overlap somewhat with the flags so some conversions are
+now supported by ddpt.
 .TP
-append
+noerror
+this conversion is very close to "iflag=coe" and is treated as such. See
+the "coe" flag. Note that an error on \fIOFILE\fR will stop the copy.
+.TP
+null
+has no affect, just a placeholder.
+.TP
+resume
+See "resume" in the FLAGS sections for more information.
+.TP
+sparing
+See "sparing" in the FLAGS sections for more information.
+.TP
+sparse
+FreeBSD supports "conv=sparse" so the same syntax is supported in ddpt.
+See "sparse" in the FLAGS sections for more information.
+.SH FLAGS
+A list of flags and their meanings follow. The flag name is followed
+by one or two indications in square brackets. The first is either "[o]"
+or "[io]" indicating this flag is active for the \fIOFILE\fR or both
+the \fIIFILE\fR and the \fIOFILE\fR. The second bracket contains some
+combination of "reg", "blk" or "pt" indicating whether it applies to
+a regular file, a block device (accessed via Unix read() and write()
+commands) or a pass\-through device.
+.TP
+append [o] [reg]
 causes the O_APPEND flag to be added to the open of \fIOFILE\fR. For regular
 files this will lead to data appended to the end of any existing data.
 Cannot be used together with the \fIseek=SEEK\fR option as they conflict.
@@ -209,15 +249,15 @@ from the beginning of the file or, if \fISEEK\fR is given, starting at
 block \fISEEK\fR. Note that attempting to 'append' to a device file (e.g.
 a disk) will usually be ignored or may cause an error to be reported.
 .TP
-coe
-continue on error. Only active for pt devices. 'iflag=coe oflag=coe'
-and 'coe=1' are equivalent. A medium, hardware or blank check error
-while reading will re\-read blocks prior to the bad block, then try to
-recover the bad block, supplying zeros if that fails, and finally reread
-the blocks after the bad block. A medium, hardware or blank check error
-while writing is noted and ignored. SCSI disks may automatically try
-and remap faulty sectors (see the AWRE and ARRE in the read write
-error recovery mode page (the sdparm utility can access these attributes)).
+coe [io] [pt]
+continue on error. 'iflag=coe oflag=coe' and 'coe=1' are equivalent. A
+medium, hardware or blank check error while reading will re\-read blocks
+prior to the bad block, then try to recover the bad block, supplying zeros
+if that fails, and finally reread the blocks after the bad block. A
+medium, hardware or blank check error while writing is noted and ignored.
+SCSI disks may automatically try and remap faulty sectors (see the AWRE
+and ARRE in the read write error recovery mode page (the sdparm utility
+can access these attributes)).
 Unrecovered errors are counted and output in the summary at the end of
 the copy. If bad LBAs are reported by the pass\-through then the LBA of the
 lowest and highest bad block is also output. Errors occurring on other
@@ -226,24 +266,24 @@ is similar to 'conv=noerror,sync' in the
 .B dd(1)
 utility.
 .TP
-direct
+direct [io] [reg,blk]
 causes the O_DIRECT flag to be added to the open of \fIIFILE\fR and/or
 \fIOFILE\fR. This flag requires some memory alignment on IO. Hence user
 memory buffers are aligned to the page size. May have no effect on pt
 devices. See open(2) man page.
 .TP
-dpo
+dpo [io] [pt]
 set the DPO bit (disable page out) in SCSI READ and WRITE commands. Not
 supported for 6 byte cdb variants of READ and WRITE. Indicates that
 data is unlikely to be required to stay in device (e.g. disk) cache.
 May speed media copy and/or cause a media copy to have less impact
 on other device users.
 .TP
-excl
+excl [io] [reg,blk]
 causes the O_EXCL flag to be added to the open of \fIIFILE\fR and/or
 \fIOFILE\fR. See open(2) man page.
 .TP
-flock
+flock [io] [reg,blk,pt]
 after opening the associated file (i.e. \fIIFILE\fR and/or \fIOFILE\fR)
 an attempt is made to get an advisory exclusive lock with the flock()
 system call. The flock arguments are "FLOCK_EX | FLOCK_NB" which will
@@ -251,25 +291,26 @@ cause the lock to be taken if available else a "temporarily unavailable"
 error is generated. An exit status of 90 is produced in the latter case
 and no copy is done. See flock(2) man page.
 .TP
-fua
+fua [io] [pt]
 causes the FUA (force unit access) bit to be set in SCSI READ and/or WRITE
-commands. This only has an effect with pt devices. The 6 byte variants of
-the SCSI READ and WRITE commands do not support the FUA bit.
+commands. The 6 byte variants of the SCSI READ and WRITE commands do not
+support the FUA bit.
 .TP
-fua_nv
+fua_nv [io] [pt]
 causes the FUA_NV (force unit access non\-volatile cache) bit to be set in
 SCSI READ and/or WRITE commands. This only has an effect with pt devices.
 The 6 byte variants of the SCSI READ and WRITE commands do not support the
 FUA_NV bit.
 .TP
-nocache
+nocache [io] [reg,blk]
 use posix_fadvise() to advise corresponding file there is no need to fill
-the file buffer with recently read or written blocks.
+the file buffer with recently read or written blocks. If used with "iflag="
+it will increase the read ahead on \fIIFILE\fR.
 .TP
-null
+null [io]
 has no affect, just a placeholder.
 .TP
-pt
+pt [io] [blk,pt]
 causes a device to be accessed in "pt" mode. In "pt" mode SCSI commands
 are sent to READ and WRITE blocks rather than standard UNIX read() and
 write() commands. The "pt" mode may be implicit if the device is only
@@ -279,53 +320,50 @@ via standard UNIX read() and write() commands as well as SCSI commands.
 Such devices default standard UNIX read() and write() commands in the
 absence of this flag.
 .TP
-resume
+resume [o] [reg]
 when a copy is interrupted (e.g. with Control-C from the keyboard)
 then using the same invocation again with the addition of "oflag=resume"
 will attempt to restart the copy from the point of the interrupt (or
-just before that point). \fIOFILE\fR is required to be a regular file
-and this flag is only active with the oflag option. It is harmless
-to use "oflag=resume" when \fIOFILE\fR doesn't exist or is zero length.
-If the length of \fIOFILE\fR is greater than or equal to the length
-implied by a copy invocation that includes "oflag=resume" then no
-further data is copied.
+just before that point). It is harmless to use "oflag=resume" when
+\fIOFILE\fR doesn't exist or is zero length. If the length of \fIOFILE\fR
+is greater than or equal to the length implied by a copy invocation that
+includes "oflag=resume" then no further data is copied.
 .TP
-sparing
+sparing [o] [reg,blk,pt]
 during the copy each \fIIBS\fR * \fIBPT\fR byte segment is read from
-input into a buffer. Then, instead of writing that buffer to output, the
-corresponding segment is read from the output file into another buffer.
-If the two buffers are different, the original buffer is written to the
-output file. If the two buffers compare equal then the write to output
-is skipped. This flag is only active with the oflag option. For write
-sparing, the output file must exist, be readable and seekable. Write
-sparing is useful when a write operation is more "expensive" than a read.
-For example flash memory devices have an upper limit on the number of
-times a block can be written. The granularity of the comparison can be
-reduced from the default \fIIBS\fR * \fIBPT\fR byte segment with the
-the \fIOBPC\fR value given to the "bpt=" option. The finest granularity
-is when \fIOBPC\fR is 1 which implies \fIOBS\fR bytes.
+\fIIFILE\fR into a buffer. Then, instead of writing that buffer to
+\fIOFILE\fR, the corresponding segment is read from \fIOFILE\fR into another
+buffer.  If the two buffers are different, the original buffer is written to
+the \fIOFILE\fR.  If the two buffers compare equal then the write to
+\fIOFILE\fR is not performed. For write sparing, \fIOFILE\fR must exist, be
+readable and seekable. Write sparing is useful when a write operation is
+more "expensive" than a read. This is the case with flash memory devices.
+Another issue with flash memory devices is that they have an upper limit on
+the number of times a block can be written. The granularity of the comparison
+can be reduced from the default \fIIBS\fR * \fIBPT\fR byte segment with the
+the \fIOBPC\fR value given to the "bpt=" option. The finest granularity is
+when \fIOBPC\fR is 1 which implies \fIOBS\fR bytes.
 .TP
-sparse
-after each \fIIBS\fR * \fIBPT\fR byte segment is read from the input, it is
-checked to see if it is all zeros. If so, nothing is written to the output
-file unless this is the last segment of the transfer. This flag is only
-active with the oflag option. It cannot be used when the output is not
-seekable (e.g. stdout). It is ignored if the output file is /dev/null .
-Note that this utility does not truncate the \fIOFILE\fR prior to starting
-to write to it. Hence it may be advantageous to manually remove the
-\fIOFILE\fR if it is large prior to using oflag=sparse. The last segment
-is always written so regular files will show the same length and so
-programs like md5sum and sha1sum will generate the same value regardless
-of whether oflag=sparse is given or not. The granularity of the comparison
-can be reduced from the default \fIIBS\fR * \fIBPT\fR byte segment with the 
-the \fIOBPC\fR value given to the "bpt=" option.
+sparse [o] [reg,blk,pt]
+after each \fIIBS\fR * \fIBPT\fR byte segment is read from \fIIFILE\fR, it
+is checked to see if it is all zeros. If so, nothing is written to
+\fIOFILE\fR unless this is the last segment of the transfer.
+This flag requires that \fIOFILE\fR is seekable (which rules out stdout).
+this flag is ignored if \fIOFILE\fR is /dev/null . Note that this utility
+does not truncate the \fIOFILE\fR prior to starting to write to it. Hence it
+may be advantageous to manually remove the \fIOFILE\fR if it is large prior
+to using "oflag=sparse". The last segment is always written so regular files
+will show the same length. Thus programs like md5sum and sha1sum will
+generate the same value regardless of whether "oflag=sparse" is given or not.
+The granularity of the comparison can be reduced from the default
+\fIIBS\fR * \fIBPT\fR byte segment with the the \fIOBPC\fR value given to
+the "bpt=" option.
 .TP
-ssync
+ssync [o] [pt]
 if \fIOFILE\fR is in "pt" mode the the SCSI SYNCHRONIZE CACHE command is
-sent to \fIOFILE\fR at the end of the transfer. This flag is only valid
-with the "oflag=" option.
+sent to \fIOFILE\fR at the end of the transfer.
 .TP
-sync
+sync [io] [reg,blk]
 causes the O_SYNC flag to be added to the open of \fIIFILE\fR and/or
 \fIOFILE\fR. See open(2) man page.
 .SH NOTES
@@ -351,8 +389,8 @@ either "0x" or "0X" (or with a trailing "h" or "H"). When hex numbers are
 given, multipliers cannot be used.
 .PP
 The \fICOUNT\fR, \fISKIP\fR and \fISEEK\fR arguments can take 64 bit
-values (i.e. very big numbers). Other values are limited to what can fit in
-a signed 32 bit number.
+values (i.e. very big numbers). Other numerical values are limited to what
+can fit in a signed 32 bit number.
 .PP
 All informative, warning and error output is sent to stderr so that
 dd's output file can be stdout and remain unpolluted. If no options
