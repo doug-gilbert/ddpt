@@ -2,12 +2,13 @@ The version number is hardcoded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.91 [20100517] [svn: r94]
+Changelog for ddpt-0.91 [20100518] [svn: r95]
   - rework copy loop.
   - extend bpt=BPT to bpt=BPR[,OBPC] spare+sparse granularity
   - add oflag=resume logic
   - change 'bs=' option to set IBS and OBS; 'ibs=' and 'obs='
     can coexist but not with 'bs='. [Closer to dd usage]
+  - 'conv=noerror,null,resume,sparing,sparse,sync' now permitted
 
 Changelog for ddpt-0.90 [20100508] [svn: r85]
   - copied from sg_dd utility in sg3_utils package
