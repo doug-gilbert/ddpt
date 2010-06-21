@@ -124,6 +124,7 @@ struct flags_t {
     int sparse;
     int ssync;
     int sync;
+    int unmap;
 };
 
 struct opts_t {
