@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100618";
+static char * version_str = "0.91 20100619";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -220,7 +220,8 @@ usage()
            "dd command.\nSupport for block devices, especially those "
            "accessed via a SCSI pass-through.\n"
            "FLAGS: append(o),coe,direct,dpo,excl,flock,fua,fua_nv,nocache,"
-           "null,pt,\nresume(o),sparing(o),sparse(o),ssync(o),sync\n"
+           "null,pt,\nresume(o),sparing(o),sparse(o),ssync(o),sync,trim(o),"
+	   "unmap(o)\n"
            "CONVS: noerror,null,resume,sparing,sparse,sync\n");
 }
 
@@ -405,7 +406,11 @@ process_flags(const char * arg, struct flags_t * fp)
             ++fp->ssync;
         else if (0 == strcmp(cp, "sync"))
             ++fp->sync;
-        else {
+        else if ((0 == strcmp(cp, "trim")) || (0 == strcmp(cp, "unmap"))) {
+	    /* treat trim (ATA term) and unmap (SCSI term) as synonyms */
+            ++fp->unmap;
+            ++fp->sparse;
+        } else {
             fprintf(stderr, "unrecognised flag: %s\n", cp);
             return 1;
         }
