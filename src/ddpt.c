@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100619";
+static char * version_str = "0.91 20100623";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -221,7 +221,7 @@ usage()
            "accessed via a SCSI pass-through.\n"
            "FLAGS: append(o),coe,direct,dpo,excl,flock,fua,fua_nv,nocache,"
            "null,pt,\nresume(o),sparing(o),sparse(o),ssync(o),sync,trim(o),"
-	   "unmap(o)\n"
+           "unmap(o)\n"
            "CONVS: noerror,null,resume,sparing,sparse,sync\n");
 }
 
@@ -251,7 +251,7 @@ print_stats(const char * str)
                 highest_unrecovered);
     if (interrupted_retries > 0)
         fprintf(stderr, "%s%d retries after interrupted system call(s)\n",
-                str, num_retries);
+                str, interrupted_retries);
 }
 
 static void
@@ -334,7 +334,7 @@ process_conv(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
         if (np)
             *np++ = '\0';
         if (0 == strcmp(cp, "noerror"))
-            ++ifp->coe;         /* will fail on write error */
+            ++ifp->coe;         /* will still fail on write error */
         else if (0 == strcmp(cp, "null"))
             ;
         else if (0 == strcmp(cp, "resume"))
@@ -344,7 +344,7 @@ process_conv(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
         else if (0 == strcmp(cp, "sparse"))
             ++ofp->sparse;
         else if (0 == strcmp(cp, "sync"))
-            ;   /* dd(susv4): pad errored block with zeros but ddpt does
+            ;   /* dd(susv4): pad errored block(s) with zeros but ddpt does
                  * that by default. Typical dd use: 'dd conv=noerror,sync' */
         else {
             fprintf(stderr, "unrecognised flag: %s\n", cp);
@@ -407,7 +407,7 @@ process_flags(const char * arg, struct flags_t * fp)
         else if (0 == strcmp(cp, "sync"))
             ++fp->sync;
         else if ((0 == strcmp(cp, "trim")) || (0 == strcmp(cp, "unmap"))) {
-	    /* treat trim (ATA term) and unmap (SCSI term) as synonyms */
+            /* treat trim (ATA term) and unmap (SCSI term) as synonyms */
             ++fp->unmap;
             ++fp->sparse;
         } else {
@@ -2539,8 +2539,10 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
             ((ret = cp_write_of2(optsp, csp, wrkPos))))
             break;
 
-        if ((optsp->oflagp->sparse) && (dd_count > iblocks_hold) &&
-            (! (FT_DEV_NULL & optsp->out_type))) {
+        if ((optsp->oflagp->sparse > 1) ||
+            (optsp->oflagp->sparse && 
+             (dd_count > iblocks_hold) &&
+             (! (FT_DEV_NULL & optsp->out_type)))) {
             if (0 == memcmp(wrkPos, zeros_buff, csp->oblocks * optsp->obs))
                 csp->sparse_skip = 1;
             else if (optsp->obpc) {

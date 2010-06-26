@@ -26,6 +26,7 @@ The first grouping in the synopsis above lists recent GNU
 .B dd(1)
 options. The second grouping contains extra options added by this utility.
 Both groupings are merged below and defined in alphabetical order.
+See the section on DD DIFFERENCES for more information.
 .PP
 The term "pt device" is used for a pass\-through device to which SCSI
 commands like READ(10) and WRITE(10) may be sent. A pt device may only be
@@ -41,7 +42,7 @@ flag (e.g. "if=/dev/sdc iflag=pt").
 \fBbpt\fR=\fIBPT[,OBPC]\fR
 where \fIBPT\fR is Blocks Per Transfer optionally followed by \fIOBPC\fR
 which is Output Blocks Per Check. The copy is made up of multiple
-transfer, each first reading \fIBPT\fR input blocks (i.e. \fIBPT*IBS\fR
+transfers, each first reading \fIBPT\fR input blocks (i.e. \fIBPT*IBS\fR
 bytes) and then writing \fIBPT*IBS/OBS\fR output blocks. This continues
 until the copy is finished, with the last transfer being potentially smaller.
 The default \fIBPT\fR value is 128 for block sizes less that 2048 bytes,
@@ -54,7 +55,7 @@ The default granularity for sparse writes and write sparing checks (i.e.
 comparisons) is \fIBPT*IBS\fR bytes. That can be reduced by giving
 \fIOBPC\fR with the finest granularity being when \fIOBPC\fR is 1 which
 implies the unit of comparisons is \fIOBS\fR bytes. When \fIOBPC\fR is 0
-or not given the default granularity is used, 
+or not given the default granularity is used. 
 .TP
 \fBbs\fR=\fIBS\fR
 where \fIBS\fR is the \fIIFILE\fR and \fIOFILE\fR block size in bytes.
@@ -67,8 +68,7 @@ Note that this differs from
 .B dd(1)
 which permits \fIBS\fR to be an integral multiple. Default is 512 which
 is usually correct for disks but incorrect for dvds (which normally
-have 2048 byte blocks). For this utility the maximum size of each individual
-IO operation is \fIIBS*BPT\fR bytes.
+have 2048 byte blocks).
 .TP
 \fBcdbsz\fR=6 | 10 | 12 | 16
 size of SCSI READ and/or WRITE commands issued on pt devices.
@@ -90,7 +90,7 @@ unrecorded media is detected while still offering "continue on error"
 capability.
 .TP
 \fBconv\fR=\fICONVS\fR
-see the CONVERSIONS sections below.
+see the CONVERSIONS section below.
 .TP
 \fBcount\fR=\fICOUNT\fR
 copy \fICOUNT\fR input blocks from \fIIFILE\fR to \fIOFILE\fR. If this
@@ -233,12 +233,13 @@ FreeBSD supports "conv=sparse" so the same syntax is supported in ddpt.
 See "sparse" in the FLAGS sections for more information.
 .SH FLAGS
 A list of flags and their meanings follow. The flag name is followed
-by one or two indications in square brackets. The first is either "[o]"
-or "[io]" indicating this flag is active for the \fIOFILE\fR or both
-the \fIIFILE\fR and the \fIOFILE\fR. The second bracket contains some
-combination of "reg", "blk" or "pt" indicating whether it applies to
-a regular file, a block device (accessed via Unix read() and write()
-commands) or a pass\-through device.
+by one or two indications in square brackets. The first indication is
+either "[i]", "[o]" or "[io]" indicating this flag is active for the
+\fIIFILE\fR, \fIOFILE\fR or both the \fIIFILE\fR and the \fIOFILE\fR. The
+second indication contains some combination of "reg", "blk" or "pt"
+indicating whether the flag applies to a regular file, a block
+device (accessed via Unix read() and write() commands) or a pass\-through
+device.
 .TP
 append [o] [reg]
 causes the O_APPEND flag to be added to the open of \fIOFILE\fR. For regular
@@ -349,12 +350,14 @@ after each \fIIBS\fR * \fIBPT\fR byte segment is read from \fIIFILE\fR, it
 is checked to see if it is all zeros. If so, nothing is written to
 \fIOFILE\fR unless this is the last segment of the transfer.
 This flag requires that \fIOFILE\fR is seekable (which rules out stdout).
-this flag is ignored if \fIOFILE\fR is /dev/null . Note that this utility
+This flag is ignored if \fIOFILE\fR is /dev/null . Note that this utility
 does not truncate the \fIOFILE\fR prior to starting to write to it. Hence it
 may be advantageous to manually remove the \fIOFILE\fR if it is large prior
 to using "oflag=sparse". The last segment is always written so regular files
 will show the same length. Thus programs like md5sum and sha1sum will
 generate the same value regardless of whether "oflag=sparse" is given or not.
+When the sparse flag is given twice (i.e. "oflag=sparse,sparse") then the
+last segment is only written to \fIOFILE\fR  if it is other than all zeros.
 The granularity of the comparison can be reduced from the default
 \fIIBS\fR * \fIBPT\fR byte segment with the the \fIOBPC\fR value given to
 the "bpt=" option.
@@ -366,6 +369,44 @@ sent to \fIOFILE\fR at the end of the transfer.
 sync [io] [reg,blk]
 causes the O_SYNC flag to be added to the open of \fIIFILE\fR and/or
 \fIOFILE\fR. See open(2) man page.
+.SH DD DIFFERENCES
+Most implementations of dd read a relatively small amount of data into a
+copy (or transfer) buffer then write it out to the destination, repeating
+this process until the \fICOUNT\fR is exhausted. Terabyte size disks make
+it impractical to copy all the data into a buffer before writing it out.
+.PP
+The major difference in ddpt is the addition of \fIBPT\fR to control the
+size of the copy buffer. With dd, \fIIBS\fR is the size of the copy buffer
+and the unit of \fISKIP\fR and \fICOUNT\fR. For ddpt \fIIBS\fR * \fIBPT\fR
+is the size of the copy buffer while \fIIBS\fR is the unit of \fISKIP\fR
+and \fICOUNT\fR. This allows ddpt to have its \fIIBS\fR set to the logical
+block size of \fIIFILE\fR without unduly restricting the size of the copy
+buffer. And setting \fIIBS\fR (and \fIOBS\fR for \fIOFILE\fR) accurately
+is required when the pass\-through interface is used since with the SCSI
+READ and WRITE commands the logical block size is implicit.
+.PP
+In dd it is unclear exactly how the copy buffer is managed, especially
+when \fIIBS\fR and \fIOBS\fR are different sizes. The restriction that
+ddpt places on \fIIBS\fR and \fIOBS\fR (
+i.e. (((\fIIBS\fR * \fIBPT\fR) % \fIOBS\fR) == 0) ) means that a single
+copy buffer can be used since its size is a multiple of both \fIIBS\fR and
+\fIOBS\fR). Being able to precisely define the copy buffer size in ddpt
+makes sparse writing, write sparing and trim operations simpler to
+define and the user to control.
+.PP
+dd can do partial writes which typically occur at the end of a copy.
+ddpt does not do partial writes, it writes in multiples of \fIOBS\fR.
+Partial writes are difficult when \fIOFILE\fR is a block device, especially
+if the pass\-through interface or the direct flag is used. While it is
+possible to implement partial writes on a block device (e.g. read the
+block to be partially overwritten into a buffer, copy the partial write
+data over part of that buffer, then write back the buffer) it is unclear
+what dd does. When block devices are not involved (e.g. copying a regular
+file to another regular file) ddpt's \fIIBS\fR and \fIBPT\fR can be used
+creatively to avoid partial writes (e.g. 'ddpt if=from of=to bs=1 bpt=64k').
+.SH SPARSE WRITING, WRITE SPARING, TRIM AND UNMAP
+Seagate Pulsar SSD has an ATA interface which supports the deterministic
+reads of zero after the DATA SET MANAGEMENT command with the TRIM option.
 .SH NOTES
 Block devices (e.g. /dev/sda and /dev/hda) can be given for \fIIFILE\fR.
 If neither 'iflag=direct' nor 'iflag=pt' is given then normal block IO
@@ -416,7 +457,7 @@ partition) by this invocation:
    ddpt if=/dev/sdb2 iflag=pt of=t bs=512
 .SH EXAMPLES
 .PP
-Looks quite similar in usage to dd:
+ddpt usage looks quite similar to dd:
 .PP
    ddpt if=/dev/sg0 of=t bs=512 count=1MB
 .PP
@@ -434,8 +475,8 @@ caching that is usually done on a block device.
 The dd command's bs argument can be thought of as roughly equivalent to
 ddpt's bs*bpt . dd almost assumes buffering on a block device and will
 work as long as bs is a multiple of the actual logical block size.
-Since dd can work at a lower level in some case the bs argument must be
-a disk's actual logical block size. This the bpt argument was introduced
+Since ddpt can work at a lower level in some cases the bs argument must be
+a disk's actual logical block size. Thus the bpt argument was introduced
 to make the copy more efficient. So these two invocations are roughly
 equivalent:
 .PP
@@ -448,8 +489,9 @@ be done by reading 8k (8192 bytes) into a buffer than writing out that
 buffer to the file t. The read write sequence continues until the
 count is complete or an error occurs.
 .PP
-The 'of2=' option can be used to copy data and take a md5sum of it
-without needing to re\-read the data:
+The 'of2=' option can save time when the input needs to be read twice.
+For example, to copy data and take a md5sum of it without needing to
+re\-read the data:
 .PP
   mkfifo fif
 .br
@@ -460,6 +502,18 @@ without needing to re\-read the data:
 This will image /dev/sg3 (e.g. an unmounted disk) and place the contents
 in the (sparse) file sg3.img . Without re\-reading the data it will also
 perform a md5sum calculation on the image.
+.PP
+Now we use sparse writing logic to check if every block on a disk
+is full of zeros. This may be the case after a SCSI FORMAT or an ATA
+SECURITY ERASE command.
+.PP
+   ddpt if=/dev/sdc bs=512 oflag=sparse,sparse
+.PP
+The "sparse,sparse" suppresses the forced write of the last segment.
+Since no "of=" option is given, output goes to /dev/null so nothing
+is actually written. However there is still a count of "records out"
+and "bypassed records out". If /dev/sdc is full of zeros then
+the "records out" count should be zero.
 .SH SIGNALS
 The signal handling has been borrowed from dd: SIGINT, SIGQUIT and
 SIGPIPE output the number of remaining blocks to be transferred and
@@ -510,9 +564,9 @@ be retried immediately (e.g. if the transport aborted the command due to
 congestion).
 .TP
 .B 15
-the utility is unable to open, close or use the given \fIDEVICE\fR.  The
-given file name could be incorrect or there may be permission problems.
-Adding the \fI\-v\fR option may give more information.
+the utility is unable to open, close or use the given \fIIFILE\fR or
+\fIOFILE\fR. The given file name could be incorrect or there may be
+permission problems. Adding the \fI\-v\fR option may give more information.
 .TP
 .B 20
 the device reports it has a check condition but "no sense".
