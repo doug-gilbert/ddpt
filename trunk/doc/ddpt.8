@@ -1,4 +1,4 @@
-.TH DDPT "8" "June 2010" "ddpt\-0.91" DDPT
+.TH DDPT "8" "July 2010" "ddpt\-0.91" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -25,8 +25,9 @@ command.
 The first grouping in the synopsis above lists recent GNU
 .B dd(1)
 options. The second grouping contains extra options added by this utility.
-Both groupings are merged below and defined in alphabetical order.
-See the section on DD DIFFERENCES for more information.
+The options for both groupings are merged below and explained in
+alphabetical order. See the section on DD DIFFERENCES for significant
+differences between ddpt and dd.
 .PP
 The term "pt device" is used for a pass\-through device to which SCSI
 commands like READ(10) and WRITE(10) may be sent. A pt device may only be
@@ -44,14 +45,14 @@ where \fIBPT\fR is Blocks Per Transfer optionally followed by \fIOBPC\fR
 which is Output Blocks Per Check. The copy is made up of multiple
 transfers, each first reading \fIBPT\fR input blocks (i.e. \fIBPT*IBS\fR
 bytes) and then writing \fIBPT*IBS/OBS\fR output blocks. This continues
-until the copy is finished, with the last transfer being potentially smaller.
+until the copy is finished, with the last transfer being potentially shorter.
 The default \fIBPT\fR value is 128 for block sizes less that 2048 bytes,
 otherwise the default is 32. If \fIBPT\fR is given as 0 it is treated as
 the default value.  So for "bs=512" the reads will each convey 64 KiB of
 data by default (less if near the end of the transfer or memory
-restrictions). For example the media in cd/dvd drives has a block size of
-2048 bytes so bpt defaults to 32 which again implies 64 KiB transfers.
-The default granularity for sparse writes and write sparing checks (i.e.
+restrictions). With cd/dvd drives the media has a block size of 2048 bytes
+so bpt defaults to 32 which again implies 64 KiB transfers. The default
+granularity for sparse writes, write sparing and trim on output checks (i.e.
 comparisons) is \fIBPT*IBS\fR bytes. That can be reduced by giving
 \fIOBPC\fR with the finest granularity being when \fIOBPC\fR is 1 which
 implies the unit of comparisons is \fIOBS\fR bytes. When \fIOBPC\fR is 0
@@ -59,16 +60,14 @@ or not given the default granularity is used.
 .TP
 \fBbs\fR=\fIBS\fR
 where \fIBS\fR is the \fIIFILE\fR and \fIOFILE\fR block size in bytes.
-Cannot be used with either "ibs=" or "obs=" options. The value of \fIBS\fR
+Conflicts with either "ibs=" or "obs=" options. The value of \fIBS\fR
 is placed in \fIIBS\fR and \fIOBS\fR.
 If \fIIFILE\fR or \fIOFILE\fR is a "pt" device then \fIBS\fR
 .B must
-be the logical block size of the physical input device.
-Note that this differs from
-.B dd(1)
-which permits \fIBS\fR to be an integral multiple. Default is 512 which
-is usually correct for disks but incorrect for dvds (which normally
-have 2048 byte blocks).
+be the logical block size of the device. See the DD DIFFERENCES section
+below. Default is 512 which to date has been correct for hard disks.
+Other logical block sizes are 2048 bytes for DVDs and 4096 bytes for
+the coming generation of hard disks.
 .TP
 \fBcdbsz\fR=6 | 10 | 12 | 16
 size of SCSI READ and/or WRITE commands issued on pt devices.
@@ -99,7 +98,7 @@ deduced from either \fIIFILE\fR or \fIOFILE\fR. See the COUNT section below.
 .TP
 \fBibs\fR=\fIIBS\fR
 where \fIIBS\fR is the \fIIFILE\fR block size in bytes. The default value
-of \fIIBS\fR is 512. Cannot be used together with the "bs=" option.
+is derived from the "bs=" option default. Conflicts the "bs=" option.
 .TP
 \fBif\fR=\fIIFILE\fR
 read from \fIIFILE\fR. This option must be given (i.e. it is mandatory). If
@@ -108,25 +107,24 @@ read from \fIIFILE\fR. This option must be given (i.e. it is mandatory). If
 .TP
 \fBiflag\fR=\fIFLAGS\fR
 where \fIFLAGS\fR is a comma separated list of one or more flags outlined
-below.  These flags are associated with \fIIFILE\fR and are ignored when
-\fIIFILE\fR is stdin.
+in the FLAGS section below.  These flags are associated with \fIIFILE\fR and
+are ignored when \fIIFILE\fR is stdin.
 .TP
 \fBobs\fR=\fIOBS\fR
 where \fIOBS\fR is the \fIOFILE\fR block size in bytes. The default value 
-of \fIOBS\fR is 512.
-If \fIOBS\fR is given then is has the following restriction:
-the integer expression (((\fIIBS\fR * \fIBPT\fR) % \fIOBS\fR) == 0) must
-be true. Stated another way: the input buffer size must be an integral
-multiple of \fIOBS\fR. If \fIof2=OFILE2\fR is given then \fIOBS\fR is
-its block size as well.
+is derived from the "bs=" option default. Conflicts the "bs=" option.
+If \fIOBS\fR is given then it has the following restriction: the integer
+expression (((\fIIBS\fR * \fIBPT\fR) % \fIOBS\fR) == 0) must be true.
+Stated another way: the input buffer size must be an integral multiple of
+\fIOBS\fR. If \fIof2=OFILE2\fR is given then \fIOBS\fR is its block size
+as well.
 .TP
 \fBof\fR=\fIOFILE\fR
 write to \fIOFILE\fR. The default value is /dev/null . If \fIOFILE\fR is '\-'
 then writes to stdout. If \fIOFILE\fR is /dev/null then no actual writes are
 performed. If \fIOFILE\fR is '.' (period) then it is treated the same way as
-/dev/null (this is a shorthand notation). If \fIOFILE\fR exists then it
-is _not_ truncated; it is overwritten from the start of \fIOFILE\fR
-unless 'oflag=append' or \fISEEK\fR is given.
+/dev/null . If \fIOFILE\fR exists then it is _not_ truncated. See section
+on DD DIFFERENCES.
 .TP
 \fBof2\fR=\fIOFILE2\fR
 write output to \fIOFILE2\fR. The default action is not to do this additional
@@ -140,23 +138,25 @@ logic. So everything read is written to \fIOFILE2\fR.
 .TP
 \fBoflag\fR=\fIFLAGS\fR
 where \fIFLAGS\fR is a comma separated list of one or more flags outlined
-below.  These flags are associated with \fIOFILE\fR and are ignored when
-\fIOFILE\fR is /dev/null, '.' (period), or stdout.
+in the FLAGS section. These flags are associated with \fIOFILE\fR and are
+ignored when \fIOFILE\fR is /dev/null, '.' (period), or stdout.
 .TP
 \fBretries\fR=\fIRETR\fR
 sometimes retries at the host are useful, for example when there is a
 transport error. When \fIRETR\fR is greater than zero then SCSI READs and
 WRITEs are retried on error, \fIRETR\fR times. Default value is zero.
+Only applies to errors on pt devices.
 .TP
 \fBseek\fR=\fISEEK\fR
-start writing \fISEEK\fR \fIOBS\fR\-sized blocks from the start of
+start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
 \fIOFILE\fR. Default is block 0 (i.e. start of file). The \fISEEK\fR value
 may exceed the number of \fIOBS\fR\-sized blocks in \fIOFILE\fR.
 .TP
 \fBskip\fR=\fISKIP\fR
-start reading \fISKIP\fR \fIIBS\fR\-sized blocks from the start of
+start reading \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of
 \fIIFILE\fR. Default is block 0 (i.e. start of file). The \fISKIP\fR value
-must be less than the number of \fIIBS\fR\-sized blocks in \fIIFILE\fR.
+must be less than or equal to the number of \fIIBS\fR\-sized blocks in
+\fIIFILE\fR.
 .TP
 \fBstatus\fR=\fISTAT\fR
 the \fISTAT\fR value of 'noxfer' suppresses the throughput calculation and
@@ -172,6 +172,8 @@ A value of 1 reports extra information that is not repetitive. A value
 (i.e. other that READ and WRITE). Error processing is not considered
 repetitive. Values of 3 and 4 yield output for all SCSI commands, plus
 Unix read() and write() calls, so there can be a lot of output.
+If \fIVERB\fR is "\-1" then output otherwise sent to stderr is redirected
+to /dev/null .
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 outputs usage message and exits.
@@ -188,8 +190,8 @@ When the \fIcount=COUNT\fR option is not given (or \fICOUNT\fR is '\-1')
 then an attempt is made to deduce \fICOUNT\fR as follows.
 .PP
 When both or either \fIIFILE\fR and \fIOFILE\fR are block devices, then
-the minimum size, expressed in units of input blocks, is used. When both or
-either \fIIFILE\fR and \fIOFILE\fR are pass\-through devices, then the
+the minimum size, expressed in units of input blocks, is used. When both
+or either \fIIFILE\fR and \fIOFILE\fR are pass\-through devices, then the
 minimum size, expressed in units of input blocks, is used.
 .PP
 If a regular file is used as input, its size, expressed in units of input
@@ -206,8 +208,7 @@ deduced (i.e. not explicitly given) then that size is scaled back so
 that the copy will not overrun the file or device.
 .PP
 If \fICOUNT\fR is not given and cannot be deduced then an error message
-is issued and no copy takes place. Note that output regular files are not
-truncated.
+is issued and no copy takes place.
 .SH CONVERSIONS
 One or more conversions can be given to the "conv=" option. If more than
 one is given, they should be comma separated. ddpt does not perform the
@@ -239,16 +240,16 @@ either "[i]", "[o]" or "[io]" indicating this flag is active for the
 second indication contains some combination of "reg", "blk" or "pt"
 indicating whether the flag applies to a regular file, a block
 device (accessed via Unix read() and write() commands) or a pass\-through
-device.
+device respectively.
 .TP
 append [o] [reg]
-causes the O_APPEND flag to be added to the open of \fIOFILE\fR. For regular
-files this will lead to data appended to the end of any existing data.
-Cannot be used together with the \fIseek=SEEK\fR option as they conflict.
-The default action of this utility is to overwrite any existing data
-from the beginning of the file or, if \fISEEK\fR is given, starting at
-block \fISEEK\fR. Note that attempting to 'append' to a device file (e.g.
-a disk) will usually be ignored or may cause an error to be reported.
+causes the O_APPEND flag to be added to the open of \fIOFILE\fR. For
+regular files this will lead to data appended to the end of any existing
+data. Conflicts the \fIseek=SEEK\fR option. The default action of this
+utility is to overwrite any existing data from the beginning of \fIOFILE\fR
+or, if \fISEEK\fR is given, starting at block \fISEEK\fR. Note that
+attempting to 'append' to a device file (e.g. a disk) will usually be
+ignored or may cause an error to be reported.
 .TP
 coe [io] [pt]
 continue on error. 'iflag=coe oflag=coe' and 'coe=1' are equivalent. A
@@ -312,9 +313,9 @@ null [io]
 has no affect, just a placeholder.
 .TP
 pt [io] [blk,pt]
-causes a device to be accessed in "pt" mode. In "pt" mode SCSI commands
-are sent to READ and WRITE blocks rather than standard UNIX read() and
-write() commands. The "pt" mode may be implicit if the device is only
+causes a device to be accessed in "pt" mode. In "pt" mode SCSI READ and
+WRITE commands are sent to access blocks rather than standard UNIX read()
+and write() commands. The "pt" mode may be implicit if the device is only
 capable of passing through SCSI commands (e.g. the /dev/sg devices in
 Linux). This flag is needed for device nodes that can be accessed both
 via standard UNIX read() and write() commands as well as SCSI commands.
@@ -334,8 +335,8 @@ sparing [o] [reg,blk,pt]
 during the copy each \fIIBS\fR * \fIBPT\fR byte segment is read from
 \fIIFILE\fR into a buffer. Then, instead of writing that buffer to
 \fIOFILE\fR, the corresponding segment is read from \fIOFILE\fR into another
-buffer.  If the two buffers are different, the original buffer is written to
-the \fIOFILE\fR.  If the two buffers compare equal then the write to
+buffer. If the two buffers are different, the original buffer is written to
+the \fIOFILE\fR. If the two buffers compare equal then the write to
 \fIOFILE\fR is not performed. For write sparing, \fIOFILE\fR must exist, be
 readable and seekable. Write sparing is useful when a write operation is
 more "expensive" than a read. This is the case with flash memory devices.
@@ -350,14 +351,12 @@ after each \fIIBS\fR * \fIBPT\fR byte segment is read from \fIIFILE\fR, it
 is checked to see if it is all zeros. If so, nothing is written to
 \fIOFILE\fR unless this is the last segment of the transfer.
 This flag requires that \fIOFILE\fR is seekable (which rules out stdout).
-This flag is ignored if \fIOFILE\fR is /dev/null . Note that this utility
-does not truncate the \fIOFILE\fR prior to starting to write to it. Hence it
-may be advantageous to manually remove the \fIOFILE\fR if it is large prior
-to using "oflag=sparse". The last segment is always written so regular files
-will show the same length. Thus programs like md5sum and sha1sum will
+This flag is ignored if \fIOFILE\fR is /dev/null . The last segment is
+written to \fIOFILE\fR so regular files will show the same length with
+and without this option. Thus programs like md5sum and sha1sum will
 generate the same value regardless of whether "oflag=sparse" is given or not.
 When the sparse flag is given twice (i.e. "oflag=sparse,sparse") then the
-last segment is only written to \fIOFILE\fR  if it is other than all zeros.
+last segment is only written to \fIOFILE\fR if it is other than all zeros.
 The granularity of the comparison can be reduced from the default
 \fIIBS\fR * \fIBPT\fR byte segment with the the \fIOBPC\fR value given to
 the "bpt=" option.
@@ -369,7 +368,35 @@ sent to \fIOFILE\fR at the end of the transfer.
 sync [io] [reg,blk]
 causes the O_SYNC flag to be added to the open of \fIIFILE\fR and/or
 \fIOFILE\fR. See open(2) man page.
+.TP
+trim [o] [pt] [experimental]
+similar logic to the "sparse" option. However instead of skipping segments
+that are full zeros a "trim" command is sent to \fIOFILE\fR. Depending on
+the usage this may require the device to have "deterministic read zero
+after trim" settings. See the TRIM, UNMAP AND WRITE SAME section below.
 .SH DD DIFFERENCES
+dd defaults "if=" and "of=" to stdin and stout respectively. This follows
+Unix filter conventions. However since dd and ddpt are often used to read
+binary data for timing purposes, having to supply "of=/dev/null" can
+be easily forgotten. Without it dd will potentially spew binary data on the
+console. So ddpt has changed its defaults: the "if=\fIIFILE\fR" is now
+mandatory and to read from stdin "if=\-" can be used; "of=\fIOFILE\fR"
+remains optional but its default changes to "/dev/null" (or "NUL" in
+Windows). To send output to stdout ddpt accepts "of=\-".
+.PP
+dd truncates \fIOFILE\fR unless "conv=notrunc" is given. ddpt does not
+truncate \fIOFILE\fR and if \fIOFILE\fR exists it will overwritten starting
+at block zero unless \fISEEK\fR or "oflag=append" is given. Note that the
+ddpt user may need to do "rm \fIOFILE\fR" prior to calling ddpt in some
+cases. Some ddpt features such as write sparing only work with an
+\fIOFILE\fR overwrite, rather than truncate, policy.
+.PP
+Numeric arguments to ddpt can be given in hexadecimal, either with a
+leading "0x" or "0X" or with a trailing "h". Note that dd accepts "0x123"
+but interprets it as "0 * 123" (i.e. zero). ddpt will also interpret "x"
+as multiplies unless the left operand is zero (e.g. "0x123"). So both
+dd and ddpt will interpret "skip=2x123" as "skip=246".
+.PP
 Most implementations of dd read a relatively small amount of data into a
 copy (or transfer) buffer then write it out to the destination, repeating
 this process until the \fICOUNT\fR is exhausted. Terabyte size disks make
@@ -404,7 +431,33 @@ data over part of that buffer, then write back the buffer) it is unclear
 what dd does. When block devices are not involved (e.g. copying a regular
 file to another regular file) ddpt's \fIIBS\fR and \fIBPT\fR can be used
 creatively to avoid partial writes (e.g. 'ddpt if=from of=to bs=1 bpt=64k').
-.SH SPARSE WRITING, WRITE SPARING, TRIM AND UNMAP
+.SH TRIM, UNMAP AND WRITE SAME
+This is a new storage feature often associated with Solid State
+Disks (SSDs) or disk arrays with "thin provisioning". In the ATA command
+set (ACS\-2) the relevant command is DATA SET MANAGEMENT with the TRIM
+bit set. In the SCSI command set (SBC\-3) it is either the UNMAP or
+WRITE SAME commands. Note there is not TRIM command however this feature
+has been christened "trim" by the technical press.
+.PP
+Trim is a way of telling a storage device that blocks are no longer needed.
+Keeping the pool of unwritten blocks large is important for the write
+performance of SSDs and the thrifty use of real storage in thin provisioned
+arrays. Currently file systems in recent OSes may issue trims associated
+with file deletes. The trim option in ddpt may be useful when a partition
+of a whole SSD is to be "deleted". Note that ddpt is bypassing file
+systems in that it only offers trim on pass\-through (pt) devices.
+.PP
+This utility issues SCSI commands to pt devices and for "trim" currently
+issues a SCSI WRITE SAME(16) command with the UNMAP bit set. If the pt
+device is a SSD with and ATA interface then recent versions of Linux
+will translate the SCSI WRITE SAME to the ATA DATA SET MANAGEMENT command
+with the TRIM bit set. The maximum size of each "trim" command sent
+is the size of the copy buffer (i.e. \fIIBS\fR * \fIBPT\fR bytes). And
+that maximum can be reduced with the \fIOBPC\fR argument with the "bpt="
+option.
+.PP
+Some random product examples: the Intel X25-M G2 SSDs have trim with
+recent firmware and they do deterministic read zero after trim. The
 Seagate Pulsar SSD has an ATA interface which supports the deterministic
 reads of zero after the DATA SET MANAGEMENT command with the TRIM option.
 .SH NOTES
@@ -416,8 +469,8 @@ both SCSI devices and ATA disks). When 'iflag=pt' is given SCSI commands
 are sent to the device which bypasses most of the actions performed by the
 block layer. The same applies for block devices given for \fIOFILE\fR.
 .PP
-\fIBPT\fR, \fIBS\fR, \fICOUNT\fR, \fIIBS\fR, \fIOBS\fR, \fISKIP\fR
-and \fISEEK\fR may include one of these multiplicative suffixes:
+\fIBPT\fR, \fIBS\fR, \fICOUNT\fR, \fIIBS\fR, \fIOBPC\fR, \fIOBS\fR,
+\fISKIP\fR and \fISEEK\fR may include one of these multiplicative suffixes:
 c C *1; w W *2; b B *512; k K KiB *1,024; KB *1,000; m M MiB *1,048,576;
 MB *1,000,000 . This pattern continues for "G", "T" and "P". The latter two
 suffixes can only be used for \fICOUNT\fR, \fISKIP\fR and \fISEEK\fR.
