@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100623";
+static char * version_str = "0.91 20100705";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -123,9 +123,11 @@ static int64_t out_full = 0;
 static int out_partial = 0;
 static int out_sparse_active = 0;
 static int out_sparing_active = 0;
+static int out_trim_active = 0;
 static int64_t out_sparse = 0;  /* used for both sparse + sparing */
 static int recovered_errs = 0;
 static int unrecovered_errs = 0;
+static int trim_errs = 0;
 static int64_t lowest_unrecovered = 0;
 static int64_t highest_unrecovered = -1;
 static int num_retries = 0;
@@ -235,9 +237,14 @@ print_stats(const char * str)
             in_partial);
     fprintf(stderr, "%s%"PRId64"+%d records out\n", str,
             out_full - out_partial, out_partial);
-    if (out_sparse_active || out_sparing_active)
-        fprintf(stderr, "%s%"PRId64" bypassed records out\n", str,
-                out_sparse);
+    if (out_sparse_active || out_sparing_active) {
+        if (out_trim_active)
+            fprintf(stderr, "%s%"PRId64" trimmed records out\n", str,
+                    out_sparse);
+        else
+            fprintf(stderr, "%s%"PRId64" bypassed records out\n", str,
+                    out_sparse);
+    }
     if (recovered_errs > 0)
         fprintf(stderr, "%s%d recovered errors\n", str, recovered_errs);
     if (num_retries > 0)
@@ -249,6 +256,8 @@ print_stats(const char * str)
         fprintf(stderr, "lowest unrecovered lba=%"PRId64", highest "
                 "unrecovered lba=%"PRId64"\n", lowest_unrecovered,
                 highest_unrecovered);
+    if (trim_errs)
+        fprintf(stderr, "%s%d trim errors\n", str, trim_errs);
     if (interrupted_retries > 0)
         fprintf(stderr, "%s%d retries after interrupted system call(s)\n",
                 str, interrupted_retries);
@@ -408,8 +417,8 @@ process_flags(const char * arg, struct flags_t * fp)
             ++fp->sync;
         else if ((0 == strcmp(cp, "trim")) || (0 == strcmp(cp, "unmap"))) {
             /* treat trim (ATA term) and unmap (SCSI term) as synonyms */
-            ++fp->unmap;
-            ++fp->sparse;
+            ++fp->wsame16;
+            fp->sparse += 2;
         } else {
             fprintf(stderr, "unrecognised flag: %s\n", cp);
             return 1;
@@ -1054,13 +1063,14 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
  * -2 -> ENOMEM
  * -1 other errors */
 static int
-pt_low_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
-            int bs, const struct flags_t * ifp, uint64_t * io_addrp)
+pt_low_read(int sg_fd, int in0_out1, unsigned char * buff, int blocks,
+            int64_t from_block, int bs, const struct flags_t * ifp,
+            uint64_t * io_addrp)
 {
     unsigned char rdCmd[MAX_SCSI_CDBSZ];
     unsigned char sense_b[SENSE_BUFF_LEN];
     int res, k, info_valid, slen, sense_cat, ret, vt;
-    struct sg_pt_base * ptvp = if_ptvp;
+    struct sg_pt_base * ptvp = (in0_out1 ? of_ptvp : if_ptvp);
 
     if (pt_build_scsi_cdb(rdCmd, ifp->cdbsz, blocks, from_block, 0,
                           ifp->fua, ifp->fua_nv, ifp->dpo)) {
@@ -1172,8 +1182,8 @@ pt_low_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
  * SG_LIB_CAT_MEDIUM_HARD, SG_LIB_CAT_ABORTED_COMMAND,
  * -2 -> ENOMEM, -1 other errors */
 static int
-pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
-        int bs, struct flags_t * ifp, int * blks_readp)
+pt_read(int sg_fd, int in0_out1, unsigned char * buff, int blocks,
+        int64_t from_block, int bs, struct flags_t * ifp, int * blks_readp)
 {
     uint64_t io_addr;
     int64_t lba;
@@ -1189,7 +1199,7 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
         io_addr = 0;
         use_io_addr = 0;
         may_coe = 0;
-        res = pt_low_read(sg_fd, bp, blks, lba, bs, ifp, &io_addr);
+        res = pt_low_read(sg_fd, in0_out1, bp, blks, lba, bs, ifp, &io_addr);
         switch (res) {
         case 0:         /* this is the fast path after good pt_low_read() */
             if (blks_readp)
@@ -1280,7 +1290,8 @@ pt_read(int sg_fd, unsigned char * buff, int blocks, int64_t from_block,
             if (verbose)
                 fprintf(stderr, "  partial read of %d blocks prior to "
                         "medium error\n", blks);
-            res = pt_low_read(sg_fd, bp, blks, lba, bs, ifp, &io_addr);
+            res = pt_low_read(sg_fd, in0_out1, bp, blks, lba, bs, ifp,
+                              &io_addr);
             switch (res) {
             case 0:
                 break;
@@ -1496,6 +1507,91 @@ pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
             break;
         first = 0;
     }
+    return ret;
+}
+
+static int
+pt_write_same16(int sg_fd, int in0_out1, unsigned char * buff, int bs,
+                int blocks, int64_t start_block)
+{
+    int k, ret, res, sense_cat, vt;
+    uint64_t llba;
+    uint32_t unum;
+    unsigned char wsCmdBlk[16];
+    unsigned char sense_b[SENSE_BUFF_LEN];
+    struct sg_pt_base * ptvp = in0_out1 ? of_ptvp : if_ptvp;
+
+    memset(wsCmdBlk, 0, sizeof(wsCmdBlk));
+    wsCmdBlk[0] = 0x93;         /* WRITE SAME(16) opcode */
+    /* set UNMAP; clear wrprotect, anchor, pbdata, lbdata */
+    wsCmdBlk[1] = 0x8;
+    llba = start_block;
+    for (k = 7; k >= 0; --k) {
+        wsCmdBlk[2 + k] = (llba & 0xff);
+        llba >>= 8;
+    }
+    unum = blocks;
+    for (k = 3; k >= 0; --k) {
+        wsCmdBlk[10 + k] = (unum & 0xff);
+        unum >>= 8;
+    }
+    if (verbose > 2) {
+        fprintf(stderr, "    Write same(16) cmd: ");
+        for (k = 0; k < (int)sizeof(wsCmdBlk); ++k)
+            fprintf(stderr, "%02x ", wsCmdBlk[k]);
+        fprintf(stderr, "\n    Data-out buffer length=%d\n",
+                bs);
+    }
+    if (NULL == sg_warnings_strm)
+        sg_warnings_strm = stderr;
+
+    if (NULL == ptvp) {
+        fprintf(stderr, "pt_write_same16: ptvp NULL?\n");
+        return -1;
+    }
+    clear_scsi_pt_obj(ptvp);
+    set_scsi_pt_cdb(ptvp, wsCmdBlk, sizeof(wsCmdBlk));
+    set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
+    set_scsi_pt_data_out(ptvp, buff, bs);
+    res = do_scsi_pt(ptvp, sg_fd, WRITE_SAME16_TIMEOUT, verbose);
+    vt = ((verbose > 1) ? (verbose - 1) : verbose);
+    ret = sg_cmds_process_resp(ptvp, "Write same(16)", res, 0, sense_b,
+                               1 /*noisy */, vt, &sense_cat);
+    if (-1 == ret)
+        ;
+    else if (-2 == ret) {
+        switch (sense_cat) {
+        case SG_LIB_CAT_NOT_READY:
+        case SG_LIB_CAT_UNIT_ATTENTION:
+        case SG_LIB_CAT_INVALID_OP:
+        case SG_LIB_CAT_ILLEGAL_REQ:
+        case SG_LIB_CAT_ABORTED_COMMAND:
+            ret = sense_cat;
+            break;
+        case SG_LIB_CAT_RECOVERED:
+        case SG_LIB_CAT_NO_SENSE:
+            ret = 0;
+            break;
+        case SG_LIB_CAT_MEDIUM_HARD:
+            {
+                int valid, slen;
+                uint64_t ull = 0;
+
+                slen = get_scsi_pt_sense_len(ptvp);
+                valid = sg_get_sense_info_fld(sense_b, slen, &ull);
+                if (valid)
+                    fprintf(stderr, "Medium or hardware error starting at "
+                            "lba=%"PRIu64" [0x%"PRIx64"]\n", ull, ull);
+            }
+            ret = sense_cat;
+            break;
+        default:
+            ret = -1;
+            break;
+        }
+    } else
+        ret = 0;
+
     return ret;
 }
 
@@ -1982,7 +2078,7 @@ cp_read_pt(struct opts_t * optsp, struct cp_state_t * csp,
 {
     int res, blks_read;
 
-    res = pt_read(optsp->infd, wrkPos, csp->iblocks, optsp->skip,
+    res = pt_read(optsp->infd, 0, wrkPos, csp->iblocks, optsp->skip,
                   optsp->ibs, optsp->iflagp, &blks_read);
     if (res) {
         fprintf(stderr, "pt_read failed,%s at or after lba=%"PRId64" "
@@ -2111,7 +2207,7 @@ cp_read_of_pt(struct opts_t * optsp, struct cp_state_t * csp,
 {
     int res, blks_read;
 
-    res = pt_read(optsp->outfd, wrkPos2, csp->oblocks, optsp->seek,
+    res = pt_read(optsp->outfd, 1, wrkPos2, csp->oblocks, optsp->seek,
                   optsp->obs, optsp->oflagp, &blks_read);
     if (res) {
         fprintf(stderr, "pt_read(sparing) failed, at or after "
@@ -2305,6 +2401,7 @@ cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
                  unsigned char * b1p, unsigned char * b2p)
 {
     int res, k, n, oblks, numbytes, chunk, need_wr, wr_len, wr_k, obs;
+    int trim_check, need_tr, tr_len, tr_k;
 
     oblks = csp->oblocks;
     obs = optsp->obs;
@@ -2318,6 +2415,11 @@ cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
     }
     numbytes = oblks * obs;
     chunk = optsp->obpc * obs;
+    trim_check = (optsp->oflagp->sparse && optsp->oflagp->wsame16 &&
+                  (FT_PT & optsp->out_type));
+    need_tr = 0;
+    tr_len = 0;
+    tr_k = 0;
     for (k = 0, need_wr = 0, wr_len = 0, wr_k = 0; k < numbytes; k += chunk) {
         n = ((k + chunk) < numbytes) ? chunk : (numbytes - k);
         if (0 == memcmp(b1p + k, b2p + k, n)) {
@@ -2331,6 +2433,13 @@ cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
                     return res;
                 need_wr = 0;
             }
+            if (need_tr)
+                tr_len += n;
+            else if (trim_check) {
+                need_tr = 1;
+                tr_len = n;
+                tr_k = k;
+            }
             out_sparse += (n / obs);
         } else {   /* look for a sequence of unequals */
             if (need_wr)
@@ -2339,6 +2448,14 @@ cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
                 need_wr = 1;
                 wr_len = n;
                 wr_k = k;
+            }
+            if (need_tr) {
+                res = pt_write_same16(optsp->outfd, 1, b2p, obs, tr_len / obs,
+                                      optsp->seek + (tr_k / obs));
+                if (res)
+                    ++trim_errs;
+                /* continue past trim errors */
+                need_tr = 0;
             }
         }
     }
@@ -2350,6 +2467,13 @@ cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
         } else if ((res = cp_write_block_reg(optsp, csp, wr_k / obs,
                                              wr_len / obs, b1p + wr_k)))
             return res;
+    }
+    if (need_tr) {
+        res = pt_write_same16(optsp->outfd, 1, b2p, obs, tr_len / obs,
+                              optsp->seek + (tr_k / obs));
+        if (res)
+            ++trim_errs;
+        /* continue past trim errors */
     }
     return 0;
 }
@@ -2543,9 +2667,15 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
             (optsp->oflagp->sparse && 
              (dd_count > iblocks_hold) &&
              (! (FT_DEV_NULL & optsp->out_type)))) {
-            if (0 == memcmp(wrkPos, zeros_buff, csp->oblocks * optsp->obs))
+            if (0 == memcmp(wrkPos, zeros_buff, csp->oblocks * optsp->obs)) {
                 csp->sparse_skip = 1;
-            else if (optsp->obpc) {
+                if (optsp->oflagp->wsame16 && (FT_PT & optsp->out_type)) {
+                    res = pt_write_same16(optsp->outfd, 1, zeros_buff,
+                                  optsp->obs, csp->oblocks, optsp->seek);
+                    if (res)
+                        ++trim_errs;
+                }
+            } else if (optsp->obpc) {
                 ret = cp_finer_comp_wr(optsp, csp, wrkPos, zeros_buff);
                 if (ret)
                     break;
@@ -2571,10 +2701,13 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
         }
         /* Start of writing section */
         if (csp->sparing_skip || csp->sparse_skip) {
+#if 0
+            /* need to track cp_finer_comp_wr() and see trim */
             if (verbose > 2)
-                fprintf(stderr, "%s bypassing write: seek blk=%" PRId64
-                        ", offset blks=%d\n", (csp->sparing_skip ?
+                fprintf(stderr, "%s bypassing write: start blk=%" PRId64
+                        ", number of blks=%d\n", (csp->sparing_skip ?
                          "sparing" : "sparse"), optsp->seek, csp->oblocks);
+#endif
             out_sparse += csp->oblocks;
         } else {
             if (FT_PT & optsp->out_type) {
@@ -2723,6 +2856,8 @@ main(int argc, char * argv[])
             return SG_LIB_SYNTAX_ERROR;
         }
         out_sparse_active = 1;
+        if (oflag.wsame16)
+            out_trim_active = 1;
     }
     if (oflag.sparing) {
         if (STDOUT_FILENO == opts.outfd) {
@@ -2864,7 +2999,7 @@ cleanup:
     if ((opts.out2fd >= 0) && (STDOUT_FILENO != opts.out2fd))
         close(opts.out2fd);
     if (0 != dd_count) {
-        fprintf(stderr, "Some error occurred,");
+        fprintf(stderr, "Some error occurred\n");
         if (0 == ret)
             ret = SG_LIB_CAT_OTHER;
     }

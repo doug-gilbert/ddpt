@@ -53,17 +53,12 @@
 #define DEF_SCSI_CDBSZ 10
 #define MAX_SCSI_CDBSZ 16
 
-#define DEF_MODE_CDB_SZ 10
-#define DEF_MODE_RESP_LEN 252
-#define RW_ERR_RECOVERY_MP 1
-#define CACHING_MP 8
-#define CONTROL_MP 0xa
-
 #define SENSE_BUFF_LEN 32       /* Arbitrary, could be larger */
 #define READ_CAP_REPLY_LEN 8
 #define RCAP16_REPLY_LEN 32
 
 #define DEF_TIMEOUT 60000       /* 60,000 millisecs == 60 seconds */
+#define WRITE_SAME16_TIMEOUT 180000  /* 3 minutes */
 
 #ifdef SG_LIB_LINUX
 #ifndef RAW_MAJOR
@@ -124,7 +119,7 @@ struct flags_t {
     int sparse;
     int ssync;
     int sync;
-    int unmap;
+    int wsame16;
 };
 
 struct opts_t {
