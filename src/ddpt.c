@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100705";
+static char * version_str = "0.91 20100711";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -187,7 +187,8 @@ usage()
            "    coe_limit   limit consecutive 'bad' blocks on reads to CL "
            "times\n"
            "                when coe=1 (default: 0 which is no limit)\n"
-           "    conv        one or conversions (see below)\n"
+           "    conv        conversions, comma separated list of CONVS "
+           "(see below)\n"
            "    count       number of input blocks to copy (def: "
            "(remaining)\n"
            "                device size)\n"
@@ -223,8 +224,8 @@ usage()
            "accessed via a SCSI pass-through.\n"
            "FLAGS: append(o),coe,direct,dpo,excl,flock,fua,fua_nv,nocache,"
            "null,pt,\nresume(o),sparing(o),sparse(o),ssync(o),sync,trim(o),"
-           "unmap(o)\n"
-           "CONVS: noerror,null,resume,sparing,sparse,sync\n");
+           "trunc(o),unmap(o)\n"
+           "CONVS: noerror,null,resume,sparing,sparse,sync,trunc\n");
 }
 
 
@@ -355,6 +356,8 @@ process_conv(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
         else if (0 == strcmp(cp, "sync"))
             ;   /* dd(susv4): pad errored block(s) with zeros but ddpt does
                  * that by default. Typical dd use: 'dd conv=noerror,sync' */
+        else if (0 == strcmp(cp, "trunc"))
+            ++ofp->trunc;
         else {
             fprintf(stderr, "unrecognised flag: %s\n", cp);
             return 1;
@@ -419,7 +422,9 @@ process_flags(const char * arg, struct flags_t * fp)
             /* treat trim (ATA term) and unmap (SCSI term) as synonyms */
             ++fp->wsame16;
             fp->sparse += 2;
-        } else {
+        } else if (0 == strcmp(cp, "trunc"))
+            ++fp->trunc;
+        else {
             fprintf(stderr, "unrecognised flag: %s\n", cp);
             return 1;
         }
@@ -679,6 +684,18 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
         fprintf(stderr, "sparse flag ignored on input\n");
     if (optsp->iflagp->ssync)
         fprintf(stderr, "ssync flag ignored on input\n");
+    if (optsp->oflagp->trunc) {
+        if (optsp->oflagp->resume) {
+            optsp->oflagp->trunc = 0;
+            fprintf(stderr, "trunc ignored due to resume flag\n");
+        } else if (optsp->oflagp->append) {
+            optsp->oflagp->trunc = 0;
+            fprintf(stderr, "trunc ignored due to append flag\n");
+        } else if (optsp->oflagp->sparing) {
+            fprintf(stderr, "trunc flag conflicts with sparing\n");
+            return SG_LIB_SYNTAX_ERROR;
+        }
+    }
 
     if (verbose) {      /* report flags used but not supported */
 #ifndef SG_LIB_LINUX
@@ -1536,11 +1553,13 @@ pt_write_same16(int sg_fd, int in0_out1, unsigned char * buff, int bs,
         unum >>= 8;
     }
     if (verbose > 2) {
-        fprintf(stderr, "    Write same(16) cmd: ");
+        fprintf(stderr, "    WRITE SAME(16) cdb: ");
         for (k = 0; k < (int)sizeof(wsCmdBlk); ++k)
             fprintf(stderr, "%02x ", wsCmdBlk[k]);
-        fprintf(stderr, "\n    Data-out buffer length=%d\n",
-                bs);
+        fprintf(stderr, "\n");
+        if (verbose > 4)
+            fprintf(stderr, "    Data-out buffer length=%d\n",
+                    bs);
     }
     if (NULL == sg_warnings_strm)
         sg_warnings_strm = stderr;
@@ -1864,11 +1883,11 @@ open_of(struct opts_t * optsp, int verbose)
     }
 #endif
     else {      /* typically regular file or block device node */
-        if (verbose) {
-            if (0 == stat(outf, &st))
-                outf_exists = 1;
-        }
-        flags = ofp->sparing ? (O_RDWR | O_CREAT) : (O_WRONLY | O_CREAT);
+        if (0 == stat(outf, &st))
+            outf_exists = 1;
+        flags = ofp->sparing ? O_RDWR : O_WRONLY;
+        if (0 == outf_exists)
+            flags |= O_CREAT;
         if (ofp->direct)
             flags |= O_DIRECT;
         if (ofp->excl)
@@ -1877,6 +1896,8 @@ open_of(struct opts_t * optsp, int verbose)
             flags |= O_SYNC;
         if (ofp->append)
             flags |= O_APPEND;
+        if ((FT_REG & optsp->out_type) && outf_exists && ofp->trunc)
+            flags |= O_TRUNC;
         if ((fd = open(outf, flags, 0666)) < 0) {
             snprintf(ebuff, EBUFF_SZ,
                     ME "could not open %s for writing", outf);

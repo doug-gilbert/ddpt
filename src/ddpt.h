@@ -119,6 +119,7 @@ struct flags_t {
     int sparse;
     int ssync;
     int sync;
+    int trunc;
     int wsame16;
 };
 

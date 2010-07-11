@@ -123,8 +123,8 @@ as well.
 write to \fIOFILE\fR. The default value is /dev/null . If \fIOFILE\fR is '\-'
 then writes to stdout. If \fIOFILE\fR is /dev/null then no actual writes are
 performed. If \fIOFILE\fR is '.' (period) then it is treated the same way as
-/dev/null . If \fIOFILE\fR exists then it is _not_ truncated. See section
-on DD DIFFERENCES.
+/dev/null . If \fIOFILE\fR exists then it is _not_ truncated
+unless "oflag=trunc" is given. See section on DD DIFFERENCES.
 .TP
 \fBof2\fR=\fIOFILE2\fR
 write output to \fIOFILE2\fR. The default action is not to do this additional
@@ -232,6 +232,15 @@ See "sparing" in the FLAGS sections for more information.
 sparse
 FreeBSD supports "conv=sparse" so the same syntax is supported in ddpt.
 See "sparse" in the FLAGS sections for more information.
+.TP
+sync
+is ignored by ddpt. With dd it means supply zero fill (rather than skip)
+and is typically used like this "conv=noerror,sync" to have the same
+functionality as ddpt's "iflag=coe".
+.TP
+trunc
+if \fIOFILE\fR is a regular file then truncate it prior to starting the
+copy. See "trunc" in the FLAGS section.
 .SH FLAGS
 A list of flags and their meanings follow. The flag name is followed
 by one or two indications in square brackets. The first indication is
@@ -374,6 +383,11 @@ similar logic to the "sparse" option. However instead of skipping segments
 that are full zeros a "trim" command is sent to \fIOFILE\fR. Depending on
 the usage this may require the device to have "deterministic read zero
 after trim" settings. See the TRIM, UNMAP AND WRITE SAME section below.
+.TP
+trunc [o] [reg]
+if \fIOFILE\fR is a regular file then it is truncated (to zero length) prior
+to starting the copy. Ignored if "oflag=append", "oflag=resume"
+or "conv=resume" is also given. Conflicts with "oflag=sparing".
 .SH DD DIFFERENCES
 dd defaults "if=" and "of=" to stdin and stout respectively. This follows
 Unix filter conventions. However since dd and ddpt are often used to read
@@ -385,11 +399,11 @@ remains optional but its default changes to "/dev/null" (or "NUL" in
 Windows). To send output to stdout ddpt accepts "of=\-".
 .PP
 dd truncates \fIOFILE\fR unless "conv=notrunc" is given. ddpt does not
-truncate \fIOFILE\fR and if \fIOFILE\fR exists it will overwritten starting
-at block zero unless \fISEEK\fR or "oflag=append" is given. Note that the
-ddpt user may need to do "rm \fIOFILE\fR" prior to calling ddpt in some
-cases. Some ddpt features such as write sparing only work with an
-\fIOFILE\fR overwrite, rather than truncate, policy.
+truncate \fIOFILE\fR by default. If \fIOFILE\fR exists it will overwritten.
+The overwrite starts at block zero unless \fISEEK\fR or "oflag=append" is
+given. If \fIOFILE\fR is a regular file then "oflag=trunc" (or "conv=trunc")
+will truncate \fIOFILE\fR prior to the copy. Some ddpt features such as
+write sparing and resume are only useful if \fIOFILE\fR is not truncated.
 .PP
 Numeric arguments to ddpt can be given in hexadecimal, either with a
 leading "0x" or "0X" or with a trailing "h". Note that dd accepts "0x123"
