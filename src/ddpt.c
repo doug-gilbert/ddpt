@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100711";
+static char * version_str = "0.91 20100712";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -219,12 +219,13 @@ usage()
            "    --help      print out this usage message then exit\n"
            "    --verbose   equivalent to verbose=1\n"
            "    --version   print version information then exit\n\n"
-           "Copy from IFILE to OFILE, IBS*BPT bytes at a time. Similar to "
-           "dd command.\nSupport for block devices, especially those "
-           "accessed via a SCSI pass-through.\n"
+           "Copy all or part of IFILE to OFILE, IBS*BPT bytes at a time. "
+           "Similar to\n"
+           "dd command. Support for block devices, especially those "
+           "accessed via\na SCSI pass-through.\n"
            "FLAGS: append(o),coe,direct,dpo,excl,flock,fua,fua_nv,nocache,"
-           "null,pt,\nresume(o),sparing(o),sparse(o),ssync(o),sync,trim(o),"
-           "trunc(o),unmap(o)\n"
+           "nowrite(o),\nnull,pt,resume(o),sparing(o),sparse(o),ssync(o),"
+           "sync,trim(o),trunc(o),unmap(o)\n"
            "CONVS: noerror,null,resume,sparing,sparse,sync,trunc\n");
 }
 
@@ -404,6 +405,8 @@ process_flags(const char * arg, struct flags_t * fp)
             ++fp->fua;
         else if (0 == strcmp(cp, "nocache"))
             ++fp->nocache;
+        else if (0 == strcmp(cp, "nowrite"))
+            ++fp->nowrite;
         else if (0 == strcmp(cp, "null"))
             ;
         else if (0 == strcmp(cp, "pt"))
@@ -2323,6 +2326,8 @@ cp_write_pt(struct opts_t * optsp, int seek_delta, int blks,
     int res;
     int64_t aseek = optsp->seek + seek_delta;
 
+    if (optsp->oflagp->nowrite)
+        return 0;
     res = pt_write(optsp->outfd, wrkPos, blks, aseek, optsp->obs,
                    optsp->oflagp);
     if (0 != res) {
@@ -2343,6 +2348,8 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
     off_t offset;
     int64_t aseek = optsp->seek + seek_delta;
 
+    if (optsp->oflagp->nowrite)
+        return 0;
     offset = aseek * optsp->obs;
 #ifdef SG_LIB_WIN32
     if (FT_BLOCK & optsp->out_type) {
