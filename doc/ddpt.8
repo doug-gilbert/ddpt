@@ -318,6 +318,11 @@ use posix_fadvise() to advise corresponding file there is no need to fill
 the file buffer with recently read or written blocks. If used with "iflag="
 it will increase the read ahead on \fIIFILE\fR.
 .TP
+nowrite [o] [reg,blk,pt]
+bypass writes to \fIOFILE\fR. The "records out" count is not incremented.
+Useful in conjunction with trim (e.g. "oflag=trim,nowrite") for doing a
+self-trim (i.e. \fIIFILE\fR and \fIOFILE\fR are the same device).
+.TP
 null [io]
 has no affect, just a placeholder.
 .TP
@@ -463,7 +468,7 @@ systems in that it only offers trim on pass\-through (pt) devices.
 .PP
 This utility issues SCSI commands to pt devices and for "trim" currently
 issues a SCSI WRITE SAME(16) command with the UNMAP bit set. If the pt
-device is a SSD with and ATA interface then recent versions of Linux
+device is a SSD with a ATA interface then recent versions of Linux
 will translate the SCSI WRITE SAME to the ATA DATA SET MANAGEMENT command
 with the TRIM bit set. The maximum size of each "trim" command sent
 is the size of the copy buffer (i.e. \fIIBS\fR * \fIBPT\fR bytes). And
@@ -511,10 +516,10 @@ Disk partition information can often be found with
 can be used like this: 'parted /dev/sda unit s print' .
 .PP
 For pt devices this utility issues SCSI READ and WRITE (SBC) commands which
-are appropriate for disks and reading from CD/DVD/HD\-DVD/BD drives. Those
+are appropriate for disks and reading from CD/DVD/BD drives. Those
 commands are not formatted correctly for tape devices so ddpt should not be
 used on tape devices. If the largest block address of the requested transfer
-exceeds a 32 bit block number (i.e 0xffff) then a warning is issued and
+exceeds a 32 bit block number (i.e 0xffffffff) then a warning is issued and
 the sg device is accessed via SCSI READ(16) and WRITE(16) commands.
 .PP
 The attributes of a block device (partition) are ignored when the pt flag
