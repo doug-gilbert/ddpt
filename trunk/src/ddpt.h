@@ -112,6 +112,7 @@ struct flags_t {
     int fua_nv;
     int pdt;
     int nocache;
+    int nowrite;
     int pt;
     int resume;
     int retries;
