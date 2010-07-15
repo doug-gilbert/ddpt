@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100712";
+static char * version_str = "0.91 20100715";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -124,7 +124,7 @@ static int out_partial = 0;
 static int out_sparse_active = 0;
 static int out_sparing_active = 0;
 static int out_trim_active = 0;
-static int64_t out_sparse = 0;  /* used for both sparse + sparing */
+static int64_t out_sparse = 0;  /* used for sparse, sparing + trim */
 static int recovered_errs = 0;
 static int unrecovered_errs = 0;
 static int trim_errs = 0;
@@ -241,8 +241,8 @@ print_stats(const char * str)
             out_full - out_partial, out_partial);
     if (out_sparse_active || out_sparing_active) {
         if (out_trim_active)
-            fprintf(stderr, "%s%"PRId64" trimmed records out\n", str,
-                    out_sparse);
+            fprintf(stderr, "%s%"PRId64" %s records out\n", str, out_sparse,
+                    (trim_errs ? "attempted trim" : "trimmed"));
         else
             fprintf(stderr, "%s%"PRId64" bypassed records out\n", str,
                     out_sparse);
@@ -1575,8 +1575,10 @@ pt_write_same16(int sg_fd, int in0_out1, unsigned char * buff, int bs,
     set_scsi_pt_cdb(ptvp, wsCmdBlk, sizeof(wsCmdBlk));
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_out(ptvp, buff, bs);
-    res = do_scsi_pt(ptvp, sg_fd, WRITE_SAME16_TIMEOUT, verbose);
-    vt = ((verbose > 1) ? (verbose - 1) : verbose);
+    vt = ((verbose > 1) ? (verbose - 1) : 0);
+    while (((res = do_scsi_pt(ptvp, sg_fd, WRITE_SAME16_TIMEOUT, vt)) < 0) &&
+           (-EINTR == res))
+        ++interrupted_retries;     /* resubmit if interrupted system call */
     ret = sg_cmds_process_resp(ptvp, "Write same(16)", res, 0, sense_b,
                                1 /*noisy */, vt, &sense_cat);
     if (-1 == ret)
@@ -1899,7 +1901,8 @@ open_of(struct opts_t * optsp, int verbose)
             flags |= O_SYNC;
         if (ofp->append)
             flags |= O_APPEND;
-        if ((FT_REG & optsp->out_type) && outf_exists && ofp->trunc)
+        if ((FT_REG & optsp->out_type) && outf_exists && ofp->trunc &&
+            (! ofp->nowrite))
             flags |= O_TRUNC;
         if ((fd = open(outf, flags, 0666)) < 0) {
             snprintf(ebuff, EBUFF_SZ,

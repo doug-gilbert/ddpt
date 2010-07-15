@@ -320,6 +320,8 @@ it will increase the read ahead on \fIIFILE\fR.
 .TP
 nowrite [o] [reg,blk,pt]
 bypass writes to \fIOFILE\fR. The "records out" count is not incremented.
+\fIOFILE\fR is still opened but "oflag=trunc" if given is ignored. Commands
+such as trim and SCSI SYNCHRONIZE CACHE are still sent.
 Useful in conjunction with trim (e.g. "oflag=trim,nowrite") for doing a
 self-trim (i.e. \fIIFILE\fR and \fIOFILE\fR are the same device).
 .TP
