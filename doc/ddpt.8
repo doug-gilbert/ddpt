@@ -290,6 +290,14 @@ data is unlikely to be required to stay in device (e.g. disk) cache.
 May speed media copy and/or cause a media copy to have less impact
 on other device users.
 .TP
+errblk [i] [pt] [experimental]
+attempts to create or append to a file called "errblk.txt" in the current
+directory the logical block addresses of blocks that cannot be read. The
+first (appended) line is "# start <timestamp>" followed by the LBAs in
+hex (and prefixed with "0x") of any block that cannot be read. At the end
+of the copy a line with "# stop <timestamp>" is appended to "errblk.txt".
+Typically used with "coe".
+.TP
 excl [io] [reg,blk]
 causes the O_EXCL flag to be added to the open of \fIIFILE\fR and/or
 \fIOFILE\fR. See open(2) man page.

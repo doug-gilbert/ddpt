@@ -99,6 +99,8 @@
 #define MAX_UNIT_ATTENTIONS 10
 #define MAX_ABORTED_CMDS 256
 
+#define ERRBLK_SUPPORTED 1
+
 
 struct flags_t {
     int append;
@@ -106,6 +108,9 @@ struct flags_t {
     int coe;
     int direct;
     int dpo;
+#ifdef ERRBLK_SUPPORTED
+    int errblk;
+#endif
     int excl;
     int flock;
     int fua;
