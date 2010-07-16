@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100715";
+static char * version_str = "0.91 20100716";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -77,6 +77,7 @@ static char * version_str = "0.91 20100715";
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
 #include <time.h>
 #elif defined(HAVE_GETTIMEOFDAY)
+#include <time.h>
 #include <sys/time.h>
 #endif
 
@@ -156,6 +157,11 @@ static int some_coe_set = 0;
 
 static unsigned char * zeros_buff = NULL;
 
+#ifdef ERRBLK_SUPPORTED
+static const char * errblk_file = "errblk.txt";
+static FILE * errblk_fp;
+#endif
+
 
 static void calc_duration_throughput(int contin);
 
@@ -223,9 +229,10 @@ usage()
            "Similar to\n"
            "dd command. Support for block devices, especially those "
            "accessed via\na SCSI pass-through.\n"
-           "FLAGS: append(o),coe,direct,dpo,excl,flock,fua,fua_nv,nocache,"
-           "nowrite(o),\nnull,pt,resume(o),sparing(o),sparse(o),ssync(o),"
-           "sync,trim(o),trunc(o),unmap(o)\n"
+           "FLAGS: append(o),coe,direct,dpo,errblk(i),excl,flock,fua,"
+           "fua_nv,nocache,\n"
+           "nowrite(o),null,pt,resume(o),sparing(o),sparse(o),ssync(o),"
+           "sync,trim(o),\ntrunc(o),unmap(o). "
            "CONVS: noerror,null,resume,sparing,sparse,sync,trunc\n");
 }
 
@@ -325,6 +332,61 @@ siginfo_handler(int sig)
         calc_duration_throughput(1);
 }
 
+#ifdef ERRBLK_SUPPORTED
+static void
+open_errblk(void)
+{
+    errblk_fp = fopen(errblk_file, "a");        /* append */
+    if (NULL == errblk_fp)
+        fprintf(stderr, "unable to open or create %s\n", errblk_file);
+    else {
+#ifdef HAVE_GETTIMEOFDAY
+        {
+            time_t t;
+            char b[64];
+    
+            t = time(NULL);
+            strftime(b, sizeof(b), "# start: %Y-%m-%d %H:%M:%S\n",
+                     localtime(&t));
+            fputs(b, errblk_fp);
+        }
+#else
+        fputs("# start\n", errblk_fp);
+#endif
+    }
+}
+
+static void
+put_errblk(uint64_t lba)
+{
+    if (errblk_fp)
+        fprintf(errblk_fp, "0x%"PRIx64"\n", lba);
+}
+
+static void
+close_errblk(void)
+{
+    if (errblk_fp) {
+#ifdef HAVE_GETTIMEOFDAY
+        {
+            time_t t;
+            char b[64];
+
+            t = time(NULL);
+            strftime(b, sizeof(b), "# stop: %Y-%m-%d %H:%M:%S\n",
+                     localtime(&t));
+            fputs(b, errblk_fp);
+        }
+#else
+        fputs("# stop\n", errblk_fp);
+#endif
+        fclose(errblk_fp);
+        errblk_fp = NULL;
+    }
+}
+
+#endif
+
 /* Process arguments given to 'conv=" option. */
 static int
 process_conv(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
@@ -395,6 +457,10 @@ process_flags(const char * arg, struct flags_t * fp)
             ++fp->direct;
         else if (0 == strcmp(cp, "dpo"))
             ++fp->dpo;
+#ifdef ERRBLK_SUPPORTED
+        else if (0 == strcmp(cp, "errblk"))
+            ++fp->errblk;
+#endif
         else if (0 == strcmp(cp, "excl"))
             ++fp->excl;
         else if (0 == strcmp(cp, "flock"))
@@ -1305,6 +1371,9 @@ pt_read(int sg_fd, int in0_out1, unsigned char * buff, int blocks,
             if ((int64_t)io_addr > highest_unrecovered)
                 highest_unrecovered = io_addr;
         }
+#ifdef ERRBLK_SUPPORTED
+        put_errblk(io_addr);
+#endif
         blks = (int)(io_addr - (uint64_t)lba);
         if (blks > 0) {
             if (verbose)
@@ -2990,7 +3059,17 @@ main(int argc, char * argv[])
 #endif
     req_count = dd_count;
 
+#ifdef ERRBLK_SUPPORTED
+    if (opts.iflagp->errblk)
+        open_errblk();
+#endif
+
     ret = do_copy(&opts, wrkPos, wrkPos2);
+
+#ifdef ERRBLK_SUPPORTED
+    if (opts.iflagp->errblk)
+        close_errblk();
+#endif
 
     print_stats("");
     if (sum_of_resids)

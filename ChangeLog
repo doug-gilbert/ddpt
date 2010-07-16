@@ -2,7 +2,7 @@ The version number is hardcoded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.91 [20100715] [svn: r101]
+Changelog for ddpt-0.91 [20100716] [svn: r102]
   - rework copy loop.
   - extend bpt=BPT to bpt=BPR[,OBPC] spare+sparse granularity
   - add oflag=resume logic
@@ -12,6 +12,7 @@ Changelog for ddpt-0.91 [20100715] [svn: r101]
   - 'conv=noerror,null,resume,sparing,sparse,sync' now permitted
   - add 'oflag=trunc' and 'conv=trunc' (default: overwrite)
   - add 'oflag=trim' and 'oflag=nowrite' support
+  - add 'iflag=errblk' support
 
 Changelog for ddpt-0.90 [20100508] [svn: r85]
   - copied from sg_dd utility in sg3_utils package
