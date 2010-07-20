@@ -1979,6 +1979,8 @@ open_of(struct opts_t * optsp, int verbose)
             perror(ebuff);
             goto file_err;
         }
+        if ((! outf_exists) && (FT_ERROR & optsp->out_type))
+            optsp->out_type = FT_REG;   /* exists now */
         if (sg_set_binary_mode(fd) < 0)
             perror("sg_set_binary_mode");
         if (verbose)
@@ -2820,7 +2822,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
                 if ((ret = cp_write_pt(optsp, 0, csp->oblocks, wrkPos)))
                     break;
             } else if (FT_DEV_NULL & optsp->out_type)
-                out_full += csp->oblocks; /* as if written out */
+                ;  /* out_full += csp->oblocks; was as if written out */
             else if ((ret = cp_write_block_reg(optsp, csp, 0, csp->oblocks,
                                                wrkPos)))
                 break;
