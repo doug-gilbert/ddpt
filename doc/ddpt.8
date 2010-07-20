@@ -37,7 +37,9 @@ operating system (e.g. in Linux '/dev/sg2' is recognized). However
 if a device can process either normal UNIX read()/write() calls or
 pass\-through SCSI commands then the default is to use UNIX read()/write()
 calls. That default can be overridden by using the "pt"
-flag (e.g. "if=/dev/sdc iflag=pt").
+flag (e.g. "if=/dev/sdc iflag=pt"). When pt access is specified any
+partition information is ignored. So "if=/dev/sdc2 iflag=pt skip=3"
+will start at logical block address 3 of '/dev/sdc'.
 .SH OPTIONS
 .TP
 \fBbpt\fR=\fIBPT[,OBPC]\fR
@@ -372,17 +374,17 @@ when \fIOBPC\fR is 1 which implies \fIOBS\fR bytes.
 .TP
 sparse [o] [reg,blk,pt]
 after each \fIIBS\fR * \fIBPT\fR byte segment is read from \fIIFILE\fR, it
-is checked to see if it is all zeros. If so, nothing is written to
-\fIOFILE\fR unless this is the last segment of the transfer.
-This flag requires that \fIOFILE\fR is seekable (which rules out stdout).
-This flag is ignored if \fIOFILE\fR is /dev/null . The last segment is
-written to \fIOFILE\fR so regular files will show the same length with
-and without this option. Thus programs like md5sum and sha1sum will
-generate the same value regardless of whether "oflag=sparse" is given or not.
-When the sparse flag is given twice (i.e. "oflag=sparse,sparse") then the
-last segment is only written to \fIOFILE\fR if it is other than all zeros.
-The granularity of the comparison can be reduced from the default
-\fIIBS\fR * \fIBPT\fR byte segment with the the \fIOBPC\fR value given to
+is checked to see if it is all zeros. If so, that segment is not written to
+\fIOFILE\fR apart from the copy's last segment which may be written.
+In the case of the last segment when \fIOFILE\fR is a regular file and the
+sparse flag is given once (i.e. not twice) then that segment is written to
+\fIOFILE\fR. The reason is to make \fIOFILE\fR have the same length
+whether "oflag=sparse" is given or not. Thus programs like md5sum and
+sha1sum will generate the same value regardless of whether "oflag=sparse" is
+given or not. When the sparse flag is given twice (i.e. "oflag=sparse,sparse")
+then the last segment is only written to \fIOFILE\fR if it is other than all
+zeros. The granularity of the zero comparison can be reduced from the default
+\fIIBS\fR * \fIBPT\fR byte segment with the \fIOBPC\fR value given to
 the "bpt=" option.
 .TP
 ssync [o] [pt]
@@ -404,7 +406,7 @@ if \fIOFILE\fR is a regular file then it is truncated (to zero length) prior
 to starting the copy. Ignored if "oflag=append", "oflag=resume"
 or "conv=resume" is also given. Conflicts with "oflag=sparing".
 .SH DD DIFFERENCES
-dd defaults "if=" and "of=" to stdin and stout respectively. This follows
+dd defaults "if=" and "of=" to stdin and stdout respectively. This follows
 Unix filter conventions. However since dd and ddpt are often used to read
 binary data for timing purposes, having to supply "of=/dev/null" can
 be easily forgotten. Without it dd will potentially spew binary data on the
@@ -465,7 +467,7 @@ This is a new storage feature often associated with Solid State
 Disks (SSDs) or disk arrays with "thin provisioning". In the ATA command
 set (ACS\-2) the relevant command is DATA SET MANAGEMENT with the TRIM
 bit set. In the SCSI command set (SBC\-3) it is either the UNMAP or
-WRITE SAME commands. Note there is not TRIM command however this feature
+WRITE SAME commands. Note there is no TRIM command however this feature
 has been christened "trim" by the technical press.
 .PP
 Trim is a way of telling a storage device that blocks are no longer needed.
@@ -532,11 +534,18 @@ used on tape devices. If the largest block address of the requested transfer
 exceeds a 32 bit block number (i.e 0xffffffff) then a warning is issued and
 the sg device is accessed via SCSI READ(16) and WRITE(16) commands.
 .PP
-The attributes of a block device (partition) are ignored when the pt flag
-is used. Hence the whole device is read (rather than just the second
+The attributes of a block device (e.g. partitions) are ignored when the pt
+flag is used. Hence the whole device is read (rather than just the second
 partition) by this invocation:
 .PP
    ddpt if=/dev/sdb2 iflag=pt of=t bs=512
+.PP
+And the contents of the file "t" should be same as these two invocations
+(assuming /dev/sdb and /dev/sg2 refer to the same device):
+.PP
+   ddpt if=/dev/sdb of=t bs=512
+.PP
+   ddpt if=/dev/sg2 of=t bs=512
 .SH EXAMPLES
 .PP
 ddpt usage looks quite similar to dd:

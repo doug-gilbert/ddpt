@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100716";
+static char * version_str = "0.91 20100720";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -2506,7 +2506,9 @@ cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
     oblks = csp->oblocks;
     obs = optsp->obs;
     if (optsp->obpc >= oblks) {
-        if (FT_PT & optsp->out_type) {
+        if (FT_DEV_NULL & optsp->out_type)
+            ;
+        else if (FT_PT & optsp->out_type) {
             if ((res = cp_write_pt(optsp, 0, oblks, b1p)))
                 return res;
         } else if ((res = cp_write_block_reg(optsp, csp, 0, oblks, b1p)))
@@ -2524,7 +2526,9 @@ cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
         n = ((k + chunk) < numbytes) ? chunk : (numbytes - k);
         if (0 == memcmp(b1p + k, b2p + k, n)) {
             if (need_wr) {
-                if (FT_PT & optsp->out_type) {
+                if (FT_DEV_NULL & optsp->out_type)
+                    ;
+                else if (FT_PT & optsp->out_type) {
                     if ((res = cp_write_pt(optsp, wr_k / obs, wr_len / obs,
                                            b1p + wr_k)))
                         return res;
@@ -2560,7 +2564,9 @@ cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
         }
     }
     if (need_wr) {
-        if (FT_PT & optsp->out_type) {
+        if (FT_DEV_NULL & optsp->out_type)
+            ;
+        else if (FT_PT & optsp->out_type) {
             if ((res = cp_write_pt(optsp, wr_k / obs, wr_len / obs,
                                    b1p + wr_k)))
                 return res;
@@ -2763,10 +2769,10 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
             ((ret = cp_write_of2(optsp, csp, wrkPos))))
             break;
 
-        if ((optsp->oflagp->sparse > 1) ||
-            (optsp->oflagp->sparse && 
-             (dd_count > iblocks_hold) &&
-             (! (FT_DEV_NULL & optsp->out_type)))) {
+        if ((1 == optsp->oflagp->sparse) && (dd_count <= iblocks_hold) &&
+            (FT_REG & optsp->out_type))
+            ;   /* write last segment on regular OFILE when oflag=sparse */
+        else if (optsp->oflagp->sparse) {
             if (0 == memcmp(wrkPos, zeros_buff, csp->oblocks * optsp->obs)) {
                 csp->sparse_skip = 1;
                 if (optsp->oflagp->wsame16 && (FT_PT & optsp->out_type)) {
