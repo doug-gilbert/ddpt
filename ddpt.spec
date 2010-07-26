@@ -51,8 +51,8 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Fri Jul 16 2010 - dgilbert at interlog dot com
-- extend bpt=BPT to bpt=BPT[,OBPC], resume flag
+* Mon Jul 26 2010 - dgilbert at interlog dot com
+- extend bpt=BPT to bpt=BPT[,OBPC], resume and trim flags
   * ddpt-0.91
 * Sat May 08 2010 - dgilbert at interlog dot com
 - initial version

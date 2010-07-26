@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100720";
+static char * version_str = "0.91 20100726";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -231,7 +231,7 @@ usage()
            "accessed via\na SCSI pass-through.\n"
            "FLAGS: append(o),coe,direct,dpo,errblk(i),excl,flock,fua,"
            "fua_nv,nocache,\n"
-           "nowrite(o),null,pt,resume(o),sparing(o),sparse(o),ssync(o),"
+           "nowrite(o),null,pt,resume(o),self,sparing(o),sparse(o),ssync(o),"
            "sync,trim(o),\ntrunc(o),unmap(o). "
            "CONVS: noerror,null,resume,sparing,sparse,sync,trunc\n");
 }
@@ -479,6 +479,8 @@ process_flags(const char * arg, struct flags_t * fp)
             ++fp->pt;
         else if (0 == strcmp(cp, "resume"))
             ++fp->resume;
+        else if (0 == strcmp(cp, "self"))
+            ++fp->self;
         else if (0 == strcmp(cp, "sparing"))
             ++fp->sparing;
         else if (0 == strcmp(cp, "sparse"))
@@ -490,7 +492,6 @@ process_flags(const char * arg, struct flags_t * fp)
         else if ((0 == strcmp(cp, "trim")) || (0 == strcmp(cp, "unmap"))) {
             /* treat trim (ATA term) and unmap (SCSI term) as synonyms */
             ++fp->wsame16;
-            fp->sparse += 2;
         } else if (0 == strcmp(cp, "trunc"))
             ++fp->trunc;
         else {
@@ -734,7 +735,7 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
         return SG_LIB_SYNTAX_ERROR;
     }
     if ((optsp->skip < 0) || (optsp->seek < 0)) {
-        fprintf(stderr, "skip and seek cannot be negative\n");
+        fprintf(stderr, "neither skip nor seek can be negative\n");
         return SG_LIB_SYNTAX_ERROR;
     }
     if ((optsp->oflagp->append > 0) && (optsp->seek > 0)) {
@@ -765,6 +766,37 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
             return SG_LIB_SYNTAX_ERROR;
         }
     }
+    if (optsp->iflagp->self || optsp->oflagp->self) {
+        if (! optsp->oflagp->self)
+            ++optsp->oflagp->self;
+        if (optsp->iflagp->wsame16 || optsp->oflagp->wsame16) {
+            if (! optsp->oflagp->wsame16)
+                ++optsp->oflagp->wsame16;
+            if (! optsp->oflagp->nowrite)
+                ++optsp->oflagp->nowrite;
+        }
+        if ('\0' == optsp->outf[0])
+            strcpy(optsp->outf, optsp->inf);
+        if ((0 == optsp->seek) && (optsp->skip > 0)) {
+            if (optsp->ibs == optsp->obs)
+                optsp->seek = optsp->skip;
+            else if (optsp->obs > 0) {
+                int64_t l;
+
+                l = optsp->skip * optsp->ibs;
+                optsp->seek = l / optsp->obs;
+                if ((optsp->seek * optsp->obs) != l) {
+                    fprintf(stderr, "self cannot translate skip to seek "
+                            "properly, try different skip value\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+            }
+            if (verbose)
+                fprintf(stderr, "self: set seek=%"PRId64"\n", optsp->seek);
+        }
+    }
+    if (optsp->oflagp->wsame16)
+        optsp->oflagp->sparse += 2;
 
     if (verbose) {      /* report flags used but not supported */
 #ifndef SG_LIB_LINUX
@@ -800,6 +832,50 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
  * file name processing. */
 #ifndef SG_LIB_WIN32
 
+#ifdef SG_LIB_LINUX
+static int bsg_major_checked = 0;
+static int bsg_major = 0;
+
+static void
+find_bsg_major(void)
+{
+    const char * proc_devices = "/proc/devices";
+    FILE *fp;
+    char a[128];
+    char b[128];
+    char * cp;
+    int n;
+
+    if (NULL == (fp = fopen(proc_devices, "r"))) {
+        if (verbose)
+            fprintf(stderr, "fopen %s failed: %s\n", proc_devices,
+                    strerror(errno));
+        return;
+    }
+    while ((cp = fgets(b, sizeof(b), fp))) {
+        if ((1 == sscanf(b, "%s", a)) &&
+            (0 == memcmp(a, "Character", 9)))
+            break;
+    }
+    while (cp && (cp = fgets(b, sizeof(b), fp))) {
+        if (2 == sscanf(b, "%d %s", &n, a)) {
+            if (0 == strcmp("bsg", a)) {
+                bsg_major = n;
+                break;
+            }
+        } else
+            break;
+    }
+    if (verbose > 5) {
+        if (cp)
+            fprintf(stderr, "found bsg_major=%d\n", bsg_major);
+        else
+            fprintf(stderr, "found no bsg char device in %s\n", proc_devices);
+    }
+    fclose(fp);
+}
+#endif
+
 static int
 dd_filetype(const char * filename)
 {
@@ -824,6 +900,12 @@ dd_filetype(const char * filename)
             return FT_PT;
         if (SCSI_TAPE_MAJOR == major(st.st_rdev))
             return FT_TAPE;
+        if (! bsg_major_checked) {
+            bsg_major_checked = 1;
+            find_bsg_major();
+        }
+        if (bsg_major == (int)major(st.st_rdev))
+            return FT_PT;
         return FT_OTHER;
 #elif SG_LIB_FREEBSD
         {
@@ -1171,9 +1253,6 @@ pt_low_read(int sg_fd, int in0_out1, unsigned char * buff, int blocks,
         fprintf(stderr, "\n");
     }
 
-    if (NULL == sg_warnings_strm)
-        sg_warnings_strm = stderr;
-
     if (NULL == ptvp) {
         fprintf(stderr, "pt_low_read: if_ptvp NULL?\n");
         return -1;
@@ -1488,9 +1567,6 @@ pt_low_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
         fprintf(stderr, "\n");
     }
 
-    if (NULL == sg_warnings_strm)
-        sg_warnings_strm = stderr;
-
     if (NULL == ptvp) {
         fprintf(stderr, "pt_low_write: of_ptvp NULL?\n");
         return -1;
@@ -1633,8 +1709,6 @@ pt_write_same16(int sg_fd, int in0_out1, unsigned char * buff, int bs,
             fprintf(stderr, "    Data-out buffer length=%d\n",
                     bs);
     }
-    if (NULL == sg_warnings_strm)
-        sg_warnings_strm = stderr;
 
     if (NULL == ptvp) {
         fprintf(stderr, "pt_write_same16: ptvp NULL?\n");
