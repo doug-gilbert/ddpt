@@ -121,6 +121,7 @@ struct flags_t {
     int pt;
     int resume;
     int retries;
+    int self;
     int sparing;
     int sparse;
     int ssync;
