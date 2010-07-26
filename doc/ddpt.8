@@ -332,8 +332,6 @@ nowrite [o] [reg,blk,pt]
 bypass writes to \fIOFILE\fR. The "records out" count is not incremented.
 \fIOFILE\fR is still opened but "oflag=trunc" if given is ignored. Commands
 such as trim and SCSI SYNCHRONIZE CACHE are still sent.
-Useful in conjunction with trim (e.g. "oflag=trim,nowrite") for doing a
-self-trim (i.e. \fIIFILE\fR and \fIOFILE\fR are the same device).
 .TP
 null [io]
 has no affect, just a placeholder.
@@ -356,6 +354,13 @@ just before that point). It is harmless to use "oflag=resume" when
 \fIOFILE\fR doesn't exist or is zero length. If the length of \fIOFILE\fR
 is greater than or equal to the length implied by a copy invocation that
 includes "oflag=resume" then no further data is copied.
+.TP
+self [io] [pt]
+used together with trim flag to do a self trim (trim of segments of a
+pt device that contain all zeros). If \fIOFILE\fR is not given, then
+it is set to the same as \fIIFILE\fR. If \fISEEK\fR is not given it
+set to the same value as \fISKIP\fR (possibly adjusted if \fIIBS\fR
+and \fIOBS\fR are different). Implicitly sets "nowrite" flag.
 .TP
 sparing [o] [reg,blk,pt]
 during the copy each \fIIBS\fR * \fIBPT\fR byte segment is read from
@@ -395,11 +400,13 @@ sync [io] [reg,blk]
 causes the O_SYNC flag to be added to the open of \fIIFILE\fR and/or
 \fIOFILE\fR. See open(2) man page.
 .TP
-trim [o] [pt] [experimental]
+trim [io] [pt] [experimental]
 similar logic to the "sparse" option. However instead of skipping segments
-that are full zeros a "trim" command is sent to \fIOFILE\fR. Depending on
-the usage this may require the device to have "deterministic read zero
-after trim" settings. See the TRIM, UNMAP AND WRITE SAME section below.
+that are full of zeros a "trim" command is sent to \fIOFILE\fR. Usually set
+as an oflag argument but for self trim can be used as an iflag
+argument (e.g. "iflag=self,trim"). Depending on the usage this may require
+the device to have "deterministic read zero after trim" settings. See the
+TRIM, UNMAP AND WRITE SAME section below.
 .TP
 trunc [o] [reg]
 if \fIOFILE\fR is a regular file then it is truncated (to zero length) prior
@@ -467,7 +474,7 @@ This is a new storage feature often associated with Solid State
 Disks (SSDs) or disk arrays with "thin provisioning". In the ATA command
 set (ACS\-2) the relevant command is DATA SET MANAGEMENT with the TRIM
 bit set. In the SCSI command set (SBC\-3) it is either the UNMAP or
-WRITE SAME commands. Note there is no TRIM command however this feature
+WRITE SAME command. Note there is no TRIM command however this feature
 has been christened "trim" by the technical press.
 .PP
 Trim is a way of telling a storage device that blocks are no longer needed.
@@ -475,7 +482,7 @@ Keeping the pool of unwritten blocks large is important for the write
 performance of SSDs and the thrifty use of real storage in thin provisioned
 arrays. Currently file systems in recent OSes may issue trims associated
 with file deletes. The trim option in ddpt may be useful when a partition
-of a whole SSD is to be "deleted". Note that ddpt is bypassing file
+or a whole SSD is to be "deleted". Note that ddpt is bypassing file
 systems in that it only offers trim on pass\-through (pt) devices.
 .PP
 This utility issues SCSI commands to pt devices and for "trim" currently
@@ -486,6 +493,32 @@ with the TRIM bit set. The maximum size of each "trim" command sent
 is the size of the copy buffer (i.e. \fIIBS\fR * \fIBPT\fR bytes). And
 that maximum can be reduced with the \fIOBPC\fR argument with the "bpt="
 option.
+.PP
+The trim can be used various ways. One way is a copy where the copy
+buffer (or some part of it) is checked for zeros as is done by the
+sparse oflag. When a zero segment is found, a trim "command" is
+sent to the \fIOFILE\fR. For example:
+.PP
+   ddpt if=dsk.img bs=512 of=/dev/sdc oflag=pt,trim
+.PP
+The copy buffer is 64 KB (since \fIBPT\fR and \fIOBPC\fR default to
+128) and it is checked for all zeros. If it is all zeros then a
+trim command is sent to the corresponding location of /dev/sdc
+which is accessed via the pt interface. If it is not all zeros
+then a SCSI WRITE command is sent. Another way is to trim all or
+part of a disk. To trim a whole disk (i.e. deleting all its data):
+.PP
+    ddpt if=/dev/zero bs=512 of=/dev/sdc oflag=pt,trim
+.PP
+A third way is to "self-trim" which is to only trim those parts
+of a disk that contain segments full of zeros:
+.PP
+    ddpt if=/dev/sdc skip=0x2300 bs=512 iflag=pt,self,trim count=0x1234f0
+.PP
+The "self" oflag automatically sets up the output side of the copy
+to send trim commands (if required) back the the same device (i.e. /dev/sdc).
+If this example was self-trimming a partition then the partition would
+start at LBA 0x2300 and be 0x1234f0 blocks long.
 .PP
 Some random product examples: the Intel X25-M G2 SSDs have trim with
 recent firmware and they do deterministic read zero after trim. The
@@ -594,17 +627,22 @@ This will image /dev/sg3 (e.g. an unmounted disk) and place the contents
 in the (sparse) file sg3.img . Without re\-reading the data it will also
 perform a md5sum calculation on the image.
 .PP
-Now we use sparse writing logic to check if every block on a disk
-is full of zeros. This may be the case after a SCSI FORMAT or an ATA
-SECURITY ERASE command.
+Now we use sparse writing logic to get some idea of how many blocks
+on a disk are full of zeros. After a SCSI FORMAT or an ATA SECURITY ERASE
+command a disk may be all zeros.
 .PP
-   ddpt if=/dev/sdc bs=512 oflag=sparse,sparse
+   ddpt if=/dev/sdc bs=512 oflag=sparse
 .PP
-The "sparse,sparse" suppresses the forced write of the last segment.
 Since no "of=" option is given, output goes to /dev/null so nothing
-is actually written. However there is still a count of "records out"
-and "bypassed records out". If /dev/sdc is full of zeros then
-the "records out" count should be zero.
+is actually written so the "records out" will be zero. However there
+will be a count of "records in" and "bypassed records out". If /dev/sdc is
+full of zeros then "records in" and "bypassed records out" will be
+the same. Since the "bpt=" option is not given it defaults to "bpt=128,128"
+so the copy buffer will be 64 KB and the sparse check for zeros will
+be done with 64 KB (128 block) granularity.
+.PP
+For examples of the trim and self,trim options see the section above
+on TRIM, UNMAP AND WRITE SAME.
 .SH SIGNALS
 The signal handling has been borrowed from dd: SIGINT, SIGQUIT and
 SIGPIPE output the number of remaining blocks to be transferred and
