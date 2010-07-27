@@ -100,7 +100,8 @@ deduced from either \fIIFILE\fR or \fIOFILE\fR. See the COUNT section below.
 .TP
 \fBibs\fR=\fIIBS\fR
 where \fIIBS\fR is the \fIIFILE\fR block size in bytes. The default value
-is derived from the "bs=" option default. Conflicts the "bs=" option.
+is \fIBS\fR or its default (512). Conflicts the "bs=" option (e.g. giving
+both "bs=512 ibs=512" is considered a syntax error).
 .TP
 \fBif\fR=\fIIFILE\fR
 read from \fIIFILE\fR. This option must be given (i.e. it is mandatory). If
@@ -114,10 +115,11 @@ are ignored when \fIIFILE\fR is stdin.
 .TP
 \fBobs\fR=\fIOBS\fR
 where \fIOBS\fR is the \fIOFILE\fR block size in bytes. The default value 
-is derived from the "bs=" option default. Conflicts the "bs=" option.
+is \fIBS\fR or its default (512). Conflicts the "bs=" option (e.g. giving 
+both "bs=512 obs=512" is considered a syntax error).
 If \fIOBS\fR is given then it has the following restriction: the integer
 expression (((\fIIBS\fR * \fIBPT\fR) % \fIOBS\fR) == 0) must be true.
-Stated another way: the input buffer size must be an integral multiple of
+Stated another way: the copy buffer size must be an integral multiple of
 \fIOBS\fR. If \fIof2=OFILE2\fR is given then \fIOBS\fR is its block size
 as well.
 .TP
