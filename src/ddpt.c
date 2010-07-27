@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100726";
+static char * version_str = "0.91 20100727";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -598,7 +598,7 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
             }
             if (optsp->bs_given) {
                 fprintf(stderr, ME "'ibs=' option cannot be combined with "
-                        "'bs='\n");
+                        "'bs='; try 'obs=' instead\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
             ++optsp->ibs_given;
@@ -622,7 +622,7 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
             }
             if (optsp->bs_given) {
                 fprintf(stderr, ME "'obs=' option cannot be combined with "
-                        "'bs='\n");
+                        "'bs='; try 'ibs=' instead\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
             ++optsp->obs_given;
@@ -711,15 +711,15 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
             fprintf(stderr, "Assume block size of %d bytes for both "
                     "input and output\n", DEF_BLOCK_SIZE);
     } else if (0 == optsp->obs) {
-        optsp->obs = optsp->ibs;
-        if (verbose && (optsp->ibs != DEF_BLOCK_SIZE) && optsp->outf[0])
-            fprintf(stderr, "warning: obs not given and ibs=%d so set "
-                    "obs=%d\n", optsp->ibs, optsp->obs); 
+        optsp->obs = DEF_BLOCK_SIZE;
+        if ((optsp->ibs != DEF_BLOCK_SIZE) && optsp->outf[0])
+            fprintf(stderr, "warning: obs and bs not given so set obs=%d "
+                    "(default block size)\n", optsp->obs); 
     } else if (0 == optsp->ibs) {
-        optsp->ibs = optsp->obs;
-        if (verbose && (optsp->obs != DEF_BLOCK_SIZE))
-            fprintf(stderr, "warning: ibs not given and obs=%d so set "
-                    "ibs=%d\n", optsp->obs, optsp->ibs); 
+        optsp->ibs = DEF_BLOCK_SIZE;
+        if (optsp->obs != DEF_BLOCK_SIZE)
+            fprintf(stderr, "warning: ibs and bs not given so set ibs=%d "
+                    "(default block size)\n", optsp->ibs); 
     }
     ibs_hold = optsp->ibs;
     /* defaulting transfer size to 128*2048 for CD/DVDs is too large
@@ -3121,6 +3121,9 @@ main(int argc, char * argv[])
     if (verbose) {
         fprintf(stderr, "skip=%"PRId64" (blocks on input), seek=%"PRId64" "
                 "(blocks on output)\n", opts.skip, opts.seek);
+        if (verbose > 1)
+            fprintf(stderr, "  ibs=%d bytes, obs=%d bytes, OBPC=%d\n",
+                    opts.ibs, opts.obs, opts.obpc);
         fprintf(stderr, "  initial count=%"PRId64" (blocks of input), "
                 "blocks_per_transfer=%d\n", dd_count, opts.bpt_i);
     }
