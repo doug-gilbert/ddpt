@@ -2032,7 +2032,7 @@ open_of(struct opts_t * optsp, int verbose)
 #endif
     else {      /* typically regular file or block device node */
         int needs_ftruncate = 0;
-        off_t offset = 0;
+        int64_t offset = 0;
 
         if (0 == stat(outf, &st))
             outf_exists = 1;
@@ -2292,7 +2292,7 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                   unsigned char * wrkPos)
 {
     int res;
-    off_t offset = optsp->skip * optsp->ibs;
+    int64_t offset = optsp->skip * optsp->ibs;
     int numbytes = csp->iblocks * optsp->ibs;
 
 #ifdef SG_LIB_WIN32
@@ -2324,7 +2324,7 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         char ebuff[EBUFF_SZ];
 
         if (offset != csp->if_filepos) {
-            off_t off_res;
+            int64_t off_res;
 
             if (verbose > 2)
                 fprintf(stderr, "moving if filepos: new_pos="
@@ -2416,7 +2416,7 @@ cp_read_of_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                      unsigned char * wrkPos2)
 {
     int res;
-    off_t offset = optsp->seek * optsp->obs;
+    int64_t offset = optsp->seek * optsp->obs;
     int numbytes = csp->oblocks * optsp->obs;
 
 #ifdef SG_LIB_WIN32
@@ -2451,7 +2451,7 @@ cp_read_of_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         char ebuff[EBUFF_SZ];
 
         if (offset != csp->of_filepos) {
-            off_t off_res;
+            int64_t off_res;
 
             if (verbose > 2)
                 fprintf(stderr, "moving of filepos: new_pos="
@@ -2513,7 +2513,7 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
 {
     int res;
     int numbytes = blks * optsp->obs;
-    off_t offset;
+    int64_t offset;
     int64_t aseek = optsp->seek + seek_delta;
 
     if (optsp->oflagp->nowrite)
@@ -2552,7 +2552,7 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         char ebuff[EBUFF_SZ];
 
         if (offset != csp->of_filepos) {
-            off_t off_res;
+            int64_t off_res;
 
             if (verbose > 2)
                 fprintf(stderr, "moving of filepos: new_pos="
