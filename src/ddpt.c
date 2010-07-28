@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100727";
+static char * version_str = "0.91 20100728";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -2031,6 +2031,9 @@ open_of(struct opts_t * optsp, int verbose)
     }
 #endif
     else {      /* typically regular file or block device node */
+        int needs_ftruncate = 0;
+        off_t offset = 0;
+
         if (0 == stat(outf, &st))
             outf_exists = 1;
         flags = ofp->sparing ? O_RDWR : O_WRONLY;
@@ -2045,21 +2048,38 @@ open_of(struct opts_t * optsp, int verbose)
         if (ofp->append)
             flags |= O_APPEND;
         if ((FT_REG & optsp->out_type) && outf_exists && ofp->trunc &&
-            (! ofp->nowrite))
-            flags |= O_TRUNC;
+            (! ofp->nowrite)) {
+            if (optsp->seek > 0) {
+                ++needs_ftruncate;
+                offset = optsp->seek * optsp->obs;
+            } else
+                flags |= O_TRUNC;
+        }
         if ((fd = open(outf, flags, 0666)) < 0) {
             snprintf(ebuff, EBUFF_SZ,
                     ME "could not open %s for writing", outf);
             perror(ebuff);
             goto file_err;
         }
+        if (needs_ftruncate && (offset > 0)) {
+            if (ftruncate(fd, offset) < 0) {
+                snprintf(ebuff, EBUFF_SZ,
+                        ME "could not open %s for writing", outf);
+                perror(ebuff);
+                goto file_err;
+            }
+        }
         if ((! outf_exists) && (FT_ERROR & optsp->out_type))
             optsp->out_type = FT_REG;   /* exists now */
         if (sg_set_binary_mode(fd) < 0)
             perror("sg_set_binary_mode");
-        if (verbose)
+        if (verbose) {
             fprintf(stderr, "        %s output, flags=0x%x\n",
                     (outf_exists ? "open" : "create"), flags);
+            if (needs_ftruncate && (offset > 0))
+                fprintf(stderr, "        truncated file at byte offset "
+                        "%"PRId64" \n", offset);
+        }
     }
 #ifdef SG_LIB_LINUX
     if (ofp->flock) {
