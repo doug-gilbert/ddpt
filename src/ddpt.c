@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100728";
+static char * version_str = "0.91 20100729";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -757,7 +757,9 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
     if (optsp->oflagp->trunc) {
         if (optsp->oflagp->resume) {
             optsp->oflagp->trunc = 0;
-            fprintf(stderr, "trunc ignored due to resume flag\n");
+            if (verbose)
+                fprintf(stderr, "trunc ignored due to resume flag, "
+                        "otherwise open_of() truncates too early\n");
         } else if (optsp->oflagp->append) {
             optsp->oflagp->trunc = 0;
             fprintf(stderr, "trunc ignored due to append flag\n");
@@ -1872,14 +1874,14 @@ open_if(struct opts_t * optsp, int verbose)
 
     verb = (verbose ? verbose - 1: 0);
     optsp->in_type = dd_filetype(inf);
-    if (verbose)
-        fprintf(stderr, " >> Input file type: %s\n",
-                dd_filetype_str(optsp->in_type, ebuff));
     if (FT_ERROR & optsp->in_type) {
         fprintf(stderr, ME "unable to access %s\n", inf);
         goto file_err;
     } else if (((FT_BLOCK | FT_OTHER) & optsp->in_type) && ifp->pt)
         optsp->in_type |= FT_PT;
+    if (verbose)
+        fprintf(stderr, " >> Input file type: %s\n",
+                dd_filetype_str(optsp->in_type, ebuff));
 
     if (FT_TAPE & optsp->in_type) {
         fprintf(stderr, ME "unable to use scsi tape device %s\n", inf);
@@ -1935,7 +1937,7 @@ open_if(struct opts_t * optsp, int verbose)
             if (sg_set_binary_mode(fd) < 0)
                 perror("sg_set_binary_mode");
             if (verbose)
-                fprintf(stderr, "        open input, flags=0x%x\n",
+                fprintf(stderr, "        open %s, flags=0x%x\n", inf,
                         flags);
 #ifdef HAVE_POSIX_FADVISE
             if (ifp->nocache) {
@@ -1989,17 +1991,18 @@ open_of(struct opts_t * optsp, int verbose)
 
     verb = (verbose ? verbose - 1: 0);
     optsp->out_type = dd_filetype(outf);
+    if (((FT_BLOCK | FT_OTHER) & optsp->out_type) && ofp->pt)
+        optsp->out_type |= FT_PT;
     if (verbose)
         fprintf(stderr, " >> Output file type: %s\n",
                 dd_filetype_str(optsp->out_type, ebuff));
-
-    if (((FT_BLOCK | FT_OTHER) & optsp->out_type) && ofp->pt)
-        optsp->out_type |= FT_PT;
 
     if (FT_TAPE & optsp->out_type) {
         fprintf(stderr, ME "unable to use scsi tape device %s\n", outf);
         goto file_err;
     } else if (FT_PT & optsp->out_type) {
+        if (verbose)
+            fprintf(stderr, "        ");
         flags = O_RDWR | O_NONBLOCK;
         if (ofp->direct)
             flags |= O_DIRECT;

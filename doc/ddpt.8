@@ -57,19 +57,20 @@ will start at logical block address 3 of '/dev/sdc'.
 where \fIBPT\fR is Blocks Per Transfer optionally followed by \fIOBPC\fR
 which is Output Blocks Per Check. The copy is made up of multiple
 transfers, each first reading \fIBPT\fR input blocks (i.e. \fIBPT*IBS\fR
-bytes) and then writing \fIBPT*IBS/OBS\fR output blocks. This continues
-until the copy is finished, with the last transfer being potentially shorter.
-The default \fIBPT\fR value is 128 for block sizes less that 2048 bytes,
-otherwise the default is 32. If \fIBPT\fR is given as 0 it is treated as
-the default value.  So for "bs=512" the reads will each convey 64 KiB of
-data by default (less if near the end of the transfer or memory
-restrictions). With cd/dvd drives the media has a block size of 2048 bytes
-so bpt defaults to 32 which again implies 64 KiB transfers. The default
-granularity for sparse writes, write sparing and trim on output checks (i.e.
-comparisons) is \fIBPT*IBS\fR bytes. That can be reduced by giving
-\fIOBPC\fR with the finest granularity being when \fIOBPC\fR is 1 which
-implies the unit of comparisons is \fIOBS\fR bytes. When \fIOBPC\fR is 0
-or not given the default granularity is used. 
+bytes) from \fIIFILE\fR into the copy buffer and then from that copy buffer
+writing \fIBPT*IBS/OBS\fR output blocks to \fIOFILE\fR. This continues
+until the copy is finished, with the last transfer being potentially
+shorter. The default \fIBPT\fR value is 128 for block sizes less that 2048
+bytes, otherwise the default is 32. If \fIBPT\fR is given as 0 it is
+treated as the default value.  So for "bs=512", 64 KiB (or less) is read
+from \fIIFILE\fR into the copy buffer. The default granularity for sparse
+writes, write sparing and trim on output checks (e.g. check segment is all
+zeros) is the size of the copy buffer (i.e. \fIBPT*IBS\fR bytes). That can
+be reduced by specifying \fIOBPC\fR with the finest granularity being when
+\fIOBPC\fR is 1 which implies the unit of each check is \fIOBS\fR bytes.
+When \fIOBPC\fR is 0, or not given, the default granularity is used. Large
+\fIOBPC\fR values are rounded down so that \fIOBPC*OBS\fR does not exceed
+the size of the copy buffer.
 .TP
 \fBbs\fR=\fIBS\fR
 where \fIBS\fR is the \fIIFILE\fR and \fIOFILE\fR block size in bytes.
@@ -365,7 +366,7 @@ then using the same invocation again with the addition of "oflag=resume"
 will attempt to restart the copy from the point of the interrupt (or
 just before that point). It is harmless to use "oflag=resume" when
 \fIOFILE\fR doesn't exist or is zero length. If the length of \fIOFILE\fR
-is greater than or equal to the length implied by a copy invocation that
+is greater than or equal to the length implied by a ddpt invocation that
 includes "oflag=resume" then no further data is copied.
 .TP
 self [io] [pt]
@@ -425,8 +426,8 @@ trunc [o] [reg]
 if \fIOFILE\fR is a regular file then it is truncated prior to starting the
 copy. If \fISEEK\fR is not given or 0 then \fIOFILE\fR is truncated to zero
 length; when \fISEEK\fR is larger than zero the truncation takes place at
-file byte pointer \fISEEK*OBS\fR.  Ignored if "oflag=append", "oflag=resume"
-or "conv=resume" is also given. Conflicts with "oflag=sparing".
+file byte pointer \fISEEK*OBS\fR.  Ignored if "oflag=append". Conflicts
+with "oflag=sparing".
 .SH DD DIFFERENCES
 dd defaults "if=" and "of=" to stdin and stdout respectively. This follows
 Unix filter conventions. However since dd and ddpt are often used to read
@@ -442,8 +443,7 @@ dd truncates \fIOFILE\fR unless "conv=notrunc" is given (or unless
 default. If \fIOFILE\fR exists it will overwritten. The overwrite starts at
 block zero unless \fISEEK\fR or "oflag=append" is given. If \fIOFILE\fR is
 a regular file then "oflag=trunc" (or "conv=trunc") will truncate
-\fIOFILE\fR prior to the copy. Some ddpt features such as write sparing
-and resume are only useful if \fIOFILE\fR is not truncated.
+\fIOFILE\fR prior to the copy.
 .PP
 Numeric arguments to ddpt can be given in hexadecimal, either with a
 leading "0x" or "0X" or with a trailing "h". Note that dd accepts "0x123"
@@ -517,7 +517,7 @@ sent to the \fIOFILE\fR. For example:
 .PP
    ddpt if=dsk.img bs=512 of=/dev/sdc oflag=pt,trim
 .PP
-The copy buffer is 64 KB (since \fIBPT\fR and \fIOBPC\fR default to
+The copy buffer is 64 KiB (since \fIBPT\fR and \fIOBPC\fR default to
 128) and it is checked for all zeros. If it is all zeros then a
 trim command is sent to the corresponding location of /dev/sdc
 which is accessed via the pt interface. If it is not all zeros
@@ -654,8 +654,8 @@ is actually written so the "records out" will be zero. However there
 will be a count of "records in" and "bypassed records out". If /dev/sdc is
 full of zeros then "records in" and "bypassed records out" will be
 the same. Since the "bpt=" option is not given it defaults to "bpt=128,128"
-so the copy buffer will be 64 KB and the sparse check for zeros will
-be done with 64 KB (128 block) granularity.
+so the copy buffer will be 64 KiB and the sparse check for zeros will
+be done with 64 KiB (128 block) granularity.
 .PP
 For examples of the trim and self,trim options see the section above
 on TRIM, UNMAP AND WRITE SAME.
