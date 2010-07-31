@@ -48,8 +48,12 @@
 #define EBUFF_SZ 512
 
 #define DEF_BLOCK_SIZE 512
-#define DEF_BLOCKS_PER_TRANSFER 128     /* of input */
-#define DEF_BLOCKS_PER_2048TRANSFER 32
+#define DEF_BPT_LT8 8192     /* BPT when IBS < 8 */
+#define DEF_BPT_LT64 1024    /* BPT when IBS < 64 */
+#define DEF_BPT_LT1024 128   /* BPT when IBS < 1024 */
+#define DEF_BPT_LT8192 16    /* BPT when IBS < 8192 */
+#define DEF_BPT_LT32768 4    /* BPT when IBS < 32768 */
+#define DEF_BPT_GE32768 1    /* BPT when IBS >= 32768 */
 #define DEF_SCSI_CDBSZ 10
 #define MAX_SCSI_CDBSZ 16
 

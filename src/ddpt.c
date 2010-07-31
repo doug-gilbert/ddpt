@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100729";
+static char * version_str = "0.91 20100731 [svn: r110]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -179,8 +179,8 @@ usage()
            "             [of2=OFILE2] [retries=RETR] [verbose=VERB] "
            "[--verbose]\n"
            "  where:\n"
-           "    bpt         input Blocks Per Transfer (BPT) (def: 128 if "
-           "IBS<2048, else 32)\n"
+           "    bpt         input Blocks Per Transfer (BPT) (def: 128 when "
+           "IBS is 512)\n"
            "                Output Blocks Per Check (OBPC) (def: 0 implies "
            "BPT*IBS/OBS)\n"
            "    bs          block size for input and output (overrides "
@@ -418,7 +418,7 @@ process_conv(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
             ++ofp->sparse;
         else if (0 == strcmp(cp, "sync"))
             ;   /* dd(susv4): pad errored block(s) with zeros but ddpt does
-                 * that by default. Typical dd use: 'dd conv=noerror,sync' */
+                 * that by default. Typical dd use: 'conv=noerror,sync' */
         else if (0 == strcmp(cp, "trunc"))
             ++ofp->trunc;
         else {
@@ -664,12 +664,12 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strcmp(key, "status")) {
-            if (strncmp(buf, "null", 4))
+            if (0 == strncmp(buf, "null", 4))
                 ;
-            else if (strncmp(buf, "noxfer", 6))
+            else if (0 == strncmp(buf, "noxfer", 6))
                 do_time = 0;
             else {
-                fprintf(stderr, ME "status=' expects 'noxfer' or 'null'\n");
+                fprintf(stderr, ME "'status=' expects 'noxfer' or 'null'\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strncmp(key, "verb", 4)) {
@@ -713,20 +713,33 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
     } else if (0 == optsp->obs) {
         optsp->obs = DEF_BLOCK_SIZE;
         if ((optsp->ibs != DEF_BLOCK_SIZE) && optsp->outf[0])
-            fprintf(stderr, "warning: obs and bs not given so set obs=%d "
+            fprintf(stderr, "Neither obs nor bs given so set obs=%d "
                     "(default block size)\n", optsp->obs); 
     } else if (0 == optsp->ibs) {
         optsp->ibs = DEF_BLOCK_SIZE;
         if (optsp->obs != DEF_BLOCK_SIZE)
-            fprintf(stderr, "warning: ibs and bs not given so set ibs=%d "
+            fprintf(stderr, "Neither ibs nor bs given so set ibs=%d "
                     "(default block size)\n", optsp->ibs); 
     }
     ibs_hold = optsp->ibs;
-    /* defaulting transfer size to 128*2048 for CD/DVDs is too large
+    /* defaulting transfer (copy buffer) size depending on IBS.
+        128*2048 for CD/DVDs is too large
        for the block layer in lk 2.6 and results in an EIO on the
        SG_IO ioctl. So reduce it in that case. */
-    if ((optsp->ibs >= 2048) && (0 == optsp->bpt_given))
-        optsp->bpt_i = DEF_BLOCKS_PER_2048TRANSFER;
+    if (0 == optsp->bpt_given) {
+        if (optsp->ibs < 8)
+            optsp->bpt_i = DEF_BPT_LT8;
+        else if (optsp->ibs < 64)
+            optsp->bpt_i = DEF_BPT_LT64;
+        else if (optsp->ibs < 1024)
+            optsp->bpt_i = DEF_BPT_LT1024;
+        else if (optsp->ibs < 8192)
+            optsp->bpt_i = DEF_BPT_LT8192;
+        else if (optsp->ibs < 31768)
+            optsp->bpt_i = DEF_BPT_LT32768;
+        else
+            optsp->bpt_i = DEF_BPT_GE32768;
+    }
 
     if ((optsp->ibs != optsp->obs) &&
         (0 != ((optsp->ibs * optsp->bpt_i) % optsp->obs))) {
@@ -2968,7 +2981,7 @@ main(int argc, char * argv[])
     struct flags_t oflag;
 
     memset(&opts, 0, sizeof(opts));
-    opts.bpt_i = DEF_BLOCKS_PER_TRANSFER;
+    opts.bpt_i = DEF_BPT_LT1024;
     opts.out_type = FT_OTHER;
     opts.in_type = FT_OTHER;
     memset(&iflag, 0, sizeof(iflag));

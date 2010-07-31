@@ -2,9 +2,10 @@ The version number is hardcoded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.91 [20100729] [svn: r109]
+Changelog for ddpt-0.91 [20100731] [svn: r110]
   - rework copy loop.
   - extend bpt=BPT to bpt=BPR[,OBPC] spare+sparse granularity
+    - change BPT default to vary from 8192 to 1 depending on IBS
   - add oflag=resume logic
     add oflag=sparse,sparse to suppress forced write of last segment
   - change 'bs=' option to set IBS and OBS; 'ibs=' and 'obs='
