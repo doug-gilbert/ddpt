@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100731 [svn: r110]";
+static char * version_str = "0.91 20100813 [svn: r111]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -229,10 +229,11 @@ usage()
            "Similar to\n"
            "dd command. Support for block devices, especially those "
            "accessed via\na SCSI pass-through.\n"
-           "FLAGS: append(o),coe,direct,dpo,errblk(i),excl,flock,fua,"
-           "fua_nv,nocache,\n"
-           "nowrite(o),null,pt,resume(o),self,sparing(o),sparse(o),ssync(o),"
-           "sync,trim(o),\ntrunc(o),unmap(o). "
+           "FLAGS: append(o),coe,direct,dpo,errblk(i),excl,flock,force,"
+           "fua,fua_nv\n"
+           "nocache,norcap,nowrite(o),null,pt,resume(o),self,sparing(o),"
+           "sparse(o)\n"
+           "ssync(o),strunc(o),sync,trim(o),trunc(o),unmap(o).\n"
            "CONVS: noerror,null,resume,sparing,sparse,sync,trunc\n");
 }
 
@@ -465,12 +466,16 @@ process_flags(const char * arg, struct flags_t * fp)
             ++fp->excl;
         else if (0 == strcmp(cp, "flock"))
             ++fp->flock;
+        else if (0 == strcmp(cp, "force"))
+            ++fp->force;
         else if (0 == strcmp(cp, "fua_nv"))     /* check fua_nv before fua */
             ++fp->fua_nv;
         else if (0 == strcmp(cp, "fua"))
             ++fp->fua;
         else if (0 == strcmp(cp, "nocache"))
             ++fp->nocache;
+        else if (0 == strcmp(cp, "norcap"))
+            ++fp->norcap;
         else if (0 == strcmp(cp, "nowrite"))
             ++fp->nowrite;
         else if (0 == strcmp(cp, "null"))
@@ -487,6 +492,8 @@ process_flags(const char * arg, struct flags_t * fp)
             ++fp->sparse;
         else if (0 == strcmp(cp, "ssync"))
             ++fp->ssync;
+        else if (0 == strcmp(cp, "strunc"))
+            ++fp->strunc;
         else if (0 == strcmp(cp, "sync"))
             ++fp->sync;
         else if ((0 == strcmp(cp, "trim")) || (0 == strcmp(cp, "unmap"))) {
@@ -812,6 +819,8 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
     }
     if (optsp->oflagp->wsame16)
         optsp->oflagp->sparse += 2;
+    if (optsp->oflagp->strunc && (0 == optsp->oflagp->sparse))
+        ++optsp->oflagp->sparse;
 
     if (verbose) {      /* report flags used but not supported */
 #ifndef SG_LIB_LINUX
@@ -1314,12 +1323,13 @@ pt_low_read(int sg_fd, int in0_out1, unsigned char * buff, int blocks,
         case SG_LIB_CAT_MEDIUM_HARD:
             ++unrecovered_errs;
             info_valid = sg_get_sense_info_fld(sense_b, slen, io_addrp);
-            /* MMC devices don't necessarily set VALID bit */
-            if ((info_valid) || ((5 == ifp->pdt) && (*io_addrp > 0)))
+            /* MMC and MO devices don't necessarily set VALID bit */
+            if (info_valid || ((*io_addrp > 0) &&
+                               ((5 == ifp->pdt) || (7 == ifp->pdt))))
                 ret = SG_LIB_CAT_MEDIUM_HARD_WITH_INFO;
             else
                 fprintf(stderr, "Medium, hardware or blank check error but "
-                        "no lba of failure in sense\n");
+                        "no lba of failure in sense data\n");
             break;
         case SG_LIB_CAT_NO_SENSE:
             ret = 0;
@@ -2050,6 +2060,7 @@ open_of(struct opts_t * optsp, int verbose)
         int needs_ftruncate = 0;
         int64_t offset = 0;
 
+        memset(&st, 0, sizeof(st));
         if (0 == stat(outf, &st))
             outf_exists = 1;
         flags = ofp->sparing ? O_RDWR : O_WRONLY;
@@ -2066,8 +2077,9 @@ open_of(struct opts_t * optsp, int verbose)
         if ((FT_REG & optsp->out_type) && outf_exists && ofp->trunc &&
             (! ofp->nowrite)) {
             if (optsp->seek > 0) {
-                ++needs_ftruncate;
                 offset = optsp->seek * optsp->obs;
+                if (st.st_size > offset)
+                    ++needs_ftruncate;  // only truncate to shorten
             } else
                 flags |= O_TRUNC;
         }
@@ -2080,18 +2092,19 @@ open_of(struct opts_t * optsp, int verbose)
         if (needs_ftruncate && (offset > 0)) {
             if (ftruncate(fd, offset) < 0) {
                 snprintf(ebuff, EBUFF_SZ,
-                        ME "could not open %s for writing", outf);
+                        ME "could not ftruncate %s after open (seek)", outf);
                 perror(ebuff);
                 goto file_err;
             }
+            /* N.B. file offset (pointer) not changed by ftruncate */
         }
         if ((! outf_exists) && (FT_ERROR & optsp->out_type))
             optsp->out_type = FT_REG;   /* exists now */
         if (sg_set_binary_mode(fd) < 0)
             perror("sg_set_binary_mode");
         if (verbose) {
-            fprintf(stderr, "        %s output, flags=0x%x\n",
-                    (outf_exists ? "open" : "create"), flags);
+            fprintf(stderr, "        %s %s, flags=0x%x\n",
+                    (outf_exists ? "open" : "create"), outf, flags);
             if (needs_ftruncate && (offset > 0))
                 fprintf(stderr, "        truncated file at byte offset "
                         "%"PRId64" \n", offset);
@@ -2121,20 +2134,22 @@ other_err:
 
 /* Calculates the number of blocks associated with the in and out files.
  * May also yield the block size in bytes of devices. For regular files
- * uses ibs or obs as the block (sector) size. */
-static void
+ * uses ibs or obs as the block (sector) size. Returns 0 for continue,
+ * or -1 to bypass copy and exit. */
+static int
 calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
            int64_t * out_num_sectp, int * out_sect_szp)
 {
     int res;
     struct stat st;
 
-    if (verbose > 4)
-        fprintf(stderr, "calc_count: enter, in: %s, out: %s\n", optsp->inf,
-                optsp->outf);
     *in_num_sectp = -1;
     *in_sect_szp = -1;
+    *out_num_sectp = -1;
+    *out_sect_szp = -1;
     if (FT_PT & optsp->in_type) {
+        if (optsp->iflagp->norcap)
+            goto check_of;
         res = scsi_read_capacity(optsp->infd, in_num_sectp, in_sect_szp);
         if (SG_LIB_CAT_UNIT_ATTENTION == res) {
             fprintf(stderr, "Unit attention (readcap in), continuing\n");
@@ -2156,12 +2171,20 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
         } else {
             if (verbose)
                 print_blk_sizes(optsp->inf, "pt", *in_num_sectp, *in_sect_szp);
-            if (*in_sect_szp != optsp->ibs)
-                fprintf(stderr, ">> warning: %s block size confusion: bs=%d, "
+            if (*in_sect_szp != optsp->ibs) {
+                fprintf(stderr, ">> warning: %s block size confusion: ibs=%d, "
                         "device claims=%d\n", optsp->inf, optsp->ibs,
                         *in_sect_szp);
+                if (0 == optsp->iflagp->force) {
+                    fprintf(stderr, ">> abort copy, use iflag=force to "
+                            "override\n");
+                    return -1;
+                }
+            }
         }
-    } else if (FT_BLOCK & optsp->in_type) {
+    } else if ((dd_count > 0) && (0 == optsp->oflagp->resume))
+        goto check_of;
+    else if (FT_BLOCK & optsp->in_type) {
         if (0 != get_blkdev_capacity(optsp, DDPT_ARG_IN, in_num_sectp,
                                     in_sect_szp, verbose)) {
             fprintf(stderr, "Unable to read block capacity on %s\n",
@@ -2187,9 +2210,10 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
         }
     }
 
-    *out_num_sectp = -1;
-    *out_sect_szp = -1;
+check_of:
     if (FT_PT & optsp->out_type) {
+        if (optsp->oflagp->norcap)
+            return 0;
         res = scsi_read_capacity(optsp->outfd, out_num_sectp, out_sect_szp);
         if (SG_LIB_CAT_UNIT_ATTENTION == res) {
             fprintf(stderr, "Unit attention (readcap out), continuing\n");
@@ -2212,12 +2236,20 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
             if (verbose)
                 print_blk_sizes(optsp->outf, "pt", *out_num_sectp,
                                 *out_sect_szp);
-            if (optsp->obs != *out_sect_szp)
+            if (optsp->obs != *out_sect_szp) {
                 fprintf(stderr, ">> warning: %s block size confusion: "
                         "obs=%d, device claims=%d\n", optsp->outf,
                         optsp->obs, *out_sect_szp);
+                if (0 == optsp->oflagp->force) {
+                    fprintf(stderr, ">> abort copy, use oflag=force to "
+                            "override\n");
+                    return -1;
+                }
+            }
         }
-    } else if (FT_BLOCK & optsp->out_type) {
+    } else if ((dd_count > 0) && (0 == optsp->oflagp->resume))
+        return 0;
+    else if (FT_BLOCK & optsp->out_type) {
         if (0 != get_blkdev_capacity(optsp, DDPT_ARG_OUT, out_num_sectp,
                                      out_sect_szp, verbose)) {
             fprintf(stderr, "Unable to read block capacity on %s\n",
@@ -2244,6 +2276,7 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
                 ++*out_num_sectp;
         }
     }
+    return 0;
 }
         
 #ifdef HAVE_POSIX_FADVISE
@@ -2608,6 +2641,61 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
     }
 }
 
+/* Only for regular OFILE. Check what to do if last blocks where
+ * not written, may require OFILE length adjustment */
+static void
+cp_sparse_cleanup(struct opts_t * optsp, struct cp_state_t * csp)
+{
+    int64_t offset = optsp->seek * optsp->obs;
+    char ebuff[EBUFF_SZ];
+    struct stat a_st;
+
+    if (offset > csp->of_filepos) {
+        if ((0 == optsp->oflagp->strunc) && (optsp->oflagp->sparse > 1)) {
+            if (verbose > 1)
+                fprintf(stderr, "asked to bypass writing sparse last block "
+                        "zeros\n");
+            return;
+        }
+        if (fstat(optsp->outfd, &a_st) < 0) {
+            snprintf(ebuff, EBUFF_SZ, "cp_sparse_cleanup: fstat");
+            perror(ebuff);
+            return;
+        }
+        if (offset == a_st.st_size) {
+            if (verbose > 1)
+                fprintf(stderr, "cp_sparse_cleanup: OFILE already "
+                        "correct length\n");
+            return;
+        }
+        if (offset < a_st.st_size) {
+            if (verbose > 1)
+                fprintf(stderr, "cp_sparse_cleanup: OFILE longer "
+                        "than required, do nothing\n");
+            return;
+        }
+        if (optsp->oflagp->strunc) {
+            if (verbose > 1)
+                fprintf(stderr, "About to truncate %s to byte offset "
+                        "%"PRId64"\n", optsp->outf, offset);
+            if (ftruncate(optsp->outfd, offset) < 0) {
+                snprintf(ebuff, EBUFF_SZ, "could not ftruncate after copy");
+                perror(ebuff);
+                return;
+            }
+            /* N.B. file offset (pointer) not changed by ftruncate */
+        } else if (1 == optsp->oflagp->sparse) {
+            if (verbose > 1)
+                fprintf(stderr, "writing sparse last block zeros\n");
+            if (cp_write_block_reg(optsp, csp, -1, 1, zeros_buff) < 0)
+                fprintf(stderr, "writing sparse last block zeros "
+                        "error, seek=%"PRId64"\n", optsp->seek - 1);
+            else
+                --out_sparse;
+        }
+    }
+}
+
 static int
 cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
                  unsigned char * b1p, unsigned char * b2p)
@@ -2697,7 +2785,7 @@ cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
 }
 
 static int
-cp_construct_pt_zero(struct opts_t * optsp, int obpt)
+cp_construct_pt_zero_buff(struct opts_t * optsp, int obpt)
 {
     if ((FT_PT & optsp->in_type) && (NULL == if_ptvp)) {
         if_ptvp = construct_scsi_pt_obj();
@@ -2749,12 +2837,14 @@ resume_calc_count(struct opts_t * op)
     int valid_resume = 0;
     int in_sect_sz, out_sect_sz;
 
-    calc_count(op, &in_num_sect, &in_sect_sz, &out_num_sect,
-               &out_sect_sz);
+    if (calc_count(op, &in_num_sect, &in_sect_sz, &out_num_sect,
+                   &out_sect_sz) < 0)
+        return -1;
+    if ((0 == op->oflagp->resume) && (dd_count > 0))
+        return 0;
     if (verbose > 2)
-        fprintf(stderr, "Start of loop, count=%"PRId64", in_num_sect"
-                "=%"PRId64", out_num_sect=%"PRId64"\n", dd_count,
-                in_num_sect, out_num_sect);
+        fprintf(stderr, "calc_count: in_num_sect=%"PRId64", out_num_sect"
+                "=%"PRId64"\n", in_num_sect, out_num_sect);
     if (op->skip && (FT_REG == op->in_type) &&
         (op->skip > in_num_sect)) {
         fprintf(stderr, "cannot skip to specified offset on %s\n",
@@ -2827,19 +2917,19 @@ static int
 do_copy(struct opts_t * optsp, unsigned char * wrkPos,
         unsigned char * wrkPos2)
 {
-    int ibpt, obpt, res, n, iblocks_hold;
-    int penult_sparse_skip = 0;
-    int penult_blocks = 0;
+    int ibpt, obpt, res, n, sparse_skip, sparing_skip;
     int ret = 0;
     struct cp_state_t cp_st;
     struct cp_state_t * csp;
 
+    if (dd_count <= 0)
+        return 0;
     csp = &cp_st;
     memset(csp, 0, sizeof(struct cp_state_t));
     ibpt = optsp->bpt_i;
     obpt = (optsp->ibs * optsp->bpt_i) / optsp->obs;
-    if ((ret = cp_construct_pt_zero(optsp, obpt)))
-        goto loop_end;
+    if ((ret = cp_construct_pt_zero_buff(optsp, obpt)))
+        goto copy_end;
     /* Both csp->if_filepos and csp->of_filepos are 0 */
 
     /* <<< main loop that does the copy >>> */
@@ -2847,10 +2937,8 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
         csp->bytes_read = 0;
         csp->bytes_of = 0;
         csp->bytes_of2 = 0;
-        penult_sparse_skip = csp->sparse_skip;
-        penult_blocks = penult_sparse_skip ? csp->oblocks : 0;
-        csp->sparing_skip = 0;
-        csp->sparse_skip = 0;
+        sparing_skip = 0;
+        sparse_skip = 0;
         if (dd_count >= ibpt) {
             csp->iblocks = ibpt;
             csp->oblocks = obpt;
@@ -2864,7 +2952,6 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
                 memset(wrkPos, 0, optsp->ibs * ibpt);
             }
         }
-        iblocks_hold = csp->iblocks;
 
         /* Start of reading section */
         if (FT_PT & optsp->in_type) {
@@ -2881,12 +2968,9 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
             ((ret = cp_write_of2(optsp, csp, wrkPos))))
             break;
 
-        if ((1 == optsp->oflagp->sparse) && (dd_count <= iblocks_hold) &&
-            (FT_REG & optsp->out_type))
-            ;   /* write last segment on regular OFILE when oflag=sparse */
-        else if (optsp->oflagp->sparse) {
+        if (optsp->oflagp->sparse) {
             if (0 == memcmp(wrkPos, zeros_buff, csp->oblocks * optsp->obs)) {
-                csp->sparse_skip = 1;
+                sparse_skip = 1;
                 if (optsp->oflagp->wsame16 && (FT_PT & optsp->out_type)) {
                     res = pt_write_same16(optsp->outfd, 1, zeros_buff,
                                   optsp->obs, csp->oblocks, optsp->seek);
@@ -2900,7 +2984,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
                 goto bypass_write;
             }
         }
-        if (optsp->oflagp->sparing && (! csp->sparse_skip)) {
+        if (optsp->oflagp->sparing && (! sparse_skip)) {
             /* In write sparing, we read from the output */
             if (FT_PT & optsp->out_type)
                 res = cp_read_of_pt(optsp, csp, wrkPos2);
@@ -2908,7 +2992,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
                 res = cp_read_of_block_reg(optsp, csp, wrkPos2);
             if (0 == res) {
                 if (0 == memcmp(wrkPos, wrkPos2, csp->oblocks * optsp->obs))
-                    csp->sparing_skip = 1;
+                    sparing_skip = 1;
                 else if (optsp->obpc) {
                     ret = cp_finer_comp_wr(optsp, csp, wrkPos, wrkPos2);
                     if (ret)
@@ -2918,16 +3002,9 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
             }
         }
         /* Start of writing section */
-        if (csp->sparing_skip || csp->sparse_skip) {
-#if 0
-            /* need to track cp_finer_comp_wr() and see trim */
-            if (verbose > 2)
-                fprintf(stderr, "%s bypassing write: start blk=%" PRId64
-                        ", number of blks=%d\n", (csp->sparing_skip ?
-                         "sparing" : "sparse"), optsp->seek, csp->oblocks);
-#endif
+        if (sparing_skip || sparse_skip)
             out_sparse += csp->oblocks;
-        } else {
+        else {
             if (FT_PT & optsp->out_type) {
                 if ((ret = cp_write_pt(optsp, 0, csp->oblocks, wrkPos)))
                     break;
@@ -2947,20 +3024,12 @@ bypass_write:
         optsp->seek += csp->oblocks;
     } /* end of main loop that does the copy ... */
 
-loop_end:
-    if (ret && penult_sparse_skip && (penult_blocks > 0)) {
-        /* if error and skipped last output due to sparse ... */
-        if ((FT_PT & optsp->out_type) || (FT_DEV_NULL & optsp->out_type) ||
-            (FT_BLOCK & optsp->out_type))
-            ;
-        else { /* write zeros to extend ofile to length prior to error */
-            csp->of_filepos -= penult_blocks * optsp->obs;
-            res = cp_write_block_reg(optsp, csp, 0, penult_blocks, zeros_buff);
-            if (res < 0)
-                fprintf(stderr, "writing(sparse after error) error, "
-                        "seek=%"PRId64"\n", optsp->seek);
-        }
-    }
+    /* sparse: clean up ofile length when last block(s) were not written */
+    if ((FT_REG & optsp->out_type) && (0 == optsp->oflagp->nowrite) &&
+        optsp->oflagp->sparse)
+        cp_sparse_cleanup(optsp, csp);
+
+copy_end:
     cp_destruct_pt();
     return ret;
 }
@@ -3085,11 +3154,8 @@ main(int argc, char * argv[])
         out_sparing_active = 1;
     }
 
-    if ((dd_count < 0) || opts.oflagp->resume ||
-        ((verbose > 0) && (0 == dd_count))) {
-        if (resume_calc_count(&opts))
-            goto cleanup;
-    }
+    if (resume_calc_count(&opts))
+        goto cleanup;
     if (dd_count < 0) {
         fprintf(stderr, "Couldn't calculate count, please give one\n");
         return SG_LIB_CAT_OTHER;
