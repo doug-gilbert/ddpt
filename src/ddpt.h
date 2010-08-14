@@ -117,10 +117,12 @@ struct flags_t {
 #endif
     int excl;
     int flock;
+    int force;
     int fua;
     int fua_nv;
     int pdt;
     int nocache;
+    int norcap;
     int nowrite;
     int pt;
     int resume;
@@ -129,6 +131,7 @@ struct flags_t {
     int sparing;
     int sparse;
     int ssync;
+    int strunc;
     int sync;
     int trunc;
     int wsame16;
@@ -171,8 +174,6 @@ struct cp_state_t {
     int bytes_read;
     int bytes_of;
     int bytes_of2;
-    int sparing_skip;
-    int sparse_skip;
 };
 
 

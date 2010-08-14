@@ -2,22 +2,32 @@ The version number is hardcoded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.91 [20100731] [svn: r110]
+Changelog for ddpt-0.91 [20100813] [svn: r111]
   - rework copy loop.
   - extend bpt=BPT to bpt=BPR[,OBPC] spare+sparse granularity
     - change BPT default to vary from 8192 to 1 depending on IBS
   - add oflag=resume logic
-    add oflag=sparse,sparse to suppress forced write of last segment
+  - change oflag=sparse to extend regular OFILE with a final
+    block write, if required
+    - add oflag=strunc to also do sparse writes but to extend
+      regular OFILE with ftruncate, if required
   - change 'bs=' option to set IBS and OBS; 'ibs=' and 'obs='
     can coexist but not with 'bs='. [Closer to dd usage]
-  - 'conv=noerror,null,resume,sparing,sparse,sync' now permitted
-  - add 'oflag=trunc' and 'conv=trunc' (default: overwrite)
+  - conv=noerror,null,resume,sparing,sparse,sync now permitted
+  - add oflag=trunc and conv=trunc (default: overwrite)
     - quietly ignored if resume, needed due to sequence
-  - add 'oflag=trim' for TRIM/UNMAP on pt OFILEs
-  - add 'oflag=nowrite' for self-trim support
-  - add 'iflag=errblk' to write bad LBA to file
+  - add oflag=trim for TRIM/UNMAP on pt OFILEs
+  - add iflag=self or oflag=self for self-trim
+  - add oflag=nowrite to bypass writes+truncates (does trims)
+  - add iflag=errblk to write bad LBA to file
+  - add iflag=norcap or oflag=norcap to bypass the SCSI READ
+    CAPACITY command on pt devices
+  - discrepancies between ibs or obs and READ CAPACITY supplied
+    block lengths abort the copy. This can be overridden by
+    iflag=force or oflag=force on pt devices
+  - optical memory devices (pdt=7) added to cd/dvd readers (pdt=5)
+    that don't need sense valid=1 to accept info field (when > 0)
   - treat linux bsg devices as implicit pt devices
-  - add 'iflag=self' or 'oflag=self' for self-trim
 
 Changelog for ddpt-0.90 [20100508] [svn: r85]
   - copied from sg_dd utility in sg3_utils package

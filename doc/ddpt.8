@@ -1,4 +1,4 @@
-.TH DDPT "8" "July 2010" "ddpt\-0.91" DDPT
+.TH DDPT "8" "August 2010" "ddpt\-0.91" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -333,6 +333,11 @@ cause the lock to be taken if available else a "temporarily unavailable"
 error is generated. An exit status of 90 is produced in the latter case
 and no copy is done. See flock(2) man page.
 .TP
+force [io] [pt]
+override difference between given block size and the block size found
+by the SCSI READ CAPACITY command. Use the given block size. Without
+this flag the copy would not be performed.
+.TP
 fua [io] [pt]
 causes the FUA (force unit access) bit to be set in SCSI READ and/or WRITE
 commands. The 6 byte variants of the SCSI READ and WRITE commands do not
@@ -349,10 +354,14 @@ use posix_fadvise() to advise corresponding file there is no need to fill
 the file buffer with recently read or written blocks. If used with "iflag="
 it will increase the read ahead on \fIIFILE\fR.
 .TP
+norcap [io] [pt]
+do not perform SCSI READ CAPACITY command on the corresponding pt device.
+.TP
 nowrite [o] [reg,blk,pt]
 bypass writes to \fIOFILE\fR. The "records out" count is not incremented.
-\fIOFILE\fR is still opened but "oflag=trunc" if given is ignored. Commands
-such as trim and SCSI SYNCHRONIZE CACHE are still sent.
+\fIOFILE\fR is still opened but "oflag=trunc" if given is ignored. Also
+the ftruncate call associated with the sparse flag is ignored (i.e.
+bypassed). Commands such as trim and SCSI SYNCHRONIZE CACHE are still sent.
 .TP
 null [io]
 has no affect, just a placeholder.
@@ -400,21 +409,18 @@ which implies \fIOBS\fR bytes.
 sparse [o] [reg,blk,pt]
 after each \fIIBS\fR * \fIBPT\fR byte segment is read from \fIIFILE\fR, it
 is checked to see if it is all zeros. If so, that segment is not written to
-\fIOFILE\fR apart from the copy's last segment which may be written.
-In the case of the last segment when \fIOFILE\fR is a regular file and the
-sparse flag is given once (i.e. not twice) then that segment is written to
-\fIOFILE\fR. The reason is to make \fIOFILE\fR have the same length
-whether "oflag=sparse" is given or not. Thus programs like md5sum and
-sha1sum will generate the same value regardless of whether "oflag=sparse" is
-given or not. When the sparse flag is given twice (i.e. "oflag=sparse,sparse")
-then the last segment is only written to \fIOFILE\fR if it is other than all
-zeros. The granularity of the zero comparison can be reduced from the default
-\fIIBS\fR * \fIBPT\fR byte segment with the \fIOBPC\fR value given to
-the "bpt=" option.
+\fIOFILE\fR. See the section on SPARSE WRITES below. The granularity of
+the zero comparison can be reduced from the default \fIIBS\fR * \fIBPT\fR
+byte segment with the \fIOBPC\fR value given to the "bpt=" option.
 .TP
 ssync [o] [pt]
 if \fIOFILE\fR is in "pt" mode the the SCSI SYNCHRONIZE CACHE command is
 sent to \fIOFILE\fR at the end of the transfer.
+.TP
+strunc [o] [reg]
+perform a sparse copy with a truncate system command to extend the length
+of the \fIOFILE\fR if required. See the sparse flag and the section on
+SPARSE WRITES below.
 .TP
 sync [io] [reg,blk]
 causes the O_SYNC flag to be added to the open of \fIIFILE\fR and/or
@@ -434,6 +440,27 @@ copy. If \fISEEK\fR is not given or 0 then \fIOFILE\fR is truncated to zero
 length; when \fISEEK\fR is larger than zero the truncation takes place at
 file byte pointer \fISEEK*OBS\fR.  Ignored if "oflag=append". Conflicts
 with "oflag=sparing".
+.SH SPARSE WRITES
+Bypassing writes of blocks full of zeros can save a lot of IO. However
+with regular files, bypassed writes at the end of the copy can lead
+to an \fIOFILE\fR which is shorter than it would have been without
+sparse writes. This can lead to integrity checking programs like md5sum
+and sha1sum generating different values.
+.PP
+This utility has two ways of handling this file length problem: writing
+the last block (even if it is full of zeros) or using the ftruncate
+system call. A third approach is to ignore the problem (i.e. leaving
+\fIOFILE\fR shorter). The ftruncate approach is used when "oflag=strunc"
+while the last block is written when "oflag=sparse". To ignore the
+file length issue use "oflag=sparse,sparse". Note that if \fIOFILE\fR's
+length is already correct or longer than required, no action is taken.
+.PP
+The support for sparse writing of regular files may depend on the OS, the
+file system and the settings of \fIOFILE\fR. POSIX makes few guarantees
+when the ftruncate system call is used to extend a file's length, as may
+occur when "oflag=strunc". Further, primitive file systems like VFAT may not
+accept sparse writes or simulate the effect by writing blocks of zeros. The
+latter approach will defeat any sparse writing performance gain.
 .SH TRIM, UNMAP AND WRITE SAME
 This is a new storage feature often associated with Solid State
 Disks (SSDs) or disk arrays with "thin provisioning". In the ATA command
