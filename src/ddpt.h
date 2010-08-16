@@ -169,8 +169,8 @@ struct opts_t {
 struct cp_state_t {
     int64_t if_filepos;
     int64_t of_filepos;
-    int iblocks;
-    int oblocks;
+    int icbpt;
+    int ocbpt;
     int bytes_read;
     int bytes_of;
     int bytes_of2;
