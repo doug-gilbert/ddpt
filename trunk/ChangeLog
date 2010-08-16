@@ -2,7 +2,7 @@ The version number is hardcoded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.91 [20100813] [svn: r111]
+Changelog for ddpt-0.91 [20100816] [svn: r112]
   - rework copy loop.
   - extend bpt=BPT to bpt=BPR[,OBPC] spare+sparse granularity
     - change BPT default to vary from 8192 to 1 depending on IBS
@@ -12,7 +12,7 @@ Changelog for ddpt-0.91 [20100813] [svn: r111]
     - add oflag=strunc to also do sparse writes but to extend
       regular OFILE with ftruncate, if required
   - change 'bs=' option to set IBS and OBS; 'ibs=' and 'obs='
-    can coexist but not with 'bs='. [Closer to dd usage]
+    can coexist but not with 'bs='. [Closer to dd semantics]
   - conv=noerror,null,resume,sparing,sparse,sync now permitted
   - add oflag=trunc and conv=trunc (default: overwrite)
     - quietly ignored if resume, needed due to sequence
@@ -27,6 +27,7 @@ Changelog for ddpt-0.91 [20100813] [svn: r111]
     iflag=force or oflag=force on pt devices
   - optical memory devices (pdt=7) added to cd/dvd readers (pdt=5)
     that don't need sense valid=1 to accept info field (when > 0)
+  - rework short read logic for block and regular files
   - treat linux bsg devices as implicit pt devices
 
 Changelog for ddpt-0.90 [20100508] [svn: r85]

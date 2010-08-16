@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100813 [svn: r111]";
+static char * version_str = "0.91 20100816 [svn: r112]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -1831,7 +1831,6 @@ calc_duration_throughput(int contin)
     int64_t blks;
 
     if (start_tm_valid && (start_tm.tv_sec || start_tm.tv_nsec)) {
-        // blks = (in_full > out_full) ? in_full : out_full;
         blks = in_full;
         clock_gettimeofday(CLOCK_MONOTONIC, &end_tm);
         res_tm.tv_sec = end_tm.tv_sec - start_tm.tv_sec;
@@ -1857,7 +1856,6 @@ calc_duration_throughput(int contin)
     int64_t blks;
 
     if (start_tm_valid && (start_tm.tv_sec || start_tm.tv_usec)) {
-        // blks = (in_full > out_full) ? in_full : out_full;
         blks = in_full;
         gettimeofday(&end_tm, NULL);
         res_tm.tv_sec = end_tm.tv_sec - start_tm.tv_sec;
@@ -2319,7 +2317,7 @@ cp_read_pt(struct opts_t * optsp, struct cp_state_t * csp,
 {
     int res, blks_read;
 
-    res = pt_read(optsp->infd, 0, wrkPos, csp->iblocks, optsp->skip,
+    res = pt_read(optsp->infd, 0, wrkPos, csp->icbpt, optsp->skip,
                   optsp->ibs, optsp->iflagp, &blks_read);
     if (res) {
         fprintf(stderr, "pt_read failed,%s at or after lba=%"PRId64" "
@@ -2327,11 +2325,11 @@ cp_read_pt(struct opts_t * optsp, struct cp_state_t * csp,
                  optsp->skip, optsp->skip);
         return res;
     } else {
-        if (blks_read < csp->iblocks) {
+        if (blks_read < csp->icbpt) {
             dd_count = 0;   /* force exit after write */
-            csp->iblocks = blks_read;
+            csp->icbpt = blks_read;
         }
-        in_full += csp->iblocks;
+        in_full += csp->icbpt;
     }
     return 0;
 }
@@ -2342,7 +2340,7 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
 {
     int res;
     int64_t offset = optsp->skip * optsp->ibs;
-    int numbytes = csp->iblocks * optsp->ibs;
+    int numbytes = csp->icbpt * optsp->ibs;
 
 #ifdef SG_LIB_WIN32
     if (FT_BLOCK & optsp->in_type) {
@@ -2361,11 +2359,20 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
             return -1;
         } else {
             if (res < numbytes) {
-                dd_count = 0;   /* force exit after write */
-                csp->iblocks = res / optsp->ibs;
+                /* assume no partial reads (i.e. non integral blocks) */
+                csp->icbpt = res / optsp->ibs;
+                if (0 == csp->icbpt)
+                    dd_count = 0;
+                csp->ocbpt = res / optsp->obs;
+                /* don't do partial writes due to a short read */
+                if ((res % optsp->obs) > 0)
+                    ++csp->ocbpt;
+                if (verbose > 1)
+                    fprintf(stderr, "short read, requested %d blocks, got "
+                            "%d blocks\n", numbytes / optsp->ibs, csp->icbpt);
             }
             csp->if_filepos += res;
-            in_full += csp->iblocks;
+            in_full += csp->icbpt;
         }
     } else
 #endif
@@ -2399,22 +2406,29 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
             perror(ebuff);
             return -1;
         } else if (res < numbytes) {
-            dd_count = 0;
-            csp->iblocks = res / optsp->ibs;
+            csp->icbpt = res / optsp->ibs;
             if ((res % optsp->ibs) > 0) {
-                ++csp->iblocks;
+                ++csp->icbpt;
                 ++in_partial;
             }
-            csp->oblocks = res / optsp->obs;
-            if ((res % optsp->obs) > 0) {
-                ++csp->oblocks;
-                // ++out_full;
-                // ++out_partial;
+            if (0 == csp->icbpt)
+                dd_count = 0;
+            csp->ocbpt = res / optsp->obs;
+            /* don't do partial writes due to a short read */
+            if ((res % optsp->obs) > 0)
+                ++csp->ocbpt;
+            if (verbose > 1) {
+                if (FT_BLOCK & optsp->in_type)
+                    fprintf(stderr, "short read, requested %d blocks, got "
+                            "%d blocks\n", numbytes / optsp->ibs, csp->icbpt);
+                else
+                    fprintf(stderr, "short read, requested %d bytes, got "
+                            "%d bytes\n", numbytes, res);
             }
         }
         csp->if_filepos += res;
         csp->bytes_read = res;
-        in_full += csp->iblocks;
+        in_full += csp->icbpt;
     }
     return 0;
 }
@@ -2425,7 +2439,7 @@ cp_write_of2(struct opts_t * optsp, struct cp_state_t * csp,
 {
     int res;
     char ebuff[EBUFF_SZ];
-    int numbytes = csp->oblocks * optsp->obs;
+    int numbytes = csp->ocbpt * optsp->obs;
 
     while (((res = write(optsp->out2fd, wrkPos, numbytes)) < 0) &&
            (EINTR == errno))
@@ -2448,14 +2462,14 @@ cp_read_of_pt(struct opts_t * optsp, struct cp_state_t * csp,
 {
     int res, blks_read;
 
-    res = pt_read(optsp->outfd, 1, wrkPos2, csp->oblocks, optsp->seek,
+    res = pt_read(optsp->outfd, 1, wrkPos2, csp->ocbpt, optsp->seek,
                   optsp->obs, optsp->oflagp, &blks_read);
     if (res) {
         fprintf(stderr, "pt_read(sparing) failed, at or after "
                 "lba=%"PRId64" [0x%"PRIx64"]\n", optsp->seek,
                 optsp->seek);
         return res;
-    } else if (blks_read != csp->oblocks)
+    } else if (blks_read != csp->ocbpt)
         return 1;
     return 0;
 }
@@ -2466,7 +2480,7 @@ cp_read_of_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
 {
     int res;
     int64_t offset = optsp->seek * optsp->obs;
-    int numbytes = csp->oblocks * optsp->obs;
+    int numbytes = csp->ocbpt * optsp->obs;
 
 #ifdef SG_LIB_WIN32
     if (FT_BLOCK & optsp->out_type) {
@@ -2586,6 +2600,7 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
             fprintf(stderr, "output file probably full, seek=%"PRId64" ",
                     aseek);
             out_full += res / optsp->obs;
+            /* can get a partial write due to a short write */
             if ((res % optsp->obs) > 0)
                 ++out_partial;
             return -1;
@@ -2629,6 +2644,7 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
             fprintf(stderr, "output file probably full, seek=%"PRId64" ",
                     aseek);
             out_full += res / optsp->obs;
+            /* can get a partial write due to a short write */
             if ((res % optsp->obs) > 0)
                 ++out_partial;
             return -1;
@@ -2703,7 +2719,7 @@ cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
     int res, k, n, oblks, numbytes, chunk, need_wr, wr_len, wr_k, obs;
     int trim_check, need_tr, tr_len, tr_k;
 
-    oblks = csp->oblocks;
+    oblks = csp->ocbpt;
     obs = optsp->obs;
     if (optsp->obpc >= oblks) {
         if (FT_DEV_NULL & optsp->out_type)
@@ -2940,15 +2956,15 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
         sparing_skip = 0;
         sparse_skip = 0;
         if (dd_count >= ibpt) {
-            csp->iblocks = ibpt;
-            csp->oblocks = obpt;
+            csp->icbpt = ibpt;
+            csp->ocbpt = obpt;
         } else {
-            csp->iblocks = dd_count;
+            csp->icbpt = dd_count;
             res = dd_count;
             n = res * optsp->ibs;
-            csp->oblocks = n / optsp->obs;
+            csp->ocbpt = n / optsp->obs;
             if (n % optsp->obs) {
-                ++csp->oblocks;
+                ++csp->ocbpt;
                 memset(wrkPos, 0, optsp->ibs * ibpt);
             }
         }
@@ -2961,7 +2977,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
              if ((ret = cp_read_block_reg(optsp, csp, wrkPos)))
                 break;
         }
-        if (0 == csp->iblocks)
+        if (0 == csp->icbpt)
             break;      /* nothing read so leave loop */
 
         if ((optsp->out2f[0]) &&
@@ -2969,11 +2985,11 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
             break;
 
         if (optsp->oflagp->sparse) {
-            if (0 == memcmp(wrkPos, zeros_buff, csp->oblocks * optsp->obs)) {
+            if (0 == memcmp(wrkPos, zeros_buff, csp->ocbpt * optsp->obs)) {
                 sparse_skip = 1;
                 if (optsp->oflagp->wsame16 && (FT_PT & optsp->out_type)) {
                     res = pt_write_same16(optsp->outfd, 1, zeros_buff,
-                                  optsp->obs, csp->oblocks, optsp->seek);
+                                  optsp->obs, csp->ocbpt, optsp->seek);
                     if (res)
                         ++trim_errs;
                 }
@@ -2991,7 +3007,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
             else
                 res = cp_read_of_block_reg(optsp, csp, wrkPos2);
             if (0 == res) {
-                if (0 == memcmp(wrkPos, wrkPos2, csp->oblocks * optsp->obs))
+                if (0 == memcmp(wrkPos, wrkPos2, csp->ocbpt * optsp->obs))
                     sparing_skip = 1;
                 else if (optsp->obpc) {
                     ret = cp_finer_comp_wr(optsp, csp, wrkPos, wrkPos2);
@@ -3003,14 +3019,14 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
         }
         /* Start of writing section */
         if (sparing_skip || sparse_skip)
-            out_sparse += csp->oblocks;
+            out_sparse += csp->ocbpt;
         else {
             if (FT_PT & optsp->out_type) {
-                if ((ret = cp_write_pt(optsp, 0, csp->oblocks, wrkPos)))
+                if ((ret = cp_write_pt(optsp, 0, csp->ocbpt, wrkPos)))
                     break;
             } else if (FT_DEV_NULL & optsp->out_type)
-                ;  /* out_full += csp->oblocks; was as if written out */
-            else if ((ret = cp_write_block_reg(optsp, csp, 0, csp->oblocks,
+                ;  /* don't bump out_full (earlier it did) */
+            else if ((ret = cp_write_block_reg(optsp, csp, 0, csp->ocbpt,
                                                wrkPos)))
                 break;
         }
@@ -3019,9 +3035,9 @@ bypass_write:
         do_fadvise(optsp, csp->bytes_read, csp->bytes_of, csp->bytes_of2);
 #endif
         if (dd_count > 0)
-            dd_count -= csp->iblocks;
-        optsp->skip += csp->iblocks;
-        optsp->seek += csp->oblocks;
+            dd_count -= csp->icbpt;
+        optsp->skip += csp->icbpt;
+        optsp->seek += csp->ocbpt;
     } /* end of main loop that does the copy ... */
 
     /* sparse: clean up ofile length when last block(s) were not written */
