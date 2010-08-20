@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100816 [svn: r112]";
+static char * version_str = "0.91 20100818 [svn: r113]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -134,6 +134,7 @@ static int64_t highest_unrecovered = -1;
 static int num_retries = 0;
 static int sum_of_resids = 0;
 static int interrupted_retries = 0;
+static int err_to_report = 0;
 
 static struct sg_pt_base * if_ptvp = NULL;
 static struct sg_pt_base * of_ptvp = NULL;
@@ -2315,22 +2316,33 @@ static int
 cp_read_pt(struct opts_t * optsp, struct cp_state_t * csp,
            unsigned char * wrkPos)
 {
-    int res, blks_read;
+    int res;
+    int blks_read = 0;
 
     res = pt_read(optsp->infd, 0, wrkPos, csp->icbpt, optsp->skip,
                   optsp->ibs, optsp->iflagp, &blks_read);
     if (res) {
-        fprintf(stderr, "pt_read failed,%s at or after lba=%"PRId64" "
-                "[0x%"PRIx64"]\n", ((-2 == res) ?  " try reducing bpt," : ""),
-                 optsp->skip, optsp->skip);
-        return res;
-    } else {
-        if (blks_read < csp->icbpt) {
-            dd_count = 0;   /* force exit after write */
-            csp->icbpt = blks_read;
+        if (0 == blks_read) {
+            fprintf(stderr, "pt_read failed,%s at or after lba=%"PRId64" "
+                    "[0x%"PRIx64"]\n",
+                    ((-2 == res) ?  " try reducing bpt," : ""),
+                    optsp->skip, optsp->skip);
+            return res;
         }
-        in_full += csp->icbpt;
+        /* limp on if data, should stop after write; hold err number */
+        err_to_report = res;
     }
+    if (blks_read < csp->icbpt) {
+        /* assume close to end, or some data prior to read error */
+        if (verbose > 1)
+            fprintf(stderr, "short read, requested %d blocks, got "
+                    "%d blocks\n", csp->icbpt, blks_read);
+        dd_count = blks_read;   /* force exit after write */
+        csp->icbpt = blks_read;
+        /* round down since don't do partial writes */
+        csp->ocbpt = (blks_read * optsp->ibs) / optsp->obs;
+    }
+    in_full += csp->icbpt;
     return 0;
 }
 
@@ -2361,8 +2373,7 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
             if (res < numbytes) {
                 /* assume no partial reads (i.e. non integral blocks) */
                 csp->icbpt = res / optsp->ibs;
-                if (0 == csp->icbpt)
-                    dd_count = 0;
+                dd_count = csp->icbpt;
                 csp->ocbpt = res / optsp->obs;
                 /* don't do partial writes due to a short read */
                 if ((res % optsp->obs) > 0)
@@ -2411,16 +2422,16 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                 ++csp->icbpt;
                 ++in_partial;
             }
-            if (0 == csp->icbpt)
-                dd_count = 0;
+            dd_count = csp->icbpt;
             csp->ocbpt = res / optsp->obs;
             /* don't do partial writes due to a short read */
             if ((res % optsp->obs) > 0)
                 ++csp->ocbpt;
             if (verbose > 1) {
                 if (FT_BLOCK & optsp->in_type)
-                    fprintf(stderr, "short read, requested %d blocks, got "
-                            "%d blocks\n", numbytes / optsp->ibs, csp->icbpt);
+                    fprintf(stderr, "short read at skip=%"PRId64", requested "
+                            "%d blocks, got %d blocks\n", optsp->skip,
+                            numbytes / optsp->ibs, csp->icbpt);
                 else
                     fprintf(stderr, "short read, requested %d bytes, got "
                             "%d bytes\n", numbytes, res);
@@ -3316,5 +3327,7 @@ cleanup:
         if (0 == ret)
             ret = SG_LIB_CAT_OTHER;
     }
+    if ((0 == ret) && err_to_report)
+        ret = err_to_report;
     return (ret >= 0) ? ret : SG_LIB_CAT_OTHER;
 }
