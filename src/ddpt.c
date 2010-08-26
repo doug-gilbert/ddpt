@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100818 [svn: r113]";
+static char * version_str = "0.91 20100827 [svn: r114]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -270,8 +270,9 @@ print_stats(const char * str)
     if (trim_errs)
         fprintf(stderr, "%s%d trim errors\n", str, trim_errs);
     if (interrupted_retries > 0)
-        fprintf(stderr, "%s%d retries after interrupted system call(s)\n",
-                str, interrupted_retries);
+        fprintf(stderr, "%s%d %s after interrupted system call(s)\n",
+                str, interrupted_retries,
+                ((1 == interrupted_retries) ? "retry" : "retries"));
 }
 
 static void
