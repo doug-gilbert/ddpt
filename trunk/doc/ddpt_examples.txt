@@ -1,0 +1,200 @@
+#             ddpt examples
+#             =============
+
+# Lines that start with "#", like this one, are comments.
+# Lines that start with "$" are command entered by the user. Some
+# long commands are split over several lines with a trailing "\"
+# on all but the last line of the command.
+# Other non-blank lines are command output. Command output is shown
+# in only some cases.
+
+# dd "standard" regular file to regular file copy. 'stat -c %s <file>'
+# is a way of getting a file's length, in bytes.
+$ stat -c %s src
+6915
+$ dd if=src of=dst
+13+1 records in
+13+1 records out
+6915 bytes (6.9 kB) copied, 0.000128857 s, 53.7 MB/s
+
+# first cut ddpt equivalent
+$ stat -c %s dst
+524800
+$ ddpt if=src of=dst
+Assume block size of 512 bytes for both input and output
+13+1 records in
+14+0 records out
+time to transfer data: 0.000121 secs at 59.24 MB/sec
+$ stat -c %s dst
+524800
+
+# ddpt does not truncate dst, it overwrites it. So if dst's file length
+# is longer than src's file length the output file needs to be truncated:
+$ ddpt if=src of=dst oflag=trunc
+Assume block size of 512 bytes for both input and output
+13+1 records in
+14+0 records out
+time to transfer data: 0.000243 secs at 29.50 MB/sec
+$ stat -c %s dst
+7168
+
+# Both dd and ddpt default to a block size of 512 bytes (bs=512) but
+# dd can do both partial reads and partial writes. ddpt does partial
+# reads but does only full writes (zero padding if necessary). The
+# inability of ddpt to do partial writes can be overcome with "obs=1"
+$ ddpt if=src of=dst oflag=trunc obs=1
+Neither ibs nor bs given so set ibs=512 (default block size)
+13+1 records in
+6915+0 records out
+time to transfer data: 0.000113 secs at 63.43 MB/sec
+$ stat -c %s dst
+6915
+# Finally the 6915 bytes in the src file and been copied to dst which
+# is now the same size as src.
+
+# or to make it a bit clearer:
+$ ddpt if=src bs=1 of=dst oflag=trunc          
+6915+0 records in
+6915+0 records out
+time to transfer data: 0.000134 secs at 51.60 MB/sec
+# Notice that "records in" and "records out" are now byte counts since "bs=1"
+
+# if the src file is large then
+$ dd if=src of=dst
+# can be quite inefficient because dd reads BS (argument to "bs=") or
+# IBS bytes at a time, then writes them to dst and continues until
+# all of src has been read (or the COUNT is exhausted). So something
+# like this is often suggested:
+$ dd if=src of=dst bs=64k
+
+# ddpt reads BPT*IBS bytes at a time from src before writing them to
+# dst. The default value of BPT varies depending on IBS; for IBS=512
+# BPT defaults to 128. So for 512 byte blocks ddpt reads in chunks of
+# 64 KB. Hence this invocation of ddpt remains quite efficient:
+$ ddpt if=src ibs=512 of=dst oflag=trunc obs=1
+# The advantage of keeping the IBS value low (and specifically the
+# logical block size for block devices) is that the SKIP and COUNT
+# arguments are in units of IBS bytes:
+$ ddpt if=/dev/sda skip=0x4215cc bs=512 of=dst.img count=1234560
+# There is no need to worry about short reads on a block device
+# so giving BS sets both IBS and OBS to the same value. So now
+# SKIP and COUNT are in 512 byte units (so SKIP is a Logical Block
+# Address (LBA)). Notice that SKIP is given in hexadecimal (dd only
+# accepts decimal arguments). Since the "bpt=" option is not given
+# BPT defaults to 128 and each read into the copy buffer is
+# 128*512 = 64 KB. The dd equivalent:
+$ dd if=/dev/sda skip=4330956 bs=512 of=dst.img count=1234560
+# will be very slow since dd will read 512 bytes, write 512 bytes
+# at a time. Changing to "bs=64k" looks like it will help but now
+# SKIP and COUNT need to be divided by 128. However the SKIP value is
+# not divisible by 128. An efficient solution is not pretty.
+
+
+# ddpt's lack of partial writes can be seen in a different light
+# when there is a copy between block devices that have different
+# logical block sizes:
+$ ddpt if=/dev/sda ibs=512 of=/dev/sdc obs=4096 count=9
+9+0 records in
+2+0 records out
+time to transfer data: 0.000180 secs at 25.60 MB/sec
+# this time the output is shown. The COUNT implies a copy of 9*512 =
+# 4608 bytes. That spills into the second record (block) of /dev/sdc
+# because its logical block size is 4096 bytes. ddpt always pads with
+# zeros which is what the last 3542 bytes of the second block of
+# /dev/sdc will contain after the copy.
+
+
+# Sparse writes can be used to count the number of blocks that contain
+# all zeros. Here a lightly used partition, 2 GB from its start and for
+# a length of 5 GB is checked:
+$ ddpt if=/dev/sda7 skip=4m bs=512 oflag=sparse count=10m
+10485760+0 records in
+0+0 records out
+8895616 bypassed records out
+time to transfer data: 138.777383 secs at 38.69 MB/sec
+# Actually a copy buffer (64 KB) at a time is being checked for all
+# zeros so that count understates the true value. By setting OBPC to
+# 1, each block will be checked at a (slight) cost in execution time:
+$ ddpt if=/dev/sda7 skip=4m bs=512 oflag=sparse count=10m bpt=128,1
+10485760+0 records in
+0+0 records out
+8908836 bypassed records out
+time to transfer data: 136.614629 secs at 39.30 MB/sec
+
+# As an example of write sparing, assume the regular file t exists
+# and tt doesn't:
+$ ddpt if=t bs=512 of=tt oflag=sparing
+1025+0 records in
+1025+0 records out
+0 bypassed records out
+time to transfer data: 0.017652 secs at 29.73 MB/sec
+# Now repeating the operation with oflag=sparing still set:
+$ ddpt if=t bs=512 of=tt oflag=sparing
+1025+0 records in
+0+0 records out
+1025 bypassed records out
+time to transfer data: 0.004758 secs at 110.30 MB/sec
+# Since t and tt should now contain the same data write sparing
+# has been able to bypass all writes to tt.
+#
+# The "time to transfer" line in the output can be removed by
+# the addition of the status=noxfer option:
+$ ddpt if=t bs=512 of=tt oflag=sparing status=noxfer
+1025+0 records in
+0+0 records out
+1025 bypassed records out
+
+
+# Need to add an example showing oflag=resume
+
+
+# ddpt supports a trim operation on the output file when it is
+# accessed via the pt interface. Some SSDs support the trim
+# operation (also known as unmap) with "deterministic read
+# zero after trim". ddpt treats a trim like sparse, however
+# instead of bypassing a segment of zeros a trim is sent.
+# In SCSI parlance trim is a WRITE SAME with the UNMAP bit set. 
+$ ddpt if=/dev/sdb1 bs=512 of=/dev/sg1 seek=73899000 oflag=trim          
+18314037+0 records in
+16970165+0 records out
+1343872 trimmed records out
+time to transfer data: 174.057264 secs at 53.87 MB/sec
+# To trim (zero) a large portion of a SSD use /dev/zero as the
+# input file. This will zero from logical block 73899000 until
+# the end of /dev/sg1 which is a SSD:
+$  ddpt if=/dev/zero bs=512 of=/dev/sg1 seek=73899000 oflag=trim
+Progress report, continuing ...
+  remaining block count=38895160
+  43507456+0 records in
+  0+0 records out
+  43507328 trimmed records out
+time to transfer data so far: 405.905942 secs at 54.88 MB/sec
+82402488+0 records in
+0+0 records out
+82402488 trimmed records out
+time to transfer data: 768.067647 secs at 54.93 MB/sec
+# What happened here was a SIGUSR1 signal was sent to the process
+# running ddpt with a 'kill -s SIGUSR1 <pid>' command. The <pid>
+# of a running ddpt can be found with the 'ps ax' command. When
+# ddpt receives this signal it prints out a progress report and
+# continues.
+
+
+# self trim is when segments of zeros (64 KB of zeros in the first
+# case) are "trimmed" on a block device accessed via a pt interface.
+# In Linux /dev/sg* and /dev/bsg/* are pt devices.
+$ ddpt if=/dev/sg0 bs=512 skip=130045952 iflag=self,trim
+
+# increase speed and reduce granularity on trim check to 1 output block
+$ ddpt if=/dev/sg0 bs=512 skip=130045952 iflag=self,trim bpt=1024,1
+
+# the self flag does some option juggling and transforms the previous
+# invocation into:
+$ ddpt if=/dev/sg0 bs=512 skip=130045952 of=/dev/sg0 seek=130045952 \
+oflag=trim,nowrite bpt=1024,1
+# which is now a "copy" back to the same file. Nasty things happen if
+# SKIP and SEEK are not the same. Best to stick with the simpler
+# "iflag=self,trim" form and avoid the pitfalls of replicated arguments.
+
+
+# Douglas Gilbert 20100825
