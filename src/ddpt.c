@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100827 [svn: r114]";
+static char * version_str = "0.91 20100903 [svn: r115]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -364,6 +364,18 @@ put_errblk(uint64_t lba)
 {
     if (errblk_fp)
         fprintf(errblk_fp, "0x%"PRIx64"\n", lba);
+}
+
+static void
+put_range_errblk(uint64_t lba, int num)
+{
+    if (errblk_fp) {
+        if (1 == num)
+            put_errblk(lba);
+        else if (num > 1)
+            fprintf(errblk_fp, "0x%"PRIx64"-0x%"PRIx64"\n", lba,
+                    lba + (num - 1));
+    }
 }
 
 static void
@@ -1442,6 +1454,11 @@ pt_read(int sg_fd, int in0_out1, unsigned char * buff, int blocks,
             goto err_out;
         case SG_LIB_CAT_MEDIUM_HARD:
             may_coe = 1;
+#ifdef ERRBLK_SUPPORTED
+            /* No VALID+INFO field but we know the range of lba_s */
+            if (0 == retries_tmp)
+                put_range_errblk(lba, blks);
+#endif
             /* fall through */
         default:
             if (retries_tmp > 0) {
