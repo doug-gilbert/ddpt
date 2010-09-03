@@ -1,4 +1,4 @@
-.TH DDPT "8" "August 2010" "ddpt\-0.91" DDPT
+.TH DDPT "8" "September 2010" "ddpt\-0.91" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -316,10 +316,13 @@ on other device users.
 errblk [i] [pt] [experimental]
 attempts to create or append to a file called "errblk.txt" in the current
 directory the logical block addresses of blocks that cannot be read. The
-first (appended) line is "# start <timestamp>" followed by the LBAs in
-hex (and prefixed with "0x") of any block that cannot be read. At the end
-of the copy a line with "# stop <timestamp>" is appended to "errblk.txt".
-Typically used with "coe".
+first (appended) line is "# start <timestamp>". That is followed by the
+LBAs in hex (and prefixed with "0x") of any block that cannot be read,
+one LBA per line. If the sense data does not correctly identify the LBA of
+the first error in the range it was asked to read then a LBA range is
+output in the form of the lowest and the highest LBA in the range
+separated by a "-". At the end of the copy a line with "# stop <timestamp>"
+is appended to "errblk.txt". Typically used with "coe".
 .TP
 excl [io] [reg,blk]
 causes the O_EXCL flag to be added to the open of \fIIFILE\fR and/or
