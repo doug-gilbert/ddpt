@@ -2,7 +2,7 @@
 #             =============
 
 # Lines that start with "#", like this one, are comments.
-# Lines that start with "$" are command entered by the user. Some
+# Lines that start with "$" are commands entered by the user. Some
 # long commands are split over several lines with a trailing "\"
 # on all but the last line of the command.
 # Other non-blank lines are command output. Command output is shown
@@ -145,7 +145,33 @@ $ ddpt if=t bs=512 of=tt oflag=sparing status=noxfer
 1025 bypassed records out
 
 
-# Need to add an example showing oflag=resume
+# Imaging disks and partitions to a regular file can take a long
+# time. Sometimes the copy must be interrupted or there is
+# some failure (say power) which stops the copy. In such cases
+# oflag=resume may be helpful. In the case shown below a small
+# partition is being copied to a regular file and it is
+# interrupted with ^C from the keyboard:
+$ ddpt if=/dev/sda3 of=sda3.bin bs=512
+^CInterrupted by signal,  remaining block count=3910097
+4588416+0 records in
+4588288+0 records out
+time to transfer data: 72.015258 secs at 32.62 MB/sec
+Interrupted by signal 2
+To resume, invoke with same arguments plus oflag=resume
+# Taking the advice from the last line:
+$ ddpt if=/dev/sda3 of=sda3.bin bs=512 oflag=resume
+resume adjusting skip=4588416, seek=4588416, and count=3909969
+3909969+0 records in
+3909969+0 records out
+time to transfer data: 94.125894 secs at 21.27 MB/sec
+# By checking the size of sda3.bin the resume logic has adjusted
+# the skip, seek and count options to complete the rest of the
+# copy. If the copy was finished then making the same invocation
+# is harmless: 
+$ ddpt if=/dev/sda3 of=sda3.bin bs=512 oflag=resume
+resume finds copy complete, exiting
+# And if sda3.bin was empty on did not exist then a full copy
+# would occur.
 
 
 # ddpt supports a trim operation on the output file when it is
@@ -197,4 +223,4 @@ oflag=trim,nowrite bpt=1024,1
 # "iflag=self,trim" form and avoid the pitfalls of replicated arguments.
 
 
-# Douglas Gilbert 20100825
+# Douglas Gilbert 20100909

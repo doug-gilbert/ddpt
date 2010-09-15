@@ -15,17 +15,17 @@ devices that understand the SCSI command set.
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
-Copy data to and from any files. Specialized for "files" that are
-SCSI (or SCSI like) direct access storage devices (e.g. SATA and SAS disks,
-plus DVD drives). Can issue SCSI commands in pass\-through ("pt") mode.
-Similar syntax and semantics to the Unix
+Copy data between files or read data from a file. Specialized for "files"
+that are storage devices, especially those that can use the SCSI command
+sets (e.g. SATA and SAS disks, plus DVD drives). Can issue SCSI commands
+in pass\-through ("pt") mode. Similar syntax and semantics to the Unix
 .B dd(1)
 command.
 .PP
 The first grouping in the synopsis above lists recent GNU
 .B dd(1)
 options. The second grouping contains extra options added by this utility.
-The options for both groupings are merged below and explained in
+The options for both groupings are merged below and documented in
 alphabetical order. See the section on DD DIFFERENCES for significant
 differences between ddpt and dd.
 .PP
@@ -421,7 +421,7 @@ if \fIOFILE\fR is in "pt" mode the the SCSI SYNCHRONIZE CACHE command is
 sent to \fIOFILE\fR at the end of the transfer.
 .TP
 strunc [o] [reg]
-perform a sparse copy with a truncate system command to extend the length
+perform a sparse copy with a ftruncate system call to extend the length
 of the \fIOFILE\fR if required. See the sparse flag and the section on
 SPARSE WRITES below.
 .TP
@@ -486,7 +486,7 @@ device is a SSD with a ATA interface then recent versions of Linux
 will translate the SCSI WRITE SAME to the ATA DATA SET MANAGEMENT command
 with the TRIM bit set. The maximum size of each "trim" command sent
 is the size of the copy buffer (i.e. \fIIBS\fR * \fIBPT\fR bytes). And
-that maximum can be reduced with the \fIOBPC\fR argument with the "bpt="
+that maximum can be reduced with the \fIOBPC\fR argument of the "bpt="
 option.
 .PP
 The trim can be used various ways. One way is a copy where the copy
@@ -543,14 +543,14 @@ but interprets it as "0 * 123" (i.e. zero). ddpt will also interpret "x"
 as multiplies unless the left operand is zero (e.g. "0x123"). So both
 dd and ddpt will interpret "skip=2x123" as "skip=246".
 .PP
-Most implementations of dd read a relatively small amount of data into a
-copy (or transfer) buffer then write it out to the destination, repeating
-this process until the \fICOUNT\fR is exhausted. Terabyte size disks make
-it impractical to copy all the data into a buffer before writing it out.
+Terabyte size disks make it impractical to copy all the data into a buffer
+before writing it out. Therefore both dd and ddpt read a relatively small
+amount of data into a copy (or transfer) buffer then write it out to the
+destination, repeating this process until the \fICOUNT\fR is exhausted.
 .PP
-The major difference in ddpt is the addition of \fIBPT\fR to control the
+A major difference in ddpt is the addition of \fIBPT\fR to control the
 size of the copy buffer. With dd, \fIIBS\fR is the size of the copy buffer
-and the unit of \fISKIP\fR and \fICOUNT\fR. For ddpt \fIIBS\fR * \fIBPT\fR
+and the unit of \fISKIP\fR and \fICOUNT\fR. With ddpt, \fIIBS\fR * \fIBPT\fR
 is the size of the copy buffer and \fIIBS\fR is the unit of \fISKIP\fR
 and \fICOUNT\fR. This allows ddpt to have its \fIIBS\fR set to the logical
 block size of \fIIFILE\fR without unduly restricting the size of the copy
@@ -563,7 +563,7 @@ is relatively complex, especially when \fIIBS\fR and \fIOBS\fR are different
 sizes. The restriction that ddpt places on \fIIBS\fR and \fIOBS\fR (
 i.e. (((\fIIBS*BPT\fR) % \fIOBS\fR) == 0) ) means that a single
 copy buffer can be used since its size is a multiple of both \fIIBS\fR and
-\fIOBS\fR). Being able to precisely define the copy buffer size in ddpt
+\fIOBS\fR. Being able to precisely define the copy buffer size in ddpt
 makes sparse writing, write sparing and trim operations simpler to
 define and the user to control.
 .PP
@@ -589,9 +589,11 @@ block layer. The same applies for block devices given for \fIOFILE\fR.
 c C *1; w W *2; b B *512; k K KiB *1,024; KB *1,000; m M MiB *1,048,576;
 MB *1,000,000 . This pattern continues for "G", "T" and "P". The latter two
 suffixes can only be used for \fICOUNT\fR, \fISKIP\fR and \fISEEK\fR.
-Also a suffix of the form "x<n>" multiplies the leading number by <n>.
-These multiplicative suffixes are compatible with GNU's dd command (since
-2002) which claims compliance with the SI and with IEC 60027\-2 standards.
+Also a suffix of the form "x<n>" multiplies the leading number by <n>;
+however the combinations "0x" and "0X" are treated differently, see the
+next paragraph. These multiplicative suffixes are compatible with GNU's
+dd command (since 2002) which claims compliance with the SI and with
+IEC 60027\-2 standards.
 .PP
 Alternatively numerical values can be given in hexadecimal preceded by
 either "0x" or "0X" (or with a trailing "h" or "H"). When hex numbers are
@@ -618,19 +620,25 @@ used on tape devices. If the largest block address of the requested transfer
 exceeds a 32 bit block number (i.e 0xffffffff) then a warning is issued and
 the sg device is accessed via SCSI READ(16) and WRITE(16) commands.
 .PP
-The attributes of a block device (e.g. partitions) are ignored when the pt
-flag is used. Hence the whole device is read (rather than just the second
-partition) by this invocation:
+.B The attributes of a block device (e.g. partitions) are ignored when the
+.B pt flag is used.
+Hence the whole device is read (rather than just the second partition) by
+this invocation:
 .PP
    ddpt if=/dev/sdb2 iflag=pt of=t bs=512
 .PP
-And the contents of the file "t" should be same as these two invocations
-(assuming /dev/sdb and /dev/sg2 refer to the same device):
+Assuming /dev/sdb and /dev/sg2 refer to the same device, then after the
+following two invocations, the contents of the files "t", "tt" and "ttt"
+should be same:
 .PP
-   ddpt if=/dev/sdb of=t bs=512
+   ddpt if=/dev/sdb of=tt bs=512
 .PP
-   ddpt if=/dev/sg2 of=t bs=512
+   ddpt if=/dev/sg2 of=ttt bs=512
 .SH EXAMPLES
+The examples in this page use Linux device names. For suitable device
+names in other supported Operating Systems see this web page:
+http://sg.danny.cz/sg/device_name.html . The sg3_utils(8) man page
+in the sg3_utils package also covers device naming.
 .PP
 ddpt usage looks quite similar to dd:
 .PP
@@ -660,13 +668,13 @@ equivalent:
    ddpt if=/dev/sda of=t bs=512 bpt=16 count=1k
 .PP
 In both cases the total number of bytes moved is bs*count . And that will
-be done by reading 8k (8192 bytes) into a buffer than writing out that
+be done by reading 8k (8192 bytes) into a buffer then writing out that
 buffer to the file t. The read write sequence continues until the
 count is complete or an error occurs.
 .PP
-The 'of2=' option can save time when the input needs to be read twice.
-For example, to copy data and take a md5sum of it without needing to
-re\-read the data:
+The 'of2=' option can save time when the input would otherwise need to be
+read twice. For example, to copy data and take a md5sum of it without
+needing to re\-read the data:
 .PP
   mkfifo fif
 .br
@@ -694,6 +702,11 @@ be done with 64 KiB (128 block) granularity.
 .PP
 For examples of the trim and self,trim options see the section above
 on TRIM, UNMAP AND WRITE SAME.
+.PP
+Further examples can be found on this web page:
+http://sg.danny.cz/sg/ddpt.html .
+There is a text file called ddpt_examples.txt in the "doc" directory of
+this package's distribution tarball.
 .SH SIGNALS
 The signal handling has been borrowed from dd: SIGINT, SIGQUIT and
 SIGPIPE output the number of remaining blocks to be transferred and
@@ -801,4 +814,4 @@ recovery see
 To scan and repair disk partitions see TestDisk (testdisk).
 .PP
 Additional references:
-.B dd(1), ddrescue(GNU), open(2), flock(2), sg_dd(sg3_utils)
+.B dd(1), ddrescue(GNU), open(2), flock(2), sg_dd,sg3_utils(sg3_utils)
