@@ -2,7 +2,7 @@ The version number is hardcoded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.91 [20100915] [svn: r118]
+Changelog for ddpt-0.91 [20100915] [svn: r119]
   - rework copy loop.
   - extend bpt=BPT to bpt=BPR[,OBPC] spare+sparse granularity
     - change BPT default to vary from 8192 to 1 depending on IBS
