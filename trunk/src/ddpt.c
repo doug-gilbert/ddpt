@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100915 [svn: r117]";
+static char * version_str = "0.91 20100915 [svn: r119]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -149,6 +149,7 @@ static struct timespec start_tm;
 static int start_tm_valid = 0;
 static struct timeval start_tm;
 #endif
+static int read_or_transfer = 0; /* 1 when of=/dev/null or similar */
 static int ibs_hold = 0;
 static int max_uas = MAX_UNIT_ATTENTIONS;
 static int max_aborted = MAX_ABORTED_CMDS;
@@ -1849,8 +1850,6 @@ calc_duration_throughput(int contin)
     double a, b;
     int64_t blks;
 
-#warning boo
-
     if (start_tm_valid && (start_tm.tv_sec || start_tm.tv_nsec)) {
         blks = in_full;
         clock_gettime(CLOCK_MONOTONIC, &end_tm);
@@ -1863,7 +1862,8 @@ calc_duration_throughput(int contin)
         a = res_tm.tv_sec;
         a += (0.000001 * (res_tm.tv_nsec / 1000));
         b = (double)ibs_hold * blks;
-        fprintf(stderr, "time to transfer data%s: %d.%06d secs",
+        fprintf(stderr, "time to %s data%s: %d.%06d secs",
+                (read_or_transfer ? "read" : "transfer"),
                 (contin ? " so far" : ""), (int)res_tm.tv_sec,
                 (int)(res_tm.tv_nsec / 1000));
         if ((a > 0.00001) && (b > 511))
@@ -1888,7 +1888,8 @@ calc_duration_throughput(int contin)
         a = res_tm.tv_sec;
         a += (0.000001 * res_tm.tv_usec);
         b = (double)ibs_hold * blks;
-        fprintf(stderr, "time to transfer data%s: %d.%06d secs",
+        fprintf(stderr, "time to %s data%s: %d.%06d secs",
+                (read_or_transfer ? "read" : "transfer"),
                 (contin ? " so far" : ""), (int)res_tm.tv_sec,
                 (int)res_tm.tv_usec);
         if ((a > 0.00001) && (b > 511))
@@ -3276,6 +3277,7 @@ main(int argc, char * argv[])
         fprintf(stderr, "  initial count=%"PRId64" (blocks of input), "
                 "blocks_per_transfer=%d\n", dd_count, opts.bpt_i);
     }
+    read_or_transfer = !! (FT_DEV_NULL & opts.out_type);
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
     if (do_time) {
         start_tm.tv_sec = 0;

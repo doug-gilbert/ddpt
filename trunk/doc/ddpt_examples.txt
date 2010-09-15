@@ -111,7 +111,7 @@ $ ddpt if=/dev/sda7 skip=4m bs=512 oflag=sparse count=10m
 10485760+0 records in
 0+0 records out
 8895616 bypassed records out
-time to transfer data: 138.777383 secs at 38.69 MB/sec
+time to read data: 138.777383 secs at 38.69 MB/sec
 # Actually a copy buffer (64 KB) at a time is being checked for all
 # zeros so that count understates the true value. By setting OBPC to
 # 1, each block will be checked at a (slight) cost in execution time:
@@ -119,7 +119,7 @@ $ ddpt if=/dev/sda7 skip=4m bs=512 oflag=sparse count=10m bpt=128,1
 10485760+0 records in
 0+0 records out
 8908836 bypassed records out
-time to transfer data: 136.614629 secs at 39.30 MB/sec
+time to read data: 136.614629 secs at 39.30 MB/sec
 
 # As an example of write sparing, assume the regular file t exists
 # and tt doesn't:
@@ -199,11 +199,11 @@ time to transfer data so far: 405.905942 secs at 54.88 MB/sec
 0+0 records out
 82402488 trimmed records out
 time to transfer data: 768.067647 secs at 54.93 MB/sec
-# What happened here was a SIGUSR1 signal was sent to the process
-# running ddpt with a 'kill -s SIGUSR1 <pid>' command. The <pid>
-# of a running ddpt can be found with the 'ps ax' command. When
-# ddpt receives this signal it prints out a progress report and
-# continues.
+# Notice the "Progress report, continuing ..." line and the
+# idented lines following it. What happened here was a SIGUSR1
+# signal was sent to the process # running ddpt with a
+# 'kill -s SIGUSR1 <pid>' command. The <pid> of a running ddpt
+# can be found with the 'ps ax' command.
 
 
 # self trim is when segments of zeros (64 KB of zeros in the first
@@ -211,7 +211,9 @@ time to transfer data: 768.067647 secs at 54.93 MB/sec
 # In Linux /dev/sg* and /dev/bsg/* are pt devices.
 $ ddpt if=/dev/sg0 bs=512 skip=130045952 iflag=self,trim
 
-# increase speed and reduce granularity on trim check to 1 output block
+# increase speed and reduce granularity on trim check to 1 output
+# block (i.e. 512 bytes at a time). May result in a lot more small
+# "trim" commands being issued.
 $ ddpt if=/dev/sg0 bs=512 skip=130045952 iflag=self,trim bpt=1024,1
 
 # the self flag does some option juggling and transforms the previous
@@ -223,4 +225,4 @@ oflag=trim,nowrite bpt=1024,1
 # "iflag=self,trim" form and avoid the pitfalls of replicated arguments.
 
 
-# Douglas Gilbert 20100909
+# Douglas Gilbert 20100915
