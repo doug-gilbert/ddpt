@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.91 20100903 [svn: r115]";
+static char * version_str = "0.91 20100915 [svn: r117]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -1849,9 +1849,11 @@ calc_duration_throughput(int contin)
     double a, b;
     int64_t blks;
 
+#warning boo
+
     if (start_tm_valid && (start_tm.tv_sec || start_tm.tv_nsec)) {
         blks = in_full;
-        clock_gettimeofday(CLOCK_MONOTONIC, &end_tm);
+        clock_gettime(CLOCK_MONOTONIC, &end_tm);
         res_tm.tv_sec = end_tm.tv_sec - start_tm.tv_sec;
         res_tm.tv_nsec = end_tm.tv_nsec - start_tm.tv_nsec;
         if (res_tm.tv_nsec < 0) {
