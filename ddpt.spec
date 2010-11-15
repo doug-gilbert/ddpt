@@ -1,5 +1,5 @@
 %define	name	ddpt
-%define	version	0.91
+%define	version	0.92
 %define	release	1
 
 Summary:	Copy files (like dd) especially SCSI/storage devices
@@ -51,6 +51,9 @@ fi
 %{_mandir}/man8/*
 
 %changelog
+* Fri Sep 24 2010 - dgilbert at interlog dot com
+- xxxxxxxxxxx
+  * ddpt-0.91
 * Fri Aug 13 2010 - dgilbert at interlog dot com
 - extend bpt=BPT to bpt=BPT[,OBPC], resume and trim flags
   * ddpt-0.91
