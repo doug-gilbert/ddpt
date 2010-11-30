@@ -2,8 +2,9 @@ The version number is hardcoded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.92 [20100924] [svn: r122]
-  - xxxxxxxxxxxxxx
+Changelog for ddpt-0.92 [20101130] [svn: r123]
+  - when pt used on block device and discrepancy between size
+    of block device and read capacity size, require force flag
 
 Changelog for ddpt-0.91 [20100920] [svn: r121]
   - rework copy loop.

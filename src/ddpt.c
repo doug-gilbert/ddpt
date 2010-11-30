@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20100924 [svn: r122]";
+static char * version_str = "0.92 20101130 [svn: r123]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -1039,10 +1039,11 @@ scsi_read_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
     return 0;
 }
 
-/* get_blkdev_capacity() returns 0 -> success or -1 -> failure. If
- * successful writes back sector size (logical block size) using the sect_sz
- * pointer. Also writes back the number of sectors (logical blocks) on the
- * block device using num_sect pointer. */
+/* get_blkdev_capacity() returns 0 -> success or -1 -> failure.
+ * which_arg should either be DDPT_ARG_IN or DDPT_ARG_OUT (or
+ * DDPT_ARG_OUT2) . If successful writes back sector size (logical block
+ * size) using the sect_sz * pointer. Also writes back the number of
+ * sectors (logical blocks) on the block device using num_sect pointer. */
 
 #ifdef SG_LIB_LINUX
 static int
@@ -2162,6 +2163,8 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
 {
     int res;
     struct stat st;
+    int64_t num_sect, t;
+    int sect_sz;
 
     *in_num_sectp = -1;
     *in_sect_szp = -1;
@@ -2200,6 +2203,19 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
                             "override\n");
                     return -1;
                 }
+            }
+        }
+        if ((FT_BLOCK & optsp->in_type) && (0 == optsp->iflagp->force) &&
+            (0 == get_blkdev_capacity(optsp, DDPT_ARG_IN, &num_sect,
+                                      &sect_sz, verbose))) {
+            t = (*in_num_sectp) * (*in_sect_szp);
+            if (t != (num_sect * sect_sz)) {
+                fprintf(stderr, ">> warning: size of input block device is "
+                        "different from pt size.\n>> Pass-through on block "
+                        "partition can give unexpected results.\n");
+                fprintf(stderr, ">> abort copy, use iflag=force to "
+                        "override\n");
+                return -1;
             }
         }
     } else if ((dd_count > 0) && (0 == optsp->oflagp->resume))
@@ -2265,6 +2281,19 @@ check_of:
                             "override\n");
                     return -1;
                 }
+            }
+        }
+        if ((FT_BLOCK & optsp->out_type) && (0 == optsp->oflagp->force) &&
+            (0 == get_blkdev_capacity(optsp, DDPT_ARG_OUT, &num_sect,
+                                      &sect_sz, verbose))) {
+            t = (*out_num_sectp) * (*out_sect_szp);
+            if (t != (num_sect * sect_sz)) {
+                fprintf(stderr, ">> warning: size of output block device is "
+                        "different from pt size.\n>> Pass-through on block "
+                        "partition can give unexpected results.\n");
+                fprintf(stderr, ">> abort copy, use oflag=force to "
+                        "override\n");
+                return -1;
             }
         }
     } else if ((dd_count > 0) && (0 == optsp->oflagp->resume))
