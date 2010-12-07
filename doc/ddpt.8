@@ -1,4 +1,4 @@
-.TH DDPT "8" "September 2010" "ddpt\-0.91" DDPT
+.TH DDPT "8" "December 2010" "ddpt\-0.92" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -52,7 +52,8 @@ flag (e.g. "if=/dev/sdc iflag=pt"). When pt access is specified any
 partition information is
 .B ignored.
 So "if=/dev/sdc2 iflag=pt skip=3" will start at logical block address 3
-of '/dev/sdc'.
+of '/dev/sdc'. As a protection measure in version 0.92 ddpt will only
+accept that if the force flag is given in addition to pt.
 .SH OPTIONS
 .TP
 \fBbpt\fR=\fIBPT[,OBPC]\fR
@@ -339,7 +340,9 @@ and no copy is done. See flock(2) man page.
 force [io] [pt]
 override difference between given block size and the block size found
 by the SCSI READ CAPACITY command. Use the given block size. Without
-this flag the copy would not be performed.
+this flag the copy would not be performed. pt access to what appears
+to be a block partition is aborted in version 0.92; that can be overridden
+by the force flag.
 .TP
 fua [io] [pt]
 causes the FUA (force unit access) bit to be set in SCSI READ and/or WRITE
