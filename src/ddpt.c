@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20101130 [svn: r123]";
+static char * version_str = "0.92 20101207 [svn: r124]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -2210,11 +2210,11 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
                                       &sect_sz, verbose))) {
             t = (*in_num_sectp) * (*in_sect_szp);
             if (t != (num_sect * sect_sz)) {
-                fprintf(stderr, ">> warning: size of input block device is "
+                fprintf(stderr, ">> warning: Size of input block device is "
                         "different from pt size.\n>> Pass-through on block "
-                        "partition can give unexpected results.\n");
-                fprintf(stderr, ">> abort copy, use iflag=force to "
-                        "override\n");
+                        "partition can give unexpected offsets.\n");
+                fprintf(stderr, ">> Abort copy, use iflag=force to "
+                        "override.\n");
                 return -1;
             }
         }
