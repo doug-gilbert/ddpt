@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20101214 [svn: r125]";
+static char * version_str = "0.92 20101215 [svn: r126]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -1356,7 +1356,7 @@ pt_low_read(int sg_fd, int in0_out1, unsigned char * buff, int blocks,
             /* MMC and MO devices don't necessarily set VALID bit */
             if (info_valid || ((*io_addrp > 0) &&
                                ((5 == ifp->pdt) || (7 == ifp->pdt))))
-                ret = SG_LIB_CAT_MEDIUM_HARD_WITH_INFO;
+                ret = SG_LIB_CAT_MEDIUM_HARD_WITH_INFO; // <<<<<<<<<<<<
             else
                 fprintf(stderr, "Medium, hardware or blank check error but "
                         "no lba of failure in sense data\n");
@@ -1392,7 +1392,10 @@ pt_low_read(int sg_fd, int in0_out1, unsigned char * buff, int blocks,
     } else
         ret = 0;
 
-    sum_of_resids += get_scsi_pt_resid(ptvp);
+    k = get_scsi_pt_resid(ptvp);
+    if ((verbose > 2) && k)
+        fprintf(stderr, "  read fewer bytes than requested: resid=%d\n", k);
+    sum_of_resids += k;
     return ret;
 }
 
@@ -2520,10 +2523,8 @@ coe_cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
             num_read = 0;
         else
             return SG_LIB_CAT_OTHER;
-    } else {
+    } else
         num_read = (numread_errno / ibs) * ibs;
-        dStrHex((const char *)wrkPos, 16, 0);
-    }
 
     k = num_read / ibs;
     csp->bytes_read = num_read;
