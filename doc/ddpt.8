@@ -97,17 +97,17 @@ that a 4 byte block number may be exceeded or \fIBPT\fR is greater than
 16 bits (65535), in which case it defaults to 16 byte SCSI commands).
 .TP
 \fBcoe\fR=0 | 1
-set to 1 for continue on error. Only applies to errors on pt
-devices. Thus errors on other files will stop ddpt. Default is 0 which
-implies stop on any error. See the 'coe' flag for more information.
+set to 1 for continue on error. Applies to errors on input and output pt
+devices plus input from block devices or regular files. Errors on other
+files will stop ddpt. Default is 0 which implies stop on any error. See
+the 'coe' flag for more information.
 .TP
 \fBcoe_limit\fR=\fICL\fR
 where \fICL\fR is the maximum number of consecutive bad blocks stepped
-over (due to "coe=1") on reads before the copy terminates. This only
-applies when \fIIFILE\fR is a pt device. The default is 0 which is
-interpreted as no limit. This option is meant to stop the copy soon after
-unrecorded media is detected while still offering "continue on error"
-capability.
+over (due to "coe=1") on reads before the copy terminates. The default
+is 0 which is interpreted as no limit. This option is meant to stop the
+copy soon after unrecorded media is detected while still
+offering "continue on error" capability.
 .TP
 \fBconv\fR=\fICONVS\fR
 see the CONVERSIONS section below.
@@ -284,22 +284,32 @@ or, if \fISEEK\fR is given, starting at block \fISEEK\fR. Note that
 attempting to 'append' to a device file (e.g. a disk) will usually be
 ignored or may cause an error to be reported.
 .TP
-coe [io] [pt]
-continue on error. 'iflag=coe oflag=coe' and 'coe=1' are equivalent. A
+.I coe [io] [pt], [i] [reg,blk]
+continue on error. 'iflag=coe oflag=coe' and 'coe=1' are equivalent.
+Errors occurring on output regular or block files will stop ddpt.
+Error messages are sent to stderr. This flag is similar
+to 'conv=noerror,sync' in the
+.B dd(1)
+utility. Unrecovered errors are counted and output in the summary at
+the end of the copy.
+.IP
+This paragraph is about coe on pt devices. A
 medium, hardware or blank check error while reading will re\-read blocks
 prior to the bad block, then try to recover the bad block, supplying zeros
 if that fails, and finally reread the blocks after the bad block. A
 medium, hardware or blank check error while writing is noted and ignored.
 SCSI disks may automatically try and remap faulty sectors (see the AWRE
 and ARRE in the read write error recovery mode page (the sdparm utility
-can access these attributes)).
-Unrecovered errors are counted and output in the summary at the end of
-the copy. If bad LBAs are reported by the pass\-through then the LBA of the
-lowest and highest bad block is also output. Errors occurring on other
-file types will stop ddpt. Error messages are sent to stderr. This flag
-is similar to 'conv=noerror,sync' in the
-.B dd(1)
-utility.
+can access these attributes)). If bad LBAs are reported by the
+pass\-through then the LBA of the lowest and highest bad block is also
+output.
+.IP
+This paragraph is about coe on input regular files and block devices.
+When a EIO or EREMOTEIO error is detected on a normal segment read then
+the segment is re-read one block (i.e. \fIIBS\fR bytes) at a time. Any
+block that yields a EIO or EREMOTEIO error is replaced by zeros. Any
+other error, a short read or an end of file will terminate the copy,
+usually after the data that has been read is written to the output file.
 .TP
 direct [io] [reg,blk]
 causes the O_DIRECT flag to be added to the open of \fIIFILE\fR and/or
@@ -342,7 +352,8 @@ override difference between given block size and the block size found
 by the SCSI READ CAPACITY command. Use the given block size. Without
 this flag the copy would not be performed. pt access to what appears
 to be a block partition is aborted in version 0.92; that can be overridden
-by the force flag.
+by the force flag. For related reasons the 'norcap' flag requires this
+flag when applied to a block device accessed via pt.
 .TP
 fua [io] [pt]
 causes the FUA (force unit access) bit to be set in SCSI READ and/or WRITE
@@ -362,6 +373,9 @@ it will increase the read ahead on \fIIFILE\fR.
 .TP
 norcap [io] [pt]
 do not perform SCSI READ CAPACITY command on the corresponding pt device.
+If used on block device accessed via pt then 'force' flag is also
+required. This is to warn about using pt access on what may be a block
+device partition.
 .TP
 nowrite [o] [reg,blk,pt]
 bypass writes to \fIOFILE\fR. The "records out" count is not incremented.
@@ -797,7 +811,7 @@ Written by Doug Gilbert
 .SH "REPORTING BUGS"
 Report bugs to <dgilbert at interlog dot com>.
 .SH COPYRIGHT
-Copyright \(co 2008\-2010 Douglas Gilbert
+Copyright \(co 2008\-2011 Douglas Gilbert
 .br
 This software is distributed under the GPL version 2. There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
