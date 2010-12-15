@@ -225,4 +225,13 @@ oflag=trim,nowrite bpt=1024,1
 # "iflag=self,trim" form and avoid the pitfalls of replicated arguments.
 
 
-# Douglas Gilbert 20100915
+# If some command line arithmetic is required (e.g. with the skip, seek
+# and/or count arguments) then the bash shell offers the "$(( ))" syntax.
+# It is basically integer arithmetic, probably up to 64 bits precision,
+# with hex number accepted (leading 0x) but without multiplier suffixes
+# (e.g. $((1M + 1)) is not accepted). See the "ARITHMETIC EVALUATION"
+# section in the bash man page.
+$ ddpt if=/dev/sg1 skip=$((0xfff + 1)) count=1
+
+
+# Douglas Gilbert 20101212
