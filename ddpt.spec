@@ -51,9 +51,9 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Tue Nov 30 2010 - dgilbert at interlog dot com
-- warn about pt on block partitions
-  * ddpt-0.91
+* Wed Dec 15 2010 - dgilbert at interlog dot com
+- warn about pt on block partitions, coe on reg,blk in
+  * ddpt-0.92
 * Fri Aug 13 2010 - dgilbert at interlog dot com
 - extend bpt=BPT to bpt=BPT[,OBPC], resume and trim flags
   * ddpt-0.91
