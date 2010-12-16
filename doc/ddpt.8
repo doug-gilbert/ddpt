@@ -231,6 +231,9 @@ If \fIskip=SKIP\fR or \fIskip=SEEK\fR are given and the \fICOUNT\fR is
 deduced (i.e. not explicitly given) then that size is scaled back so
 that the copy will not overrun the file or device.
 .PP
+If \fICOUNT\fR is not given and \fIIFILE\fR is a fifo (and stdin is
+treated as a fifo) then \fIIFILE\fR is read until an EOF is detected.
+.PP
 If \fICOUNT\fR is not given and cannot be deduced then an error message
 is issued and no copy takes place.
 .SH CONVERSIONS

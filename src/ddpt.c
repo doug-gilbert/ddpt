@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20101215 [svn: r126]";
+static char * version_str = "0.92 20101216 [svn: r127]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -139,6 +139,7 @@ static int num_retries = 0;
 static int sum_of_resids = 0;
 static int interrupted_retries = 0;
 static int err_to_report = 0;
+static int reading_fifo = 0;
 
 static struct sg_pt_base * if_ptvp = NULL;
 static struct sg_pt_base * of_ptvp = NULL;
@@ -247,7 +248,7 @@ usage()
 static void
 print_stats(const char * str)
 {
-    if (0 != dd_count)
+    if ((0 != dd_count) && (! reading_fifo))
         fprintf(stderr, "  remaining block count=%"PRId64"\n", dd_count);
     fprintf(stderr, "%s%"PRId64"+%d records in\n", str, in_full - in_partial,
             in_partial);
@@ -1392,10 +1393,9 @@ pt_low_read(int sg_fd, int in0_out1, unsigned char * buff, int blocks,
     } else
         ret = 0;
 
-    k = get_scsi_pt_resid(ptvp);
-    if ((verbose > 2) && k)
-        fprintf(stderr, "  read fewer bytes than requested: resid=%d\n", k);
-    sum_of_resids += k;
+    /* We are going to re-read those good blocks */
+    if (SG_LIB_CAT_MEDIUM_HARD_WITH_INFO != ret)
+        sum_of_resids += get_scsi_pt_resid(ptvp);
     return ret;
 }
 
@@ -1943,6 +1943,8 @@ open_if(struct opts_t * optsp, int verbose)
     if (verbose)
         fprintf(stderr, " >> Input file type: %s\n",
                 dd_filetype_str(optsp->in_type, ebuff));
+    if (FT_FIFO & optsp->in_type)
+        ++reading_fifo;
 
     if (FT_TAPE & optsp->in_type) {
         fprintf(stderr, "unable to use scsi tape device %s\n", inf);
@@ -3166,6 +3168,8 @@ resume_calc_count(struct opts_t * op)
             out_num_sect -= op->seek;
         if ((out_num_sect < 0) && (in_num_sect > 0))
             dd_count = in_num_sect;
+        else if (reading_fifo)
+            ;
         else if ((out_num_sect < 0) && (in_num_sect <= 0))
             ;
         else {
@@ -3217,7 +3221,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
     struct cp_state_t cp_st;
     struct cp_state_t * csp;
 
-    if (dd_count <= 0)
+    if ((dd_count <= 0) && (! reading_fifo))
         return 0;
     csp = &cp_st;
     memset(csp, 0, sizeof(struct cp_state_t));
@@ -3228,13 +3232,13 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
     /* Both csp->if_filepos and csp->of_filepos are 0 */
 
     /* <<< main loop that does the copy >>> */
-    while (dd_count > 0) {
+    while ((dd_count > 0) || reading_fifo) {
         csp->bytes_read = 0;
         csp->bytes_of = 0;
         csp->bytes_of2 = 0;
         sparing_skip = 0;
         sparse_skip = 0;
-        if (dd_count >= ibpt) {
+        if ((dd_count >= ibpt) || reading_fifo) {
             csp->icbpt = ibpt;
             csp->ocbpt = obpt;
         } else {
@@ -3259,7 +3263,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
         if (0 == csp->icbpt)
             break;      /* nothing read so leave loop */
 
-        if ((optsp->out2f[0]) &&
+        if ((optsp->out2fd >= 0) &&
             ((ret = cp_write_of2(optsp, csp, wrkPos))))
             break;
 
@@ -3388,9 +3392,13 @@ main(int argc, char * argv[])
     opts.iflagp->pdt = -1;
     opts.oflagp->pdt = -1;
     if (opts.inf[0]) {
-        if ('-' == opts.inf[0])
+        if (('-' == opts.inf[0]) && ('\0' == opts.inf[1])) {
             fd = STDIN_FILENO;
-        else {
+            opts.in_type = FT_FIFO;
+            ++reading_fifo;
+            if (verbose)
+                fprintf(stderr, " >> Input file type: fifo\n");
+        } else {
             fd = open_if(&opts, verbose);
             if (fd < 0)
                 return -fd;
@@ -3405,9 +3413,12 @@ main(int argc, char * argv[])
 
     if ('\0' == opts.outf[0])
         strcpy(opts.outf, "."); /* treat no 'of=OFILE' option as /dev/null */
-    if ('-' == opts.outf[0])
+    if (('-' == opts.outf[0]) && ('\0' == opts.outf[1])) {
         fd = STDOUT_FILENO;
-    else {
+        opts.out_type = FT_FIFO;
+        if (verbose)
+            fprintf(stderr, " >> Output file type: fifo\n");
+    } else {
         fd = open_of(&opts, verbose);
         if (fd < -1)
             return -fd;
@@ -3415,15 +3426,32 @@ main(int argc, char * argv[])
     opts.outfd = fd;
 
     if (opts.out2f[0]) {
-        opts.out2_type = dd_filetype(opts.out2f);
-        if ((fd = open(opts.out2f, O_WRONLY | O_CREAT, 0666)) < 0) {
-            res = errno;
-            fprintf(stderr, "could not open %s for writing: %s\n",
-                    opts.out2f, safe_strerror(errno));
-            return res;
+        if (('-' == opts.out2f[0]) && ('\0' == opts.out2f[1])) {
+            fd = STDOUT_FILENO;
+            opts.out2_type = FT_FIFO;
+            if (verbose)
+                fprintf(stderr, " >> Output 2 file type: fifo\n");
+        } else {
+            opts.out2_type = dd_filetype(opts.out2f);
+            if (FT_DEV_NULL & opts.out2_type)
+                fd = -1;
+            else if (0 == (FT_REG & opts.out2_type)) {
+                fprintf(stderr, "Error: output 2 file type must be regular "
+                        "file or fifo\n");
+                return SG_LIB_FILE_ERROR;
+            } else {
+                if ((fd = open(opts.out2f, O_WRONLY | O_CREAT, 0666)) < 0) {
+                    res = errno;
+                    fprintf(stderr, "could not open %s for writing: %s\n",
+                            opts.out2f, safe_strerror(errno));
+                    return res;
+                }
+                if (sg_set_binary_mode(fd) < 0)
+                    perror("sg_set_binary_mode");
+                if (verbose)
+                    fprintf(stderr, " >> Output 2 file type: regular\n");
+            }
         }
-        if (sg_set_binary_mode(fd) < 0)
-            perror("sg_set_binary_mode");
     } else
         fd = -1;
     opts.out2fd = fd;
@@ -3453,7 +3481,7 @@ main(int argc, char * argv[])
 
     if (resume_calc_count(&opts))
         goto cleanup;
-    if (dd_count < 0) {
+    if ((dd_count < 0) && (! reading_fifo)) {
         fprintf(stderr, "Couldn't calculate count, please give one\n");
         return SG_LIB_CAT_OTHER;
     }
@@ -3595,7 +3623,7 @@ cleanup:
         close(opts.out2fd);
     if ((0 == ret) && err_to_report)
         ret = err_to_report;
-    if (0 != dd_count) {
+    if ((0 != dd_count) && (! reading_fifo)) {
         if (0 == ret)
             fprintf(stderr, "Early termination, EOF on input?\n");
         else if (3 == ret)
