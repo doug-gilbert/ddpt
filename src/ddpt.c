@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20101218 [svn: r128]";
+static char * version_str = "0.92 20101218 [svn: r129]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -2530,6 +2530,7 @@ coe_cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         num_read = (numread_errno / ibs) * ibs;
 
     k = num_read / ibs;
+    in_full += k;
     csp->bytes_read = num_read;
     my_skip = optsp->skip + k;
     offset = my_skip * ibs;
