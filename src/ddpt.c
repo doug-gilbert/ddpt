@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20101216 [svn: r127]";
+static char * version_str = "0.92 20101218 [svn: r128]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -991,7 +991,7 @@ dd_filetype(const char * filename)
 #endif
 
 static char *
-dd_filetype_str(int ft, char * buff)
+dd_filetype_str(int ft, char * buff, const char * fname)
 {
     int off = 0;
 
@@ -1002,15 +1002,19 @@ dd_filetype_str(int ft, char * buff)
     if (FT_BLOCK & ft)
         off += snprintf(buff + off, 32, "block device ");
     if (FT_FIFO & ft)
-        off += snprintf(buff + off, 32, "fifo [named pipe] ");
+        off += snprintf(buff + off, 32, "fifo [stdin, stdout, named pipe]");
     if (FT_TAPE & ft)
         off += snprintf(buff + off, 32, "SCSI tape device ");
     if (FT_REG & ft)
         off += snprintf(buff + off, 32, "regular file ");
     if (FT_OTHER & ft)
         off += snprintf(buff + off, 32, "other file type ");
-    if (FT_ERROR & ft)
-        off += snprintf(buff + off, 32, "unable to 'stat' file ");
+    if (FT_ERROR & ft) {
+        if (fname)
+            off += snprintf(buff + off, 32, "unable to 'stat' %s ", fname);
+        else
+            off += snprintf(buff + off, 32, "unable to 'stat' file ");
+    }
     return buff;
 }
 
@@ -1942,7 +1946,7 @@ open_if(struct opts_t * optsp, int verbose)
         optsp->in_type |= FT_PT;
     if (verbose)
         fprintf(stderr, " >> Input file type: %s\n",
-                dd_filetype_str(optsp->in_type, ebuff));
+                dd_filetype_str(optsp->in_type, ebuff, inf));
     if (FT_FIFO & optsp->in_type)
         ++reading_fifo;
 
@@ -2056,7 +2060,7 @@ open_of(struct opts_t * optsp, int verbose)
         optsp->out_type |= FT_PT;
     if (verbose)
         fprintf(stderr, " >> Output file type: %s\n",
-                dd_filetype_str(optsp->out_type, ebuff));
+                dd_filetype_str(optsp->out_type, ebuff, outf));
 
     if (FT_TAPE & optsp->out_type) {
         fprintf(stderr, "unable to use scsi tape device %s\n", outf);
@@ -2445,9 +2449,6 @@ cp_read_pt(struct opts_t * optsp, struct cp_state_t * csp,
         if (verbose > 1)
             fprintf(stderr, "short read, requested %d blocks, got "
                     "%d blocks\n", csp->icbpt, blks_read);
-#if 0
-        dd_count = blks_read;   /* force exit after write */
-#endif
         ++csp->leave_after_write;
         /* csp->leave_reason = 0; assume at end rather than error */
         csp->icbpt = blks_read;
@@ -2486,9 +2487,6 @@ cp_read_block_win(struct opts_t * optsp, struct cp_state_t * csp,
         if (res < numbytes) {
             /* assume no partial reads (i.e. non integral blocks) */
             csp->icbpt = res / optsp->ibs;
-#if 0
-            dd_count = csp->icbpt;
-#endif
             ++csp->leave_after_write;
             /* csp->leave_reason = 0; assume at end rather than error */
             csp->ocbpt = res / optsp->obs;
@@ -2506,6 +2504,9 @@ cp_read_block_win(struct opts_t * optsp, struct cp_state_t * csp,
 }
 #endif
 
+/* Error occurred on block/regular read. coe active so redo read, one block
+ * at a time. Return 0 if successful, SG_LIB_CAT_OTHER if error other than
+ * EIO or EREMOTEIO, SG_LIB_FILE_ERROR if lseek fails. */
 static int
 coe_cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                       unsigned char * wrkPos, int numread_errno)
@@ -2643,7 +2644,7 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         fprintf(stderr, "read(unix): requested bytes=%d, res=%d\n",
                 numbytes, res);
     if ((optsp->iflagp->coe) && (res < numbytes)) {
-        res2 = (res >= 0) ? res : errno; 
+        res2 = (res >= 0) ? res : -errno; 
         if ((res < 0) && verbose) {
             fprintf(stderr, "reading, skip=%"PRId64" : %s, go to coe\n",
                     optsp->skip, safe_strerror(errno));
@@ -2664,9 +2665,6 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
             ++csp->icbpt;
             ++in_partial;
         }
-#if 0
-        dd_count = csp->icbpt;  /* this causes termination after write */
-#endif
         csp->ocbpt = res / optsp->obs;
         ++csp->leave_after_write;
         csp->leave_reason = 0;  /* fall through is assumed EOF */
@@ -3397,7 +3395,8 @@ main(int argc, char * argv[])
             opts.in_type = FT_FIFO;
             ++reading_fifo;
             if (verbose)
-                fprintf(stderr, " >> Input file type: fifo\n");
+                fprintf(stderr, " >> Input file type: fifo [stdin, stdout, "
+                        "named pipe]\n");
         } else {
             fd = open_if(&opts, verbose);
             if (fd < 0)
@@ -3417,7 +3416,8 @@ main(int argc, char * argv[])
         fd = STDOUT_FILENO;
         opts.out_type = FT_FIFO;
         if (verbose)
-            fprintf(stderr, " >> Output file type: fifo\n");
+            fprintf(stderr, " >> Output file type: fifo [stdin, stdout, "
+                    "named pipe]\n");
     } else {
         fd = open_of(&opts, verbose);
         if (fd < -1)
@@ -3430,7 +3430,8 @@ main(int argc, char * argv[])
             fd = STDOUT_FILENO;
             opts.out2_type = FT_FIFO;
             if (verbose)
-                fprintf(stderr, " >> Output 2 file type: fifo\n");
+                fprintf(stderr, " >> Output 2 file type: fifo  [stdin, "
+                        "stdout, named pipe]\n");
         } else {
             opts.out2_type = dd_filetype(opts.out2f);
             if (FT_DEV_NULL & opts.out2_type)
