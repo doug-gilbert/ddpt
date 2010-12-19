@@ -2,7 +2,7 @@ The version number is hardcoded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.92 [20101216] [svn: r127]
+Changelog for ddpt-0.92 [20101218] [svn: r128]
   - when pt used on block device and discrepancy between size
     of block device and read capacity size, require force flag
   - add coe support for input block devices and regular files
