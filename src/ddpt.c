@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20101218 [svn: r129]";
+static char * version_str = "0.92 20101220 [svn: r130]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -123,18 +123,20 @@ static char * version_str = "0.92 20101218 [svn: r129]";
 static int64_t dd_count = -1;   /* of input blocks */
 static int64_t req_count = 0;
 static int64_t in_full = 0;
-static int in_partial = 0;
+static int in_partial = 0;      /* unrecoverable reads considered partial */
 static int64_t out_full = 0;
 static int out_partial = 0;
 static int out_sparse_active = 0;
 static int out_sparing_active = 0;
 static int out_trim_active = 0;
 static int64_t out_sparse = 0;  /* used for sparse, sparing + trim */
-static int recovered_errs = 0;
-static int unrecovered_errs = 0;
+static int recovered_errs = 0;          /* on reads */
+static int unrecovered_errs = 0;        /* on reads */
+static int wr_recovered_errs = 0;
+static int wr_unrecovered_errs = 0;
 static int trim_errs = 0;
-static int64_t lowest_unrecovered = 0;
-static int64_t highest_unrecovered = -1;
+static int64_t lowest_unrecovered = 0;          /* on reads */
+static int64_t highest_unrecovered = -1;        /* on reads */
 static int num_retries = 0;
 static int sum_of_resids = 0;
 static int interrupted_retries = 0;
@@ -160,7 +162,6 @@ static int max_uas = MAX_UNIT_ATTENTIONS;
 static int max_aborted = MAX_ABORTED_CMDS;
 static int coe_limit = 0;
 static int coe_count = 0;
-static int some_coe_set = 0;
 
 static unsigned char * zeros_buff = NULL;
 
@@ -248,12 +249,26 @@ usage()
 static void
 print_stats(const char * str)
 {
+    int partial;
+
     if ((0 != dd_count) && (! reading_fifo))
         fprintf(stderr, "  remaining block count=%"PRId64"\n", dd_count);
-    fprintf(stderr, "%s%"PRId64"+%d records in\n", str, in_full - in_partial,
-            in_partial);
-    fprintf(stderr, "%s%"PRId64"+%d records out\n", str,
-            out_full - out_partial, out_partial);
+    partial = in_partial + unrecovered_errs;    /* gnu dd does this */
+    if (partial > in_full) {
+        partial = in_partial;
+        if (partial > in_full)
+            partial = 0;
+    }
+    fprintf(stderr, "%s%"PRId64"+%d records in\n", str, in_full - partial,
+            partial);
+    partial = out_partial + wr_unrecovered_errs;
+    if (partial > out_full) {
+        partial = out_partial;
+        if (partial > out_full)
+            partial = 0;
+    }
+    fprintf(stderr, "%s%"PRId64"+%d records out\n", str, out_full - partial,
+            partial);
     if (out_sparse_active || out_sparing_active) {
         if (out_trim_active)
             fprintf(stderr, "%s%"PRId64" %s records out\n", str, out_sparse,
@@ -263,16 +278,22 @@ print_stats(const char * str)
                     out_sparse);
     }
     if (recovered_errs > 0)
-        fprintf(stderr, "%s%d recovered errors\n", str, recovered_errs);
+        fprintf(stderr, "%s%d recovered read errors\n", str, recovered_errs);
     if (num_retries > 0)
         fprintf(stderr, "%s%d retries attempted\n", str, num_retries);
-    if (some_coe_set || unrecovered_errs)
-        fprintf(stderr, "%s%d unrecovered error%s\n", str, unrecovered_errs,
-                ((1 == unrecovered_errs) ? "" : "s"));
+    if (unrecovered_errs > 0)
+        fprintf(stderr, "%s%d unrecovered read error%s\n", str,
+                unrecovered_errs, ((1 == unrecovered_errs) ? "" : "s"));
     if (unrecovered_errs && (highest_unrecovered >= 0))
-        fprintf(stderr, "lowest unrecovered lba=%"PRId64", highest "
+        fprintf(stderr, "lowest unrecovered read lba=%"PRId64", highest "
                 "unrecovered lba=%"PRId64"\n", lowest_unrecovered,
                 highest_unrecovered);
+    if (wr_recovered_errs > 0)
+        fprintf(stderr, "%s%d recovered write errors\n", str,
+                wr_recovered_errs);
+    if (wr_unrecovered_errs > 0)
+        fprintf(stderr, "%s%d unrecovered write error%s\n", str,
+                wr_unrecovered_errs, ((1 == wr_unrecovered_errs) ? "" : "s"));
     if (trim_errs)
         fprintf(stderr, "%s%d trim errors\n", str, trim_errs);
     if (interrupted_retries > 0)
@@ -596,8 +617,6 @@ cl_sanity_defaults(struct opts_t * optsp)
         fprintf(stderr, "append flag ignored on input\n");
     if (optsp->iflagp->sparing)
         fprintf(stderr, "sparing flag ignored on input\n");
-    if (optsp->iflagp->sparse)
-        fprintf(stderr, "sparse flag ignored on input\n");
     if (optsp->iflagp->ssync)
         fprintf(stderr, "ssync flag ignored on input\n");
     if (optsp->oflagp->trunc) {
@@ -672,8 +691,6 @@ cl_sanity_defaults(struct opts_t * optsp)
                     "on this platform\n");
 #endif
     }
-    if ((optsp->iflagp->coe > 0) || (optsp->oflagp->coe > 0))
-        some_coe_set = 1;
     return 0;
 }
 
@@ -1658,7 +1675,7 @@ pt_low_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
 
         switch (sense_cat) {
         case SG_LIB_CAT_RECOVERED:
-            ++recovered_errs;
+            ++wr_recovered_errs;
             info_valid = sg_get_sense_info_fld(sense_b, slen, &io_addr);
             if (info_valid)
                 fprintf(stderr, "    lba of last recovered error in this "
@@ -1671,11 +1688,11 @@ pt_low_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
         case SG_LIB_CAT_UNIT_ATTENTION:
             break;
         case SG_LIB_CAT_NOT_READY:
-            ++unrecovered_errs;
+            ++wr_unrecovered_errs;
             break;
         case SG_LIB_CAT_MEDIUM_HARD:
         default:
-            ++unrecovered_errs;
+            ++wr_unrecovered_errs;
             if (ofp->coe) {
                 fprintf(stderr, ">> ignored errors for out blk=%"PRId64" for "
                         "%d bytes\n", to_block, bs * blocks);
@@ -1733,8 +1750,8 @@ pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
                     (uint64_t)to_block, blocks);
             --retries_tmp;
             ++num_retries;
-            if (unrecovered_errs > 0)
-                --unrecovered_errs;
+            if (wr_unrecovered_errs > 0)
+                --wr_unrecovered_errs;
         } else
             break;
         first = 0;
@@ -2506,7 +2523,8 @@ cp_read_block_win(struct opts_t * optsp, struct cp_state_t * csp,
 
 /* Error occurred on block/regular read. coe active so redo read, one block
  * at a time. Return 0 if successful, SG_LIB_CAT_OTHER if error other than
- * EIO or EREMOTEIO, SG_LIB_FILE_ERROR if lseek fails. */
+ * EIO or EREMOTEIO, SG_LIB_FILE_ERROR if lseek fails, and
+ * SG_LIB_CAT_MEDIUM_HARD if the coe_limit is exceeded */
 static int
 coe_cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                       unsigned char * wrkPos, int numread_errno)
@@ -2530,7 +2548,11 @@ coe_cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         num_read = (numread_errno / ibs) * ibs;
 
     k = num_read / ibs;
-    in_full += k;
+    if (k > 0) {
+        in_full += k;
+        if (coe_limit > 0)
+            coe_count = 0;  /* good read clears coe_count */
+    }
     csp->bytes_read = num_read;
     my_skip = optsp->skip + k;
     offset = my_skip * ibs;
@@ -2558,6 +2580,11 @@ coe_cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
             goto short_read;
         } else if (res < 0) {
             if ((EIO == errno) || (EREMOTEIO == errno)) {
+                if ((coe_limit > 0) && (++coe_count > coe_limit)) {
+                    fprintf(stderr, ">> coe_limit on consecutive reads "
+                            "exceeded\n");
+                    return SG_LIB_CAT_MEDIUM_HARD;
+                }
                 if (highest_unrecovered < 0) {
                     highest_unrecovered = my_skip;
                     lowest_unrecovered = my_skip;
@@ -2584,13 +2611,15 @@ coe_cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
             csp->leave_reason = 0;  /* assume EOF */
             goto short_read;
         } else { /* if (res == ibs) */
+            if (coe_limit > 0)
+                coe_count = 0;
             csp->if_filepos += ibs;
             if (verbose > 2)
                 fprintf(stderr, "reading 1 block, skip=%"PRId64" : okay\n",
                     my_skip);
         }
-        csp->bytes_read += ibs;
         ++in_full;
+        csp->bytes_read += ibs;
     }
     return 0;
 
@@ -3463,6 +3492,14 @@ main(int argc, char * argv[])
                 "Can't have both 'if' as stdin _and_ 'of' as stdout\n");
         fprintf(stderr, "For more information use '--help'\n");
         return SG_LIB_SYNTAX_ERROR;
+    }
+    if (opts.iflagp->sparse && (! opts.oflagp->sparse)) {
+        if (FT_DEV_NULL & opts.out_type) {
+            fprintf(stderr, "sparse flag usually ignored on input; set it "
+                    "on output in this case\n");
+            ++opts.oflagp->sparse;
+        } else
+            fprintf(stderr, "sparse flag ignored on input\n");
     }
     if (oflag.sparse) {
         if (STDOUT_FILENO == opts.outfd) {

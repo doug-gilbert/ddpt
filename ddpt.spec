@@ -51,7 +51,7 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Sat Dec 18 2010 - dgilbert at interlog dot com
+* Mon Dec 20 2010 - dgilbert at interlog dot com
 - warn about pt on block partitions, coe on reg,blk in
   * ddpt-0.92
 * Fri Aug 13 2010 - dgilbert at interlog dot com
