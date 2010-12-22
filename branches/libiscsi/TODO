@@ -1,7 +1,0 @@
-Some suggestions:
-
-  - look into supporting the SCSI EXTENDED COPY command. Syntax should be
-    interesting [20090320]
-
-  - cope with MEDIUM/HARDWARE ERROR when no valid INFO field given and
-    bpt>1 . Broken devices are out there [20100903]
