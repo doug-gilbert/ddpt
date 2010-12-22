@@ -40,27 +40,30 @@
 #endif
 #endif
 
+#define ME "ddpt: "
+
 
 #define STR_SZ 1024
 #define INOUTF_SZ 512
 #define EBUFF_SZ 512
 
 #define DEF_BLOCK_SIZE 512
-#define DEF_BPT_LT8 8192     /* BPT when IBS < 8 */
-#define DEF_BPT_LT64 1024    /* BPT when IBS < 64 */
-#define DEF_BPT_LT1024 128   /* BPT when IBS < 1024 */
-#define DEF_BPT_LT8192 16    /* BPT when IBS < 8192 */
-#define DEF_BPT_LT32768 4    /* BPT when IBS < 32768 */
-#define DEF_BPT_GE32768 1    /* BPT when IBS >= 32768 */
+#define DEF_BLOCKS_PER_TRANSFER 128     /* of input */
+#define DEF_BLOCKS_PER_2048TRANSFER 32
 #define DEF_SCSI_CDBSZ 10
 #define MAX_SCSI_CDBSZ 16
+
+#define DEF_MODE_CDB_SZ 10
+#define DEF_MODE_RESP_LEN 252
+#define RW_ERR_RECOVERY_MP 1
+#define CACHING_MP 8
+#define CONTROL_MP 0xa
 
 #define SENSE_BUFF_LEN 32       /* Arbitrary, could be larger */
 #define READ_CAP_REPLY_LEN 8
 #define RCAP16_REPLY_LEN 32
 
 #define DEF_TIMEOUT 60000       /* 60,000 millisecs == 60 seconds */
-#define WRITE_SAME16_TIMEOUT 180000  /* 3 minutes */
 
 #ifdef SG_LIB_LINUX
 #ifndef RAW_MAJOR
@@ -101,8 +104,6 @@
 #define MAX_UNIT_ATTENTIONS 10
 #define MAX_ABORTED_CMDS 256
 
-#define ERRBLK_SUPPORTED 1
-
 
 struct flags_t {
     int append;
@@ -110,42 +111,30 @@ struct flags_t {
     int coe;
     int direct;
     int dpo;
-#ifdef ERRBLK_SUPPORTED
-    int errblk;
-#endif
     int excl;
     int flock;
-    int force;
     int fua;
     int fua_nv;
     int pdt;
     int nocache;
-    int norcap;
-    int nowrite;
     int pt;
-    int resume;
     int retries;
-    int self;
     int sparing;
     int sparse;
     int ssync;
-    int strunc;
     int sync;
-    int trunc;
-    int wsame16;
 };
 
 struct opts_t {
     int64_t skip;
     int64_t seek;
-    int bs_given;
+    int64_t out2_off;
     int ibs;
     int ibs_given;
     int obs;
     int obs_given;
     int bpt_i;          /* blocks (of input) per transfer */
     int bpt_given;
-    int obpc;
     char inf[INOUTF_SZ];
     int in_type;
     int infd;
@@ -164,24 +153,12 @@ struct opts_t {
 #endif
 };
 
-struct cp_state_t {
-    int64_t if_filepos;
-    int64_t of_filepos;
-    int icbpt;
-    int ocbpt;
-    int bytes_read;
-    int bytes_of;
-    int bytes_of2;
-    int leave_after_write;
-    int leave_reason;   /* =0 for no error (e.g. EOF) */
-};
-
 
 #ifdef SG_LIB_WIN32
 extern int dd_filetype(const char * fn);
 extern int get_blkdev_capacity(struct opts_t * optsp, int which_arg,
                                int64_t * num_sect, int * sect_sz,
-                               int verbose);
+			       int verbose);
 extern void win32_adjust_fns(struct opts_t * optsp);
 extern int win32_open_if(struct opts_t * optsp, int verbose);
 extern int win32_open_of(struct opts_t * optsp, int verbose);

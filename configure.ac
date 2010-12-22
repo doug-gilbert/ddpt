@@ -1,4 +1,4 @@
-AC_INIT(ddpt, 0.92, dgilbert@interlog.com)
+AC_INIT(ddpt, 0.90, dgilbert@interlog.com)
 
 AM_INIT_AUTOMAKE
 AM_CONFIG_HEADER(config.h)
@@ -19,8 +19,6 @@ AC_CHECK_FUNCS(posix_fadvise)
 AC_CHECK_LIB(rt, clock_gettime,
 	     AC_SUBST([rt_libs], ['-lrt']),
 	     AC_SUBST([rt_libs], ['']))
-AC_CHECK_LIB(rt, clock_gettime)
-AC_CHECK_FUNCS(clock_gettime)
 AC_CHECK_FUNCS(gettimeofday)
 
 AC_CANONICAL_HOST
