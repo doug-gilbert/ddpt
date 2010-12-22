@@ -40,6 +40,8 @@
 #endif
 #endif
 
+#define ME "ddpt: "
+
 
 #define STR_SZ 1024
 #define INOUTF_SZ 512
@@ -172,8 +174,6 @@ struct cp_state_t {
     int bytes_read;
     int bytes_of;
     int bytes_of2;
-    int leave_after_write;
-    int leave_reason;   /* =0 for no error (e.g. EOF) */
 };
 
 

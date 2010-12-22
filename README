@@ -62,10 +62,7 @@ files in the above list is changed.
 
 There is a rpm "spec" file in the main directory: ddpt.spec . There are debian
 build files in the "debian" directory and a script called build_debian.sh in
-the main directory. If build_debian.sh fails due to compatibility level.
-Amongst other things debian builds are sensitive to the value in the
-debian/compat file. If it contains "7" then it works on lenny and gives warning
-on squeeze (but fails on the earlier etch).
+the main directory.
 
 License
 -------
@@ -103,4 +100,4 @@ See README.win32
 
 
 Douglas Gilbert
-18th December 2010
+13th August 2010
