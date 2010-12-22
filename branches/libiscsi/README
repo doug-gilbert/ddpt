@@ -1,0 +1,103 @@
+Introduction
+------------
+ddpt is a utility for copying files like its namesake the Unix dd command.
+ddpt is specialized for files that are actually block devices. And if
+those block devices understand SCSI commands then the copy can be done by
+using either SCSI READ or WRITE commands (or both). This latter facility
+is done using a pass-through interface that bypasses the normal operating
+system block handling. This can give very fine-grained control over the
+copy process.
+
+This utility was originally written for Linux. It has been ported to FreeBSD
+and Windows.
+
+Relationship to sg3_utils
+-------------------------
+The sg3_utils (version 1.27) package contains several utilities that mimic
+the standard Unix dd command. Currently those utilities are sg_dd, sgm_dd
+and sgp_dd. Even though most of the other utilities in the sg3_utils package
+are ported to other operating systems, sg_dd and friends are not ported
+since they are too tightly bound to Linux and some of the idiosyncracies of
+its SCSI generic (sg) driver and the associated SG_IO ioctl. So the ddpt
+utility drops some Linux specific features while adding some more general
+features (e.g. write sparing). An attempt has also been made to simplify
+the command line syntax which is still based on the distinctive dd command
+command line syntax. Note that the dd command line syntax is unlike any
+other Unix command (probably imported from some IBM OS many years ago).
+
+This package shares code with sg3_utils (version 1.27). With the subversion
+revision control system this is done by having ddpt's "include/" and "lib/"
+subdirectories pointing to the correspondingly named directories in the
+sg3_utils package using the "svn:externals" property. These two "external"
+directories include more files than ddpt uses. The excess files include
+"lib/Makefile.am" and "lib/Makefile.in". The "Makefile.am" in ddpt's "src/"
+directory does the main part of the build. When the tarball is generated
+for this utility, various files are "exported" out of the subversion
+repository and "svn:externals" redirection is no longer visible (but the
+unused files are visible).
+
+Currently the shared code is statically linked into ddpt. It is the
+intention of the author to make a common library called libsgutils.so in a
+separate package that both ddpt and sg3_utils will depend on at some point
+in the future.
+
+Documentation
+-------------
+The utility outputs a usage message when the "--help" (or '-?') option is
+given. Many syntax errors also result in the usage message being printed.
+There is also a man page which is in section 8 (administration and privileged
+commands). It can be accessed with "man ddpt" once this package is installed.
+Prior to installation the man page can be viewed from this package's main
+directory with "man doc/ddpt.8".
+
+There is a web page at http://sg.danny.cz/sg/ddpt.html and a copy of that
+html file is placed in the "doc" directory.
+
+Build infrastructure
+--------------------
+This packages uses the automake and autoconf tools. The generating files
+(scripts) are configure.ac, Makefile.am, src/Makefile.am and autogen.sh .
+The autogen.sh script only needs to be executed if one of the other generating
+files in the above list is changed.
+
+There is a rpm "spec" file in the main directory: ddpt.spec . There are debian
+build files in the "debian" directory and a script called build_debian.sh in
+the main directory.
+
+License
+-------
+This utility is covered by a FreeBSD license. The intention of the author
+is that both open source and commercial entities can re-use this code.
+Naturally attribution and improvement/bug feedback are encouraged.
+
+Notes
+-----
+Generic information about building this package (i.e. './configure ; make;
+make install') can be found in the INSTALL file. The contents of COPYING is a
+FreeBSD license (rather than the GPL v2 found in the usual template).
+
+Linux port
+----------
+The utility can be used on any device that supports the SG_IO ioctl. In
+the Linux 2.4 series that is only the scsi generic (i.e. /dev/sg* )
+device nodes. In the Linux 2.6 series the supported device nodes has
+expanded to all other SCSI device nodes (e.g. /dev/sd* and /dev/sr*)
+plus block devices such as /dev/hdc when the associated device is a
+DVD drive. The man page and sg.danny.cz/sg/ddpt.html web page examples use
+Linux device node names.
+
+FreeBSD port
+------------
+See README.freebsd
+
+Solaris port
+------------
+See README.solaris
+
+Win32 port
+----------
+See README.win32
+
+
+Douglas Gilbert
+13th August 2010
