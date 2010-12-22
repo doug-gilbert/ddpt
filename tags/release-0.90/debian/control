@@ -1,0 +1,14 @@
+Source: ddpt
+Section: admin
+Priority: optional
+Maintainer: Tomas Fasth <tomfa@debian.org>
+Build-Depends: cdbs (>= 0.4.15), debhelper (>= 4.0.0), autotools-dev
+Standards-Version: 3.6.2
+
+Package: ddpt
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Another dd variant. Copies files. Is specialized
+ for cases where to source and/or destination is a storage
+ device. Can drop down to the SCSI command level to issue
+ READ and WRITE commands through a pass-through interface.

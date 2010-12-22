@@ -1,0 +1,15 @@
+The author of ddpt would like to thank the following people who
+have made contributions:
+
+Mark Knibbs <markk at clara dot co dot uk>
+        suggested support for write sparing and sparse writing.
+        [20081212]
+
+Peter Allworth <linsol at zeta dot org dot au>
+        original dd clone design used by sg3_utils's dd variants
+        (e.g. sg_dd). The sg_dd linux utility has been generalized
+        to become this utility (ddpt). [20081212]
+
+
+Doug Gilbert
+6th January 2009
