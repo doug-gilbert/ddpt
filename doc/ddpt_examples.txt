@@ -200,7 +200,7 @@ time to transfer data so far: 405.905942 secs at 54.88 MB/sec
 82402488 trimmed records out
 time to transfer data: 768.067647 secs at 54.93 MB/sec
 # Notice the "Progress report, continuing ..." line and the
-# idented lines following it. What happened here was a SIGUSR1
+# indented lines following it. What happened here was a SIGUSR1
 # signal was sent to the process # running ddpt with a
 # 'kill -s SIGUSR1 <pid>' command. The <pid> of a running ddpt
 # can be found with the 'ps ax' command.
@@ -231,7 +231,7 @@ oflag=trim,nowrite bpt=1024,1
 # with hex number accepted (leading 0x) but without multiplier suffixes
 # (e.g. $((1M + 1)) is not accepted). See the "ARITHMETIC EVALUATION"
 # section in the bash man page.
-$ ddpt if=/dev/sg1 skip=$((0xfff + 1)) count=1
+$ ddpt if=/dev/sg1 skip=$((0Goff + 1)) count=1
 
 
-# Douglas Gilbert 20101212
+# Douglas Gilbert 20101224
