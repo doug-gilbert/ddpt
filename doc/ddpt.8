@@ -309,7 +309,7 @@ output.
 .IP
 This paragraph is about coe on input regular files and block devices.
 When a EIO or EREMOTEIO error is detected on a normal segment read then
-the segment is re-read one block (i.e. \fIIBS\fR bytes) at a time. Any
+the segment is re\-read one block (i.e. \fIIBS\fR bytes) at a time. Any
 block that yields a EIO or EREMOTEIO error is replaced by zeros. Any
 other error, a short read or an end of file will terminate the copy,
 usually after the data that has been read is written to the output file.
@@ -318,7 +318,10 @@ direct [io] [reg,blk]
 causes the O_DIRECT flag to be added to the open of \fIIFILE\fR and/or
 \fIOFILE\fR. This flag requires some memory alignment on IO. Hence user
 memory buffers are aligned to the page size. May have no effect on pt
-devices. See open(2) man page.
+devices. This flag will bypass caching/buffering normally done by block
+layer. Beware of data coherency issues if the same locations have been
+recently accessed via the block layer in its normal mode (i.e.
+non\-direct). See open(2) man page.
 .TP
 dpo [io] [pt]
 set the DPO bit (disable page out) in SCSI READ and WRITE commands. Not
@@ -335,7 +338,7 @@ LBAs in hex (and prefixed with "0x") of any block that cannot be read,
 one LBA per line. If the sense data does not correctly identify the LBA of
 the first error in the range it was asked to read then a LBA range is
 output in the form of the lowest and the highest LBA in the range
-separated by a "-". At the end of the copy a line with "# stop <timestamp>"
+separated by a "\-". At the end of the copy a line with "# stop <timestamp>"
 is appended to "errblk.txt". Typically used with "coe".
 .TP
 excl [io] [reg,blk]
@@ -400,7 +403,7 @@ Such devices default standard UNIX read() and write() commands in the
 absence of this flag.
 .TP
 resume [o] [reg]
-when a copy is interrupted (e.g. with Control-C from the keyboard)
+when a copy is interrupted (e.g. with Control\-C from the keyboard)
 then using the same invocation again with the addition of "oflag=resume"
 will attempt to restart the copy from the point of the interrupt (or
 just before that point). It is harmless to use "oflag=resume" when
@@ -525,17 +528,17 @@ part of a disk. To trim a whole disk (i.e. deleting all its data):
 .PP
     ddpt if=/dev/zero bs=512 of=/dev/sdc oflag=pt,trim
 .PP
-A third way is to "self-trim" which is to only trim those parts
+A third way is to "self\-trim" which is to only trim those parts
 of a disk that contain segments full of zeros:
 .PP
     ddpt if=/dev/sdc skip=0x2300 bs=512 iflag=pt,self,trim count=0x1234f0
 .PP
 The "self" oflag automatically sets up the output side of the copy
 to send trim commands (if required) back the the same device (i.e. /dev/sdc).
-If this example was self-trimming a partition then the partition would
+If this example was self\-trimming a partition then the partition would
 start at LBA 0x2300 and be 0x1234f0 blocks long.
 .PP
-Some random product examples: the Intel X25-M G2 SSDs have trim with
+Some random product examples: the Intel X25\-M G2 SSDs have trim with
 recent firmware and they do deterministic read zero after trim. The
 Seagate Pulsar SSD has an ATA interface which supports the deterministic
 reads of zero after the DATA SET MANAGEMENT command with the TRIM option.

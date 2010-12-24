@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20101220 [svn: r130]";
+static char * version_str = "0.92 20101223 [svn: r136]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -253,20 +253,14 @@ print_stats(const char * str)
 
     if ((0 != dd_count) && (! reading_fifo))
         fprintf(stderr, "  remaining block count=%"PRId64"\n", dd_count);
-    partial = in_partial + unrecovered_errs;    /* gnu dd does this */
-    if (partial > in_full) {
-        partial = in_partial;
-        if (partial > in_full)
-            partial = 0;
-    }
+    partial = in_partial;
+    if (partial > in_full)
+        partial = 0;
     fprintf(stderr, "%s%"PRId64"+%d records in\n", str, in_full - partial,
             partial);
-    partial = out_partial + wr_unrecovered_errs;
-    if (partial > out_full) {
-        partial = out_partial;
-        if (partial > out_full)
-            partial = 0;
-    }
+    partial = out_partial;
+    if (partial > out_full)
+        partial = 0;
     fprintf(stderr, "%s%"PRId64"+%d records out\n", str, out_full - partial,
             partial);
     if (out_sparse_active || out_sparing_active) {
@@ -1421,6 +1415,10 @@ pt_low_read(int sg_fd, int in0_out1, unsigned char * buff, int blocks,
 }
 
 /* Control pass-through read retries and coe (continue on error).
+ * Fast path is a call to pt_low_read() that succeeds. If medium
+ * error then back up and re-read good blocks prior to bad block;
+ * then, if coe, use zero for bad block and continue reading at
+ * the next LBA (N.B. more medium errors could occur).
  * 0 -> successful, SG_LIB_SYNTAX_ERROR -> unable to build cdb,
  * SG_LIB_CAT_UNIT_ATTENTION -> try again, SG_LIB_CAT_NOT_READY,
  * SG_LIB_CAT_MEDIUM_HARD, SG_LIB_CAT_ABORTED_COMMAND,
@@ -1537,10 +1535,12 @@ pt_read(int sg_fd, int in0_out1, unsigned char * buff, int blocks,
 #ifdef ERRBLK_SUPPORTED
         put_errblk(io_addr);
 #endif
+        if (ifp->coe)
+            ++in_partial;
         blks = (int)(io_addr - (uint64_t)lba);
         if (blks > 0) {
             if (verbose)
-                fprintf(stderr, "  partial read of %d blocks prior to "
+                fprintf(stderr, "  partial re-read of %d blocks prior to "
                         "medium error\n", blks);
             res = pt_low_read(sg_fd, in0_out1, bp, blks, lba, bs, ifp,
                               &io_addr);
@@ -2595,9 +2595,14 @@ coe_cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                         highest_unrecovered = my_skip;
                 }
                 ++unrecovered_errs;
+                ++in_partial;
                 if (verbose)
                     fprintf(stderr, "reading 1 block, skip=%"PRId64" : %s, "
-                            "continuing\n", my_skip, safe_strerror(errno));
+                            "substitute zeros\n", my_skip,
+                            safe_strerror(errno));
+                else
+                    fprintf(stderr, ">> unrecovered read error at blk=%"
+                            PRId64", substitute zeros\n", my_skip);
             } else {
                 fprintf(stderr, "reading 1 block, skip=%"PRId64" : %s\n",
                         my_skip, safe_strerror(errno));
@@ -2688,7 +2693,10 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
     if (res < 0) {
         fprintf(stderr, "reading, skip=%"PRId64" : %s\n", optsp->skip,
                 safe_strerror(errno));
-        return -1;
+        if ((EIO == errno) || (EREMOTEIO == errno))
+            return SG_LIB_CAT_MEDIUM_HARD;
+        else
+            return SG_LIB_CAT_OTHER;
     } else if (res < numbytes) {
         csp->icbpt = res / optsp->ibs;
         if ((res % optsp->ibs) > 0) {
@@ -2716,12 +2724,14 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                                  optsp->ibs)) < 0) && (EINTR == errno))
                 ++interrupted_retries;
             if (res2 < 0) {
-                if ((EIO == errno) || (EREMOTEIO == errno))
+                if ((EIO == errno) || (EREMOTEIO == errno)) {
                     csp->leave_reason = SG_LIB_CAT_MEDIUM_HARD;
-                else
+                    ++unrecovered_errs;
+                } else
                     csp->leave_reason = SG_LIB_CAT_OTHER;
                 if (verbose)
-                    fprintf(stderr, "extra read after short read: %s\n",
+                    fprintf(stderr, "after short read, read at skip=%"PRId64
+                            ": %s\n", optsp->skip + csp->icbpt,
                             safe_strerror(errno));
             } else {
                 csp->if_filepos += res2;   /* could have moved filepos */
