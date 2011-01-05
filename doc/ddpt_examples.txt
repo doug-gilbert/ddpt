@@ -231,7 +231,7 @@ oflag=trim,nowrite bpt=1024,1
 # with hex number accepted (leading 0x) but without multiplier suffixes
 # (e.g. $((1M + 1)) is not accepted). See the "ARITHMETIC EVALUATION"
 # section in the bash man page.
-$ ddpt if=/dev/sg1 skip=$((0Goff + 1)) count=1
+$ ddpt if=/dev/sg1 skip=$((0xfff + 1)) count=1
 
 
-# Douglas Gilbert 20101224
+# Douglas Gilbert 20110101

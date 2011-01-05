@@ -16,6 +16,8 @@ AC_CHECK_HEADERS([linux/types.h linux/bsg.h], [], [],
      ]])
 
 AC_CHECK_FUNCS(posix_fadvise)
+AC_CHECK_FUNCS(fsync)
+AC_CHECK_FUNCS(fdatasync)
 AC_CHECK_LIB(rt, clock_gettime,
 	     AC_SUBST([rt_libs], ['-lrt']),
 	     AC_SUBST([rt_libs], ['']))
