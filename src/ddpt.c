@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2010 Douglas Gilbert.
+ * Copyright (c) 2008-2011 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20101223 [svn: r136]";
+static char * version_str = "0.92 20110105 [svn: r137]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -237,12 +237,14 @@ usage()
            "Similar to\n"
            "dd command. Support for block devices, especially those "
            "accessed via\na SCSI pass-through.\n"
-           "FLAGS: append(o),coe,direct,dpo,errblk(i),excl,flock,force,"
-           "fua,fua_nv\n"
-           "nocache,norcap,nowrite(o),null,pt,resume(o),self,sparing(o),"
-           "sparse(o)\n"
-           "ssync(o),strunc(o),sync,trim(o),trunc(o),unmap(o).\n"
-           "CONVS: noerror,null,resume,sparing,sparse,sync,trunc\n");
+           "FLAGS: append(o),coe,direct,dpo,errblk(i),excl,fdatasync(o),"
+           "flock,force\n"
+           "fsync(o),fua,fua_nv,nocache,norcap,nowrite(o),null,pt,"
+           "resume(o),self\n"
+           "sparing(o),sparse(o),ssync(o),strunc(o),sync,trim(o),trunc(o),"
+           "unmap(o).\n"
+           "CONVS: fdatasync,fsync,noerror,null,resume,sparing,sparse,sync,"
+           "trunc\n");
 }
 
 
@@ -443,7 +445,11 @@ process_conv(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
         np = strchr(cp, ',');
         if (np)
             *np++ = '\0';
-        if (0 == strcmp(cp, "noerror"))
+        if (0 == strcmp(cp, "fdatasync"))
+            ++ofp->fdatasync;
+        else if (0 == strcmp(cp, "fsync"))
+            ++ofp->fsync;
+        else if (0 == strcmp(cp, "noerror"))
             ++ifp->coe;         /* will still fail on write error */
         else if (0 == strcmp(cp, "null"))
             ;
@@ -501,10 +507,34 @@ process_flags(const char * arg, struct flags_t * fp)
 #endif
         else if (0 == strcmp(cp, "excl"))
             ++fp->excl;
+        else if (0 == strcmp(cp, "fdatasync"))
+            ++fp->fdatasync;
         else if (0 == strcmp(cp, "flock"))
             ++fp->flock;
         else if (0 == strcmp(cp, "force"))
             ++fp->force;
+        else if (0 == strcmp(cp, "fsync"))
+            ++fp->fsync;
+        else if (0 == strcmp(cp, "flock"))
+            ++fp->flock;
+        else if (0 == strcmp(cp, "force"))
+            ++fp->force;
+        else if (0 == strcmp(cp, "fua_nv"))     /* check fua_nv before fua */
+            ++fp->fua_nv;
+        else if (0 == strcmp(cp, "fua"))
+            ++fp->fua;
+        else if (0 == strcmp(cp, "nocache"))
+            ++fp->nocache;
+        else if (0 == strcmp(cp, "norcap"))
+            ++fp->norcap;
+        else if (0 == strcmp(cp, "nowrite"))
+            ++fp->nowrite;
+        else if (0 == strcmp(cp, "null"))
+            ;
+        else if (0 == strcmp(cp, "pt"))
+            ++fp->pt;
+        else if (0 == strcmp(cp, "resume"))
+            ++fp->resume;
         else if (0 == strcmp(cp, "fua_nv"))     /* check fua_nv before fua */
             ++fp->fua_nv;
         else if (0 == strcmp(cp, "fua"))
@@ -2410,16 +2440,18 @@ static void
 do_fadvise(struct opts_t * op, int bytes_if, int bytes_of, int bytes_of2)
 {
     int rt, in_valid, out2_valid, out_valid;
+    static off_t lowest_skip = -1;
+    static off_t lowest_seek = -1;
 
     in_valid = ((FT_REG == op->in_type) || (FT_BLOCK == op->in_type));
     out2_valid = ((FT_REG == op->out2_type) || (FT_BLOCK == op->out2_type));
     out_valid = ((FT_REG == op->out_type) || (FT_BLOCK == op->out_type));
     if (op->iflagp->nocache && (bytes_if > 0) && in_valid) {
-        rt = posix_fadvise(op->infd, 0, (op->skip * op->ibs) +
-                                    bytes_if, POSIX_FADV_DONTNEED);
-        // rt = posix_fadvise(op->infd, (op->skip * op->ibs),
-                           // bytes_if, POSIX_FADV_DONTNEED);
-        // rt = posix_fadvise(op->infd, 0, 0, POSIX_FADV_DONTNEED);
+        if ((lowest_skip < 0) || (op->skip > lowest_skip))
+            lowest_skip = op->skip;
+        rt = posix_fadvise(op->infd, (lowest_skip * op->ibs),
+                           ((op->skip - lowest_skip) * op->ibs) + bytes_if,
+                           POSIX_FADV_DONTNEED);
         if (rt)         /* returns error as result */
             fprintf(stderr, "posix_fadvise on read, skip=%"PRId64" ,err=%d\n",
                     op->skip, rt);
@@ -2431,7 +2463,11 @@ do_fadvise(struct opts_t * op, int bytes_if, int bytes_of, int bytes_of2)
                     "%"PRId64" ,err=%d\n", op->seek, rt);
     }
     if ((op->oflagp->nocache & 1) && (bytes_of > 0) && out_valid) {
-        rt = posix_fadvise(op->outfd, 0, 0, POSIX_FADV_DONTNEED);
+        if ((lowest_seek < 0) || (op->seek > lowest_seek))
+            lowest_seek = op->seek;
+        rt = posix_fadvise(op->outfd, (lowest_seek * op->obs),
+                           ((op->seek - lowest_seek) * op->obs) + bytes_of,
+                           POSIX_FADV_DONTNEED);
         if (rt)
             fprintf(stderr, "posix_fadvise on output, seek=%"PRId64" , "
                     "err=%d\n", op->seek, rt);
@@ -3370,6 +3406,22 @@ bypass_write:
         optsp->oflagp->sparse)
         cp_sparse_cleanup(optsp, csp);
 
+    if ((FT_PT & optsp->out_type) || (FT_DEV_NULL & optsp->out_type) ||
+        (FT_FIFO & optsp->out_type))
+        ;       // negating things makes it less clear ...
+#ifdef HAVE_FDATASYNC
+    else if (optsp->oflagp->fdatasync) {
+        if (fdatasync(optsp->outfd) < 0)
+            perror("fdatasync() error");
+    }
+#endif
+#ifdef HAVE_FSYNC
+    else if (optsp->oflagp->fsync) {
+        if (fsync(optsp->outfd) < 0)
+            perror("fsync() error");
+    }
+#endif
+
 copy_end:
     cp_destruct_pt();
     return ret;
@@ -3626,6 +3678,7 @@ main(int argc, char * argv[])
         open_errblk();
 #endif
 
+    // <<<<<<<<<<<<<< finally ready to do copy
     ret = do_copy(&opts, wrkPos, wrkPos2);
 
 #ifdef ERRBLK_SUPPORTED

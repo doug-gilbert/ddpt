@@ -114,8 +114,10 @@ struct flags_t {
     int errblk;
 #endif
     int excl;
+    int fdatasync;
     int flock;
     int force;
+    int fsync;
     int fua;
     int fua_nv;
     int pdt;

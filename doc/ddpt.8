@@ -1,4 +1,4 @@
-.TH DDPT "8" "December 2010" "ddpt\-0.92" DDPT
+.TH DDPT "8" "January 2011" "ddpt\-0.92" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -243,6 +243,16 @@ traditional dd conversions (e.g. ASCII to EBCDIC). Recently added
 conversions overlap somewhat with the flags so some conversions are
 now supported by ddpt.
 .TP
+fdatasync
+equivalent to "oflag=fdatasync". Flushes data associated with the
+\fIOFILE\fR to storage at the end of the copy. This conversion is
+for compatibility with GNU's dd.
+.TP
+fsync
+equivalent to "oflag=fsync". Flushes data and metadata associated
+with the \fIOFILE\fR to storage at the end of the copy. This conversion
+is for compatibility with GNU's dd.
+.TP
 noerror
 this conversion is very close to "iflag=coe" and is treated as such. See
 the "coe" flag. Note that an error on \fIOFILE\fR will stop the copy.
@@ -345,6 +355,10 @@ excl [io] [reg,blk]
 causes the O_EXCL flag to be added to the open of \fIIFILE\fR and/or
 \fIOFILE\fR. See open(2) man page.
 .TP
+fdatasync [o] [reg,blk]
+Flushes data associated with the \fIOFILE\fR to storage at the end of the
+copy.
+.TP
 flock [io] [reg,blk,pt]
 after opening the associated file (i.e. \fIIFILE\fR and/or \fIOFILE\fR)
 an attempt is made to get an advisory exclusive lock with the flock()
@@ -360,6 +374,10 @@ this flag the copy would not be performed. pt access to what appears
 to be a block partition is aborted in version 0.92; that can be overridden
 by the force flag. For related reasons the 'norcap' flag requires this
 flag when applied to a block device accessed via pt.
+.TP
+fsync [o] [reg,blk]
+Flushes data and metadata (describing the file) associated with the
+\fIOFILE\fR to storage at the end of the copy.
 .TP
 fua [io] [pt]
 causes the FUA (force unit access) bit to be set in SCSI READ and/or WRITE
@@ -440,8 +458,8 @@ the zero comparison can be reduced from the default \fIIBS\fR * \fIBPT\fR
 byte segment with the \fIOBPC\fR value given to the "bpt=" option.
 .TP
 ssync [o] [pt]
-if \fIOFILE\fR is in "pt" mode the the SCSI SYNCHRONIZE CACHE command is
-sent to \fIOFILE\fR at the end of the transfer.
+if \fIOFILE\fR is in "pt" mode then the SCSI SYNCHRONIZE CACHE command is
+sent to \fIOFILE\fR at the end of the copy.
 .TP
 strunc [o] [reg]
 perform a sparse copy with a ftruncate system call to extend the length
