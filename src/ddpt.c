@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20110105 [svn: r137]";
+static char * version_str = "0.92 20110106 [svn: r138]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -515,26 +515,6 @@ process_flags(const char * arg, struct flags_t * fp)
             ++fp->force;
         else if (0 == strcmp(cp, "fsync"))
             ++fp->fsync;
-        else if (0 == strcmp(cp, "flock"))
-            ++fp->flock;
-        else if (0 == strcmp(cp, "force"))
-            ++fp->force;
-        else if (0 == strcmp(cp, "fua_nv"))     /* check fua_nv before fua */
-            ++fp->fua_nv;
-        else if (0 == strcmp(cp, "fua"))
-            ++fp->fua;
-        else if (0 == strcmp(cp, "nocache"))
-            ++fp->nocache;
-        else if (0 == strcmp(cp, "norcap"))
-            ++fp->norcap;
-        else if (0 == strcmp(cp, "nowrite"))
-            ++fp->nowrite;
-        else if (0 == strcmp(cp, "null"))
-            ;
-        else if (0 == strcmp(cp, "pt"))
-            ++fp->pt;
-        else if (0 == strcmp(cp, "resume"))
-            ++fp->resume;
         else if (0 == strcmp(cp, "fua_nv"))     /* check fua_nv before fua */
             ++fp->fua_nv;
         else if (0 == strcmp(cp, "fua"))
@@ -3407,18 +3387,25 @@ bypass_write:
         cp_sparse_cleanup(optsp, csp);
 
     if ((FT_PT & optsp->out_type) || (FT_DEV_NULL & optsp->out_type) ||
-        (FT_FIFO & optsp->out_type))
+        (FT_FIFO & optsp->out_type)) {
         ;       // negating things makes it less clear ...
+    }
 #ifdef HAVE_FDATASYNC
     else if (optsp->oflagp->fdatasync) {
         if (fdatasync(optsp->outfd) < 0)
             perror("fdatasync() error");
+        if (verbose)
+            fprintf(stderr, "Called fdatasync() on %s successfully\n",
+                    optsp->outf);
     }
 #endif
 #ifdef HAVE_FSYNC
     else if (optsp->oflagp->fsync) {
         if (fsync(optsp->outfd) < 0)
             perror("fsync() error");
+        if (verbose)
+            fprintf(stderr, "Called fsync() on %s successfully\n",
+                    optsp->outf);
     }
 #endif
 
