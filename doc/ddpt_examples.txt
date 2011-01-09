@@ -17,43 +17,39 @@ $ dd if=src of=dst
 13+1 records out
 6915 bytes (6.9 kB) copied, 0.000128857 s, 53.7 MB/s
 
-# first cut ddpt equivalent
-$ stat -c %s dst
+# first cut ddpt equivalent. Let's assume the ddst file exists and
+# it is relatively large.
+$ stat -c %s ddst
 524800
-$ ddpt if=src of=dst
+$ ddpt if=src of=ddst
 Assume block size of 512 bytes for both input and output
 13+1 records in
-14+0 records out
+13+1 records out
 time to transfer data: 0.000121 secs at 59.24 MB/sec
 $ stat -c %s dst
 524800
 
-# ddpt does not truncate dst, it overwrites it. So if dst's file length
+# ddpt does not truncate dst, it overwrites it. So if ddst's file length
 # is longer than src's file length the output file needs to be truncated:
-$ ddpt if=src of=dst oflag=trunc
+$ ddpt if=src of=ddst oflag=trunc
 Assume block size of 512 bytes for both input and output
 13+1 records in
-14+0 records out
+13+1 records out
 time to transfer data: 0.000243 secs at 29.50 MB/sec
-$ stat -c %s dst
-7168
-
-# Both dd and ddpt default to a block size of 512 bytes (bs=512) but
-# dd can do both partial reads and partial writes. ddpt does partial
-# reads but does only full writes (zero padding if necessary). The
-# inability of ddpt to do partial writes can be overcome with "obs=1"
-$ ddpt if=src of=dst oflag=trunc obs=1
-Neither ibs nor bs given so set ibs=512 (default block size)
-13+1 records in
-6915+0 records out
-time to transfer data: 0.000113 secs at 63.43 MB/sec
-$ stat -c %s dst
+$ stat -c %s ddst
 6915
-# Finally the 6915 bytes in the src file and been copied to dst which
-# is now the same size as src.
 
-# or to make it a bit clearer:
-$ ddpt if=src bs=1 of=dst oflag=trunc          
+# So now src is the same length as dst and ddst. And they all contain
+# the same contents.
+
+# Both dd and ddpt default to a block size of 512 bytes (bs=512) as
+# they are designed to move disk data which up until recent times
+# almost always had a block size of 512 bytes. However for copying
+# regular (normal) files bs=1 would be a clearer choice.
+# dd is relatively inefficient when bs=1 but ddpt should be faster
+# (see 'bpt' option in manpage).
+# So we can do this:
+$ ddpt if=src bs=1 of=ddst oflag=trunc          
 6915+0 records in
 6915+0 records out
 time to transfer data: 0.000134 secs at 51.60 MB/sec
@@ -90,8 +86,8 @@ $ dd if=/dev/sda skip=4330956 bs=512 of=dst.img count=1234560
 # not divisible by 128. An efficient solution is not pretty.
 
 
-# ddpt's lack of partial writes can be seen in a different light
-# when there is a copy between block devices that have different
+# ddpt ignores partial writes to block or pt devices.
+# This can be observed in a copy between block devices that have different
 # logical block sizes:
 $ ddpt if=/dev/sda ibs=512 of=/dev/sdc obs=4096 count=9
 9+0 records in

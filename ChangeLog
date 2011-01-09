@@ -2,12 +2,14 @@ The version number is hardcoded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.92 [20110106] [svn: r138]
+Changelog for ddpt-0.92 [20110109] [svn: r139]
   - when pt used on block device and discrepancy between size
     of block device and read capacity size, require force flag
   - add coe support for input block devices and regular files
   - support conv=fdatasync, conv=fsync, oflag=fdatasync and
     oflag=fsync; called at end of copy
+  - allow partial writes of trailing bytes when output is
+    regular file or fifo (stdout), ignore if block or pt device
   - fix stdin, stdout and fifo handling problems
   - if iflag=sparse and of=/dev/null (or not given) warn but
     set oflag=sparse and continue
