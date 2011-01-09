@@ -607,16 +607,30 @@ copy buffer can be used since its size is a multiple of both \fIIBS\fR and
 \fIOBS\fR. Being able to precisely define the copy buffer size in ddpt
 makes sparse writing, write sparing and trim operations simpler to
 define and the user to control.
-.PP
-dd can do partial writes which typically occur at the end of a copy.
-ddpt does not do partial writes, it writes in multiples of \fIOBS\fR.
-Partial writes are difficult when \fIOFILE\fR is a block device, especially
-if the pass\-through interface or the direct flag is used. While it is
-possible to implement partial writes on a block device it is unclear
-what dd does. When block devices are not involved (e.g. copying a regular
-file to another regular file) ddpt's \fIIBS\fR and \fIBPT\fR can be used
-creatively to avoid partial writes (e.g. 'ddpt if=from of=to bs=1 bpt=64k').
 .SH NOTES
+A partial write is a write to the \fIOFILE\fR of less than \fIOBS\fR
+bytes. This typically occurs at the end of a copy. dd can do partial
+writes. ddpt does partial writes to regular files and fifos (includin
+stdout). However ddpt ignores partial writes when \fIOFILE\fR is a block
+device or a pt device is used. Whenever ddpt ignores partial writes it
+sends a warning to the console (stderr).
+.PP
+At the end of the copy two lines are output to the console:
+.PP
+   <in_full>+<in_partial> records in
+.br
+   <out_full>+<out_partial> records in
+.PP
+The "records in" lines is the number of full input blocks (each of
+\fIIBS\fR bytes) that have been read plus the number of partial
+blocks (usually less than \fIIBS\fR bytes) that have been read.
+Following the lead of dd when 'iflag=coe' is active a block that cannot
+be read (and has zeros substituted for its output) is regarded as
+a partial read.
+The "records out" lines is the number of full output blocks (each of
+\fIOBS\fR bytes) that have been written plus the number of partial
+blocks (usually less than \fIOBS\fR bytes) that have been written.
+.PP
 Block devices (e.g. /dev/sda and /dev/hda) can be given for \fIIFILE\fR.
 If neither 'iflag=direct' nor 'iflag=pt' is given then normal block IO
 involving buffering and caching is performed. If only 'iflag=direct' is
