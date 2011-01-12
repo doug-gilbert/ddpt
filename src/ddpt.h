@@ -71,15 +71,17 @@
 
 #define SG_LIB_FLOCK_ERR 90
 
-#define FT_OTHER 1              /* filetype is unknown (unexpected) */
-#define FT_PT 2                 /* filetype is a device that SCSI */
-                                /* commands can be sent via a pass-through */
+/* File type categorizations */
+#define FT_OTHER 1              /* unknown (unable to identify) */
+#define FT_PT 2                 /* SCSI commands can be sent via a
+                                   pass-through */
 #define FT_REG 4                /* a normal (regular) file */
 #define FT_DEV_NULL 8           /* either "/dev/null" or "." as filename */
-#define FT_TAPE 16              /* filetype is tape style device */
-#define FT_BLOCK 32             /* filetype is block device */
-#define FT_FIFO 64              /* filetype is a fifo (name pipe) */
-#define FT_ERROR 128            /* couldn't "stat" file */
+#define FT_TAPE 16              /* tape style device */
+#define FT_BLOCK 32             /* block device */
+#define FT_FIFO 64              /* fifo (named or unnamed pipe (stdout)) */
+#define FT_CHAR 128             /* char dev, doesn't fit another category */
+#define FT_ERROR 256            /* couldn't "stat" file */
 
 /* If O_DIRECT or O_SYNC not supported then define harmlessly */
 #ifndef O_DIRECT
@@ -152,9 +154,10 @@ struct opts_t {
     int in_type;
     int infd;
     char outf[INOUTF_SZ];
-    char out2f[INOUTF_SZ];
+    int outf_given;
     int out_type;
     int outfd;
+    char out2f[INOUTF_SZ];
     int out2_type;
     int out2fd;
     int cdbsz_given;
