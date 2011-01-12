@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20110109 [svn: r139]";
+static char * version_str = "0.92 20110112 [svn: r140]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -156,7 +156,7 @@ static struct timespec start_tm;
 static int start_tm_valid = 0;
 static struct timeval start_tm;
 #endif
-static int read_or_transfer = 0; /* 1 when of=/dev/null or similar */
+static int read1_or_transfer = 0; /* 1 when of=/dev/null or similar */
 static int ibs_hold = 0;
 static int max_uas = MAX_UNIT_ATTENTIONS;
 static int max_aborted = MAX_ABORTED_CMDS;
@@ -827,8 +827,9 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
             if ('\0' != optsp->outf[0]) {
                 fprintf(stderr, "Second OFILE argument??\n");
                 return SG_LIB_SYNTAX_ERROR;
-            } else
-                strncpy(optsp->outf, buf, INOUTF_SZ);
+            }
+            strncpy(optsp->outf, buf, INOUTF_SZ);
+            ++optsp->outf_given;
         } else if (strcmp(key, "of2") == 0) {
             if ('\0' != optsp->out2f[0]) {
                 fprintf(stderr, "Second OFILE2 argument??\n");
@@ -981,7 +982,7 @@ dd_filetype(const char * filename)
         }
         if (bsg_major == (int)major(st.st_rdev))
             return FT_PT;
-        return FT_OTHER;
+        return FT_CHAR; /* assume something like /dev/zero */
 #elif SG_LIB_FREEBSD
         {
             /* int d_flags;  for FIOFTYPE ioctl see sys/filio.h */
@@ -1030,6 +1031,8 @@ dd_filetype_str(int ft, char * buff, int max_bufflen, const char * fname)
         off += snprintf(buff + off, max_bufflen - off, "SCSI tape device ");
     if (FT_REG & ft)
         off += snprintf(buff + off, max_bufflen - off, "regular file ");
+    if (FT_CHAR & ft)
+        off += snprintf(buff + off, max_bufflen - off, "char device ");
     if (FT_OTHER & ft)
         off += snprintf(buff + off, max_bufflen - off, "other file type ");
     if (FT_ERROR & ft) {
@@ -1862,35 +1865,54 @@ pt_write_same16(int sg_fd, int in0_out1, unsigned char * buff, int bs,
     return ret;
 }
 
-/* Print number of blocks, block size and size in GB (10**9 bytes) (if large
- * enough) to stderr. */
+/* Print number of blocks, block size. If over 1 MB print size in MB
+ * (10**6 bytes), GB (10**9 bytes) or TB (10**12 bytes) to stderr. */
 static void
 print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
                 int sect_sz)
 {
-    int sect_per_gb, gb, mib;
+    int mb, gb;
+    size_t len;
     int64_t n;
+    char b[32];
+    char dec[4];
 
-    gb = 0;
-    if ((num_sect <= 0) || (sect_sz <= 0))
-        goto cont;
-    sect_per_gb = 1073741824 / sect_sz;
-    if ((1073741824 != (sect_per_gb * sect_sz)) || (sect_per_gb <= 0))
-        goto cont;
-    n = num_sect / sect_per_gb;
-    n = (n * 43) / 40;  /* rough correction for decimal gigabyte */
-    gb = ((n > INT_MAX) || (n < 0)) ? INT_MAX : (int)n;
+    mb = 0;
+    if ((num_sect > 0) && (sect_sz > 0)) {
+        n = num_sect * sect_sz;
+        mb = n / 1000000;
+    }
 
-cont:
-    if (gb)
+    if (mb > 999999) {
+        gb = mb / 1000;
+        snprintf(b, sizeof(b), "%d", gb);
+        len = strlen(b); // len must be >= 4
+        dec[0] = b[len - 3];
+        dec[1] = b[len - 2];
+        dec[2] = '\0';
+        b[len - 3] = '\0';
         fprintf(stderr, "%s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
-                "block_size=%d, %d GB approx\n", fname, access_typ, num_sect,
+                "block_size=%d, %s.%s TB\n", fname, access_typ, num_sect,
+                num_sect, sect_sz, b, dec);
+    } else if (mb > 99999) {
+        gb = mb / 1000;
+        fprintf(stderr, "%s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
+                "block_size=%d, %d GB\n", fname, access_typ, num_sect,
                 num_sect, sect_sz, gb);
-    else if ((num_sect > 0) && (sect_sz > 0)) {
-        mib = (int)num_sect * sect_sz / 1048576;
+    } else if (mb > 999) {
+        snprintf(b, sizeof(b), "%d", mb);
+        len = strlen(b); // len must be >= 4
+        dec[0] = b[len - 3];
+        dec[1] = b[len - 2];
+        dec[2] = '\0';
+        b[len - 3] = '\0';
         fprintf(stderr, "%s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
-                "block_size=%d, %d MiB approx\n", fname, access_typ, num_sect,
-                num_sect, sect_sz, mib);
+                "block_size=%d, %s.%s GB\n", fname, access_typ, num_sect,
+                num_sect, sect_sz, b, dec);
+    } else if (mb > 0) {
+        fprintf(stderr, "%s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
+                "block_size=%d, %d MB%s\n", fname, access_typ, num_sect,
+                num_sect, sect_sz, mb, ((mb < 10) ? " approx" : ""));
     } else
         fprintf(stderr, "%s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
                 "block_size=%d\n", fname, access_typ, num_sect, num_sect,
@@ -1918,7 +1940,7 @@ calc_duration_throughput(int contin)
         a += (0.000001 * (res_tm.tv_nsec / 1000));
         b = (double)ibs_hold * blks;
         fprintf(stderr, "time to %s data%s: %d.%06d secs",
-                (read_or_transfer ? "read" : "transfer"),
+                (read1_or_transfer ? "read" : "transfer"),
                 (contin ? " so far" : ""), (int)res_tm.tv_sec,
                 (int)(res_tm.tv_nsec / 1000));
         if ((a > 0.00001) && (b > 511))
@@ -1944,7 +1966,7 @@ calc_duration_throughput(int contin)
         a += (0.000001 * res_tm.tv_usec);
         b = (double)ibs_hold * blks;
         fprintf(stderr, "time to %s data%s: %d.%06d secs",
-                (read_or_transfer ? "read" : "transfer"),
+                (read1_or_transfer ? "read" : "transfer"),
                 (contin ? " so far" : ""), (int)res_tm.tv_sec,
                 (int)res_tm.tv_usec);
         if ((a > 0.00001) && (b > 511))
@@ -1980,7 +2002,7 @@ open_if(struct opts_t * optsp, int verbose)
     if (verbose)
         fprintf(stderr, " >> Input file type: %s\n",
                 dd_filetype_str(optsp->in_type, ebuff, EBUFF_SZ, inf));
-    if (FT_FIFO & optsp->in_type)
+    if ((FT_FIFO & optsp->in_type) || (FT_CHAR & optsp->in_type))
         ++reading_fifo;
 
     if (FT_TAPE & optsp->in_type) {
@@ -2530,7 +2552,7 @@ cp_read_block_win(struct opts_t * optsp, struct cp_state_t * csp,
             /* csp->leave_reason = 0; assume at end rather than error */
             csp->ocbpt = res / optsp->obs;
             /* don't do partial writes due to a short read */
-/* xxxxxxxx check this, rounding up unconsistent with non windows code */
+            /* check: rounding up unconsistent with non windows code */
             if ((res % optsp->obs) > 0)
                 ++csp->ocbpt;
             if (verbose > 1)
@@ -3424,7 +3446,7 @@ bypass_write:
         cp_sparse_cleanup(optsp, csp);
 
     if ((FT_PT & optsp->out_type) || (FT_DEV_NULL & optsp->out_type) ||
-        (FT_FIFO & optsp->out_type)) {
+        (FT_FIFO & optsp->out_type) || (FT_CHAR & optsp->out_type)) {
         ;       // negating things makes it less clear ...
     }
 #ifdef HAVE_FDATASYNC
@@ -3680,7 +3702,11 @@ main(int argc, char * argv[])
         fprintf(stderr, "  initial count=%"PRId64" (blocks of input), "
                 "blocks_per_transfer=%d\n", dd_count, opts.bpt_i);
     }
-    read_or_transfer = !! (FT_DEV_NULL & opts.out_type);
+    read1_or_transfer = !! (FT_DEV_NULL & opts.out_type);
+    if (read1_or_transfer && (! opts.outf_given))
+        fprintf(stderr, "Output file not specified so no copy, just "
+                "reading input\n");
+
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
     if (do_time) {
         start_tm.tv_sec = 0;
