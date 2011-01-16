@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20110112 [svn: r140]";
+static char * version_str = "0.92 20110116 [svn: r141]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -130,6 +130,7 @@ static int out_sparse_active = 0;
 static int out_sparing_active = 0;
 static int out_trim_active = 0;
 static int64_t out_sparse = 0;  /* used for sparse, sparing + trim */
+static int out_sparse_partial = 0;
 static int recovered_errs = 0;          /* on reads */
 static int unrecovered_errs = 0;        /* on reads */
 static int wr_recovered_errs = 0;
@@ -251,24 +252,25 @@ usage()
 static void
 print_stats(const char * str)
 {
-    int partial;
-
     if ((0 != dd_count) && (! reading_fifo))
         fprintf(stderr, "  remaining block count=%"PRId64"\n", dd_count);
-    partial = in_partial;
-    if (partial > in_full)
-        partial = 0;
-    fprintf(stderr, "%s%"PRId64"+%d records in\n", str, in_full - partial,
-            partial);
-    partial = out_partial;
-    if (partial > out_full)
-        partial = 0;
-    fprintf(stderr, "%s%"PRId64"+%d records out\n", str, out_full - partial,
-            partial);
+    fprintf(stderr, "%s%"PRId64"+%d records in\n", str, in_full, in_partial);
+    fprintf(stderr, "%s%"PRId64"+%d records out\n", str, out_full,
+            out_partial);
     if (out_sparse_active || out_sparing_active) {
-        if (out_trim_active)
-            fprintf(stderr, "%s%"PRId64" %s records out\n", str, out_sparse,
-                    (trim_errs ? "attempted trim" : "trimmed"));
+        if (out_trim_active) {
+            const char * cp;
+
+            cp = trim_errs ? "attempted trim" : "trimmed";
+            if (out_sparse_partial > 0)
+                fprintf(stderr, "%s%"PRId64"+%d %s records out\n", str,
+                        out_sparse, out_sparse_partial, cp);
+            else
+                fprintf(stderr, "%s%"PRId64" %s records out\n", str,
+                        out_sparse, cp);
+        } else if (out_sparse_partial > 0)
+            fprintf(stderr, "%s%"PRId64"+%d bypassed records out\n", str,
+                    out_sparse, out_sparse_partial);
         else
             fprintf(stderr, "%s%"PRId64" bypassed records out\n", str,
                     out_sparse);
@@ -1554,7 +1556,7 @@ pt_read(int sg_fd, int in0_out1, unsigned char * buff, int blocks,
 #endif
         if (ifp->coe) {
             ++in_partial;
-            ++in_full;
+            --in_full;
         }
         blks = (int)(io_addr - (uint64_t)lba);
         if (blks > 0) {
@@ -2566,6 +2568,31 @@ cp_read_block_win(struct opts_t * optsp, struct cp_state_t * csp,
 }
 #endif
 
+static int
+coe_process_eio(int64_t skip)
+{
+    if ((coe_limit > 0) && (++coe_count > coe_limit)) {
+        fprintf(stderr, ">> coe_limit on consecutive reads "
+                "exceeded\n");
+        return SG_LIB_CAT_MEDIUM_HARD;
+    }
+    if (highest_unrecovered < 0) {
+        highest_unrecovered = skip;
+        lowest_unrecovered = skip;
+    } else {
+        if (skip < lowest_unrecovered)
+            lowest_unrecovered = skip;
+        if (skip > highest_unrecovered)
+            highest_unrecovered = skip;
+    }
+    ++unrecovered_errs;
+    ++in_partial;
+    --in_full;
+    fprintf(stderr, ">> unrecovered read error at blk=%" PRId64", "
+            "substitute zeros\n", skip);
+    return 0;
+}
+
 /* Error occurred on block/regular read. coe active so assume all full
  * blocks prior to error are good (if any) and start to read from the
  * block containing the error, one block at a time, until ibpt. Supply
@@ -2576,7 +2603,7 @@ static int
 coe_cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                       unsigned char * wrkPos, int numread_errno)
 {
-    int res, k, total_read, num_read;
+    int res, res2, k, total_read, num_read;
     int ibs = optsp->ibs;
     int64_t offset, off_res, my_skip;
 
@@ -2587,9 +2614,18 @@ coe_cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         csp->leave_reason = 0;
         return 0;       /* EOF */
     } else if (numread_errno < 0) {
-        if ((-EIO == numread_errno) || (-EREMOTEIO == numread_errno))
+        if ((-EIO == numread_errno) || (-EREMOTEIO == numread_errno)) {
             num_read = 0;
-        else
+            if (1 == csp->icbpt) {
+                // Don't read again, this must be bad block
+                memset(wrkPos, 0, ibs);
+                if ((res2 = coe_process_eio(optsp->skip)))
+                    return res2;
+                ++in_full;
+                csp->bytes_read += ibs;
+                return 0;
+            }
+        } else
             return SG_LIB_CAT_OTHER;
     } else
         num_read = (numread_errno / ibs) * ibs;
@@ -2627,30 +2663,8 @@ coe_cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
             goto short_read;
         } else if (res < 0) {
             if ((EIO == errno) || (EREMOTEIO == errno)) {
-                if ((coe_limit > 0) && (++coe_count > coe_limit)) {
-                    fprintf(stderr, ">> coe_limit on consecutive reads "
-                            "exceeded\n");
-                    return SG_LIB_CAT_MEDIUM_HARD;
-                }
-                if (highest_unrecovered < 0) {
-                    highest_unrecovered = my_skip;
-                    lowest_unrecovered = my_skip;
-                } else {
-                    if (my_skip < lowest_unrecovered)
-                        lowest_unrecovered = my_skip;
-                    if (my_skip > highest_unrecovered)
-                        highest_unrecovered = my_skip;
-                }
-                ++unrecovered_errs;
-                ++in_partial;
-                ++in_full;
-                if (verbose)
-                    fprintf(stderr, "reading 1 block, skip=%"PRId64" : %s, "
-                            "substitute zeros\n", my_skip,
-                            safe_strerror(errno));
-                else
-                    fprintf(stderr, ">> unrecovered read error at blk=%"
-                            PRId64", substitute zeros\n", my_skip);
+                if ((res2 = coe_process_eio(my_skip)))
+                    return res2;
             } else {
                 fprintf(stderr, "reading 1 block, skip=%"PRId64" : %s\n",
                         my_skip, safe_strerror(errno));
@@ -2682,7 +2696,6 @@ short_read:
     if ((total_read % optsp->ibs) > 0) {
         ++csp->icbpt;
         ++in_partial;
-        ++in_full;
     }
     csp->ocbpt = total_read / optsp->obs;
     ++csp->leave_after_write;
@@ -2898,6 +2911,12 @@ cp_read_of_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                 return SG_LIB_FILE_ERROR;
             }
             csp->of_filepos = offset;
+        }
+        if (csp->partial_write_bytes > 0) {
+            numbytes += csp->partial_write_bytes;
+            if (verbose)
+                fprintf(stderr, "read(sparing): %d bytes extra to fetch "
+                        "due to partial read\n", csp->partial_write_bytes);
         }
         while (((res = read(optsp->outfd, wrkPos2, numbytes)) < 0) &&
                (EINTR == errno))
@@ -3126,6 +3145,8 @@ cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
         return 0;
     }
     numbytes = oblks * obs;
+    if ((FT_REG & optsp->out_type) && (csp->partial_write_bytes > 0))
+        numbytes += csp->partial_write_bytes;
     chunk = optsp->obpc * obs;
     trim_check = (optsp->oflagp->sparse && optsp->oflagp->wsame16 &&
                   (FT_PT & optsp->out_type));
@@ -3329,13 +3350,14 @@ static int
 do_copy(struct opts_t * optsp, unsigned char * wrkPos,
         unsigned char * wrkPos2)
 {
-    int ibpt, obpt, res, n, sparse_skip, sparing_skip;
+    int ibpt, obpt, res, n, sparse_skip, sparing_skip, continual_read;
     int ret = 0;
     struct cp_state_t cp_st;
     struct cp_state_t * csp;
 
     if ((dd_count <= 0) && (! reading_fifo))
         return 0;
+    continual_read = reading_fifo && (dd_count <= 0);
     csp = &cp_st;
     memset(csp, 0, sizeof(struct cp_state_t));
     ibpt = optsp->bpt_i;
@@ -3345,13 +3367,13 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
     /* Both csp->if_filepos and csp->of_filepos are 0 */
 
     /* <<< main loop that does the copy >>> */
-    while ((dd_count > 0) || reading_fifo) {
+    while ((dd_count > 0) || continual_read) {
         csp->bytes_read = 0;
         csp->bytes_of = 0;
         csp->bytes_of2 = 0;
         sparing_skip = 0;
         sparse_skip = 0;
-        if ((dd_count >= ibpt) || reading_fifo) {
+        if ((dd_count >= ibpt) || continual_read) {
             csp->icbpt = ibpt;
             csp->ocbpt = obpt;
         } else {
@@ -3381,7 +3403,8 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
             break;
 
         if (optsp->oflagp->sparse) {
-            if (0 == memcmp(wrkPos, zeros_buff, csp->ocbpt * optsp->obs)) {
+            n = (csp->ocbpt * optsp->obs) + csp->partial_write_bytes;
+            if (0 == memcmp(wrkPos, zeros_buff, n)) {
                 sparse_skip = 1;
                 if (optsp->oflagp->wsame16 && (FT_PT & optsp->out_type)) {
                     res = pt_write_same16(optsp->outfd, 1, zeros_buff,
@@ -3403,7 +3426,8 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
             else
                 res = cp_read_of_block_reg(optsp, csp, wrkPos2);
             if (0 == res) {
-                if (0 == memcmp(wrkPos, wrkPos2, csp->ocbpt * optsp->obs))
+                n = (csp->ocbpt * optsp->obs) + csp->partial_write_bytes;
+                if (0 == memcmp(wrkPos, wrkPos2, n))
                     sparing_skip = 1;
                 else if (optsp->obpc) {
                     ret = cp_finer_comp_wr(optsp, csp, wrkPos, wrkPos2);
@@ -3414,14 +3438,16 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
             }
         }
         /* Start of writing section */
-        if (sparing_skip || sparse_skip)
+        if (sparing_skip || sparse_skip) {
             out_sparse += csp->ocbpt;
-        else {
+            if (csp->partial_write_bytes > 0)
+                ++out_sparse_partial;
+        } else {
             if (FT_PT & optsp->out_type) {
                 if ((ret = cp_write_pt(optsp, csp, 0, csp->ocbpt, wrkPos)))
                     break;
             } else if (FT_DEV_NULL & optsp->out_type)
-                ;  /* don't bump out_full (earlier it did) */
+                ;  /* don't bump out_full (earlier revs did) */
             else if ((ret = cp_write_block_reg(optsp, csp, 0, csp->ocbpt,
                                                wrkPos)))
                 break;
