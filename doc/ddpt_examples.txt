@@ -17,8 +17,8 @@ $ dd if=src of=dst
 13+1 records out
 6915 bytes (6.9 kB) copied, 0.000128857 s, 53.7 MB/s
 
-# first cut ddpt equivalent. Let's assume the ddst file exists and
-# it is relatively large.
+# Now lets look at the ddpt equivalent. So we try the same options but
+# the ddst file exists and it is relatively large.
 $ stat -c %s ddst
 524800
 $ ddpt if=src of=ddst
@@ -29,8 +29,9 @@ time to transfer data: 0.000121 secs at 59.24 MB/sec
 $ stat -c %s dst
 524800
 
-# ddpt does not truncate dst, it overwrites it. So if ddst's file length
-# is longer than src's file length the output file needs to be truncated:
+# ddpt does not truncate ddst, it overwrites it. So if ddst's file length
+# is longer than src's file length then the output file needs to be
+# truncated:
 $ ddpt if=src of=ddst oflag=trunc
 Assume block size of 512 bytes for both input and output
 13+1 records in
@@ -39,21 +40,20 @@ time to transfer data: 0.000243 secs at 29.50 MB/sec
 $ stat -c %s ddst
 6915
 
-# So now src is the same length as dst and ddst. And they all contain
-# the same contents.
+# So now src is the same length as dst and ddst. And they all contain the
+# same data. The ddpt benefit of not truncating the output file by default
+# is with write sparing and the resume capability.
 
-# Both dd and ddpt default to a block size of 512 bytes (bs=512) as
-# they are designed to move disk data which up until recent times
-# almost always had a block size of 512 bytes. However for copying
-# regular (normal) files bs=1 would be a clearer choice.
-# dd is relatively inefficient when bs=1 but ddpt should be faster
-# (see 'bpt' option in manpage).
-# So we can do this:
+# Both dd and ddpt default to a block size of 512 bytes (bs=512) as they
+# are designed to move disk data which up until recent times typically
+# had a block size of 512 bytes. However for copying regular (normal)
+# files bs=1 would be a clearer choice. dd is relatively inefficient when
+# bs=1 but ddpt should be faster. So we can do this:
 $ ddpt if=src bs=1 of=ddst oflag=trunc          
 6915+0 records in
 6915+0 records out
 time to transfer data: 0.000134 secs at 51.60 MB/sec
-# Notice that "records in" and "records out" are now byte counts since "bs=1"
+# Notice that "records in" and "records out" are byte counts since "bs=1"
 
 # if the src file is large then
 $ dd if=src of=dst
@@ -64,14 +64,14 @@ $ dd if=src of=dst
 $ dd if=src of=dst bs=64k
 
 # ddpt reads BPT*IBS bytes at a time from src before writing them to
-# dst. The default value of BPT varies depending on IBS; for IBS=512
+# ddst. The default value of BPT varies depending on IBS; for IBS=512
 # BPT defaults to 128. So for 512 byte blocks ddpt reads in chunks of
 # 64 KB. Hence this invocation of ddpt remains quite efficient:
-$ ddpt if=src ibs=512 of=dst oflag=trunc obs=1
-# The advantage of keeping the IBS value low (and specifically the
-# logical block size for block devices) is that the SKIP and COUNT
+$ ddpt if=src ibs=512 of=ddst oflag=trunc obs=1
+# The advantage of keeping the IBS value low (and specifically equal to
+# the logical block size for block devices) is that the SKIP and COUNT
 # arguments are in units of IBS bytes:
-$ ddpt if=/dev/sda skip=0x4215cc bs=512 of=dst.img count=1234560
+$ ddpt if=/dev/sda skip=0x4215cc bs=512 of=ddst.img count=1234560
 # There is no need to worry about short reads on a block device
 # so giving BS sets both IBS and OBS to the same value. So now
 # SKIP and COUNT are in 512 byte units (so SKIP is a Logical Block
@@ -80,65 +80,71 @@ $ ddpt if=/dev/sda skip=0x4215cc bs=512 of=dst.img count=1234560
 # BPT defaults to 128 and each read into the copy buffer is
 # 128*512 = 64 KB. The dd equivalent:
 $ dd if=/dev/sda skip=4330956 bs=512 of=dst.img count=1234560
-# will be very slow since dd will read 512 bytes, write 512 bytes
-# at a time. Changing to "bs=64k" looks like it will help but now
-# SKIP and COUNT need to be divided by 128. However the SKIP value is
-# not divisible by 128. An efficient solution is not pretty.
+# will be slow since dd will read 512 bytes, write 512 bytes at a time.
+# Changing to "bs=64k" looks like it will help but now SKIP and COUNT
+# need to be divided by 128. However the SKIP value is not divisible by
+# 128. An efficient solution is not pretty.
 
 
-# ddpt ignores partial writes to block or pt devices.
-# This can be observed in a copy between block devices that have different
-# logical block sizes:
+# When block sizes differ between the input and output devices, ddpt may
+# zero pad the last copy segment so an integral number of OBS sized blocks
+# are written. With this example the output (sent to stderr) is shown:
 $ ddpt if=/dev/sda ibs=512 of=/dev/sdc obs=4096 count=9
 9+0 records in
 2+0 records out
-time to transfer data: 0.000180 secs at 25.60 MB/sec
-# this time the output is shown. The COUNT implies a copy of 9*512 =
-# 4608 bytes. That spills into the second record (block) of /dev/sdc
-# because its logical block size is 4096 bytes. ddpt always pads with
-# zeros which is what the last 3542 bytes of the second block of
-# /dev/sdc will contain after the copy.
+time to transfer data: 0.000045 secs at 102.40 MB/sec
+# The COUNT implies a copy of 9*512 = 4608 bytes. That spills into the
+# second record (block) of /dev/sdc because its logical block size is 4096
+# bytes. ddpt pads with zeros which is what the last 3542 bytes of the
+# second block of /dev/sdc will contain after the copy.
 
 
 # Sparse writes can be used to count the number of blocks that contain
-# all zeros. Here a lightly used partition, 2 GB from its start and for
-# a length of 5 GB is checked:
-$ ddpt if=/dev/sda7 skip=4m bs=512 oflag=sparse count=10m
+# all zeros. sda1 is a half full 73 GB partition (on a SSD) and we check
+# for zero blocks 40 GB from its start and for a length of 5 GB:
+$ ddpt if=/dev/sda1 skip=80m bs=512 oflag=sparse count=10m
+Output file not specified so no copy, just reading input
 10485760+0 records in
 0+0 records out
-8895616 bypassed records out
-time to read data: 138.777383 secs at 38.69 MB/sec
+5672704 bypassed records out
+time to read data: 20.583461 secs at 260.83 MB/sec
 # Actually a copy buffer (64 KB) at a time is being checked for all
 # zeros so that count understates the true value. By setting OBPC to
 # 1, each block will be checked at a (slight) cost in execution time:
-$ ddpt if=/dev/sda7 skip=4m bs=512 oflag=sparse count=10m bpt=128,1
+$ ddpt if=/dev/sda1 skip=80m bs=512 oflag=sparse count=10m bpt=128,1
+Output file not specified so no copy, just reading input
 10485760+0 records in
 0+0 records out
-8908836 bypassed records out
-time to read data: 136.614629 secs at 39.30 MB/sec
+6317217 bypassed records out
+time to read data: 20.575803 secs at 260.92 MB/sec
+# Zero filled blocks are listed as "bypassed records out" (even though
+# nothing is actually written). When the granularity of the check for
+# zeros is 64 KB then 5672704 zero blocks are found. When the granularity
+# of the check is reduced to 512 bytes then 6317217 zero blocks are found. 
+
 
 # As an example of write sparing, assume the regular file t exists
-# and tt doesn't:
+# and tt doesn't. Lets say the length of t is 524897 bytes:
 $ ddpt if=t bs=512 of=tt oflag=sparing
-1025+0 records in
-1025+0 records out
+1025+1 records in
+1025+1 records out
 0 bypassed records out
-time to transfer data: 0.017652 secs at 29.73 MB/sec
+time to transfer data: 0.001061 secs at 495.11 MB/sec
 # Now repeating the operation with oflag=sparing still set:
 $ ddpt if=t bs=512 of=tt oflag=sparing
-1025+0 records in
+1025+1 records in
 0+0 records out
-1025 bypassed records out
-time to transfer data: 0.004758 secs at 110.30 MB/sec
+1025+1 bypassed records out
+time to transfer data: 0.001680 secs at 312.69 MB/sec
 # Since t and tt should now contain the same data write sparing
 # has been able to bypass all writes to tt.
 #
 # The "time to transfer" line in the output can be removed by
 # the addition of the status=noxfer option:
 $ ddpt if=t bs=512 of=tt oflag=sparing status=noxfer
-1025+0 records in
+1025+1 records in
 0+0 records out
-1025 bypassed records out
+1025+1 bypassed records out
 
 
 # Imaging disks and partitions to a regular file can take a long
@@ -147,26 +153,26 @@ $ ddpt if=t bs=512 of=tt oflag=sparing status=noxfer
 # oflag=resume may be helpful. In the case shown below a small
 # partition is being copied to a regular file and it is
 # interrupted with ^C from the keyboard:
-$ ddpt if=/dev/sda3 of=sda3.bin bs=512
-^CInterrupted by signal,  remaining block count=3910097
-4588416+0 records in
-4588288+0 records out
-time to transfer data: 72.015258 secs at 32.62 MB/sec
+$ ddpt if=/dev/sda2 of=sda2.bin bs=512
+^CInterrupted by signal,  remaining block count=1409601
+662784+0 records in
+662784+0 records out
+time to transfer data: 5.226487 secs at 64.93 MB/sec
 Interrupted by signal 2
 To resume, invoke with same arguments plus oflag=resume
 # Taking the advice from the last line:
-$ ddpt if=/dev/sda3 of=sda3.bin bs=512 oflag=resume
-resume adjusting skip=4588416, seek=4588416, and count=3909969
-3909969+0 records in
-3909969+0 records out
-time to transfer data: 94.125894 secs at 21.27 MB/sec
-# By checking the size of sda3.bin the resume logic has adjusted
+$ ddpt if=/dev/sda2 of=sda2.bin bs=512 oflag=resume
+resume adjusting skip=662784, seek=662784, and count=1409601
+1409601+0 records in
+1409601+0 records out
+time to transfer data: 10.543506 secs at 68.45 MB/sec
+# By checking the size of sda2.bin the resume logic has adjusted
 # the skip, seek and count options to complete the rest of the
 # copy. If the copy was finished then making the same invocation
 # is harmless: 
-$ ddpt if=/dev/sda3 of=sda3.bin bs=512 oflag=resume
+$ ddpt if=/dev/sda2 of=sda2.bin bs=512 oflag=resume
 resume finds copy complete, exiting
-# And if sda3.bin was empty on did not exist then a full copy
+# And if sda2.bin was empty on did not exist then a full copy
 # would occur.
 
 
@@ -230,4 +236,4 @@ oflag=trim,nowrite bpt=1024,1
 $ ddpt if=/dev/sg1 skip=$((0xfff + 1)) count=1
 
 
-# Douglas Gilbert 20110101
+# Douglas Gilbert 20110115
