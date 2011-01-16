@@ -106,6 +106,8 @@
 #define ERRBLK_SUPPORTED 1
 
 
+/* One instance for arguments to iflag= , another instance for oflag= */
+/* conv= arguments are mapped to flag arguments */
 struct flags_t {
     int append;
     int cdbsz;
@@ -139,10 +141,12 @@ struct flags_t {
     int wsame16;
 };
 
+/* command line options */
+/* The _given fields indicate whether option was given or is a default */
 struct opts_t {
     int64_t skip;
     int64_t seek;
-    int bs_given;
+    int bs_given;       /* 1 implies bs= option given on command line */
     int ibs;
     int ibs_given;
     int obs;
@@ -169,6 +173,8 @@ struct opts_t {
 #endif
 };
 
+/* state of working variables within do_copy() */
+/* permits do_copy() to be broken up into lots of helpers */
 struct cp_state_t {
     int64_t if_filepos;
     int64_t of_filepos;
