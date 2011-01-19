@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20110119 [svn: r142]";
+static char * version_str = "0.92 20110119 [svn: r143]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -159,6 +159,7 @@ static struct timeval start_tm;
 #endif
 static int read1_or_transfer = 0; /* 1 when of=/dev/null or similar */
 static int ibs_hold = 0;
+static int out_type_hold = 0;
 static int max_uas = MAX_UNIT_ATTENTIONS;
 static int max_aborted = MAX_ABORTED_CMDS;
 static int coe_limit = 0;
@@ -344,8 +345,9 @@ interrupt_handler(int sig)
     if (do_time)
         calc_duration_throughput(0);
     fprintf(stderr, "Interrupted by signal %d\n", sig);
-    fprintf(stderr, "To resume, invoke with same arguments plus "
-            "oflag=resume\n");
+    if (FT_REG & out_type_hold)
+        fprintf(stderr, "To resume, invoke with same arguments plus "
+                "oflag=resume\n");
     kill(getpid(), sig);
 #endif
 }
@@ -2155,6 +2157,7 @@ open_of(struct opts_t * optsp, int verbose)
     optsp->out_type = dd_filetype(outf);
     if (((FT_BLOCK | FT_OTHER) & optsp->out_type) && ofp->pt)
         optsp->out_type |= FT_PT;
+    out_type_hold = optsp->out_type;
     if (verbose)
         fprintf(stderr, " >> Output file type: %s\n",
                 dd_filetype_str(optsp->out_type, ebuff, EBUFF_SZ, outf));
@@ -2235,8 +2238,10 @@ open_of(struct opts_t * optsp, int verbose)
             }
             /* N.B. file offset (pointer) not changed by ftruncate */
         }
-        if ((! outf_exists) && (FT_ERROR & optsp->out_type))
+        if ((! outf_exists) && (FT_ERROR & optsp->out_type)) {
             optsp->out_type = FT_REG;   /* exists now */
+            out_type_hold = optsp->out_type;
+        }
         if (sg_set_binary_mode(fd) < 0)
             perror("sg_set_binary_mode");
         if (verbose) {
@@ -2755,7 +2760,7 @@ static int
 cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                   unsigned char * wrkPos)
 {
-    int res, res2, off;
+    int res, res2;
     int64_t offset = optsp->skip * optsp->ibs;
     int numbytes = csp->icbpt * optsp->ibs;
 
@@ -2778,14 +2783,9 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         }
         csp->if_filepos = offset;
     }
-    off = 0;
-    // writes to fifos are non-atomic so loop if making progress
-    do {
-        while (((res = read(optsp->infd, wrkPos + off,
-                            numbytes - off)) < 0) && (EINTR == errno))
-            ++interrupted_retries;
-    } while ((FT_FIFO & optsp->out_type) && (res > 0) &&
-             ((off += res) < numbytes));
+    while (((res = read(optsp->infd, wrkPos, numbytes)) < 0) &&
+           (EINTR == errno))
+        ++interrupted_retries;
 
     if (verbose > 2)
         fprintf(stderr, "read(unix): requested bytes=%d, res=%d\n",
@@ -2870,15 +2870,20 @@ cp_write_of2(struct opts_t * optsp, struct cp_state_t * csp,
     int res, off;
     int numbytes = (csp->ocbpt * optsp->obs) + csp->partial_write_bytes;
 
-    off = 0;
     // writes to fifos are non-atomic so loop if making progress
+    off = 0;
     do {
         while (((res = write(optsp->out2fd, wrkPos + off,
                              numbytes - off)) < 0) && (EINTR == errno))
             ++interrupted_retries;
     } while ((FT_FIFO & optsp->out2_type) && (res > 0) &&
              ((off += res) < numbytes));
-    if (verbose > 2)
+    if (off >= numbytes)
+        res = numbytes;
+    else if (off > 0)
+        fprintf(stderr, "write to of2 fifo problem: count=%d, off=%d, "
+                "res=%d\n", numbytes, off, res);
+    if ((verbose > 2) && (0 == off))
         fprintf(stderr, "write to of2: count=%d, res=%d\n", numbytes, res);
     if (res < 0) {
         fprintf(stderr, "writing to of2, seek=%"PRId64" : %s\n", optsp->seek,
@@ -3022,7 +3027,7 @@ static int
 cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                    int seek_delta, int blks, unsigned char * wrkPos)
 {
-    int res;
+    int res, off;
     int numbytes = blks * optsp->obs;
     int64_t offset;
     int64_t aseek = optsp->seek + seek_delta;
@@ -3091,10 +3096,20 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
             }
             csp->of_filepos = offset;
         }
-        while (((res = write(optsp->outfd, wrkPos, numbytes))
-                < 0) && (EINTR == errno))
-            ++interrupted_retries;
-        if (verbose > 2)
+        // writes to fifos are non-atomic so loop if making progress
+        off = 0;
+        do {
+            while (((res = write(optsp->outfd, wrkPos + off,
+                                 numbytes - off)) < 0) && (EINTR == errno))
+                ++interrupted_retries;
+        } while ((FT_FIFO & optsp->out_type) && (res > 0) &&
+                 ((off += res) < numbytes));
+        if (off >= numbytes)
+            res = numbytes;
+        else if (off > 0)
+            fprintf(stderr, "write to of fifo problem: count=%d, off=%d, "
+                    "res=%d\n", numbytes, off, res);
+        if ((verbose > 2) && (0 == off))
             fprintf(stderr, "write(unix): requested bytes=%d, res=%d\n",
                     numbytes, res);
         if (res < 0) {
@@ -3630,6 +3645,7 @@ main(int argc, char * argv[])
     if (('-' == opts.outf[0]) && ('\0' == opts.outf[1])) {
         fd = STDOUT_FILENO;
         opts.out_type = FT_FIFO;
+        out_type_hold = opts.out_type;
         if (verbose)
             fprintf(stderr, " >> Output file type: fifo [stdin, stdout, "
                     "named pipe]\n");
