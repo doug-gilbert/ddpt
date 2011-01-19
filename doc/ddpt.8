@@ -4,14 +4,20 @@ ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
 .SH SYNOPSIS
 .B ddpt
-[\fIbs=BS\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR] [\fIibs=IBS\fR]
-\fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIobs=OBS\fR] [\fIof=OFILE\fR]
-[\fIoflag=FLAGS\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR]
-[\fI\-\-help\fR] [\fI\-\-version\fR]
+[\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fR6|10|12|16]
+[\fIcoe=\fR0|1] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
+[\fIibs=IBS\fR] \fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIobs=OBS\fR]
+[\fIof=OFILE\fR] [\fIof2=OFILE2\fR] [\fIoflag=FLAGS\fR] [\fIretries=RETR\fR]
+[\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR] [\fIverbose=VERB\fR]
+[\fI\-\-help\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR]
 .PP
-[\fIbpt=BPT[,OBPC]\fR] [\fIcdbsz=\fR6|10|12|16] [\fIcoe=\fR0|1]
-[\fIcoe_limit=CL\fR] [\fIof2=OFILE2\fR] [\fIretries=RETR\fR]
-[\fIverbose=VERB\fR] [\fI\-\-verbose\fR]
+For comparison here is the synopsis for GNU's dd command:
+.PP
+.B dd
+[\fIbs=BS\fR] [\fIcbs=CBS\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
+[\fIibs=IBS\fR] [\fIif=IFILE\fR] [\fIiflag=FLAGS\fR] [\fIobs=OBS\fR]
+[\fIof=OFILE\fR] [\fIoflag=FLAGS\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR]
+[\fIstatus=STAT\fR] [\fI\-\-help\fR] [\fI\-\-version\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
@@ -22,12 +28,13 @@ in pass\-through ("pt") mode. Similar syntax and semantics to the Unix
 .B dd(1)
 command.
 .PP
-The first grouping in the synopsis above lists recent GNU
+For comparison, the SYNOPSIS section above shows both the
+.B ddpt
+command line options followed by GNU's
 .B dd(1)
-options. The second grouping contains extra options added by this utility.
-The options for both groupings are merged below and documented in
-alphabetical order. See the section on DD DIFFERENCES for significant
-differences between ddpt and dd.
+command line options. Broadly speaking ddpt can be considered a superset
+of dd. See the section on DD DIFFERENCES for significant differences
+between ddpt and dd.
 .PP
 ddpt does a segmented copy, first reading in \fIBPT*IBS\fR bytes from
 \fIIFILE\fR (or less if near the end of the copy) into a copy buffer. In the
@@ -182,11 +189,12 @@ must be less than or equal to the number of \fIIBS\fR\-sized blocks in
 \fIIFILE\fR.
 .TP
 \fBstatus\fR=\fISTAT\fR
-the \fISTAT\fR value of 'noxfer' suppresses the throughput calculation and
-the elapsed time output. The default action is to show the throughput
-calculation and the elapsed time output and the end of the copy.
-As a convenience the value 'null' is accepted for \fISTAT\fR and
-does nothing.
+the \fISTAT\fR value of 'noxfer' suppresses the throughput speed and the
+copy time output at the end of the copy. The "status=noxfer" option was
+recently introduced to GNU's dd command. The default action of ddpt is to
+show the throughput (in megabytes per second) and the time taken to do the
+copy after the "records in" and "records out" lines at the end of the copy.
+As a convenience the value 'null' is accepted for \fISTAT\fR and does nothing.
 .TP
 \fBverbose\fR=\fIVERB\fR
 as \fIVERB\fR increases so does the amount of debug output sent to stderr.
@@ -219,9 +227,10 @@ or either \fIIFILE\fR and \fIOFILE\fR are pass\-through devices, then the
 minimum size, expressed in units of input blocks, is used.
 .PP
 If a regular file is used as input, its size, expressed in units of input
-blocks (and rounded up if necessary) is used. If a regular file is used as
-output, its size, expressed in units of input blocks (and rounded up if
-necessary) is only used when no size can be deduced for the input file.
+blocks (and rounded up if necessary) is used. Note that the rounding up
+of the deduced \fICOUNT\fR may result in a partial read of the last input
+block and a corresponding partial write to \fIOFILE\fR if it is a regular
+file.
 .PP
 The size of pt devices is deduced from the SCSI READ CAPACITY command.
 Block device sizes (or their partition sizes) are obtained from the
@@ -233,6 +242,9 @@ that the copy will not overrun the file or device.
 .PP
 If \fICOUNT\fR is not given and \fIIFILE\fR is a fifo (and stdin is
 treated as a fifo) then \fIIFILE\fR is read until an EOF is detected.
+If \fICOUNT\fR is not given and \fIIFILE\fR is a /dev/zero (or
+equivalent) then zeros are read until an error occurs (e.g. file
+system full).
 .PP
 If \fICOUNT\fR is not given and cannot be deduced then an error message
 is issued and no copy takes place.
@@ -607,37 +619,39 @@ copy buffer can be used since its size is a multiple of both \fIIBS\fR and
 \fIOBS\fR. Being able to precisely define the copy buffer size in ddpt
 makes sparse writing, write sparing and trim operations simpler to
 define and the user to control.
+.PP
+ddpt does not support dd's "cbs=" option (conversion block size). If
+the "cbs=" option is given to ddpt then it is ignored.
 .SH NOTES
 A partial write is a write to the \fIOFILE\fR of less than \fIOBS\fR
 bytes. This typically occurs at the end of a copy. dd can do partial
 writes. ddpt does partial writes to regular files and fifos (includin
 stdout). However ddpt ignores partial writes when \fIOFILE\fR is a block
-device or a pt device is used. Whenever ddpt ignores partial writes it
-sends a warning to the console (stderr).
+device or a pt device. When ddpt ignores a partial write, it sends a
+warning to the console (stderr).
 .PP
 At the end of the copy two lines are output to the console:
-.PP
+.br
    <in_full>+<in_partial> records in
 .br
-   <out_full>+<out_partial> records in
+   <out_full>+<out_partial> records out
 .PP
-The "records in" lines is the number of full input blocks (each of
-\fIIBS\fR bytes) that have been read plus the number of partial
-blocks (usually less than \fIIBS\fR bytes) that have been read.
-Following the lead of dd when 'iflag=coe' is active a block that cannot
-be read (and has zeros substituted for its output) is regarded as
-a partial read.
-The "records out" lines is the number of full output blocks (each of
-\fIOBS\fR bytes) that have been written plus the number of partial
-blocks (usually less than \fIOBS\fR bytes) that have been written.
+The "records in" line is the number of full input blocks (each of
+\fIIBS\fR bytes) that have been read plus the number of partial blocks (
+usually less than \fIIBS\fR bytes) that have been read. Following the lead
+of dd when 'iflag=coe' is active a block that cannot be read (and has zeros
+substituted for its output) is regarded as a partial read. The "records out"
+line is the number of full output blocks (each of \fIOBS\fR bytes) that
+have been written plus the number of partial blocks (usually less than
+\fIOBS\fR bytes) that have been written.
 .PP
 Block devices (e.g. /dev/sda and /dev/hda) can be given for \fIIFILE\fR.
 If neither 'iflag=direct' nor 'iflag=pt' is given then normal block IO
-involving buffering and caching is performed. If only 'iflag=direct' is
-given then the buffering and caching is bypassed (this is applicable to
-both SCSI devices and ATA disks). When 'iflag=pt' is given SCSI commands
-are sent to the device which bypasses most of the actions performed by the
-block layer. The same applies for block devices given for \fIOFILE\fR.
+involving buffering and caching is performed. If 'iflag=direct' is given
+then the buffering and caching is bypassed (this is applicable to both SCSI
+devices and ATA disks). When 'iflag=pt' is given SCSI commands are sent to
+the device which bypasses most of the actions performed by the block layer.
+The same applies for block devices given for \fIOFILE\fR.
 .PP
 \fIBPT\fR, \fIBS\fR, \fICOUNT\fR, \fIIBS\fR, \fIOBPC\fR, \fIOBS\fR,
 \fISKIP\fR and \fISEEK\fR may include one of these multiplicative suffixes:
