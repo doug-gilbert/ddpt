@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20110116 [svn: r141]";
+static char * version_str = "0.92 20110119 [svn: r142]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -179,14 +179,14 @@ static void
 usage()
 {
     fprintf(stderr, "Usage: "
-           "ddpt  [bs=BS] [conv=CONVS] [count=COUNT] [ibs=IBS] if=IFILE\n"
-           "             [iflag=FLAGS] [obs=OBS] [of=OFILE] [oflag=FLAGS] "
-           "[seek=SEEK]\n"
-           "             [skip=SKIP] [status=STAT] [--help] [--version]\n\n"
-           "             [bpt=BPT[,OBPC]] [cdbsz=6|10|12|16] [coe=0|1] "
-           "[coe_limit=CL]\n"
-           "             [of2=OFILE2] [retries=RETR] [verbose=VERB] "
-           "[--verbose]\n"
+           "ddpt  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=6|10|12|16] [coe=0|1]\n"
+           "             [coe_limit=CL] [conv=CONVS] [count=COUNT] "
+           "[ibs=IBS] if=IFILE\n"
+           "             [iflag=FLAGS] [obs=OBS] [of=OFILE] [of2=OFILE2] "
+           "[oflag=FLAGS]\n"
+           "             [seek=SEEK] [retries=RETR] [skip=SKIP] "
+           "[status=STAT]\n"
+           "             [verbose=VERB] [--help] [--verbose] [--version]\n"
            "  where:\n"
            "    bpt         input Blocks Per Transfer (BPT) (def: 128 when "
            "IBS is 512)\n"
@@ -762,7 +762,9 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
             }
             optsp->ibs = n;
             optsp->obs = n;
-        } else if (0 == strcmp(key, "cdbsz")) {
+        } else if (0 == strcmp(key, "cbs"))
+            fprintf(stderr, "the cbs= option is ignored\n");
+        else if (0 == strcmp(key, "cdbsz")) {
             optsp->iflagp->cdbsz = sg_get_num(buf);
             optsp->oflagp->cdbsz = optsp->iflagp->cdbsz;
             optsp->cdbsz_given = 1;
@@ -1926,7 +1928,8 @@ calc_duration_throughput(int contin)
 {
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
     struct timespec end_tm, res_tm;
-    double a, b;
+    double a, b, r;
+    int secs, h, m;
     int64_t blks;
 
     if (start_tm_valid && (start_tm.tv_sec || start_tm.tv_nsec)) {
@@ -1945,14 +1948,33 @@ calc_duration_throughput(int contin)
                 (read1_or_transfer ? "read" : "transfer"),
                 (contin ? " so far" : ""), (int)res_tm.tv_sec,
                 (int)(res_tm.tv_nsec / 1000));
-        if ((a > 0.00001) && (b > 511))
-            fprintf(stderr, " at %.2f MB/sec\n", b / (a * 1000000.0));
-        else
+        r = 0.0;
+        if ((a > 0.00001) && (b > 511)) {
+            r = b / (a * 1000000.0);
+            fprintf(stderr, " at %.2f MB/sec\n", r);
+        } else
             fprintf(stderr, "\n");
+        if (contin && (! reading_fifo) && (r > 0.01) &&
+            (dd_count > 100)) {
+            secs = (int)(((double)ibs_hold * dd_count) / (r * 1000000));
+            if (secs > 10) {
+                h = secs / 3600;
+                secs = secs - (h * 3600);
+                m = secs / 60;
+                secs = secs - (m * 60);
+                if (h > 0)
+                    fprintf(stderr, "estimated time remaining: "
+                            "%d:%02d:%02d\n", h, m, secs);
+                else
+                    fprintf(stderr, "estimated time remaining: "
+                            "%d:%02d\n", m, secs);
+            }
+        }
     }
 #elif defined(HAVE_GETTIMEOFDAY)
     struct timeval end_tm, res_tm;
-    double a, b;
+    double a, b, r;
+    int secs, h, m;
     int64_t blks;
 
     if (start_tm_valid && (start_tm.tv_sec || start_tm.tv_usec)) {
@@ -1971,10 +1993,28 @@ calc_duration_throughput(int contin)
                 (read1_or_transfer ? "read" : "transfer"),
                 (contin ? " so far" : ""), (int)res_tm.tv_sec,
                 (int)res_tm.tv_usec);
-        if ((a > 0.00001) && (b > 511))
-            fprintf(stderr, " at %.2f MB/sec\n", b / (a * 1000000.0));
-        else
+        r = 0.0;
+        if ((a > 0.00001) && (b > 511)) {
+            r = b / (a * 1000000.0);
+            fprintf(stderr, " at %.2f MB/sec\n", r);
+        } else
             fprintf(stderr, "\n");
+        if (contin && (! reading_fifo) && (r > 0.01) &&
+            (dd_count > 100)) {
+            secs = (int)(((double)ibs_hold * dd_count) / (r * 1000000));
+            if (secs > 10) {
+                h = secs / 3600;
+                secs = secs - (h * 3600);
+                m = secs / 60;
+                secs = secs - (m * 60);
+                if (h > 0)
+                    fprintf(stderr, "estimated time remaining: "
+                            "%d:%02d:%02d\n", h, m, secs);
+                else
+                    fprintf(stderr, "estimated time remaining: "
+                            "%d:%02d\n", m, secs);
+            }
+        }
     }
 #else
     contin = contin;    // suppress warning
@@ -2715,7 +2755,7 @@ static int
 cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                   unsigned char * wrkPos)
 {
-    int res, res2;
+    int res, res2, off;
     int64_t offset = optsp->skip * optsp->ibs;
     int numbytes = csp->icbpt * optsp->ibs;
 
@@ -2738,9 +2778,15 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         }
         csp->if_filepos = offset;
     }
-    while (((res = read(optsp->infd, wrkPos, numbytes)) < 0) &&
-           (EINTR == errno))
-        ++interrupted_retries;
+    off = 0;
+    // writes to fifos are non-atomic so loop if making progress
+    do {
+        while (((res = read(optsp->infd, wrkPos + off,
+                            numbytes - off)) < 0) && (EINTR == errno))
+            ++interrupted_retries;
+    } while ((FT_FIFO & optsp->out_type) && (res > 0) &&
+             ((off += res) < numbytes));
+
     if (verbose > 2)
         fprintf(stderr, "read(unix): requested bytes=%d, res=%d\n",
                 numbytes, res);
@@ -2821,12 +2867,17 @@ static int
 cp_write_of2(struct opts_t * optsp, struct cp_state_t * csp,
              unsigned char * wrkPos)
 {
-    int res;
+    int res, off;
     int numbytes = (csp->ocbpt * optsp->obs) + csp->partial_write_bytes;
 
-    while (((res = write(optsp->out2fd, wrkPos, numbytes)) < 0) &&
-           (EINTR == errno))
-        ++interrupted_retries;
+    off = 0;
+    // writes to fifos are non-atomic so loop if making progress
+    do {
+        while (((res = write(optsp->out2fd, wrkPos + off,
+                             numbytes - off)) < 0) && (EINTR == errno))
+            ++interrupted_retries;
+    } while ((FT_FIFO & optsp->out2_type) && (res > 0) &&
+             ((off += res) < numbytes));
     if (verbose > 2)
         fprintf(stderr, "write to of2: count=%d, res=%d\n", numbytes, res);
     if (res < 0) {
@@ -3600,8 +3651,8 @@ main(int argc, char * argv[])
             opts.out2_type = dd_filetype(opts.out2f);
             if (FT_DEV_NULL & opts.out2_type)
                 fd = -1;
-            else if ((0 == (FT_ERROR & opts.out2_type)) &&
-                     (0 == (FT_REG & opts.out2_type))) {
+            else if (! ((FT_REG & opts.out2_type) ||
+                        (FT_FIFO & opts.out2_type))) {
                 fprintf(stderr, "Error: output 2 file type must be regular "
                         "file or fifo\n");
                 return SG_LIB_FILE_ERROR;
