@@ -154,11 +154,10 @@ $ ddpt if=t bs=512 of=tt oflag=sparing status=noxfer
 # partition is being copied to a regular file and it is
 # interrupted with ^C from the keyboard:
 $ ddpt if=/dev/sda2 of=sda2.bin bs=512
-^CInterrupted by signal,  remaining block count=1409601
+^CInterrupted by signal SIGINT,  remaining block count=1409601
 662784+0 records in
 662784+0 records out
 time to transfer data: 5.226487 secs at 64.93 MB/sec
-Interrupted by signal 2
 To resume, invoke with same arguments plus oflag=resume
 # Taking the advice from the last line:
 $ ddpt if=/dev/sda2 of=sda2.bin bs=512 oflag=resume
@@ -236,4 +235,4 @@ oflag=trim,nowrite bpt=1024,1
 $ ddpt if=/dev/sg1 skip=$((0xfff + 1)) count=1
 
 
-# Douglas Gilbert 20110115
+# Douglas Gilbert 20110120
