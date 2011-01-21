@@ -188,6 +188,11 @@ struct cp_state_t {
     int partial_write_bytes;
 };
 
+struct signum_name_t {
+    int num;
+    char * name;
+};
+
 
 #ifdef SG_LIB_WIN32
 extern int dd_filetype(const char * fn);

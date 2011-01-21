@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20110119 [svn: r143]";
+static char * version_str = "0.92 20110121 [svn: r144]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -171,6 +171,17 @@ static unsigned char * zeros_buff = NULL;
 static const char * errblk_file = "errblk.txt";
 static FILE * errblk_fp;
 #endif
+
+static struct signum_name_t signum_name_arr[] = {
+    {SIGINT, "SIGINT"},
+    {SIGQUIT, "SIGQUIT"},
+    {SIGPIPE, "SIGPIPE"},
+    {SIGUSR1, "SIGUSR1"},
+#ifdef SIGINFO
+    {SIGINFO, "SIGINFO"},
+#endif
+    {0, NULL},
+};
 
 
 static void calc_duration_throughput(int contin);
@@ -301,6 +312,26 @@ print_stats(const char * str)
                 ((1 == interrupted_retries) ? "retry" : "retries"));
 }
 
+/* Return signal name for signum if known, else return signum as a string. */
+static const char *
+get_signal_name(int signum, char * b, int blen)
+{
+    const struct signum_name_t * sp;
+
+    for (sp = signum_name_arr; sp->num; ++sp) {
+        if (signum == sp->num)
+            break;
+    }
+    b[blen - 1] = '\0';
+    if (sp->num)
+        strncpy(b, sp->name, blen - 1);
+    else
+        snprintf(b, blen - 1, "%d", signum);
+    return b;
+}
+
+/* Register given sig_handler function to be associated with signal
+ * sig_num. */
 static void
 register_handler(int sig_num, void (*sig_handler) (int sig))
 {
@@ -316,22 +347,28 @@ register_handler(int sig_num, void (*sig_handler) (int sig))
         (sigact.sa_handler != SIG_IGN)) {
         sigact.sa_handler = sig_handler;
         sigemptyset(&sigact.sa_mask);
-        sigact.sa_flags = 0;
+        sigact.sa_flags = 0;    // SA_RESTART (automatically after interrupt)
         sigaction(sig_num, &sigact, NULL);
     }
 #endif
 }
 
+/* Signal handler for signals that normally terminate a process.
+ * Simpler implementation for MinGW that print stats then exits.
+ * More complex implementation re-registers signal with its default
+ * action then re-issues the same signal. */
 static void
 interrupt_handler(int sig)
 {
+    char b[32];
+
 #ifdef SG_LIB_MINGW
-    fprintf(stderr, "Interrupted by signal,");
+    fprintf(stderr, "Interrupted by signal %s,",
+            get_signal_name(sig, b, sizeof(b)));
     print_stats("");
     if (do_time)
         calc_duration_throughput(0);
     /* kill(getpid(), sig); */
-    sig = sig;
     exit(127);
 #else
     struct sigaction sigact;
@@ -340,11 +377,11 @@ interrupt_handler(int sig)
     sigemptyset(&sigact.sa_mask);
     sigact.sa_flags = 0;
     sigaction(sig, &sigact, NULL);
-    fprintf(stderr, "Interrupted by signal,");
+    fprintf(stderr, "Interrupted by signal %s,",
+            get_signal_name(sig, b, sizeof(b)));
     print_stats("");
     if (do_time)
         calc_duration_throughput(0);
-    fprintf(stderr, "Interrupted by signal %d\n", sig);
     if (FT_REG & out_type_hold)
         fprintf(stderr, "To resume, invoke with same arguments plus "
                 "oflag=resume\n");
@@ -352,17 +389,21 @@ interrupt_handler(int sig)
 #endif
 }
 
+/* Signal handler for SIGUSR1 (Linux) or SIGINFO */
 static void
 siginfo_handler(int sig)
 {
     sig = sig;  /* dummy to stop -W warning messages */
-    fprintf(stderr, "Progress report, continuing ...\n");
+    fprintf(stderr, "Progress report:\n");
     print_stats("  ");
     if (do_time)
         calc_duration_throughput(1);
+    fprintf(stderr, "continuing ...\n");
 }
 
 #ifdef ERRBLK_SUPPORTED
+/* Create errblk file (see iflag=errblk) and if we have gettimeofday
+ * puts are start timestampl on the first line. */
 static void
 open_errblk(void)
 {
@@ -426,7 +467,6 @@ close_errblk(void)
         errblk_fp = NULL;
     }
 }
-
 #endif
 
 /* Process arguments given to 'conv=" option. Returns 0 on success,
@@ -918,6 +958,8 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
 static int bsg_major_checked = 0;
 static int bsg_major = 0;
 
+/* In Linux search /proc/devices for bsg character driver in order to
+ * find its major device number since it is allocated dynamically.  */
 static void
 find_bsg_major(void)
 {
@@ -958,6 +1000,10 @@ find_bsg_major(void)
 }
 #endif
 
+/* Categorize file by using the stat() system call on its filename.
+ * If not found FT_ERROR returned. The FT_* constants are a bit mask
+ * and later logic can combine them (e.g. FT_BLOCK | FT_PT).
+ */
 static int
 dd_filetype(const char * filename)
 {
@@ -1052,7 +1098,8 @@ dd_filetype_str(int ft, char * buff, int max_bufflen, const char * fname)
     return buff;
 }
 
-/* Return of 0 -> success, see sg_ll_read_capacity*() otherwise */
+/* Fetch number of blocks and block size of a pt device.
+ * Return of 0 -> success, see sg_ll_read_capacity*() otherwise. */
 static int
 scsi_read_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
 {
@@ -1093,8 +1140,8 @@ scsi_read_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
 }
 
 /* get_blkdev_capacity() returns 0 -> success or -1 -> failure.
- * which_arg should either be DDPT_ARG_IN or DDPT_ARG_OUT (or
- * DDPT_ARG_OUT2) . If successful writes back sector size (logical block
+ * which_arg should either be DDPT_ARG_IN, DDPT_ARG_OUT or DDPT_ARG_OUT2.
+ * If successful writes back sector size (logical block
  * size) using the sect_sz * pointer. Also writes back the number of
  * sectors (logical blocks) on the block device using num_sect pointer. */
 
@@ -1784,6 +1831,11 @@ pt_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
     return ret;
 }
 
+/* This function performs a "trim" on a pt device. In the SCSI command set
+ * this is either done with the UNMAP command or WRITE SAME command. This
+ * function uses WRITE SAME(16) with the unmap bit set. In Linux libata
+ * translates this to the ATA DATA SET MANAGEMENT command with the trim
+ * field set. Returns 0 on success. */
 static int
 pt_write_same16(int sg_fd, int in0_out1, unsigned char * buff, int bs,
                 int blocks, int64_t start_block)
@@ -1925,6 +1977,13 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
                 sect_sz);
 }
 
+/* Calculates transfer throughput, typically in Megabytes per second.
+ * A megabyte in this context is 1000000 bytes (gives bigger numbers so
+ * is preferred by industry). The clock_gettime() interface is preferred
+ * since time is guaranteed to advance; gettimeofday() is impacted if the
+ * user (or something like ntpd) changes the time.
+ * Also if the transfer is large enough and isn't about to finish, it
+ * makes an estimate of the time remaining. */
 static void
 calc_duration_throughput(int contin)
 {
@@ -2273,6 +2332,8 @@ other_err:
     return -SG_LIB_CAT_OTHER;
 }
 
+/* Helper for calc_count(). Attempts to size IFILE. Returns 0 if no error
+ * detected. */
 static int
 calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp,
               int * in_sect_szp)
@@ -2370,6 +2431,8 @@ calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp,
     return 0;
 }
 
+/* Helper for calc_count(). Attempts to size OFILE. Returns 0 if no error
+ * detected. */
 static int
 calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp,
                int * out_sect_szp)
@@ -2491,6 +2554,10 @@ calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
 }
 
 #ifdef HAVE_POSIX_FADVISE
+/* Used by iflag=nocache and oflag=nocache to suggest (via posix_fadvise()
+ * system call) that the OS doesn't cache data it has just read or written
+ * since it is unlikely to be used again in the short term. iflag=nocache
+ * additionally increases the read-ahead. Errors ignored. */
 static void
 do_fadvise(struct opts_t * op, int bytes_if, int bytes_of, int bytes_of2)
 {
@@ -2613,6 +2680,8 @@ cp_read_block_win(struct opts_t * optsp, struct cp_state_t * csp,
 }
 #endif
 
+/* Helper for case when EIO or EREMOTE errno suggests the equivalent
+ * of a medium error. Returns 0 unless coe_limit exceeded. */
 static int
 coe_process_eio(int64_t skip)
 {
@@ -2867,20 +2936,25 @@ static int
 cp_write_of2(struct opts_t * optsp, struct cp_state_t * csp,
              unsigned char * wrkPos)
 {
-    int res, off;
+    int res, off, part;
     int numbytes = (csp->ocbpt * optsp->obs) + csp->partial_write_bytes;
 
-    // writes to fifos are non-atomic so loop if making progress
+    // write to fifo (reg file ?) is non-atomic so loop if making progress
     off = 0;
+    part = 0;
     do {
         while (((res = write(optsp->out2fd, wrkPos + off,
                              numbytes - off)) < 0) && (EINTR == errno))
             ++interrupted_retries;
+        if ((res > 0) && (res < (numbytes - off)))
+            ++part;
     } while ((FT_FIFO & optsp->out2_type) && (res > 0) &&
              ((off += res) < numbytes));
-    if (off >= numbytes)
+    if (off >= numbytes) {
         res = numbytes;
-    else if (off > 0)
+        if (part && verbose)
+            fprintf(stderr, "write to of2 splintered\n");
+    } else if (off > 0)
         fprintf(stderr, "write to of2 fifo problem: count=%d, off=%d, "
                 "res=%d\n", numbytes, off, res);
     if ((verbose > 2) && (0 == off))
@@ -3027,7 +3101,7 @@ static int
 cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                    int seek_delta, int blks, unsigned char * wrkPos)
 {
-    int res, off;
+    int res, off, part;
     int numbytes = blks * optsp->obs;
     int64_t offset;
     int64_t aseek = optsp->seek + seek_delta;
@@ -3096,17 +3170,22 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
             }
             csp->of_filepos = offset;
         }
-        // writes to fifos are non-atomic so loop if making progress
+        // write to fifo (reg file ?) is non-atomic so loop if making progress
         off = 0;
+        part = 0;
         do {
             while (((res = write(optsp->outfd, wrkPos + off,
                                  numbytes - off)) < 0) && (EINTR == errno))
                 ++interrupted_retries;
+            if ((res > 0) && (res < (numbytes - off)))
+                ++part;
         } while ((FT_FIFO & optsp->out_type) && (res > 0) &&
                  ((off += res) < numbytes));
-        if (off >= numbytes)
+        if (off >= numbytes) {
             res = numbytes;
-        else if (off > 0)
+            if (part && verbose)
+                fprintf(stderr, "write to output file splintered\n");
+        } else if (off > 0)
             fprintf(stderr, "write to of fifo problem: count=%d, off=%d, "
                     "res=%d\n", numbytes, off, res);
         if ((verbose > 2) && (0 == off))
@@ -3423,7 +3502,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
 
     if ((dd_count <= 0) && (! reading_fifo))
         return 0;
-    continual_read = reading_fifo && (dd_count <= 0);
+    continual_read = reading_fifo && (dd_count < 0);
     csp = &cp_st;
     memset(csp, 0, sizeof(struct cp_state_t));
     ibpt = optsp->bpt_i;
@@ -3598,7 +3677,7 @@ main(int argc, char * argv[])
     else if (res > 0)
         return res;
 
-    // Will this work in Windows
+    // Seems to work in Windows
     if (quiet) {
         if (NULL == freopen("/dev/null", "w", stderr))
             fprintf(stderr, "freopen: failed to redirect stderr to "
@@ -3610,8 +3689,12 @@ main(int argc, char * argv[])
     register_handler(SIGPIPE, interrupt_handler);
     register_handler(SIGUSR1, siginfo_handler);
 #ifdef SIGINFO
+#ifdef SIGUSR1
     if (SIGUSR1 != SIGINFO)
         register_handler(SIGINFO, siginfo_handler);
+#else
+    register_handler(SIGINFO, siginfo_handler);
+#endif
 #endif
 
 #ifdef SG_LIB_WIN32
