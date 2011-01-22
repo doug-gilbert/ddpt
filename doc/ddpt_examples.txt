@@ -179,7 +179,7 @@ resume finds copy complete, exiting
 # accessed via the pt interface. Some SSDs support the trim
 # operation (also known as unmap) with "deterministic read
 # zero after trim". ddpt treats a trim like sparse, however
-# instead of bypassing a segment of zeros a trim is sent.
+# instead of bypassing a segment of zeros a trim command is sent.
 # In SCSI parlance trim is a WRITE SAME with the UNMAP bit set. 
 $ ddpt if=/dev/sdb1 bs=512 of=/dev/sg1 seek=73899000 oflag=trim          
 18314037+0 records in
@@ -190,31 +190,34 @@ time to transfer data: 174.057264 secs at 53.87 MB/sec
 # input file. This will zero from logical block 73899000 until
 # the end of /dev/sg1 which is a SSD:
 $  ddpt if=/dev/zero bs=512 of=/dev/sg1 seek=73899000 oflag=trim
-Progress report, continuing ...
+Progress report:
   remaining block count=38895160
   43507456+0 records in
   0+0 records out
   43507328 trimmed records out
 time to transfer data so far: 405.905942 secs at 54.88 MB/sec
+continuing ...
 82402488+0 records in
 0+0 records out
 82402488 trimmed records out
 time to transfer data: 768.067647 secs at 54.93 MB/sec
-# Notice the "Progress report, continuing ..." line and the
-# indented lines following it. What happened here was a SIGUSR1
-# signal was sent to the process # running ddpt with a
-# 'kill -s SIGUSR1 <pid>' command. The <pid> of a running ddpt
-# can be found with the 'ps ax' command.
+# Notice the "Progress report:" line and the indented lines
+# following it. What happened here was a SIGUSR1 signal was sent
+# to the process running ddpt with a # 'kill -s SIGUSR1 <pid>'
+# command. The <pid> of a running ddpt can be found with the
+# 'ps ax' command.
 
-
-# self trim is when segments of zeros (64 KB of zeros in the first
-# case) are "trimmed" on a block device accessed via a pt interface.
+# self trim describes the technique of reading a block device
+# (accessed via a pt interface) and checking for segments of
+# zeros (64 KB of zeros in the first case). Segments full of
+# zeros are "trimmed".
 # In Linux /dev/sg* and /dev/bsg/* are pt devices.
 $ ddpt if=/dev/sg0 bs=512 skip=130045952 iflag=self,trim
 
-# increase speed and reduce granularity on trim check to 1 output
-# block (i.e. 512 bytes at a time). May result in a lot more small
-# "trim" commands being issued.
+# The bpt option can be used to both increase the size of the
+# copy segment and reduce granularity on trim check to 1 output
+# block (i.e. 512 bytes at a time). This may result in a lot more
+# small "trim" commands being issued.
 $ ddpt if=/dev/sg0 bs=512 skip=130045952 iflag=self,trim bpt=1024,1
 
 # the self flag does some option juggling and transforms the previous
@@ -235,4 +238,4 @@ oflag=trim,nowrite bpt=1024,1
 $ ddpt if=/dev/sg1 skip=$((0xfff + 1)) count=1
 
 
-# Douglas Gilbert 20110120
+# Douglas Gilbert 20110121
