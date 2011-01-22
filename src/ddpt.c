@@ -121,7 +121,6 @@ static char * version_str = "0.92 20110121 [svn: r144]";
 
 
 static int64_t dd_count = -1;   /* of input blocks */
-static int64_t req_count = 0;
 static int64_t in_full = 0;
 static int in_partial = 0;      /* unrecoverable reads considered partial */
 static int64_t out_full = 0;
@@ -3898,7 +3897,6 @@ main(int argc, char * argv[])
         start_tm_valid = 1;
     }
 #endif
-    req_count = dd_count;
 
 #ifdef ERRBLK_SUPPORTED
     if (opts.iflagp->errblk)
