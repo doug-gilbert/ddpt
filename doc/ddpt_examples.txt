@@ -195,17 +195,19 @@ Progress report:
   43507456+0 records in
   0+0 records out
   43507328 trimmed records out
-time to transfer data so far: 405.905942 secs at 54.88 MB/sec
-continuing ...
+  time to transfer data so far: 405.905942 secs at 54.88 MB/sec
+  continuing ...
 82402488+0 records in
 0+0 records out
 82402488 trimmed records out
 time to transfer data: 768.067647 secs at 54.93 MB/sec
 # Notice the "Progress report:" line and the indented lines
 # following it. What happened here was a SIGUSR1 signal was sent
-# to the process running ddpt with a # 'kill -s SIGUSR1 <pid>'
-# command. The <pid> of a running ddpt can be found with the
-# 'ps ax' command.
+# to the process running ddpt with a 'kill -s SIGUSR1 <pid>'
+# command. The <pid> of a running ddpt can be found with the 'ps ax'
+# command. The progress report finished with "continuing ..."
+# line. The un-indented lines at the end of the output were
+# placed there at the completion of the ddpt copy.
 
 # self trim describes the technique of reading a block device
 # (accessed via a pt interface) and checking for segments of

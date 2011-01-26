@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20110121 [svn: r144]";
+static char * version_str = "0.92 20110123 [svn: r146]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -183,7 +183,7 @@ static struct signum_name_t signum_name_arr[] = {
 };
 
 
-static void calc_duration_throughput(int contin);
+static void calc_duration_throughput(const char * leadin, int contin);
 
 
 static void
@@ -366,7 +366,7 @@ interrupt_handler(int sig)
             get_signal_name(sig, b, sizeof(b)));
     print_stats("");
     if (do_time)
-        calc_duration_throughput(0);
+        calc_duration_throughput("", 0);
     /* kill(getpid(), sig); */
     exit(127);
 #else
@@ -380,7 +380,7 @@ interrupt_handler(int sig)
             get_signal_name(sig, b, sizeof(b)));
     print_stats("");
     if (do_time)
-        calc_duration_throughput(0);
+        calc_duration_throughput("", 0);
     if (FT_REG & out_type_hold)
         fprintf(stderr, "To resume, invoke with same arguments plus "
                 "oflag=resume\n");
@@ -396,8 +396,8 @@ siginfo_handler(int sig)
     fprintf(stderr, "Progress report:\n");
     print_stats("  ");
     if (do_time)
-        calc_duration_throughput(1);
-    fprintf(stderr, "continuing ...\n");
+        calc_duration_throughput("  ", 1);
+    fprintf(stderr, "  continuing ...\n");
 }
 
 #ifdef ERRBLK_SUPPORTED
@@ -1116,6 +1116,9 @@ scsi_read_capacity(int sg_fd, int64_t * num_sect, int * sect_sz)
         (0xff == rcBuff[3])) {
         int64_t ls;
 
+        if (verb)
+            fprintf(stderr, "    READ CAPACITY (10) response cannot "
+                    "represent this capacity\n");
         res = sg_ll_readcap_16(sg_fd, 0, 0, rcBuff, RCAP16_REPLY_LEN, 0,
                                verb);
         if (0 != res)
@@ -1984,7 +1987,7 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
  * Also if the transfer is large enough and isn't about to finish, it
  * makes an estimate of the time remaining. */
 static void
-calc_duration_throughput(int contin)
+calc_duration_throughput(const char * leadin, int contin)
 {
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
     struct timespec end_tm, res_tm;
@@ -2004,7 +2007,7 @@ calc_duration_throughput(int contin)
         a = res_tm.tv_sec;
         a += (0.000001 * (res_tm.tv_nsec / 1000));
         b = (double)ibs_hold * blks;
-        fprintf(stderr, "time to %s data%s: %d.%06d secs",
+        fprintf(stderr, "%stime to %s data%s: %d.%06d secs", leadin,
                 (read1_or_transfer ? "read" : "transfer"),
                 (contin ? " so far" : ""), (int)res_tm.tv_sec,
                 (int)(res_tm.tv_nsec / 1000));
@@ -2023,11 +2026,11 @@ calc_duration_throughput(int contin)
                 m = secs / 60;
                 secs = secs - (m * 60);
                 if (h > 0)
-                    fprintf(stderr, "estimated time remaining: "
-                            "%d:%02d:%02d\n", h, m, secs);
+                    fprintf(stderr, "%sestimated time remaining: "
+                            "%d:%02d:%02d\n", leadin, h, m, secs);
                 else
-                    fprintf(stderr, "estimated time remaining: "
-                            "%d:%02d\n", m, secs);
+                    fprintf(stderr, "%sestimated time remaining: "
+                            "%d:%02d\n", leadin, m, secs);
             }
         }
     }
@@ -3916,7 +3919,7 @@ main(int argc, char * argv[])
         fprintf(stderr, ">> Non-zero sum of residual counts=%d\n",
                 sum_of_resids);
     if (do_time)
-        calc_duration_throughput(0);
+        calc_duration_throughput("", 0);
 
     if ((opts.oflagp->ssync) && (FT_PT & opts.out_type)) {
         fprintf(stderr, ">> SCSI synchronizing cache on %s\n", opts.outf);
