@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20110123 [svn: r146]";
+static char * version_str = "0.92 20110127 [svn: r147]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -758,14 +758,13 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
             str[STR_SZ - 1] = '\0';
         } else
             continue;
+        // replace '=' with null and set buf pointer to following char
         for (key = str, buf = key; *buf && *buf != '=';)
             ++buf;
         if (*buf)
             *buf++ = '\0';
-        if (0 == strncmp(key, "app", 3)) {
-            optsp->iflagp->append = sg_get_num(buf);
-            optsp->oflagp->append = optsp->iflagp->append;
-        } else if (0 == strcmp(key, "bpt")) {
+        // check for option names, in alphabetical order
+        if (0 == strcmp(key, "bpt")) {
             cp = strchr(buf, ',');
             if (cp)
                 *cp = '\0';
@@ -916,6 +915,10 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
             }
         } else if (0 == strncmp(key, "verb", 4)) {
             verbose = sg_get_num(buf);
+            if ((-1 == verbose) && ('-' != buf[0])) {
+                fprintf(stderr, "bad argument to 'verbose='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
             if (verbose < 0) {
                 ++quiet;
                 verbose = 0;
@@ -3499,6 +3502,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
 {
     int ibpt, obpt, res, n, sparse_skip, sparing_skip, continual_read;
     int ret = 0;
+    int out_type = optsp->out_type;
     struct cp_state_t cp_st;
     struct cp_state_t * csp;
 
@@ -3553,7 +3557,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
             n = (csp->ocbpt * optsp->obs) + csp->partial_write_bytes;
             if (0 == memcmp(wrkPos, zeros_buff, n)) {
                 sparse_skip = 1;
-                if (optsp->oflagp->wsame16 && (FT_PT & optsp->out_type)) {
+                if (optsp->oflagp->wsame16 && (FT_PT & out_type)) {
                     res = pt_write_same16(optsp->outfd, 1, zeros_buff,
                                   optsp->obs, csp->ocbpt, optsp->seek);
                     if (res)
@@ -3568,7 +3572,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
         }
         if (optsp->oflagp->sparing && (! sparse_skip)) {
             /* In write sparing, we read from the output */
-            if (FT_PT & optsp->out_type)
+            if (FT_PT & out_type)
                 res = cp_read_of_pt(optsp, csp, wrkPos2);
             else
                 res = cp_read_of_block_reg(optsp, csp, wrkPos2);
@@ -3582,6 +3586,9 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
                         break;
                     goto bypass_write;
                 }
+            } else {
+                ret = res;
+                break;
             }
         }
         /* Start of writing section */
@@ -3590,10 +3597,10 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
             if (csp->partial_write_bytes > 0)
                 ++out_sparse_partial;
         } else {
-            if (FT_PT & optsp->out_type) {
+            if (FT_PT & out_type) {
                 if ((ret = cp_write_pt(optsp, csp, 0, csp->ocbpt, wrkPos)))
                     break;
-            } else if (FT_DEV_NULL & optsp->out_type)
+            } else if (FT_DEV_NULL & out_type)
                 ;  /* don't bump out_full (earlier revs did) */
             else if ((ret = cp_write_block_reg(optsp, csp, 0, csp->ocbpt,
                                                wrkPos)))
@@ -3614,12 +3621,12 @@ bypass_write:
     } /* end of main loop that does the copy ... */
 
     /* sparse: clean up ofile length when last block(s) were not written */
-    if ((FT_REG & optsp->out_type) && (0 == optsp->oflagp->nowrite) &&
+    if ((FT_REG & out_type) && (0 == optsp->oflagp->nowrite) &&
         optsp->oflagp->sparse)
         cp_sparse_cleanup(optsp, csp);
 
-    if ((FT_PT & optsp->out_type) || (FT_DEV_NULL & optsp->out_type) ||
-        (FT_FIFO & optsp->out_type) || (FT_CHAR & optsp->out_type)) {
+    if ((FT_PT & out_type) || (FT_DEV_NULL & out_type) ||
+        (FT_FIFO & out_type) || (FT_CHAR & out_type)) {
         ;       // negating things makes it less clear ...
     }
 #ifdef HAVE_FDATASYNC
@@ -3789,20 +3796,23 @@ main(int argc, char * argv[])
             fprintf(stderr, "sparse flag ignored on input\n");
     }
     if (oflag.sparse) {
-        if (STDOUT_FILENO == opts.outfd) {
-            fprintf(stderr, "oflag=sparse needs seekable output file\n");
-            return SG_LIB_SYNTAX_ERROR;
+        if (FT_FIFO & opts.out_type) {
+            fprintf(stderr, "oflag=sparse needs seekable output file, "
+                    "ignore\n");
+            oflag.sparse = 0;
+        } else {
+            out_sparse_active = 1;
+            if (oflag.wsame16)
+                out_trim_active = 1;
         }
-        out_sparse_active = 1;
-        if (oflag.wsame16)
-            out_trim_active = 1;
     }
     if (oflag.sparing) {
-        if (STDOUT_FILENO == opts.outfd) {
-            fprintf(stderr, "oflag=sparing needs seekable output file\n");
-            return SG_LIB_SYNTAX_ERROR;
-        }
-        out_sparing_active = 1;
+        if ((FT_DEV_NULL & opts.out_type) || (FT_FIFO & opts.out_type)) {
+            fprintf(stderr, "oflag=sparing needs a readable and seekable "
+                    "output file, ignore\n");
+            oflag.sparing = 0;
+        } else
+            out_sparing_active = 1;
     }
 
     if (resume_calc_count(&opts))
@@ -3812,17 +3822,21 @@ main(int argc, char * argv[])
         return SG_LIB_CAT_OTHER;
     }
     if (! opts.cdbsz_given) {
-        if ((FT_PT & opts.in_type) && (MAX_SCSI_CDBSZ != opts.iflagp->cdbsz) &&
-            (((dd_count + opts.skip) > UINT_MAX) || (opts.bpt_i > USHRT_MAX))) {
-            fprintf(stderr, "Note: SCSI command size increased to 16 bytes "
-                    "(for 'if')\n");
+        if ((FT_PT & opts.in_type) && (MAX_SCSI_CDBSZ != opts.iflagp->cdbsz)
+            && (((dd_count + opts.skip) > UINT_MAX) ||
+                (opts.bpt_i > USHRT_MAX))) {
+            if (verbose > 0)
+                fprintf(stderr, "SCSI command size increased from 10 to 16 "
+                        "bytes on %s\n", opts.inf);
             opts.iflagp->cdbsz = MAX_SCSI_CDBSZ;
         }
         if ((FT_PT & opts.out_type) &&
             (MAX_SCSI_CDBSZ != opts.oflagp->cdbsz) &&
-            (((dd_count + opts.seek) > UINT_MAX) || (opts.bpt_i > USHRT_MAX))) {
-            fprintf(stderr, "Note: SCSI command size increased to 16 bytes "
-                    "(for 'of')\n");
+            (((dd_count + opts.seek) > UINT_MAX) ||
+             (((opts.ibs * opts.bpt_i) / opts.obs) > USHRT_MAX))) {
+            if (verbose)
+                fprintf(stderr, "SCSI command size increased from 12 to 16 "
+                        "bytes on %s\n", opts.outf);
             opts.oflagp->cdbsz = MAX_SCSI_CDBSZ;
         }
     }
