@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20110127 [svn: r147]";
+static char * version_str = "0.92 20110130 [svn: r148]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -2379,6 +2379,7 @@ calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp,
             else
                 fprintf(stderr, "Unable to read capacity on %s\n", optsp->inf);
             *in_num_sectp = -1;
+            return res;
         } else {
             if (verbose)
                 print_blk_sizes(optsp->inf, "pt", *in_num_sectp, *in_sect_szp);
@@ -2478,6 +2479,7 @@ calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp,
                 fprintf(stderr, "Unable to read capacity on %s\n",
                         optsp->outf);
             *out_num_sectp = -1;
+            return res;
         } else {
             if (verbose)
                 print_blk_sizes(optsp->outf, "pt", *out_num_sectp,
@@ -2542,7 +2544,7 @@ calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp,
 /* Calculates the number of blocks associated with the in and out files.
  * May also yield the block size in bytes of devices. For regular files
  * uses ibs or obs as the block (sector) size. Returns 0 for continue,
- * or -1 to bypass copy and exit. */
+ * otherwise bypass copy and exit. */
 static int
 calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
            int64_t * out_num_sectp, int * out_sect_szp)
@@ -2888,6 +2890,7 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         if ((res % optsp->ibs) > 0) {
             ++csp->icbpt;
             ++in_partial;
+            --in_full;
         }
         csp->ocbpt = res / optsp->obs;
         ++csp->leave_after_write;
@@ -3407,20 +3410,20 @@ cp_destruct_pt(void)
 
 /* Look at IFILE and OFILE lengths and blocks sizes. If dd_count
  * not given, try to deduce a value for it. If oflag=resume do skip,
- * seek, dd_count adjustments. Returns 0 to start copy, returns -1
- * to bypass copy and exit */
+ * seek, dd_count adjustments. Returns 0 to start copy, otherwise
+ * bypass copy and exit */
 static int
-resume_calc_count(struct opts_t * op)
+count_calculate(struct opts_t * op)
 {
     int64_t in_num_sect = -1;
     int64_t out_num_sect = -1;
     int64_t ibytes, obytes, ibk;
     int valid_resume = 0;
-    int in_sect_sz, out_sect_sz;
+    int in_sect_sz, out_sect_sz, res;
 
-    if (calc_count(op, &in_num_sect, &in_sect_sz, &out_num_sect,
-                   &out_sect_sz) < 0)
-        return -1;
+    if ((res = calc_count(op, &in_num_sect, &in_sect_sz, &out_num_sect,
+                          &out_sect_sz)))
+        return res;
     if ((0 == op->oflagp->resume) && (dd_count > 0))
         return 0;
     if (verbose > 2)
@@ -3815,7 +3818,7 @@ main(int argc, char * argv[])
             out_sparing_active = 1;
     }
 
-    if (resume_calc_count(&opts))
+    if ((ret = count_calculate(&opts)))
         goto cleanup;
     if ((dd_count < 0) && (! reading_fifo)) {
         fprintf(stderr, "Couldn't calculate count, please give one\n");
