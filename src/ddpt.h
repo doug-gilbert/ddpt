@@ -210,6 +210,11 @@ extern int win32_block_read_from_of(struct opts_t * optsp, unsigned char * bp,
                                     int num_bytes, int verbose);
 extern int win32_block_write(struct opts_t * optsp, const unsigned char * bp,
                              int num_bytes, int verbose);
+extern int win32_cp_read_block(struct opts_t * optsp, struct cp_state_t * csp,
+                               unsigned char * wrkPos, int * ifull_extrap,
+                               int verbose);
+extern int coe_process_eio(int64_t skip);
+extern void zero_coe_limit_count(void);
 
 #ifdef SG_LIB_MINGW
 /* Without this gives a warning about implicit declaration.
