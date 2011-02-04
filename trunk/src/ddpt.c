@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20110130 [svn: r148]";
+static char * version_str = "0.92 20110204 [svn: r149]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -1489,6 +1489,13 @@ pt_low_read(int sg_fd, int in0_out1, unsigned char * buff, int blocks,
     return ret;
 }
 
+void
+zero_coe_limit_count(void)
+{ 
+    if (coe_limit > 0)
+        coe_count = 0;
+}
+
 /* Control pass-through read retries and coe (continue on error).
  * Fast path is a call to pt_low_read() that succeeds. If medium
  * error then back up and re-read good blocks prior to bad block;
@@ -1521,8 +1528,7 @@ pt_read(int sg_fd, int in0_out1, unsigned char * buff, int blocks,
         case 0:         /* this is the fast path after good pt_low_read() */
             if (blks_readp)
                 *blks_readp = xferred + blks;
-            if (coe_limit > 0)
-                coe_count = 0;  /* good read clears coe_count */
+            zero_coe_limit_count();
             return 0;
         case -2:        /* ENOMEM */
             return res;
@@ -2055,7 +2061,7 @@ calc_duration_throughput(const char * leadin, int contin)
         a = res_tm.tv_sec;
         a += (0.000001 * res_tm.tv_usec);
         b = (double)ibs_hold * blks;
-        fprintf(stderr, "time to %s data%s: %d.%06d secs",
+        fprintf(stderr, "%stime to %s data%s: %d.%06d secs", leadin,
                 (read1_or_transfer ? "read" : "transfer"),
                 (contin ? " so far" : ""), (int)res_tm.tv_sec,
                 (int)res_tm.tv_usec);
@@ -2074,15 +2080,16 @@ calc_duration_throughput(const char * leadin, int contin)
                 m = secs / 60;
                 secs = secs - (m * 60);
                 if (h > 0)
-                    fprintf(stderr, "estimated time remaining: "
-                            "%d:%02d:%02d\n", h, m, secs);
+                    fprintf(stderr, "%sestimated time remaining: "
+                            "%d:%02d:%02d\n", leadin, h, m, secs);
                 else
-                    fprintf(stderr, "estimated time remaining: "
-                            "%d:%02d\n", m, secs);
+                    fprintf(stderr, "%sestimated time remaining: "
+                            "%d:%02d\n", leadin, m, secs);
             }
         }
     }
 #else
+    leadin = leadin;    // suppress warning
     contin = contin;    // suppress warning
 #endif
 }
@@ -2641,55 +2648,9 @@ cp_read_pt(struct opts_t * optsp, struct cp_state_t * csp,
     return 0;
 }
 
-#ifdef SG_LIB_WIN32
-/* Main copy loop's read (input) for win32 block device.
- * Returns 0 on success, else SG_LIB_FILE_ERROR or -1 . */
-static int
-cp_read_block_win(struct opts_t * optsp, struct cp_state_t * csp,
-                  unsigned char * wrkPos)
-{
-    int res;
-    int64_t offset = optsp->skip * optsp->ibs;
-    int numbytes = csp->icbpt * optsp->ibs;
-
-    if (offset != csp->if_filepos) {
-        if (verbose > 2)
-            fprintf(stderr, "moving if filepos: new_pos="
-                    "%"PRId64"\n", (int64_t)offset);
-        if (win32_set_file_pos(optsp, DDPT_ARG_IN, offset, verbose))
-            return SG_LIB_FILE_ERROR;
-        csp->if_filepos = offset;
-    }
-    res = win32_block_read(optsp, wrkPos, numbytes, verbose);
-    if (res < 0) {
-        fprintf(stderr, "read(win32_block), skip=%"PRId64" ",
-                optsp->skip);
-        return -1;
-    } else {
-        if (res < numbytes) {
-            /* assume no partial reads (i.e. non integral blocks) */
-            csp->icbpt = res / optsp->ibs;
-            ++csp->leave_after_write;
-            /* csp->leave_reason = 0; assume at end rather than error */
-            csp->ocbpt = res / optsp->obs;
-            /* don't do partial writes due to a short read */
-            /* check: rounding up unconsistent with non windows code */
-            if ((res % optsp->obs) > 0)
-                ++csp->ocbpt;
-            if (verbose > 1)
-                fprintf(stderr, "short read, requested %d blocks, got "
-                        "%d blocks\n", numbytes / optsp->ibs, csp->icbpt);
-        }
-        csp->if_filepos += res;
-        in_full += csp->icbpt;
-    }
-    return 0;
-}
-#endif
-
 /* Helper for case when EIO or EREMOTE errno suggests the equivalent
  * of a medium error. Returns 0 unless coe_limit exceeded. */
-static int
+int
 coe_process_eio(int64_t skip)
 {
     if ((coe_limit > 0) && (++coe_count > coe_limit)) {
@@ -2754,8 +2715,7 @@ coe_cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
     k = num_read / ibs;
     if (k > 0) {
         in_full += k;
-        if (coe_limit > 0)
-            coe_count = 0;  /* good read clears coe_count */
+        zero_coe_limit_count();
     }
     csp->bytes_read = num_read;
     my_skip = optsp->skip + k;
@@ -2789,7 +2749,7 @@ coe_cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
             } else {
                 fprintf(stderr, "reading 1 block, skip=%"PRId64" : %s\n",
                         my_skip, safe_strerror(errno));
-                csp->leave_reason = SG_LIB_CAT_OTHER;;
+                csp->leave_reason = SG_LIB_CAT_OTHER;
                 goto short_read;
             }
         } else if (res < ibs) {
@@ -2799,8 +2759,7 @@ coe_cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
             csp->leave_reason = 0;  /* assume EOF */
             goto short_read;
         } else { /* if (res == ibs) */
-            if (coe_limit > 0)
-                coe_count = 0;
+            zero_coe_limit_count();
             csp->if_filepos += ibs;
             if (verbose > 2)
                 fprintf(stderr, "reading 1 block, skip=%"PRId64" : okay\n",
@@ -2831,7 +2790,8 @@ short_read:
 }
 
 /* Main copy loop's read (input) for block device or regular file.
- * Returns 0 on success, else SG_LIB_FILE_ERROR or -1 . */
+ * Returns 0 on success, else SG_LIB_FILE_ERROR, SG_LIB_CAT_MEDIUM_HARD
+ * or -1 . */
 static int
 cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                   unsigned char * wrkPos)
@@ -2841,8 +2801,15 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
     int numbytes = csp->icbpt * optsp->ibs;
 
 #ifdef SG_LIB_WIN32
-    if (FT_BLOCK & optsp->in_type)
-        return cp_read_block_win(optsp, csp, wrkPos);
+    if (FT_BLOCK & optsp->in_type) {
+        int ifull_extra;
+
+        if ((res = win32_cp_read_block(optsp, csp, wrkPos, &ifull_extra,
+                                       verbose)))
+            return res;
+        in_full += ifull_extra;
+        return 0;
+    }
 #endif
     if (offset != csp->if_filepos) {
         int64_t off_res;
@@ -2997,7 +2964,8 @@ cp_read_of_pt(struct opts_t * optsp, struct cp_state_t * csp,
 }
 
 /* Main copy loop's read (output (of)) for block device or regular file.
- * Returns 0 on success, else SG_LIB_FILE_ERROR or -1 . */
+ * Returns 0 on success, else SG_LIB_FILE_ERROR, SG_LIB_CAT_MEDIUM_HARD
+ * or -1 . */
 static int
 cp_read_of_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                      unsigned char * wrkPos2)
@@ -3023,14 +2991,14 @@ cp_read_of_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         if (res < 0) {
             fprintf(stderr, "read(sparing), seek=%"PRId64"\n",
                     optsp->seek);
-            return -1;
+            return (-SG_LIB_CAT_MEDIUM_HARD == res) ? -res : -1;
         } else if (res == numbytes) {
             csp->of_filepos += numbytes;
             return 0;
         } else {
             if (verbose > 2)
                 fprintf(stderr, "short read\n");
-            return 1;
+            return -1;
         }
     } else
 #endif
@@ -3104,7 +3072,8 @@ cp_write_pt(struct opts_t * optsp, struct cp_state_t * csp, int seek_delta,
 }
 
 /* Main copy loop's write (output (of)) for block device or regular file.
- * Returns 0 on success, else SG_LIB_FILE_ERROR or -1 . */
+ * Returns 0 on success, else SG_LIB_FILE_ERROR, SG_LIB_CAT_MEDIUM_HARD
+ * or -1 . */
 static int
 cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                    int seek_delta, int blks, unsigned char * wrkPos)
@@ -3133,7 +3102,7 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         res = win32_block_write(optsp, wrkPos, numbytes, verbose);
         if (res < 0) {
             fprintf(stderr, "write(win32_block, seek=%"PRId64" ", aseek);
-            return -1;
+            return (-SG_LIB_CAT_MEDIUM_HARD == res) ? -res : -1;
         } else if (res < numbytes) {
             fprintf(stderr, "output file probably full, seek=%"PRId64" ",
                     aseek);
@@ -3666,6 +3635,7 @@ main(int argc, char * argv[])
     unsigned char * wrkBuff2 = NULL;
     unsigned char * wrkPos2 = NULL;
     int ret = 0;
+    int started_copy = 0;
     struct opts_t opts;
     struct flags_t iflag;
     struct flags_t oflag;
@@ -3784,12 +3754,6 @@ main(int argc, char * argv[])
         fd = -1;
     opts.out2fd = fd;
 
-    if ((STDIN_FILENO == opts.infd) && (STDOUT_FILENO == opts.outfd)) {
-        fprintf(stderr,
-                "Can't have both 'if' as stdin _and_ 'of' as stdout\n");
-        fprintf(stderr, "For more information use '--help'\n");
-        return SG_LIB_SYNTAX_ERROR;
-    }
     if (opts.iflagp->sparse && (! opts.oflagp->sparse)) {
         if (FT_DEV_NULL & opts.out_type) {
             fprintf(stderr, "sparse flag usually ignored on input; set it "
@@ -3924,6 +3888,7 @@ main(int argc, char * argv[])
 #endif
 
     // <<<<<<<<<<<<<< finally ready to do copy
+    ++started_copy;
     ret = do_copy(&opts, wrkPos, wrkPos2);
 
 #ifdef ERRBLK_SUPPORTED
@@ -3970,7 +3935,7 @@ cleanup:
         close(opts.out2fd);
     if ((0 == ret) && err_to_report)
         ret = err_to_report;
-    if ((0 != dd_count) && (! reading_fifo)) {
+    if (started_copy && (0 != dd_count) && (! reading_fifo)) {
         if (0 == ret)
             fprintf(stderr, "Early termination, EOF on input?\n");
         else if (3 == ret)
