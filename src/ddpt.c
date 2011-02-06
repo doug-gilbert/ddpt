@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20110204 [svn: r149]";
+static char * version_str = "0.92 20110206 [svn: r150]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -1960,13 +1960,13 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
         dec[1] = b[len - 2];
         dec[2] = '\0';
         b[len - 3] = '\0';
-        fprintf(stderr, "%s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
-                "block_size=%d, %s.%s TB\n", fname, access_typ, num_sect,
+        fprintf(stderr, "  %s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
+                "_bs=%d, %s.%s TB\n", fname, access_typ, num_sect,
                 num_sect, sect_sz, b, dec);
     } else if (mb > 99999) {
         gb = mb / 1000;
-        fprintf(stderr, "%s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
-                "block_size=%d, %d GB\n", fname, access_typ, num_sect,
+        fprintf(stderr, "  %s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
+                "_bs=%d, %d GB\n", fname, access_typ, num_sect,
                 num_sect, sect_sz, gb);
     } else if (mb > 999) {
         snprintf(b, sizeof(b), "%d", mb);
@@ -1975,16 +1975,16 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
         dec[1] = b[len - 2];
         dec[2] = '\0';
         b[len - 3] = '\0';
-        fprintf(stderr, "%s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
-                "block_size=%d, %s.%s GB\n", fname, access_typ, num_sect,
+        fprintf(stderr, "  %s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
+                "_bs=%d, %s.%s GB\n", fname, access_typ, num_sect,
                 num_sect, sect_sz, b, dec);
     } else if (mb > 0) {
-        fprintf(stderr, "%s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
-                "block_size=%d, %d MB%s\n", fname, access_typ, num_sect,
+        fprintf(stderr, "  %s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
+                "_bs=%d, %d MB%s\n", fname, access_typ, num_sect,
                 num_sect, sect_sz, mb, ((mb < 10) ? " approx" : ""));
     } else
-        fprintf(stderr, "%s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
-                "block_size=%d\n", fname, access_typ, num_sect, num_sect,
+        fprintf(stderr, "  %s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
+                "_bs=%d\n", fname, access_typ, num_sect, num_sect,
                 sect_sz);
 }
 
@@ -2237,8 +2237,6 @@ open_of(struct opts_t * optsp, int verbose)
         fprintf(stderr, "unable to use scsi tape device %s\n", outf);
         goto file_err;
     } else if (FT_PT & optsp->out_type) {
-        if (verbose)
-            fprintf(stderr, "        ");
         flags = O_RDWR | O_NONBLOCK;
         if (ofp->direct)
             flags |= O_DIRECT;
@@ -3681,6 +3679,9 @@ main(int argc, char * argv[])
 
 #ifdef SG_LIB_WIN32
     win32_adjust_fns(&opts);
+#ifdef SG_LIB_WIN32_DIRECT
+    scsi_pt_win32_direct(SG_LIB_WIN32_DIRECT /* SPT pt interface */);
+#endif
 #endif
     opts.iflagp->pdt = -1;
     opts.oflagp->pdt = -1;
