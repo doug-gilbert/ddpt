@@ -1,3 +1,23 @@
+ddpt is a command line utility in a Windows environment. The filename
+given to options like "if=IFILE" can be a normal file, a volume
+name (e.g. "C:") or a device name. Examples of suitable device names
+are "PhysicalDrive2" and "CDROM1". Since "PhysicalDrive" is a lot of
+keystrokes, a shortened form (e.g. "PD2") is accepted by ddpt.
+
+
+ddpt is a C program written original for Linux which is a Unix
+environment. To build this code for Windows one of these environments
+can be used:
+  - cygwin
+  - MinGW
+
+The cygwin environment is more advanced but depends on a proprietary
+runtime dll which is free for non-commercial work. The ddpt code is
+open source (with a FreeBSD license which is freer than GNU's licenses)
+allowing it to be used by anyone. Building ddpt in a MinGW environment
+does not have any restrictions associated with the executable: ddpt.exe .
+
+
 work in progress......
 
 
