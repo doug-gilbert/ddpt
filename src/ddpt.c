@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20110206 [svn: r150]";
+static char * version_str = "0.92 20110208 [svn: r151]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -3680,6 +3680,9 @@ main(int argc, char * argv[])
 #ifdef SG_LIB_WIN32
     win32_adjust_fns(&opts);
 #ifdef SG_LIB_WIN32_DIRECT
+    if (verbose > 4)
+        fprintf(stderr, "Initial win32 SPT interface state: %s\n",
+                scsi_pt_win32_spt_state() ? "direct" : "indirect");
     scsi_pt_win32_direct(SG_LIB_WIN32_DIRECT /* SPT pt interface */);
 #endif
 #endif
