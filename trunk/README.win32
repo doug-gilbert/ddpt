@@ -6,7 +6,11 @@ The source can be built in a cygwin environment and can run in a cygwin
 bash shell. It can also run in a DOS shell if the cygwin1.dll is put in an
 appropriate place.
 Alternatively the source can be built with the MinGW compiler using its
-MSYS shell. This removes the dependence on the cygwin1.dll file.
+MSYS shell. This removes the dependence on the cygwin1.dll file. The
+ddpt executable built by the MinGW compiler can also be run in a DOS
+("Command prompt") shell.
+
+In Windows 7 ddpt typically needs to be run with administrator permissions.
 
 The device naming schemes attempt to follow what DOS does, with a few short
 cuts. If volume "D:" is an ATAPI DVD drive then the actual file opened
@@ -74,55 +78,6 @@ SCSI5:0,21,0  claimed=1 pdt=0h          SEAGATE   ST336754SS        0003
 SCSI5:0,112,0 claimed=0 pdt=10h         LSI       PSEUDO DEVICE     2.34
 
 
-
-
-
-ddpt is a command line utility in a Windows environment. The filename
-given to options like "if=IFILE" can be a normal file, a volume
-name (e.g. "C:") or a device name. Examples of suitable device names
-are "PhysicalDrive2" and "CDROM1". Since "PhysicalDrive" is a lot of
-keystrokes, a shortened form (e.g. "PD2") is accepted by ddpt.
-
-
-ddpt is a C program written original for Linux which is a Unix
-environment. To build this code for Windows one of these environments
-can be used:
-  - cygwin
-  - MinGW
-
-The cygwin environment is more advanced but depends on a proprietary
-runtime dll which is free for non-commercial work. The ddpt code is
-open source (with a FreeBSD license which is freer than GNU's licenses)
-allowing it to be used by anyone. Building ddpt in a MinGW environment
-does not have any restrictions associated with the executable: ddpt.exe .
-
-
-work in progress......
-
-
- * Optionally accept leading "\\.\". If given something of the form
- * "SCSI<num>:<bus>,<target>,<lun>" where the values in angle brackets
- * are integers, then will attempt to open "\\.\SCSI<num>:" and save the
- * other three values for the DeviceIoControl call. The trailing ".<lun>"
- * is optionally and if not given 0 is assumed. Since "PhysicalDrive"
- * is a lot of keystrokes, "PD" is accepted and converted to the longer
- * form.
-
-
-from sg_pt_win32.c file and scsi_pt_open_flags() definition
-
-Win32 Reserved file names
--------------------------
-"Certain file names are reserved in the Win32 subsystem (and, therefore,
-the reservations apply in the MKS and Cygwin environments). The following
-reserved device names cannot be used as the name of a file: CON, PRN, AUX,
-CLOCK$, NUL, COM1, COM2, COM3, COM4, COM5, COM6, COM7, COM8, COM9, LPT1,
-LPT2, LPT3, LPT4, LPT5, LPT6, LPT7, LPT8, and LPT9. You must avoid using
-these names as a file name suffix or file name body, so you have to avoid
-names such as aux.c, file.aux or NUL.txt." [Microsoft TechNet library:
-Interoperability and Migration; Migrating Unix build environment;
-Chapter 4 - migrating the build system]
-Simliar information here:
-http://msdn.microsoft.com/en-us/library/aa365247.aspx
-titled: "File Names, Paths, and Namespaces".
+Douglas Gilbert
+10th February 2010
 
