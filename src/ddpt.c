@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20110208 [svn: r151]";
+static char * version_str = "0.92 20110210 [svn: r152]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -163,6 +163,9 @@ static int max_uas = MAX_UNIT_ATTENTIONS;
 static int max_aborted = MAX_ABORTED_CMDS;
 static int coe_limit = 0;
 static int coe_count = 0;
+#ifdef SG_LIB_WIN32
+static int wscan = 0;
+#endif
 
 static unsigned char * zeros_buff = NULL;
 
@@ -244,8 +247,11 @@ usage()
            "                -1->quiet (stderr->/dev/null)\n"
            "    --help      print out this usage message then exit\n"
            "    --verbose   equivalent to verbose=1\n"
-           "    --version   print version information then exit\n\n"
-           "Copy all or part of IFILE to OFILE, IBS*BPT bytes at a time. "
+           "    --version   print version information then exit\n"
+#ifdef SG_LIB_WIN32
+	   "    --wscan | -w          windows scan for device names\n"
+#endif
+           "\nCopy all or part of IFILE to OFILE, IBS*BPT bytes at a time. "
            "Similar to\n"
            "dd command. Support for block devices, especially those "
            "accessed via\na SCSI pass-through.\n"
@@ -942,7 +948,20 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
                    (0 == strncmp(key, "-V", 2))) {
             fprintf(stderr, "%s\n", version_str);
             return -1;
-        } else {
+        }
+#ifdef SG_LIB_WIN32
+        else if (0 == strncmp(key, "--wscan", 7))
+            ++wscan;
+        else if (0 == strncmp(key, "-wwww", 5))
+            wscan += 4;
+        else if (0 == strncmp(key, "-www", 4))
+            wscan += 3;
+        else if (0 == strncmp(key, "-ww", 3))
+            wscan += 2;
+        else if (0 == strncmp(key, "-w", 2))
+            ++wscan;
+#endif
+        else {
             fprintf(stderr, "Unrecognized option '%s'\n", key);
             fprintf(stderr, "For more information use '--help'\n");
             return SG_LIB_SYNTAX_ERROR;
@@ -3656,6 +3675,10 @@ main(int argc, char * argv[])
         return 0;
     else if (res > 0)
         return res;
+#ifdef SG_LIB_WIN32
+    if (wscan)
+        return sg_do_wscan('\0', wscan, verbose);
+#endif
 
     // Seems to work in Windows
     if (quiet) {
