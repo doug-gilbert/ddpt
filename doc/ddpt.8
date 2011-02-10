@@ -9,7 +9,7 @@ devices that understand the SCSI command set.
 [\fIibs=IBS\fR] \fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIobs=OBS\fR]
 [\fIof=OFILE\fR] [\fIof2=OFILE2\fR] [\fIoflag=FLAGS\fR] [\fIretries=RETR\fR]
 [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR] [\fIverbose=VERB\fR]
-[\fI\-\-help\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR]
+[\fI\-\-help\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
 .PP
@@ -217,6 +217,14 @@ that is equivalent to \fIverbose=2\fR. Also \fI\-vv\fR is equivalent to
 .TP
 \fB\-V\fR, \fB\-\-version\fR
 outputs version number information and exits.
+.TP
+\fB\-w\fR, \fB\-\-wscan\fR
+this option is available in Windows only. It lists storage device names
+and the corresponding volumes, if any. When used twice it adds the "bus
+type" of the closest transport (e.g. a SATA disk in a USB connected
+enclosure has bus type Usb). When used three times a SCSI adapter scan
+is added. When used four times only a SCSI adapter scan is shown.
+See examples in the README.win32 file.
 .SH COUNT
 When the \fIcount=COUNT\fR option is not given (or \fICOUNT\fR is '\-1')
 then an attempt is made to deduce \fICOUNT\fR as follows.

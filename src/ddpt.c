@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20110210 [svn: r152]";
+static char * version_str = "0.92 20110210 [svn: r153]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -200,7 +200,12 @@ usage()
            "[oflag=FLAGS]\n"
            "             [seek=SEEK] [retries=RETR] [skip=SKIP] "
            "[status=STAT]\n"
+#ifdef SG_LIB_WIN32
+           "             [verbose=VERB] [--help] [--verbose] [--version] "
+           "[--wscan]\n"
+#else
            "             [verbose=VERB] [--help] [--verbose] [--version]\n"
+#endif
            "  where:\n"
            "    bpt         input Blocks Per Transfer (BPT) (def: 128 when "
            "IBS is 512)\n"
@@ -249,7 +254,7 @@ usage()
            "    --verbose   equivalent to verbose=1\n"
            "    --version   print version information then exit\n"
 #ifdef SG_LIB_WIN32
-	   "    --wscan | -w          windows scan for device names\n"
+           "    --wscan     windows scan for device names and volumes\n"
 #endif
            "\nCopy all or part of IFILE to OFILE, IBS*BPT bytes at a time. "
            "Similar to\n"

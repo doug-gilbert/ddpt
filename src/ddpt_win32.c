@@ -323,20 +323,17 @@ win32_open_if(struct opts_t * optsp, int verbose)
                               NULL);
     if (INVALID_HANDLE_VALUE == optsp->ib_fh) {
         err = GetLastError();
-        if (verbose) { 
-            if (win32_errmsg(err, b, sizeof(b)) < 0)
-                fprintf(stderr, "CreateFile(in) failed, error=%ld [and "
-                        "win32_errmsg() failed]\n", err);
-            else
-                fprintf(stderr, "CreateFile(in) failed, %s [%ld]\n", b, err);
-        }
+        if (win32_errmsg(err, b, sizeof(b)) < 0)
+            fprintf(stderr, "CreateFile(in) failed, error=%ld [and "
+                    "win32_errmsg() failed]\n", err);
+        else
+            fprintf(stderr, "CreateFile(in) failed, %s [%ld]\n", b, err);
         return 1;
     }
     if (0 == DeviceIoControl(optsp->ib_fh, IOCTL_DISK_GET_DRIVE_GEOMETRY,
                              NULL, 0, &g, sizeof(g), &count, NULL)) {
-        if (verbose)
-            fprintf(stderr, "DeviceIoControl(in, geometry) error=%ld\n",
-                    GetLastError());
+        fprintf(stderr, "DeviceIoControl(in, geometry) error=%ld\n",
+                GetLastError());
         return 1;
     }
     if ((int)g.BytesPerSector != optsp->ibs) {
@@ -367,20 +364,17 @@ win32_open_of(struct opts_t * optsp, int verbose)
                               NULL);
     if (INVALID_HANDLE_VALUE == optsp->ob_fh) {
         err = GetLastError();
-        if (verbose) { 
-            if (win32_errmsg(err, b, sizeof(b)) < 0)
-                fprintf(stderr, "CreateFile(out) failed, error=%ld [and "
-                        "win32_errmsg() failed]\n", err);
-            else
-                fprintf(stderr, "CreateFile(out) failed, %s [%ld]\n", b, err);
-        }
+        if (win32_errmsg(err, b, sizeof(b)) < 0)
+            fprintf(stderr, "CreateFile(out) failed, error=%ld [and "
+                    "win32_errmsg() failed]\n", err);
+        else
+            fprintf(stderr, "CreateFile(out) failed, %s [%ld]\n", b, err);
         return 1;
     }
     if (0 == DeviceIoControl(optsp->ob_fh, IOCTL_DISK_GET_DRIVE_GEOMETRY,
                              NULL, 0, &g, sizeof(g), &count, NULL)) {
-        if (verbose)
-            fprintf(stderr, "DeviceIoControl(out, geometry) error=%ld\n",
-                    GetLastError());
+        fprintf(stderr, "DeviceIoControl(out, geometry) error=%ld\n",
+                GetLastError());
         return 1;
     }
     if ((int)g.BytesPerSector != optsp->obs) {
