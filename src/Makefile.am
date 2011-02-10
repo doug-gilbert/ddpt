@@ -9,7 +9,8 @@ AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
 
 ddpt_SOURCES =		ddpt.c	\
 			ddpt.h	\
-			ddpt_win32.c
+			ddpt_win32.c \
+			ddpt_wscan.c
 
 sglib_SOURCES =         ../lib/sg_lib.c \
                         ../include/sg_lib.h     \
