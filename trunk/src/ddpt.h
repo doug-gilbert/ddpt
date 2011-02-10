@@ -216,6 +216,8 @@ extern int win32_cp_read_block(struct opts_t * optsp, struct cp_state_t * csp,
 extern int coe_process_eio(int64_t skip);
 extern void zero_coe_limit_count(void);
 
+extern int sg_do_wscan(char letter, int do_scan, int verb);
+
 #ifdef SG_LIB_MINGW
 /* Without this gives a warning about implicit declaration.
  * This stop the warning but if getpagesize() appears may need to
