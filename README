@@ -56,16 +56,15 @@ html file is placed in the "doc" directory.
 Build infrastructure
 --------------------
 This packages uses the automake and autoconf tools. The generating files
-(scripts) are configure.ac, Makefile.am, src/Makefile.am and autogen.sh .
-The autogen.sh script only needs to be executed if one of the other generating
-files in the above list is changed.
+(scripts) are configure.ac, Makefile.am, doc/Makefile.am, src/Makefile.am and
+autogen.sh .  The autogen.sh script only needs to be executed if one of the
+other generating files in the above list is changed.
 
 There is a rpm "spec" file in the main directory: ddpt.spec . There are debian
 build files in the "debian" directory and a script called build_debian.sh in
-the main directory. If build_debian.sh fails due to compatibility level.
-Amongst other things debian builds are sensitive to the value in the
-debian/compat file. If it contains "7" then it works on lenny and gives warning
-on squeeze (but fails on the earlier etch).
+the main directory. Amongst other things debian builds are sensitive to the
+value in the debian/compat file. If it contains "7" then it works on lenny and
+gives warning on squeeze (but fails on the earlier etch).
 
 License
 -------
@@ -81,9 +80,11 @@ FreeBSD license (rather than the GPL v2 found in the usual template).
 
 Linux port
 ----------
-The utility can be used on any device that supports the SG_IO ioctl. In
+The utility can be used on any storage device.
+
+To use the "pt" interface the device needs to support the SG_IO ioctl. In
 the Linux 2.4 series that is only the scsi generic (i.e. /dev/sg* )
-device nodes. In the Linux 2.6 series the supported device nodes has
+device nodes. In the Linux 2.6 series the supported device nodes have
 expanded to all other SCSI device nodes (e.g. /dev/sd* and /dev/sr*)
 plus block devices such as /dev/hdc when the associated device is a
 DVD drive. The man page and sg.danny.cz/sg/ddpt.html web page examples use
@@ -103,4 +104,4 @@ See README.win32
 
 
 Douglas Gilbert
-10th February 2011
+11th February 2011

@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20110210 [svn: r153]";
+static char * version_str = "0.92 20110211 [svn: r154]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -3894,7 +3894,8 @@ main(int argc, char * argv[])
                 "blocks_per_transfer=%d\n", dd_count, opts.bpt_i);
     }
     read1_or_transfer = !! (FT_DEV_NULL & opts.out_type);
-    if (read1_or_transfer && (! opts.outf_given))
+    if (read1_or_transfer && (! opts.outf_given) &&
+        ((dd_count > 0) || reading_fifo))
         fprintf(stderr, "Output file not specified so no copy, just "
                 "reading input\n");
 
