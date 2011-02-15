@@ -2,7 +2,7 @@ The version number is hardcoded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.92 [20110211] [svn: r154]
+Changelog for ddpt-0.92 [20110215] [svn: r155]
   - when pt used on block device and discrepancy between size
     of block device and read capacity size, require force flag
   - add coe support for input block devices and regular files
@@ -19,6 +19,7 @@ Changelog for ddpt-0.92 [20110211] [svn: r154]
   - add estimate of remaining time in progress signal handler
   - accept but ignore cbs= option
   - error reporting clean up
+  - add AM_MAINTAINER_MODE to configure.ac to lessen build issues
 
 Changelog for ddpt-0.91 [20100920] [svn: r121]
   - rework copy loop.

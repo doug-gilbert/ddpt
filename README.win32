@@ -1,14 +1,14 @@
 This port supports Windows NT, 2000, 2003++, XP, Vista and Windows 7
 (i.e. not 95, 98, ME or earlier). It uses the Microsoft SCSI Pass Through
-"Direct" (SPTD) rather than ASPI32 which requires a dll from Adaptec.
+"Direct" (SPTD).
 
 The source can be built in a cygwin environment and can run in a cygwin
 bash shell. It can also run in a DOS shell if the cygwin1.dll is put in an
 appropriate place.
 Alternatively the source can be built with the MinGW compiler using its
-MSYS shell. This removes the dependence on the cygwin1.dll file. The
+MSYS shell. This removes the dependency on the cygwin1.dll file. The
 ddpt executable built by the MinGW compiler can also be run in a DOS
-("Command prompt") shell.
+(also known as the "Command prompt") shell.
 
 In Windows 7 ddpt typically needs to be run with administrator permissions.
 
@@ -21,7 +21,7 @@ multiple volume names per disk. SCSI devices (or those that use a SCSI
 command set) can also be accessed via their "class" driver. These have names
 like "PhysicalDrive<n>", "CDROM<n>" and "TAPE<n>" where <n> is a number
 starting at 0. Since "PhysicalDrive" is tedious to type, a shortened
-form "PD" is accepted.
+form of "PD" is accepted.
 
 Finally there is a lower level "SCSI<n>:" interface that addresses a SCSI
 adapter. The device needs further sub-addressing in the form of a bus
@@ -33,9 +33,9 @@ OS will not allow it to be accessed via the "SCSI<n>:" interface. Hence
 this is only needed for special devices (e.g. with processor or SES
 peripheral device type) that are not claimed by the class drivers.
 
-The '--wscan' (or '-w') option has been added to show the mapping between
-a class driver device name and its associated volume name(s). Here are some
-examples:
+The Windows version of ddpt supports a '--wscan' (or '-w') option. It shows
+the mapping between a class driver device name (e.g. PD1) and its
+associated volume name(s). Here are some examples:
  $ ddpt -w
 PD0     [C]     FUJITSU   MHY2160BH         0000
 PD1     [DF]    WD        2500BEV External  1.05  WD-WXE90
@@ -79,5 +79,5 @@ SCSI5:0,112,0 claimed=0 pdt=10h         LSI       PSEUDO DEVICE     2.34
 
 
 Douglas Gilbert
-10th February 2010
+14th February 2010
 

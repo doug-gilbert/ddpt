@@ -224,7 +224,7 @@ and the corresponding volumes, if any. When used twice it adds the "bus
 type" of the closest transport (e.g. a SATA disk in a USB connected
 enclosure has bus type Usb). When used three times a SCSI adapter scan
 is added. When used four times only a SCSI adapter scan is shown.
-See examples in the README.win32 file.
+See EXAMPLES section below and the README.win32 file.
 .SH COUNT
 When the \fIcount=COUNT\fR option is not given (or \fICOUNT\fR is '\-1')
 then an attempt is made to deduce \fICOUNT\fR as follows.
@@ -779,6 +779,21 @@ be done with 64 KiB (128 block) granularity.
 .PP
 For examples of the trim and self,trim options see the section above
 on TRIM, UNMAP AND WRITE SAME.
+.PP
+Following is an example run on a Windows OS using the '\-\-wscan' option
+which shows the available device names (e.g. PD1) and the associated volume
+name(s):
+.PP
+   ddpt -w
+.br
+PD0     [C]     FUJITSU   MHY2160BH         0000
+.br
+PD1     [DF]    WD        2500BEV External  1.05  WD-WXE90
+.br
+CDROM0  [E]     MATSHITA DVD/CDRW UJDA775  CB03
+.PP
+So, for example, volumes D: and F: reside on PhysicalDisk1 (abbreviated to
+"PD1") which is manufactured by WD (Western Digital).
 .PP
 Further examples can be found on this web page:
 http://sg.danny.cz/sg/ddpt.html .
