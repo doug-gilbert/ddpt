@@ -124,7 +124,7 @@ is_win_blk_dev(const char * fn)
     int len, off;
 
     len = strlen(fn);
-    if ((2 == len) && isalpha(fn[0]) && (':' == fn[1]))
+    if ((2 == len) && isalpha((int)fn[0]) && (':' == fn[1]))
         return 1;
     if (len < 3)
         return 0;
@@ -143,11 +143,11 @@ is_win_blk_dev(const char * fn)
 
     if (len <= off)
         return 0;
-    if (! isdigit(fn[off]))
+    if (! isdigit((int)fn[off]))
         return 0;
     if (len == (off + 1))
         return 1;
-    if ((len != off + 2) || (! isdigit(fn[off + 1])))
+    if ((len != off + 2) || (! isdigit((int)fn[off + 1])))
         return 0;
     else
         return 1;
@@ -193,7 +193,7 @@ win32_adjust_fns(struct opts_t * optsp)
         if ('\\' == cp[0])
             continue;
         for (j = 0; j < len; ++j)
-            b[j] = toupper(cp[j]);
+            b[j] = toupper((int)cp[j]);
         b[len] = '\0';
         if (is_win_blk_dev(b)) {
             if (0 == strncmp(b, "PD", 2)) {
@@ -542,7 +542,7 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
 
     /* Assume if device name finishes in digit then its physical */
     fname_len = (int)strlen(fname);
-    if (isdigit(fname[fname_len - 1])) {
+    if (isdigit((int)fname[fname_len - 1])) {
         blks = g.Cylinders.QuadPart;
         blks *= g.TracksPerCylinder;
         blks *= g.SectorsPerTrack;
