@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.92 20110215 [svn: r155]";
+static char * version_str = "0.92 20110217 [svn: r157]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -198,7 +198,7 @@ usage()
            "[ibs=IBS] if=IFILE\n"
            "             [iflag=FLAGS] [obs=OBS] [of=OFILE] [of2=OFILE2] "
            "[oflag=FLAGS]\n"
-           "             [seek=SEEK] [retries=RETR] [skip=SKIP] "
+           "             [retries=RETR] [seek=SEEK] [skip=SKIP] "
            "[status=STAT]\n"
 #ifdef SG_LIB_WIN32
            "             [verbose=VERB] [--help] [--verbose] [--version] "

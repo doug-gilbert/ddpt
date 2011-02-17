@@ -58,7 +58,7 @@ SCSI0:0,0,0   claimed=1 pdt=0h  FUJITSU   MHY2160BH         0000
 SCSI1:0,0,0   claimed=1 pdt=5h  MATSHITA  DVD/CDRW UJDA775  CB03
 
 And finally here is a more interesting example showing disks with no
-Windows (2000) volumes, a tape drive and a wierd unclaimed SCSI
+Windows (2000) volumes, a tape drive and a weird unclaimed SCSI
 pseudo device with BCC (Bridge Controller Commands) peripheral device
 type.
  $ ddpt -www
@@ -79,5 +79,5 @@ SCSI5:0,112,0 claimed=0 pdt=10h         LSI       PSEUDO DEVICE     2.34
 
 
 Douglas Gilbert
-14th February 2010
+17th February 2011
 
