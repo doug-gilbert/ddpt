@@ -17,7 +17,7 @@ The sg3_utils (version 1.27) package contains several utilities that mimic
 the standard Unix dd command. Currently those utilities are sg_dd, sgm_dd
 and sgp_dd. Even though most of the other utilities in the sg3_utils package
 are ported to other operating systems, sg_dd and friends are not ported
-since they are too tightly bound to Linux and some of the idiosyncracies of
+since they are too tightly bound to Linux and some of the idiosyncrasies of
 its SCSI generic (sg) driver and the associated SG_IO ioctl. So the ddpt
 utility drops some Linux specific features while adding some more general
 features (e.g. write sparing). An attempt has also been made to simplify
@@ -27,7 +27,7 @@ other Unix command (probably imported from some IBM OS many years ago).
 
 This package shares code with sg3_utils (version 1.27). With the subversion
 revision control system this is done by having ddpt's "include/" and "lib/"
-subdirectories pointing to the correspondingly named directories in the
+sub-directories pointing to the correspondingly named directories in the
 sg3_utils package using the "svn:externals" property. These two "external"
 directories include more files than ddpt uses. The excess files include
 "lib/Makefile.am" and "lib/Makefile.in". The "Makefile.am" in ddpt's "src/"
@@ -60,7 +60,7 @@ This packages uses the automake and autoconf tools. The generating files
 autogen.sh .  The autogen.sh script only needs to be executed if one of the
 other generating files in the above list is changed.
 
-There is a rpm "spec" file in the main directory: ddpt.spec . There are debian
+There is a rpm "spec" file in the main directory: ddpt.spec . There are Debian
 build files in the "debian" directory and a script called build_debian.sh in
 the main directory. Amongst other things debian builds are sensitive to the
 value in the debian/compat file. If it contains "7" then it works on lenny and
@@ -104,4 +104,4 @@ See README.win32
 
 
 Douglas Gilbert
-14th February 2011
+17th February 2011

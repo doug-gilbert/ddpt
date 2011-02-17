@@ -32,7 +32,7 @@ For comparison, the SYNOPSIS section above shows both the
 .B ddpt
 command line options followed by GNU's
 .B dd(1)
-command line options. Broadly speaking ddpt can be considered a superset
+command line options. Broadly speaking ddpt can be considered a super-set
 of dd. See the section on DD DIFFERENCES for significant differences
 between ddpt and dd.
 .PP
@@ -269,7 +269,7 @@ equivalent to "oflag=fdatasync". Flushes data associated with the
 for compatibility with GNU's dd.
 .TP
 fsync
-equivalent to "oflag=fsync". Flushes data and metadata associated
+equivalent to "oflag=fsync". Flushes data and meta-data associated
 with the \fIOFILE\fR to storage at the end of the copy. This conversion
 is for compatibility with GNU's dd.
 .TP
@@ -633,7 +633,7 @@ the "cbs=" option is given to ddpt then it is ignored.
 .SH NOTES
 A partial write is a write to the \fIOFILE\fR of less than \fIOBS\fR
 bytes. This typically occurs at the end of a copy. dd can do partial
-writes. ddpt does partial writes to regular files and fifos (includin
+writes. ddpt does partial writes to regular files and fifos (including
 stdout). However ddpt ignores partial writes when \fIOFILE\fR is a block
 device or a pt device. When ddpt ignores a partial write, it sends a
 warning to the console (stderr).
