@@ -1,5 +1,5 @@
 %define	name	ddpt
-%define	version	0.92
+%define	version	0.93
 %define	release	1
 
 Summary:	Copy files (like dd) especially SCSI/storage devices
@@ -51,6 +51,9 @@ fi
 %{_mandir}/man8/*
 
 %changelog
+* Fri Feb 18 2011 - dgilbert at interlog dot com
+- xxxxxxxxxxxx
+  * ddpt-0.93
 * Thu Feb 17 2011 - dgilbert at interlog dot com
 - warn about pt on block partitions, coe on reg,blk in
   * ddpt-0.92
