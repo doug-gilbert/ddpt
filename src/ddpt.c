@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20110218 [svn: r158]";
+static char * version_str = "0.93 20110221 [svn: r159]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -2136,7 +2136,7 @@ open_if(struct opts_t * optsp, int verbose)
     if (FT_ERROR & optsp->in_type) {
         fprintf(stderr, "unable to access %s\n", inf);
         goto file_err;
-    } else if (((FT_BLOCK | FT_OTHER) & optsp->in_type) && ifp->pt)
+    } else if (((FT_BLOCK | FT_TAPE | FT_OTHER) & optsp->in_type) && ifp->pt)
         optsp->in_type |= FT_PT;
     if (verbose)
         fprintf(stderr, " >> Input file type: %s\n",
@@ -2145,8 +2145,12 @@ open_if(struct opts_t * optsp, int verbose)
         ++reading_fifo;
 
     if (FT_TAPE & optsp->in_type) {
-        fprintf(stderr, "unable to use scsi tape device %s\n", inf);
-        goto file_err;
+        if (FT_PT & optsp->in_type) {
+            fprintf(stderr, "SCSI tape device %s not supported via pt\n",
+                    inf);
+            goto file_err;
+        } else
+            optsp->in_type |= FT_BLOCK;
     } else if (FT_PT & optsp->in_type) {
         flags = O_NONBLOCK;
         if (ifp->direct)
@@ -2250,7 +2254,7 @@ open_of(struct opts_t * optsp, int verbose)
 
     verb = (verbose ? verbose - 1: 0);
     optsp->out_type = dd_filetype(outf);
-    if (((FT_BLOCK | FT_OTHER) & optsp->out_type) && ofp->pt)
+    if (((FT_BLOCK | FT_TAPE | FT_OTHER) & optsp->out_type) && ofp->pt)
         optsp->out_type |= FT_PT;
     out_type_hold = optsp->out_type;
     if (verbose)
@@ -2258,8 +2262,12 @@ open_of(struct opts_t * optsp, int verbose)
                 dd_filetype_str(optsp->out_type, ebuff, EBUFF_SZ, outf));
 
     if (FT_TAPE & optsp->out_type) {
-        fprintf(stderr, "unable to use scsi tape device %s\n", outf);
-        goto file_err;
+        if (FT_PT & optsp->out_type) {
+            fprintf(stderr, "SCSI tape device %s not supported via pt\n",
+                    outf);
+            goto file_err;
+        } else
+            optsp->out_type |= FT_BLOCK;
     } else if (FT_PT & optsp->out_type) {
         flags = O_RDWR | O_NONBLOCK;
         if (ofp->direct)
@@ -2369,16 +2377,14 @@ other_err:
 /* Helper for calc_count(). Attempts to size IFILE. Returns 0 if no error
  * detected. */
 static int
-calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp,
-              int * in_sect_szp)
+calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp)
 {
     int res;
     struct stat st;
     int64_t num_sect, t;
-    int sect_sz;
+    int in_sect_sz, sect_sz;
 
     *in_num_sectp = -1;
-    *in_sect_szp = -1;
     if (FT_PT & optsp->in_type) {
         if (optsp->iflagp->norcap) {
             if ((FT_BLOCK & optsp->in_type) && (0 == optsp->iflagp->force)) {
@@ -2390,13 +2396,13 @@ calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp,
             }
             return 0;
         }
-        res = scsi_read_capacity(optsp->infd, in_num_sectp, in_sect_szp);
+        res = scsi_read_capacity(optsp->infd, in_num_sectp, &in_sect_sz);
         if (SG_LIB_CAT_UNIT_ATTENTION == res) {
             fprintf(stderr, "Unit attention (readcap in), continuing\n");
-            res = scsi_read_capacity(optsp->infd, in_num_sectp, in_sect_szp);
+            res = scsi_read_capacity(optsp->infd, in_num_sectp, &in_sect_sz);
         } else if (SG_LIB_CAT_ABORTED_COMMAND == res) {
             fprintf(stderr, "Aborted command (readcap in), continuing\n");
-            res = scsi_read_capacity(optsp->infd, in_num_sectp, in_sect_szp);
+            res = scsi_read_capacity(optsp->infd, in_num_sectp, &in_sect_sz);
         }
         if (0 != res) {
             if (res == SG_LIB_CAT_INVALID_OP)
@@ -2411,11 +2417,11 @@ calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp,
             return res;
         } else {
             if (verbose)
-                print_blk_sizes(optsp->inf, "pt", *in_num_sectp, *in_sect_szp);
-            if (*in_sect_szp != optsp->ibs) {
+                print_blk_sizes(optsp->inf, "pt", *in_num_sectp, in_sect_sz);
+            if (in_sect_sz != optsp->ibs) {
                 fprintf(stderr, ">> warning: %s block size confusion: ibs=%d, "
                         "device claims=%d\n", optsp->inf, optsp->ibs,
-                        *in_sect_szp);
+                        in_sect_sz);
                 if (0 == optsp->iflagp->force) {
                     fprintf(stderr, ">> abort copy, use iflag=force to "
                             "override\n");
@@ -2426,7 +2432,7 @@ calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp,
         if ((FT_BLOCK & optsp->in_type) && (0 == optsp->iflagp->force) &&
             (0 == get_blkdev_capacity(optsp, DDPT_ARG_IN, &num_sect,
                                       &sect_sz, verbose))) {
-            t = (*in_num_sectp) * (*in_sect_szp);
+            t = (*in_num_sectp) * in_sect_sz;
             if (t != (num_sect * sect_sz)) {
                 fprintf(stderr, ">> warning: Size of input block device is "
                         "different from pt size.\n>> Pass-through on block "
@@ -2440,17 +2446,17 @@ calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp,
         return 0;
     else if (FT_BLOCK & optsp->in_type) {
         if (0 != get_blkdev_capacity(optsp, DDPT_ARG_IN, in_num_sectp,
-                                    in_sect_szp, verbose)) {
+                                     &in_sect_sz, verbose)) {
             fprintf(stderr, "Unable to read block capacity on %s\n",
                     optsp->inf);
             *in_num_sectp = -1;
         }
         if (verbose)
-            print_blk_sizes(optsp->inf, "blk", *in_num_sectp, *in_sect_szp);
-        if (optsp->ibs != *in_sect_szp) {
+            print_blk_sizes(optsp->inf, "blk", *in_num_sectp, in_sect_sz);
+        if (optsp->ibs != in_sect_sz) {
             fprintf(stderr, ">> warning: %s block size confusion: bs=%d, "
                     "device claims=%d\n", optsp->inf, optsp->ibs,
-                     *in_sect_szp);
+                     in_sect_sz);
             *in_num_sectp = -1;
         }
     } else if (FT_REG & optsp->in_type) {
@@ -2459,7 +2465,13 @@ calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp,
             *in_num_sectp = -1;
         } else {
             *in_num_sectp = st.st_size / optsp->ibs;
-            if (0 != (st.st_size % optsp->ibs))
+            res = st.st_size % optsp->ibs;
+            if (verbose) {
+                print_blk_sizes(optsp->inf, "reg", *in_num_sectp, optsp->ibs);
+                if (res)
+                    fprintf(stderr, "    residual_bytes=%d\n", res);
+            }
+            if (res)
                 ++*in_num_sectp;
         }
     }
@@ -2469,16 +2481,14 @@ calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp,
 /* Helper for calc_count(). Attempts to size OFILE. Returns 0 if no error
  * detected. */
 static int
-calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp,
-               int * out_sect_szp)
+calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp)
 {
     int res;
     struct stat st;
     int64_t num_sect, t;
-    int sect_sz;
+    int out_sect_sz, sect_sz;
 
     *out_num_sectp = -1;
-    *out_sect_szp = -1;
     if (FT_PT & optsp->out_type) {
         if (optsp->oflagp->norcap) {
             if ((FT_BLOCK & optsp->out_type) && (0 == optsp->oflagp->force)) {
@@ -2490,15 +2500,15 @@ calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp,
             }
             return 0;
         }
-        res = scsi_read_capacity(optsp->outfd, out_num_sectp, out_sect_szp);
+        res = scsi_read_capacity(optsp->outfd, out_num_sectp, &out_sect_sz);
         if (SG_LIB_CAT_UNIT_ATTENTION == res) {
             fprintf(stderr, "Unit attention (readcap out), continuing\n");
             res = scsi_read_capacity(optsp->outfd, out_num_sectp,
-                                     out_sect_szp);
+                                     &out_sect_sz);
         } else if (SG_LIB_CAT_ABORTED_COMMAND == res) {
             fprintf(stderr, "Aborted command (readcap out), continuing\n");
             res = scsi_read_capacity(optsp->outfd, out_num_sectp,
-                                     out_sect_szp);
+                                     &out_sect_sz);
         }
         if (0 != res) {
             if (res == SG_LIB_CAT_INVALID_OP)
@@ -2512,11 +2522,11 @@ calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp,
         } else {
             if (verbose)
                 print_blk_sizes(optsp->outf, "pt", *out_num_sectp,
-                                *out_sect_szp);
-            if (optsp->obs != *out_sect_szp) {
+                                out_sect_sz);
+            if (optsp->obs != out_sect_sz) {
                 fprintf(stderr, ">> warning: %s block size confusion: "
                         "obs=%d, device claims=%d\n", optsp->outf,
-                        optsp->obs, *out_sect_szp);
+                        optsp->obs, out_sect_sz);
                 if (0 == optsp->oflagp->force) {
                     fprintf(stderr, ">> abort copy, use oflag=force to "
                             "override\n");
@@ -2527,7 +2537,7 @@ calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp,
         if ((FT_BLOCK & optsp->out_type) && (0 == optsp->oflagp->force) &&
             (0 == get_blkdev_capacity(optsp, DDPT_ARG_OUT, &num_sect,
                                       &sect_sz, verbose))) {
-            t = (*out_num_sectp) * (*out_sect_szp);
+            t = (*out_num_sectp) * out_sect_sz;
             if (t != (num_sect * sect_sz)) {
                 fprintf(stderr, ">> warning: size of output block device is "
                         "different from pt size.\n>> Pass-through on block "
@@ -2541,18 +2551,18 @@ calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp,
         return 0;
     else if (FT_BLOCK & optsp->out_type) {
         if (0 != get_blkdev_capacity(optsp, DDPT_ARG_OUT, out_num_sectp,
-                                     out_sect_szp, verbose)) {
+                                     &out_sect_sz, verbose)) {
             fprintf(stderr, "Unable to read block capacity on %s\n",
                     optsp->outf);
             *out_num_sectp = -1;
         } else {
             if (verbose)
                 print_blk_sizes(optsp->outf, "blk", *out_num_sectp,
-                                *out_sect_szp);
-            if (optsp->obs != *out_sect_szp) {
+                                out_sect_sz);
+            if (optsp->obs != out_sect_sz) {
                 fprintf(stderr, ">> warning: %s block size confusion: "
                         "obs=%d, device claims=%d\n", optsp->outf,
-                        optsp->obs, *out_sect_szp);
+                        optsp->obs, out_sect_sz);
                 *out_num_sectp = -1;
             }
         }
@@ -2562,7 +2572,14 @@ calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp,
             *out_num_sectp = -1;
         } else {
             *out_num_sectp = st.st_size / optsp->obs;
-            if (0 != (st.st_size % optsp->obs))
+            res = st.st_size % optsp->obs;
+            if (verbose) {
+                print_blk_sizes(optsp->outf, "reg", *out_num_sectp,
+                                optsp->obs);
+                if (res)
+                    fprintf(stderr, "    residual_bytes=%d\n", res);
+            }
+            if (res)
                 ++*out_num_sectp;
         }
     }
@@ -2575,18 +2592,17 @@ calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp,
  * uses ibs or obs as the block (sector) size. Returns 0 for continue,
  * otherwise bypass copy and exit. */
 static int
-calc_count(struct opts_t * optsp, int64_t * in_num_sectp, int * in_sect_szp,
-           int64_t * out_num_sectp, int * out_sect_szp)
+calc_count(struct opts_t * optsp, int64_t * in_num_sectp,
+           int64_t * out_num_sectp)
 {
     int res;
 
-    res = calc_count_in(optsp, in_num_sectp, in_sect_szp);
+    res = calc_count_in(optsp, in_num_sectp);
     if (res) {
         *out_num_sectp = -1;
-        *out_sect_szp = -1;
         return res;
     }
-    return calc_count_out(optsp, out_num_sectp, out_sect_szp);
+    return calc_count_out(optsp, out_num_sectp);
 }
 
 #ifdef HAVE_POSIX_FADVISE
@@ -3410,10 +3426,9 @@ count_calculate(struct opts_t * op)
     int64_t out_num_sect = -1;
     int64_t ibytes, obytes, ibk;
     int valid_resume = 0;
-    int in_sect_sz, out_sect_sz, res;
+    int res;
 
-    if ((res = calc_count(op, &in_num_sect, &in_sect_sz, &out_num_sect,
-                          &out_sect_sz)))
+    if ((res = calc_count(op, &in_num_sect, &out_num_sect)))
         return res;
     if ((0 == op->oflagp->resume) && (dd_count > 0))
         return 0;
