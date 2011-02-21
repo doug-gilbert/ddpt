@@ -3900,7 +3900,7 @@ $as_echo "#define STDC_HEADERS 1" >>confdefs.h
 
 fi
 
-for ac_header in linux/types.h linux/bsg.h
+for ac_header in linux/types.h linux/bsg.h linux/kdev_t.h
 do :
   as_ac_Header=`$as_echo "ac_cv_header_$ac_header" | $as_tr_sh`
 ac_fn_c_check_header_compile "$LINENO" "$ac_header" "$as_ac_Header" "#ifdef HAVE_LINUX_TYPES_H
