@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20110225 [svn: r160]";
+static char * version_str = "0.93 20110225 [svn: r161]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -611,37 +611,10 @@ process_flags(const char * arg, struct flags_t * fp)
     return 0;
 }
 
-#ifdef SG_LIB_FREEBSD
-/* FreeBSD (7+8 [DFLTPHYS]) doesn't like buffers larger than 64 KB being
- * sent to its pt interface (CAM), so take that into account when choosing
- * the default bpt value. */
-static int
-default_bpt_i(int ibs)
-{
-    int res;
-
-    if (ibs < 8)
-        res = DEF_BPT_LT8;
-    else if (ibs < 64)
-        res = DEF_BPT_LT64;
-    else if (ibs < 1024)
-        res = DEF_BPT_LT1024;
-    else if (ibs < 8192)
-        res = DEF_BPT_LT8192;
-    else if (ibs < 31768)
-        res = DEF_BPT_LT32768;
-    else
-        res = DEF_BPT_GE32768;
-    if ((ibs <= 65536) && (res * ibs) > 65536)
-        res = 65536 / ibs;
-    return res;
-}
-
-#else   /* other than FreeBSD */
-
 /* Defaulting transfer (copy buffer) size depending on IBS. 128*2048 for
  * CD/DVDs is too large for the block layer in lk 2.6 and results in an
- * EIO on the SG_IO ioctl. So reduce it in that case. */
+ * EIO on the SG_IO ioctl. So reduce it in that case.
+ * N.B. FreeBSD may reduce bpt later if pt is used on IFILE or OFILE. */
 static int
 default_bpt_i(int ibs)
 {
@@ -658,8 +631,6 @@ default_bpt_i(int ibs)
     else
         return DEF_BPT_GE32768;
 }
-
-#endif
 
 /* Command line processing helper, checks sanity and applies some
  * defaults. Returns 0 on success, > 0 for error. */
@@ -3201,7 +3172,6 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
             else {
                 numbytes += csp->partial_write_bytes;
                 ++out_partial;
-                ++out_full;
             }
         }
         if (offset != csp->of_filepos) {
@@ -3712,7 +3682,6 @@ main(int argc, char * argv[])
     struct flags_t oflag;
 
     memset(&opts, 0, sizeof(opts));
-    // opts.bpt_i = DEF_BPT_LT1024;
     opts.out_type = FT_OTHER;
     opts.in_type = FT_OTHER;
     memset(&iflag, 0, sizeof(iflag));
@@ -3834,6 +3803,18 @@ main(int argc, char * argv[])
     } else
         fd = -1;
     opts.out2fd = fd;
+
+#ifdef SG_LIB_FREEBSD
+    /* FreeBSD (7+8 [DFLTPHYS]) doesn't like buffers larger than 64 KB being
+     * sent to its pt interface (CAM), so take that into account when choosing
+     * the default bpt value. There is overhead in the pt interface so reduce
+     * default bpt value so bpt*ibs <= 32 KB .*/
+    if ((0 == opts.bpt_given) &&
+        ((FT_PT & opts.in_type) || (FT_PT & opts.out_type))) {
+        if ((opts.ibs <= 32768) && (opts.bpt_i * opts.ibs) > 32768)
+            opts.bpt_i = 32768 / opts.ibs;
+    }
+#endif
 
     if (opts.iflagp->sparse && (! opts.oflagp->sparse)) {
         if (FT_DEV_NULL & opts.out_type) {
