@@ -12,7 +12,8 @@ Attempts to copy in chunks greater than 64kB (65536 bytes) failed on a
 FreeBSD 7.0 test system with an "argument list too long" error message.
 There is a corresponding kernel message (viewable with dmesg) that an
 attempt has been made to map <n> bytes which is greater than
-DFLTPHYS(65536).
+DFLTPHYS(65536). Still a problem in FreeBSD 8.1 so restrict default bpt
+so bpt*ibs is less than or equal to 64 KB.
 
 Doug Gilbert
-5th February 2009
+25th February 2011

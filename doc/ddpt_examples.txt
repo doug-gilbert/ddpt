@@ -44,6 +44,13 @@ $ stat -c %s ddst
 # same data. The ddpt benefit of not truncating the output file by default
 # is with write sparing and the resume capability.
 
+# Sometimes it may be useful to preserve permissions and timestamps
+# of the src file. After the copy (by ddpt or dd) call these:
+$ chmod --reference=src ddst
+$ touch --reference=src ddst 
+# and to preserve the src's ACL (Access Control List):
+$ getfacl src | setfacl --set-file=- ddst
+
 # Both dd and ddpt default to a block size of 512 bytes (bs=512) as they
 # are designed to move disk data which up until recent times typically
 # had a block size of 512 bytes. However for copying regular (normal)
@@ -240,4 +247,4 @@ oflag=trim,nowrite bpt=1024,1
 $ ddpt if=/dev/sg1 skip=$((0xfff + 1)) count=1
 
 
-# Douglas Gilbert 20110121
+# Douglas Gilbert 20110224

@@ -51,7 +51,7 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Fri Feb 18 2011 - dgilbert at interlog dot com
+* Fri Feb 25 2011 - dgilbert at interlog dot com
 - xxxxxxxxxxxx
   * ddpt-0.93
 * Thu Feb 17 2011 - dgilbert at interlog dot com
