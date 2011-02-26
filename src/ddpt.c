@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20110225 [svn: r161]";
+static char * version_str = "0.93 20110226 [svn: r162]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -1078,6 +1078,8 @@ dd_filetype(const char * filename)
                 return FT_DEV_NULL;
             else if (0 == memcmp("pass", bname, 4))
                 return FT_PT;
+            else if (0 == memcmp("sa", bname, 2))
+                return FT_TAPE;
             else
                 return FT_BLOCK;  /* freebsd doesn't have block devices! */
         }
@@ -1105,27 +1107,24 @@ dd_filetype_str(int ft, char * buff, int max_bufflen, const char * fname)
     if (FT_PT & ft)
         off += snprintf(buff + off, max_bufflen - off,
                         "pass-through [pt] device ");
-    if (FT_BLOCK & ft)
+
+    if (FT_TAPE & ft)
+        off += snprintf(buff + off, max_bufflen - off, "SCSI tape device ");
+    else if (FT_BLOCK & ft)
         off += snprintf(buff + off, max_bufflen - off, "block device ");
+
     if (FT_FIFO & ft)
         off += snprintf(buff + off, max_bufflen - off,
                         "fifo [stdin, stdout, named pipe] ");
-    if (FT_TAPE & ft)
-        off += snprintf(buff + off, max_bufflen - off, "SCSI tape device ");
     if (FT_REG & ft)
         off += snprintf(buff + off, max_bufflen - off, "regular file ");
     if (FT_CHAR & ft)
         off += snprintf(buff + off, max_bufflen - off, "char device ");
     if (FT_OTHER & ft)
         off += snprintf(buff + off, max_bufflen - off, "other file type ");
-    if (FT_ERROR & ft) {
-        if (fname)
-            off += snprintf(buff + off, max_bufflen - off,
-                            "unable to 'stat' %s ", fname);
-        else
-            off += snprintf(buff + off, max_bufflen - off,
-                            "unable to 'stat' file ");
-    }
+    if (FT_ERROR & ft)
+        off += snprintf(buff + off, max_bufflen - off,
+                        "unable to 'stat' %s ", (fname ? fname : "file"));
     return buff;
 }
 
@@ -1975,6 +1974,11 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
     char b[32];
     char dec[4];
 
+    if (num_sect <= 0) {
+        fprintf(stderr, "  %s [%s]: blocks=%"PRId64", _bs=%d\n", fname,
+                access_typ, num_sect, sect_sz);
+        return;
+    }
     mb = 0;
     if ((num_sect > 0) && (sect_sz > 0)) {
         n = num_sect * sect_sz;
@@ -2156,7 +2160,8 @@ open_if(struct opts_t * optsp, int verbose)
             goto file_err;
         } else
             optsp->in_type |= FT_BLOCK;
-    } else if (FT_PT & optsp->in_type) {
+    }
+    if (FT_PT & optsp->in_type) {
         flags = O_NONBLOCK;
         if (ifp->direct)
             flags |= O_DIRECT;
@@ -2273,7 +2278,8 @@ open_of(struct opts_t * optsp, int verbose)
             goto file_err;
         } else
             optsp->out_type |= FT_BLOCK;
-    } else if (FT_PT & optsp->out_type) {
+    }
+    if (FT_PT & optsp->out_type) {
         flags = O_RDWR | O_NONBLOCK;
         if (ofp->direct)
             flags |= O_DIRECT;
@@ -2423,7 +2429,7 @@ calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp)
         } else {
             if (verbose)
                 print_blk_sizes(optsp->inf, "pt", *in_num_sectp, in_sect_sz);
-            if (in_sect_sz != optsp->ibs) {
+            if ((*in_num_sectp > 0) && (in_sect_sz != optsp->ibs)) {
                 fprintf(stderr, ">> warning: %s block size confusion: ibs=%d, "
                         "device claims=%d\n", optsp->inf, optsp->ibs,
                         in_sect_sz);
@@ -2458,7 +2464,7 @@ calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp)
         }
         if (verbose)
             print_blk_sizes(optsp->inf, "blk", *in_num_sectp, in_sect_sz);
-        if (optsp->ibs != in_sect_sz) {
+        if ((*in_num_sectp > 0) && (optsp->ibs != in_sect_sz)) {
             fprintf(stderr, ">> warning: %s block size confusion: bs=%d, "
                     "device claims=%d\n", optsp->inf, optsp->ibs,
                      in_sect_sz);
@@ -2528,7 +2534,7 @@ calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp)
             if (verbose)
                 print_blk_sizes(optsp->outf, "pt", *out_num_sectp,
                                 out_sect_sz);
-            if (optsp->obs != out_sect_sz) {
+            if ((*out_num_sectp > 0) && (optsp->obs != out_sect_sz)) {
                 fprintf(stderr, ">> warning: %s block size confusion: "
                         "obs=%d, device claims=%d\n", optsp->outf,
                         optsp->obs, out_sect_sz);
@@ -2564,7 +2570,7 @@ calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp)
             if (verbose)
                 print_blk_sizes(optsp->outf, "blk", *out_num_sectp,
                                 out_sect_sz);
-            if (optsp->obs != out_sect_sz) {
+            if ((*out_num_sectp > 0) && (optsp->obs != out_sect_sz)) {
                 fprintf(stderr, ">> warning: %s block size confusion: "
                         "obs=%d, device claims=%d\n", optsp->outf,
                         optsp->obs, out_sect_sz);
