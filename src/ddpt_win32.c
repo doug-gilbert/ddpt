@@ -73,7 +73,7 @@
 /* Fetches system error message corresponding to errnum,
  * placing string in b not exceeding blen bytes. Returns
  * bytes placed in b (excluding trailing NULL) or -1 for
- * error. */
+ * error. MS refers to them as "System Error Codes". */
 static int
 win32_errmsg(int errnum, char * b, int blen)
 {

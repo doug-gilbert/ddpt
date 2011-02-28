@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20110226 [svn: r162]";
+static char * version_str = "0.93 20110228 [svn: r163]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -2839,8 +2839,8 @@ short_read:
 }
 
 /* Main copy loop's read (input) for block device or regular file.
- * Returns 0 on success, else SG_LIB_FILE_ERROR, SG_LIB_CAT_MEDIUM_HARD
- * or -1 . */
+ * Returns 0 on success, else SG_LIB_FILE_ERROR, SG_LIB_CAT_MEDIUM_HARD,
+ * SG_LIB_CAT_OTHER or -1 . */
 static int
 cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                   unsigned char * wrkPos)
@@ -2950,6 +2950,55 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
     }
     csp->if_filepos += res;
     csp->bytes_read = res;
+    in_full += csp->icbpt;
+    return 0;
+}
+
+/* Main copy loop's read (input) for a fifo. Returns 0 on success, else
+ * SG_LIB_CAT_OTHER or -1 . */
+static int
+cp_read_fifo(struct opts_t * optsp, struct cp_state_t * csp,
+             unsigned char * wrkPos)
+{
+    int res, k;
+    int64_t offset = optsp->skip * optsp->ibs;
+    int numbytes = csp->icbpt * optsp->ibs;
+
+    if (offset != csp->if_filepos) {
+        if (verbose > 2)
+            fprintf(stderr, "fifo: _not_ moving IFILE filepos to "
+                    "%"PRId64"\n", (int64_t)offset);
+        csp->if_filepos = offset;
+    }
+
+    for (k = 0; k < numbytes; k += res) {
+        while (((res = read(optsp->infd, wrkPos + k, numbytes - k)) < 0) &&
+               (EINTR == errno))
+            ++interrupted_retries;
+
+        if (verbose > 2)
+            fprintf(stderr, "read(fifo): requested bytes=%d, res=%d\n",
+                    numbytes, res);
+        if (res < 0) {
+            fprintf(stderr, "read(fifo), skip=%"PRId64" : %s\n", optsp->skip,
+                    safe_strerror(errno));
+            return SG_LIB_CAT_OTHER;
+        } else if (0 == res) {
+            csp->icbpt = k / optsp->ibs;
+            if ((k % optsp->ibs) > 0) {
+                ++csp->icbpt;
+                ++in_partial;
+                --in_full;
+            }
+            csp->ocbpt = k / optsp->obs;
+            ++csp->leave_after_write;
+            csp->leave_reason = 0;  /* EOF */
+            csp->partial_write_bytes = k % optsp->obs;
+            break;
+        }
+    }
+    csp->if_filepos += k;
+    csp->bytes_read = k;
     in_full += csp->icbpt;
     return 0;
 }
@@ -3560,6 +3609,9 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
         /* Start of reading section */
         if (FT_PT & optsp->in_type) {
             if ((ret = cp_read_pt(optsp, csp, wrkPos)))
+                break;
+        } else if (FT_FIFO & optsp->in_type) {
+             if ((ret = cp_read_fifo(optsp, csp, wrkPos)))
                 break;
         } else {
              if ((ret = cp_read_block_reg(optsp, csp, wrkPos)))
