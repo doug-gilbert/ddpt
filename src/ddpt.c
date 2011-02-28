@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20110228 [svn: r163]";
+static char * version_str = "0.93 20110228 [svn: r164]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -2150,7 +2150,8 @@ open_if(struct opts_t * optsp, int verbose)
     if (verbose)
         fprintf(stderr, " >> Input file type: %s\n",
                 dd_filetype_str(optsp->in_type, ebuff, EBUFF_SZ, inf));
-    if ((FT_FIFO & optsp->in_type) || (FT_CHAR & optsp->in_type))
+    if ((FT_FIFO & optsp->in_type) || (FT_CHAR & optsp->in_type) ||
+        (FT_TAPE & optsp->in_type))
         ++reading_fifo;
 
     if (FT_TAPE & optsp->in_type) {
@@ -2393,12 +2394,13 @@ calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp)
     int res;
     struct stat st;
     int64_t num_sect, t;
-    int in_sect_sz, sect_sz;
+    int in_sect_sz, sect_sz, in_type;
 
     *in_num_sectp = -1;
-    if (FT_PT & optsp->in_type) {
+    in_type = optsp->in_type;
+    if (FT_PT & in_type) {
         if (optsp->iflagp->norcap) {
-            if ((FT_BLOCK & optsp->in_type) && (0 == optsp->iflagp->force)) {
+            if ((FT_BLOCK & in_type) && (0 == optsp->iflagp->force)) {
                 fprintf(stderr, ">> warning: norcap on input block device "
                         "accessed via pt is risky.\n");
                 fprintf(stderr, ">> Abort copy, use iflag=force to "
@@ -2440,9 +2442,11 @@ calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp)
                 }
             }
         }
-        if ((FT_BLOCK & optsp->in_type) && (0 == optsp->iflagp->force) &&
-            (0 == get_blkdev_capacity(optsp, DDPT_ARG_IN, &num_sect,
-                                      &sect_sz, verbose))) {
+        if (FT_TAPE & in_type)
+            ;
+        else if ((FT_BLOCK & in_type) && (0 == optsp->iflagp->force) &&
+                 (0 == get_blkdev_capacity(optsp, DDPT_ARG_IN, &num_sect,
+                                           &sect_sz, verbose))) {
             t = (*in_num_sectp) * in_sect_sz;
             if (t != (num_sect * sect_sz)) {
                 fprintf(stderr, ">> warning: Size of input block device is "
@@ -2455,7 +2459,9 @@ calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp)
         }
     } else if ((dd_count > 0) && (0 == optsp->oflagp->resume))
         return 0;
-    else if (FT_BLOCK & optsp->in_type) {
+    else if (FT_TAPE & in_type)
+        ;
+    else if (FT_BLOCK & in_type) {
         if (0 != get_blkdev_capacity(optsp, DDPT_ARG_IN, in_num_sectp,
                                      &in_sect_sz, verbose)) {
             fprintf(stderr, "Unable to read block capacity on %s\n",
@@ -2470,7 +2476,7 @@ calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp)
                      in_sect_sz);
             *in_num_sectp = -1;
         }
-    } else if (FT_REG & optsp->in_type) {
+    } else if (FT_REG & in_type) {
         if (fstat(optsp->infd, &st) < 0) {
             perror("fstat(infd) error");
             *in_num_sectp = -1;
@@ -2497,12 +2503,13 @@ calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp)
     int res;
     struct stat st;
     int64_t num_sect, t;
-    int out_sect_sz, sect_sz;
+    int out_sect_sz, sect_sz, out_type;
 
     *out_num_sectp = -1;
-    if (FT_PT & optsp->out_type) {
+    out_type = optsp->out_type;
+    if (FT_PT & out_type) {
         if (optsp->oflagp->norcap) {
-            if ((FT_BLOCK & optsp->out_type) && (0 == optsp->oflagp->force)) {
+            if ((FT_BLOCK & out_type) && (0 == optsp->oflagp->force)) {
                 fprintf(stderr, ">> warning: norcap on output block device "
                         "accessed via pt is risky.\n");
                 fprintf(stderr, ">> Abort copy, use oflag=force to "
@@ -2545,9 +2552,11 @@ calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp)
                 }
             }
         }
-        if ((FT_BLOCK & optsp->out_type) && (0 == optsp->oflagp->force) &&
-            (0 == get_blkdev_capacity(optsp, DDPT_ARG_OUT, &num_sect,
-                                      &sect_sz, verbose))) {
+        if (FT_TAPE & out_type)
+            ;
+        else if ((FT_BLOCK & out_type) && (0 == optsp->oflagp->force) &&
+                 (0 == get_blkdev_capacity(optsp, DDPT_ARG_OUT, &num_sect,
+                                           &sect_sz, verbose))) {
             t = (*out_num_sectp) * out_sect_sz;
             if (t != (num_sect * sect_sz)) {
                 fprintf(stderr, ">> warning: size of output block device is "
@@ -2560,7 +2569,9 @@ calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp)
         }
     } else if ((dd_count > 0) && (0 == optsp->oflagp->resume))
         return 0;
-    else if (FT_BLOCK & optsp->out_type) {
+    else if (FT_TAPE & out_type)
+        ;
+    else if (FT_BLOCK & out_type) {
         if (0 != get_blkdev_capacity(optsp, DDPT_ARG_OUT, out_num_sectp,
                                      &out_sect_sz, verbose)) {
             fprintf(stderr, "Unable to read block capacity on %s\n",
@@ -2577,7 +2588,7 @@ calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp)
                 *out_num_sectp = -1;
             }
         }
-    } else if (FT_REG & optsp->out_type) {
+    } else if (FT_REG & out_type) {
         if (fstat(optsp->outfd, &st) < 0) {
             perror("fstat(outfd) error");
             *out_num_sectp = -1;
@@ -3697,7 +3708,8 @@ bypass_write:
         cp_sparse_cleanup(optsp, csp);
 
     if ((FT_PT & out_type) || (FT_DEV_NULL & out_type) ||
-        (FT_FIFO & out_type) || (FT_CHAR & out_type)) {
+        (FT_FIFO & out_type) || (FT_CHAR & out_type) ||
+        (FT_TAPE & out_type)) {
         ;       // negating things makes it less clear ...
     }
 #ifdef HAVE_FDATASYNC
@@ -3883,7 +3895,7 @@ main(int argc, char * argv[])
             fprintf(stderr, "sparse flag ignored on input\n");
     }
     if (oflag.sparse) {
-        if (FT_FIFO & opts.out_type) {
+        if ((FT_FIFO & opts.out_type) || (FT_TAPE & opts.out_type)) {
             fprintf(stderr, "oflag=sparse needs seekable output file, "
                     "ignore\n");
             oflag.sparse = 0;
@@ -3894,7 +3906,8 @@ main(int argc, char * argv[])
         }
     }
     if (oflag.sparing) {
-        if ((FT_DEV_NULL & opts.out_type) || (FT_FIFO & opts.out_type)) {
+        if ((FT_DEV_NULL & opts.out_type) || (FT_FIFO & opts.out_type) ||
+            (FT_TAPE & opts.out_type)) {
             fprintf(stderr, "oflag=sparing needs a readable and seekable "
                     "output file, ignore\n");
             oflag.sparing = 0;
