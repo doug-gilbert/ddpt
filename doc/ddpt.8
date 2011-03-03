@@ -692,10 +692,11 @@ can be used like this: 'parted /dev/sda unit s print' .
 .PP
 For pt devices this utility issues SCSI READ and WRITE (SBC) commands which
 are appropriate for disks and reading from CD/DVD/BD drives. Those
-commands are not formatted correctly for tape devices so ddpt should not be
-used on tape devices. If the largest block address of the requested transfer
-exceeds a 32 bit block number (i.e 0xffffffff) then a warning is issued and
-the sg device is accessed via SCSI READ(16) and WRITE(16) commands.
+commands are not formatted correctly for tape drives so ddpt cannot be
+used on tape drives via a pt device. If the largest block address of the
+requested transfer exceeds a 32 bit block number (i.e 0xffffffff) then a
+warning is issued and the pt device is accessed via SCSI READ(16) and
+WRITE(16) commands.
 .PP
 .B The attributes of a block device (e.g. partitions) are ignored when the
 .B pt flag is used.

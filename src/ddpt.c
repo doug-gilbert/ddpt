@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20110228 [svn: r164]";
+static char * version_str = "0.93 20110302 [svn: r165]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -1107,12 +1107,10 @@ dd_filetype_str(int ft, char * buff, int max_bufflen, const char * fname)
     if (FT_PT & ft)
         off += snprintf(buff + off, max_bufflen - off,
                         "pass-through [pt] device ");
-
     if (FT_TAPE & ft)
         off += snprintf(buff + off, max_bufflen - off, "SCSI tape device ");
-    else if (FT_BLOCK & ft)
+    if (FT_BLOCK & ft)
         off += snprintf(buff + off, max_bufflen - off, "block device ");
-
     if (FT_FIFO & ft)
         off += snprintf(buff + off, max_bufflen - off,
                         "fifo [stdin, stdout, named pipe] ");
@@ -2150,8 +2148,7 @@ open_if(struct opts_t * optsp, int verbose)
     if (verbose)
         fprintf(stderr, " >> Input file type: %s\n",
                 dd_filetype_str(optsp->in_type, ebuff, EBUFF_SZ, inf));
-    if ((FT_FIFO & optsp->in_type) || (FT_CHAR & optsp->in_type) ||
-        (FT_TAPE & optsp->in_type))
+    if ((FT_FIFO | FT_CHAR | FT_TAPE) & optsp->in_type)
         ++reading_fifo;
 
     if (FT_TAPE & optsp->in_type) {
@@ -2159,8 +2156,7 @@ open_if(struct opts_t * optsp, int verbose)
             fprintf(stderr, "SCSI tape device %s not supported via pt\n",
                     inf);
             goto file_err;
-        } else
-            optsp->in_type |= FT_BLOCK;
+        }
     }
     if (FT_PT & optsp->in_type) {
         flags = O_NONBLOCK;
@@ -2277,8 +2273,7 @@ open_of(struct opts_t * optsp, int verbose)
             fprintf(stderr, "SCSI tape device %s not supported via pt\n",
                     outf);
             goto file_err;
-        } else
-            optsp->out_type |= FT_BLOCK;
+        }
     }
     if (FT_PT & optsp->out_type) {
         flags = O_RDWR | O_NONBLOCK;
@@ -2442,11 +2437,9 @@ calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp)
                 }
             }
         }
-        if (FT_TAPE & in_type)
-            ;
-        else if ((FT_BLOCK & in_type) && (0 == optsp->iflagp->force) &&
-                 (0 == get_blkdev_capacity(optsp, DDPT_ARG_IN, &num_sect,
-                                           &sect_sz, verbose))) {
+        if ((FT_BLOCK & in_type) && (0 == optsp->iflagp->force) &&
+            (0 == get_blkdev_capacity(optsp, DDPT_ARG_IN, &num_sect,
+                                      &sect_sz, verbose))) {
             t = (*in_num_sectp) * in_sect_sz;
             if (t != (num_sect * sect_sz)) {
                 fprintf(stderr, ">> warning: Size of input block device is "
@@ -2459,8 +2452,6 @@ calc_count_in(struct opts_t * optsp, int64_t * in_num_sectp)
         }
     } else if ((dd_count > 0) && (0 == optsp->oflagp->resume))
         return 0;
-    else if (FT_TAPE & in_type)
-        ;
     else if (FT_BLOCK & in_type) {
         if (0 != get_blkdev_capacity(optsp, DDPT_ARG_IN, in_num_sectp,
                                      &in_sect_sz, verbose)) {
@@ -2552,11 +2543,9 @@ calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp)
                 }
             }
         }
-        if (FT_TAPE & out_type)
-            ;
-        else if ((FT_BLOCK & out_type) && (0 == optsp->oflagp->force) &&
-                 (0 == get_blkdev_capacity(optsp, DDPT_ARG_OUT, &num_sect,
-                                           &sect_sz, verbose))) {
+        if ((FT_BLOCK & out_type) && (0 == optsp->oflagp->force) &&
+             (0 == get_blkdev_capacity(optsp, DDPT_ARG_OUT, &num_sect,
+                                       &sect_sz, verbose))) {
             t = (*out_num_sectp) * out_sect_sz;
             if (t != (num_sect * sect_sz)) {
                 fprintf(stderr, ">> warning: size of output block device is "
@@ -2569,9 +2558,7 @@ calc_count_out(struct opts_t * optsp, int64_t * out_num_sectp)
         }
     } else if ((dd_count > 0) && (0 == optsp->oflagp->resume))
         return 0;
-    else if (FT_TAPE & out_type)
-        ;
-    else if (FT_BLOCK & out_type) {
+    if (FT_BLOCK & out_type) {
         if (0 != get_blkdev_capacity(optsp, DDPT_ARG_OUT, out_num_sectp,
                                      &out_sect_sz, verbose)) {
             fprintf(stderr, "Unable to read block capacity on %s\n",
@@ -2856,12 +2843,14 @@ static int
 cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                   unsigned char * wrkPos)
 {
-    int res, res2;
+    int res, res2, in_type, not_tape;
     int64_t offset = optsp->skip * optsp->ibs;
     int numbytes = csp->icbpt * optsp->ibs;
 
+    in_type = optsp->in_type;
+    not_tape = ! (FT_TAPE & in_type);
 #ifdef SG_LIB_WIN32
-    if (FT_BLOCK & optsp->in_type) {
+    if (FT_BLOCK & in_type) {
         int ifull_extra;
 
         if ((res = win32_cp_read_block(optsp, csp, wrkPos, &ifull_extra,
@@ -2871,7 +2860,7 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         return 0;
     }
 #endif
-    if (offset != csp->if_filepos) {
+    if ((offset != csp->if_filepos) && not_tape) {
         int64_t off_res;
 
         if (verbose > 2)
@@ -2893,7 +2882,7 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
     if (verbose > 2)
         fprintf(stderr, "read(unix): requested bytes=%d, res=%d\n",
                 numbytes, res);
-    if ((optsp->iflagp->coe) && (res < numbytes)) {
+    if ((optsp->iflagp->coe) && (res < numbytes) && not_tape) {
         res2 = (res >= 0) ? res : -errno; 
         if ((res < 0) && verbose) {
             fprintf(stderr, "reading, skip=%"PRId64" : %s, go to coe\n",
@@ -2923,7 +2912,7 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         ++csp->leave_after_write;
         csp->leave_reason = 0;  /* fall through is assumed EOF */
         if (verbose > 1) {
-            if (FT_BLOCK & optsp->in_type)
+            if (FT_BLOCK & in_type)
                 fprintf(stderr, "short read at skip=%"PRId64", requested "
                         "%d blocks, got %d blocks\n", optsp->skip,
                         numbytes / optsp->ibs, csp->icbpt);
@@ -2932,7 +2921,8 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                         "%d bytes\n", numbytes, res);
         }
         res2 = 0;
-        if ((res >= optsp->ibs) && (res <= (numbytes - optsp->ibs))) {
+        if ((res >= optsp->ibs) && (res <= (numbytes - optsp->ibs)) &&
+            not_tape) {
             /* Want to check for a EIO lurking */
             while (((res2 = read(optsp->infd, wrkPos + res,
                                  optsp->ibs)) < 0) && (EINTR == errno))
@@ -3187,16 +3177,17 @@ static int
 cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                    int seek_delta, int blks, unsigned char * wrkPos)
 {
-    int res, off, part;
+    int res, off, part, out_type;
     int numbytes = blks * optsp->obs;
     int64_t offset;
     int64_t aseek = optsp->seek + seek_delta;
 
     if (optsp->oflagp->nowrite)
         return 0;
+    out_type = optsp->out_type;
     offset = aseek * optsp->obs;
 #ifdef SG_LIB_WIN32
-    if (FT_BLOCK & optsp->out_type) {
+    if (FT_BLOCK & out_type) {
         if (csp->partial_write_bytes > 0)
             fprintf(stderr, ">>> ignore partial write of %d bytes to block "
                     "device\n", csp->partial_write_bytes);
@@ -3215,6 +3206,8 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         } else if (res < numbytes) {
             fprintf(stderr, "output file probably full, seek=%"PRId64" ",
                     aseek);
+            csp->of_filepos += res;
+            csp->bytes_of = res;
             out_full += res / optsp->obs;
             /* can get a partial write due to a short write */
             if ((res % optsp->obs) > 0) {
@@ -3232,7 +3225,7 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
 #endif
     {
         if (csp->partial_write_bytes > 0) {
-            if (FT_BLOCK & optsp->out_type)
+            if (FT_BLOCK & out_type)
                 fprintf(stderr, ">>> ignore partial write of %d bytes to "
                         "block device\n", csp->partial_write_bytes);
             else {
@@ -3240,7 +3233,8 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                 ++out_partial;
             }
         }
-        if (offset != csp->of_filepos) {
+        if ((offset != csp->of_filepos) && (! (FT_TAPE & out_type)) &&
+            (! (FT_TAPE & optsp->in_type))) {
             int64_t off_res;
 
             if (verbose > 2)
@@ -3264,7 +3258,7 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                 ++interrupted_retries;
             if ((res > 0) && (res < (numbytes - off)))
                 ++part;
-        } while ((FT_FIFO & optsp->out_type) && (res > 0) &&
+        } while ((FT_FIFO & out_type) && (res > 0) &&
                  ((off += res) < numbytes));
         if (off >= numbytes) {
             res = numbytes;
@@ -3283,6 +3277,8 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         } else if (res < numbytes) {
             fprintf(stderr, "output file probably full, seek=%"PRId64"\n",
                     aseek);
+            csp->of_filepos += res;
+            csp->bytes_of = res;
             out_full += res / optsp->obs;
             /* can get a partial write due to a short write */
             if ((res % optsp->obs) > 0) {
@@ -3360,14 +3356,15 @@ cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
                  unsigned char * b1p, unsigned char * b2p)
 {
     int res, k, n, oblks, numbytes, chunk, need_wr, wr_len, wr_k, obs;
-    int trim_check, need_tr, tr_len, tr_k;
+    int trim_check, need_tr, tr_len, tr_k, out_type;
 
     oblks = csp->ocbpt;
     obs = optsp->obs;
+    out_type = optsp->out_type;
     if (optsp->obpc >= oblks) {
-        if (FT_DEV_NULL & optsp->out_type)
+        if (FT_DEV_NULL & out_type)
             ;
-        else if (FT_PT & optsp->out_type) {
+        else if (FT_PT & out_type) {
             if ((res = cp_write_pt(optsp, csp, 0, oblks, b1p)))
                 return res;
         } else if ((res = cp_write_block_reg(optsp, csp, 0, oblks, b1p)))
@@ -3375,11 +3372,11 @@ cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
         return 0;
     }
     numbytes = oblks * obs;
-    if ((FT_REG & optsp->out_type) && (csp->partial_write_bytes > 0))
+    if ((FT_REG & out_type) && (csp->partial_write_bytes > 0))
         numbytes += csp->partial_write_bytes;
     chunk = optsp->obpc * obs;
     trim_check = (optsp->oflagp->sparse && optsp->oflagp->wsame16 &&
-                  (FT_PT & optsp->out_type));
+                  (FT_PT & out_type));
     need_tr = 0;
     tr_len = 0;
     tr_k = 0;
@@ -3387,9 +3384,9 @@ cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
         n = ((k + chunk) < numbytes) ? chunk : (numbytes - k);
         if (0 == memcmp(b1p + k, b2p + k, n)) {
             if (need_wr) {
-                if (FT_DEV_NULL & optsp->out_type)
+                if (FT_DEV_NULL & out_type)
                     ;
-                else if (FT_PT & optsp->out_type) {
+                else if (FT_PT & out_type) {
                     if ((res = cp_write_pt(optsp, csp, wr_k / obs,
                                            wr_len / obs, b1p + wr_k)))
                         return res;
@@ -3425,9 +3422,9 @@ cp_finer_comp_wr(struct opts_t * optsp, struct cp_state_t * csp,
         }
     }
     if (need_wr) {
-        if (FT_DEV_NULL & optsp->out_type)
+        if (FT_DEV_NULL & out_type)
             ;
-        else if (FT_PT & optsp->out_type) {
+        else if (FT_PT & out_type) {
             if ((res = cp_write_pt(optsp, csp, wr_k / obs, wr_len / obs,
                                    b1p + wr_k)))
                 return res;
@@ -3581,6 +3578,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
 {
     int ibpt, obpt, res, n, sparse_skip, sparing_skip, continual_read;
     int ret = 0;
+    int in_type = optsp->in_type;
     int out_type = optsp->out_type;
     struct cp_state_t cp_st;
     struct cp_state_t * csp;
@@ -3618,10 +3616,10 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
         }
 
         /* Start of reading section */
-        if (FT_PT & optsp->in_type) {
+        if (FT_PT & in_type) {
             if ((ret = cp_read_pt(optsp, csp, wrkPos)))
                 break;
-        } else if (FT_FIFO & optsp->in_type) {
+        } else if (FT_FIFO & in_type) {
              if ((ret = cp_read_fifo(optsp, csp, wrkPos)))
                 break;
         } else {
@@ -3697,8 +3695,12 @@ bypass_write:
         optsp->skip += csp->icbpt;
         optsp->seek += csp->ocbpt;
         if (csp->leave_after_write) {
-            ret = csp->leave_reason;
-            break;
+            if ((FT_TAPE & in_type) && (0 == csp->leave_reason))
+                ;       /* allow multiple partial writes for tape */
+            else {
+                ret = csp->leave_reason;
+                break;
+            }
         }
     } /* end of main loop that does the copy ... */
 
@@ -3707,11 +3709,8 @@ bypass_write:
         optsp->oflagp->sparse)
         cp_sparse_cleanup(optsp, csp);
 
-    if ((FT_PT & out_type) || (FT_DEV_NULL & out_type) ||
-        (FT_FIFO & out_type) || (FT_CHAR & out_type) ||
-        (FT_TAPE & out_type)) {
+    if ((FT_PT | FT_DEV_NULL | FT_FIFO | FT_CHAR | FT_TAPE) & out_type)
         ;       // negating things makes it less clear ...
-    }
 #ifdef HAVE_FDATASYNC
     else if (optsp->oflagp->fdatasync) {
         if (fdatasync(optsp->outfd) < 0)
@@ -3852,8 +3851,7 @@ main(int argc, char * argv[])
             opts.out2_type = dd_filetype(opts.out2f);
             if (FT_DEV_NULL & opts.out2_type)
                 fd = -1;
-            else if (! ((FT_REG & opts.out2_type) ||
-                        (FT_FIFO & opts.out2_type))) {
+            else if (! ((FT_REG | FT_FIFO) & opts.out2_type)) {
                 fprintf(stderr, "Error: output 2 file type must be regular "
                         "file or fifo\n");
                 return SG_LIB_FILE_ERROR;
@@ -3895,7 +3893,7 @@ main(int argc, char * argv[])
             fprintf(stderr, "sparse flag ignored on input\n");
     }
     if (oflag.sparse) {
-        if ((FT_FIFO & opts.out_type) || (FT_TAPE & opts.out_type)) {
+        if ((FT_FIFO | FT_TAPE) & opts.out_type) {
             fprintf(stderr, "oflag=sparse needs seekable output file, "
                     "ignore\n");
             oflag.sparse = 0;
@@ -3906,8 +3904,7 @@ main(int argc, char * argv[])
         }
     }
     if (oflag.sparing) {
-        if ((FT_DEV_NULL & opts.out_type) || (FT_FIFO & opts.out_type) ||
-            (FT_TAPE & opts.out_type)) {
+        if ((FT_DEV_NULL | FT_FIFO | FT_TAPE) & opts.out_type) {
             fprintf(stderr, "oflag=sparing needs a readable and seekable "
                     "output file, ignore\n");
             oflag.sparing = 0;
