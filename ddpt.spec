@@ -51,8 +51,8 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Fri Feb 25 2011 - dgilbert at interlog dot com
-- xxxxxxxxxxxx
+* Tue Mar 08 2011 - dgilbert at interlog dot com
+- allow tape device in non-pt mode
   * ddpt-0.93
 * Thu Feb 17 2011 - dgilbert at interlog dot com
 - warn about pt on block partitions, coe on reg,blk in
