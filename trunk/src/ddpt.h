@@ -105,6 +105,8 @@
 
 #define ERRBLK_SUPPORTED 1
 
+#define REASON_TAPE_SHORT_READ 1024     /* leave_reason indication */
+
 
 /* One instance for arguments to iflag= , another instance for oflag= */
 /* conv= arguments are mapped to flag arguments */
@@ -128,6 +130,7 @@ struct flags_t {
     int nocache;
     int norcap;
     int nowrite;
+    int pad;
     int pt;
     int resume;
     int retries;
