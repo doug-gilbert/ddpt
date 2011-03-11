@@ -306,7 +306,8 @@ either "[i]", "[o]" or "[io]" indicating this flag is active for the
 second indication contains some combination of "reg", "blk" or "pt"
 indicating whether the flag applies to a regular file, a block
 device (accessed via Unix read() and write() commands) or a pass\-through
-device respectively.
+device respectively. Other special file types that are sometimes referred
+to are "fifo" and "tape".
 .TP
 append [o] [reg]
 causes the O_APPEND flag to be added to the open of \fIOFILE\fR. For
@@ -415,6 +416,11 @@ use posix_fadvise() to advise corresponding file there is no need to fill
 the file buffer with recently read or written blocks. If used with "iflag="
 it will increase the read ahead on \fIIFILE\fR.
 .TP
+nopad [o] [tape]
+when the block to be written to a tape drive contains less than \fIOBS\fR
+bytes, then this option causes the partial block to be written as is. The
+default action for a tape in this case is to pad the block.
+.TP
 norcap [io] [pt]
 do not perform SCSI READ CAPACITY command on the corresponding pt device.
 If used on block device accessed via pt then 'force' flag is also
@@ -429,6 +435,14 @@ bypassed). Commands such as trim and SCSI SYNCHRONIZE CACHE are still sent.
 .TP
 null [io]
 has no affect, just a placeholder.
+.TP
+pad [o] [reg,blk,pt]
+when the block to be written (typically the last block) contains less than
+\fIOBS\fR bytes, then this option causes the block to be padded with
+zeros (i.e. bytes of binary zero). The default action for a regular file
+and a fifo is to do a partial write. The default action of a block
+and a pt device is to ignore the partial write. The default action of
+a tape is to pad, so this flag is not needed (see the nopad flag).
 .TP
 pt [io] [blk,pt]
 causes a device to be accessed in "pt" mode. In "pt" mode SCSI READ and
