@@ -128,6 +128,7 @@ struct flags_t {
     int fua_nv;
     int pdt;
     int nocache;
+    int nopad;
     int norcap;
     int nowrite;
     int pad;

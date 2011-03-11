@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20110308 [svn: r166]";
+static char * version_str = "0.93 20110310 [svn: r167]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -575,6 +575,8 @@ process_flags(const char * arg, struct flags_t * fp)
             ++fp->fua;
         else if (0 == strcmp(cp, "nocache"))
             ++fp->nocache;
+        else if (0 == strcmp(cp, "nopad"))
+            ++fp->nopad;
         else if (0 == strcmp(cp, "norcap"))
             ++fp->norcap;
         else if (0 == strcmp(cp, "nowrite"))
@@ -3195,13 +3197,24 @@ cp_write_pt(struct opts_t * optsp, struct cp_state_t * csp, int seek_delta,
             int blks, unsigned char * wrkPos)
 {
     int res;
+    int numbytes;
     int64_t aseek = optsp->seek + seek_delta;
 
     if (optsp->oflagp->nowrite)
         return 0;
-    if (csp->partial_write_bytes > 0)
-        fprintf(stderr, ">>> ignore partial write of %d bytes to pt device\n",
-                csp->partial_write_bytes);
+    if (csp->partial_write_bytes > 0) {
+        if (optsp->oflagp->pad) {
+            numbytes = blks * optsp->obs;
+            numbytes += csp->partial_write_bytes;
+            ++csp->ocbpt;
+            ++blks;
+            res = blks * optsp->obs;
+            if (res > numbytes)
+                memset(wrkPos + numbytes, 0, res - numbytes);
+        } else
+            fprintf(stderr, ">>> ignore partial write of %d bytes to pt "
+                    "(unless oflag=pad given)\n", csp->partial_write_bytes);
+    }
     res = pt_write(optsp->outfd, wrkPos, blks, aseek, optsp->obs,
                    optsp->oflagp);
     if (0 != res) {
@@ -3230,15 +3243,16 @@ cp_write_tape(struct opts_t * optsp, struct cp_state_t * csp,
         return 0;
     if (csp->partial_write_bytes > 0) {
         numbytes += csp->partial_write_bytes;
-        if (optsp->oflagp->pad) {
+        if (optsp->oflagp->nopad)
+            ++out_partial;
+        else {
             ++csp->ocbpt;
             ++blks;
             res = blks * optsp->obs;
             if (res > numbytes)
                 memset(wrkPos + numbytes, 0, res - numbytes);
             numbytes = res;
-        } else
-            ++out_partial;
+        }
     }
     while (((res = write(optsp->outfd, wrkPos, numbytes)) < 0) &&
            (EINTR == errno))
@@ -3274,9 +3288,9 @@ cp_write_tape(struct opts_t * optsp, struct cp_state_t * csp,
     return 0;
 }
 
-/* Main copy loop's write (output (of)) for block device or regular file.
- * Returns 0 on success, else SG_LIB_FILE_ERROR, SG_LIB_CAT_MEDIUM_HARD
- * or -1 . */
+/* Main copy loop's write (output (of)) for block device fifo or regular
+ * file. Returns 0 on success, else SG_LIB_FILE_ERROR,
+ * SG_LIB_CAT_MEDIUM_HARD or -1 . */
 static int
 cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                    int seek_delta, int blks, unsigned char * wrkPos)
@@ -3292,9 +3306,19 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
     offset = aseek * optsp->obs;
 #ifdef SG_LIB_WIN32
     if (FT_BLOCK & out_type) {
-        if (csp->partial_write_bytes > 0)
-            fprintf(stderr, ">>> ignore partial write of %d bytes to block "
-                    "device\n", csp->partial_write_bytes);
+        if (csp->partial_write_bytes > 0) {
+            if (optsp->oflagp->pad) {
+                numbytes += csp->partial_write_bytes;
+                ++csp->ocbpt;
+                ++blks;
+                res = blks * optsp->obs;
+                if (res > numbytes)
+                    memset(wrkPos + numbytes, 0, res - numbytes);
+                numbytes = res;
+            } else
+                fprintf(stderr, ">>> ignore partial write of %d bytes to "
+                        "block device\n", csp->partial_write_bytes);
+        }
         if (offset != csp->of_filepos) {
             if (verbose > 2)
                 fprintf(stderr, "moving of filepos: new_pos="
@@ -3329,12 +3353,22 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
 #endif
     {
         if (csp->partial_write_bytes > 0) {
-            if (FT_BLOCK & out_type)
-                fprintf(stderr, ">>> ignore partial write of %d bytes to "
-                        "block device\n", csp->partial_write_bytes);
-            else {
+            if (optsp->oflagp->pad) {
                 numbytes += csp->partial_write_bytes;
-                ++out_partial;
+                ++csp->ocbpt;
+                ++blks;
+                res = blks * optsp->obs;
+                if (res > numbytes)
+                    memset(wrkPos + numbytes, 0, res - numbytes);
+                numbytes = res;
+            } else {
+                if (FT_BLOCK & out_type) 
+                    fprintf(stderr, ">>> ignore partial write of %d bytes "
+                        "to block device\n", csp->partial_write_bytes);
+                else {
+                    numbytes += csp->partial_write_bytes;
+                    ++out_partial;
+                }
             }
         }
         if ((offset != csp->of_filepos) &&
@@ -3797,7 +3831,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
                 if ((ret = cp_write_tape(optsp, csp, wrkPos)))
                     break;
             } else if ((ret = cp_write_block_reg(optsp, csp, 0, csp->ocbpt,
-                                                 wrkPos)))
+                                                 wrkPos))) /* plus fifo */
                 break;
         }
 bypass_write:
