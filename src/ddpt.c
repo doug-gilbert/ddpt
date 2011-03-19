@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20110310 [svn: r167]";
+static char * version_str = "0.93 20110319 [svn: r168]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -137,6 +137,10 @@ static int wr_unrecovered_errs = 0;
 static int trim_errs = 0;
 static int64_t lowest_unrecovered = 0;          /* on reads */
 static int64_t highest_unrecovered = -1;        /* on reads */
+#ifdef HAVE_POSIX_FADVISE
+static off_t lowest_skip = -1;
+static off_t lowest_seek = -1;
+#endif
 static int num_retries = 0;
 static int sum_of_resids = 0;
 static int interrupted_retries = 0;
@@ -196,15 +200,16 @@ usage()
            "ddpt  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=6|10|12|16] [coe=0|1]\n"
            "             [coe_limit=CL] [conv=CONVS] [count=COUNT] "
            "[ibs=IBS] if=IFILE\n"
-           "             [iflag=FLAGS] [obs=OBS] [of=OFILE] [of2=OFILE2] "
-           "[oflag=FLAGS]\n"
-           "             [retries=RETR] [seek=SEEK] [skip=SKIP] "
-           "[status=STAT]\n"
+           "             [iflag=FLAGS] [iseek=SKIP] [obs=OBS] [of=OFILE] "
+           "[of2=OFILE2]\n"
+           "             [oflag=FLAGS] [oseek=SEEK] [retries=RETR] "
+           "[seek=SEEK]\n"
+           "             [skip=SKIP] [status=STAT] [verbose=VERB] "
+           "[--help]\n"
 #ifdef SG_LIB_WIN32
-           "             [verbose=VERB] [--help] [--verbose] [--version] "
-           "[--wscan]\n"
+           "             [--verbose] [--version] [--wscan]\n"
 #else
-           "             [verbose=VERB] [--help] [--verbose] [--version]\n"
+           "             [--verbose] [--version]\n"
 #endif
            "  where:\n"
            "    bpt         input Blocks Per Transfer (BPT) (def: 128 when "
@@ -231,6 +236,7 @@ usage()
            "'-')\n"
            "    iflag       input flags, comma separated list from FLAGS "
            "(see below)\n"
+           "    iseek       block position to start reading from IFILE\n"
            "    obs         output block size (def: 512), when IBS is "
            "not equal to OBS\n"
            "                [ (((IBS * BPT) %% OBS) == 0) is required\n"
@@ -241,6 +247,7 @@ usage()
            "                regular file or pipe\n"
            "    oflag       output flags, comma separated list from FLAGS "
            "(see below)\n"
+           "    oseek       block position to start writing to OFILE\n"
            "    retries     retry pass-through errors RETR times "
            "(def: 0)\n"
            "    seek        block position to start writing to OFILE\n"
@@ -874,6 +881,12 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
                 fprintf(stderr, "bad argument to 'iflag='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
+        } else if (0 == strcmp(key, "iseek")) {
+            optsp->skip = sg_get_llnum(buf);
+            if (-1LL == optsp->skip) {
+                fprintf(stderr, "bad argument to 'iseek='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
         } else if (0 == strcmp(key, "obs")) {
             n = sg_get_num(buf);
             if (n < 0) {
@@ -903,6 +916,12 @@ process_cl(struct opts_t * optsp, int argc, char * argv[])
         } else if (0 == strcmp(key, "oflag")) {
             if (process_flags(buf, optsp->oflagp)) {
                 fprintf(stderr, "bad argument to 'oflag='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (0 == strcmp(key, "oseek")) {
+            optsp->seek = sg_get_llnum(buf);
+            if (-1LL == optsp->seek) {
+                fprintf(stderr, "bad argument to 'oseek='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strcmp(key, "retries")) {
@@ -2621,8 +2640,6 @@ static void
 do_fadvise(struct opts_t * op, int bytes_if, int bytes_of, int bytes_of2)
 {
     int rt, in_valid, out2_valid, out_valid;
-    static off_t lowest_skip = -1;
-    static off_t lowest_seek = -1;
 
     in_valid = ((FT_REG == op->in_type) || (FT_BLOCK == op->in_type));
     out2_valid = ((FT_REG == op->out2_type) || (FT_BLOCK == op->out2_type));
@@ -3211,6 +3228,9 @@ cp_write_pt(struct opts_t * optsp, struct cp_state_t * csp, int seek_delta,
             res = blks * optsp->obs;
             if (res > numbytes)
                 memset(wrkPos + numbytes, 0, res - numbytes);
+            if (verbose > 1)
+                fprintf(stderr, "pt_write: padding probable final write at "
+                        "seek=%"PRId64"\n", aseek);
         } else
             fprintf(stderr, ">>> ignore partial write of %d bytes to pt "
                     "(unless oflag=pad given)\n", csp->partial_write_bytes);
@@ -3234,14 +3254,16 @@ cp_write_tape(struct opts_t * optsp, struct cp_state_t * csp,
               unsigned char * wrkPos)
 {
     int res, err;
-    int blks = csp->ocbpt;
     int numbytes;
+    int partial = 0;
+    int blks = csp->ocbpt;
     int64_t aseek = optsp->seek;
 
     numbytes = blks * optsp->obs;
     if (optsp->oflagp->nowrite)
         return 0;
     if (csp->partial_write_bytes > 0) {
+        ++partial;
         numbytes += csp->partial_write_bytes;
         if (optsp->oflagp->nopad)
             ++out_partial;
@@ -3260,8 +3282,8 @@ cp_write_tape(struct opts_t * optsp, struct cp_state_t * csp,
 
     err = errno;
     if (verbose > 2)
-        fprintf(stderr, "write(tape): requested bytes=%d, res=%d\n",
-                numbytes, res);
+        fprintf(stderr, "write(tape%s): requested bytes=%d, res=%d\n",
+                (partial ? ", partial" : ""), numbytes, res);
     if (res < 0) {
         fprintf(stderr, "writing, seek=%"PRId64" : %s\n", aseek,
                 safe_strerror(err));
@@ -3315,6 +3337,9 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                 if (res > numbytes)
                     memset(wrkPos + numbytes, 0, res - numbytes);
                 numbytes = res;
+                if (verbose > 1)
+                    fprintf(stderr, "write(win32_block): padding probable "
+                            "final write at seek=%"PRId64"\n", aseek);
             } else
                 fprintf(stderr, ">>> ignore partial write of %d bytes to "
                         "block device\n", csp->partial_write_bytes);
@@ -3329,7 +3354,7 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
         }
         res = win32_block_write(optsp, wrkPos, numbytes, verbose);
         if (res < 0) {
-            fprintf(stderr, "write(win32_block, seek=%"PRId64" ", aseek);
+            fprintf(stderr, "write(win32_block), seek=%"PRId64" ", aseek);
             return (-SG_LIB_CAT_MEDIUM_HARD == res) ? -res : -1;
         } else if (res < numbytes) {
             fprintf(stderr, "output file probably full, seek=%"PRId64" ",
@@ -3361,6 +3386,9 @@ cp_write_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
                 if (res > numbytes)
                     memset(wrkPos + numbytes, 0, res - numbytes);
                 numbytes = res;
+                if (verbose > 1)
+                    fprintf(stderr, "write(unix): padding probable final "
+                            "write at seek=%"PRId64"\n", aseek);
             } else {
                 if (FT_BLOCK & out_type) 
                     fprintf(stderr, ">>> ignore partial write of %d bytes "
@@ -3845,7 +3873,7 @@ bypass_write:
         if (csp->leave_after_write) {
             if (REASON_TAPE_SHORT_READ == csp->leave_reason)
                 ;       /* allow multiple partial writes for tape */
-            else {
+            else {      /* other cases: stop copy after partial write */
                 ret = csp->leave_reason;
                 break;
             }

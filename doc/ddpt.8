@@ -1,4 +1,4 @@
-.TH DDPT "8" "February 2011" "ddpt\-0.92" DDPT
+.TH DDPT "8" "March 2011" "ddpt\-0.92" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -6,10 +6,11 @@ devices that understand the SCSI command set.
 .B ddpt
 [\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fR6|10|12|16]
 [\fIcoe=\fR0|1] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
-[\fIibs=IBS\fR] \fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIobs=OBS\fR]
-[\fIof=OFILE\fR] [\fIof2=OFILE2\fR] [\fIoflag=FLAGS\fR] [\fIretries=RETR\fR]
-[\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR] [\fIverbose=VERB\fR]
-[\fI\-\-help\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR]
+[\fIibs=IBS\fR] \fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIiseek=SKIP\fR]
+[\fIobs=OBS\fR] [\fIof=OFILE\fR] [\fIof2=OFILE2\fR] [\fIoflag=FLAGS\fR]
+[\fIoseek=SEEK\fR] [\fIretries=RETR\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR]
+[\fIstatus=STAT\fR] [\fIverbose=VERB\fR] [\fI\-\-help\fR] [\fI\-\-verbose\fR]
+[\fI\-\-version\fR] [\fI\-\-wscan\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
 .PP
@@ -139,6 +140,11 @@ where \fIFLAGS\fR is a comma separated list of one or more flags outlined
 in the FLAGS section below.  These flags are associated with \fIIFILE\fR and
 are ignored when \fIIFILE\fR is stdin.
 .TP
+\fBiseek\fR=\fISKIP\fR
+start reading \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of
+\fIIFILE\fR. Default is block 0 (i.e. start of file). This option is a
+synonym for "skip=".
+.TP
 \fBobs\fR=\fIOBS\fR
 where \fIOBS\fR is the \fIOFILE\fR block size in bytes. The default value 
 is \fIBS\fR or its default (512). Conflicts the "bs=" option (e.g. giving 
@@ -170,6 +176,11 @@ logic. So everything read is written to \fIOFILE2\fR.
 where \fIFLAGS\fR is a comma separated list of one or more flags outlined
 in the FLAGS section. These flags are associated with \fIOFILE\fR and are
 ignored when \fIOFILE\fR is /dev/null, '.' (period), or stdout.
+.TP
+\fBoseek\fR=\fISEEK\fR
+start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
+\fIOFILE\fR. Default is block 0 (i.e. start of file). This option is a
+synontm for "seek=".
 .TP
 \fBretries\fR=\fIRETR\fR
 sometimes retries at the host are useful, for example when there is a
