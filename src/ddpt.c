@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20110319 [svn: r168]";
+static char * version_str = "0.93 20110328 [svn: r169]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -380,7 +380,7 @@ interrupt_handler(int sig)
     char b[32];
 
 #ifdef SG_LIB_MINGW
-    fprintf(stderr, "Interrupted by signal %s,",
+    fprintf(stderr, "Interrupted by signal %s\n",
             get_signal_name(sig, b, sizeof(b)));
     print_stats("");
     if (do_time)
@@ -394,12 +394,12 @@ interrupt_handler(int sig)
     sigemptyset(&sigact.sa_mask);
     sigact.sa_flags = 0;
     sigaction(sig, &sigact, NULL);
-    fprintf(stderr, "Interrupted by signal %s,",
+    fprintf(stderr, "Interrupted by signal %s\n",
             get_signal_name(sig, b, sizeof(b)));
     print_stats("");
     if (do_time)
         calc_duration_throughput("", 0);
-    if (FT_REG & out_type_hold)
+    if ((0 == reading_fifo) && (FT_REG & out_type_hold))
         fprintf(stderr, "To resume, invoke with same arguments plus "
                 "oflag=resume\n");
     kill(getpid(), sig);
@@ -1989,9 +1989,9 @@ static void
 print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
                 int sect_sz)
 {
-    int mb, gb;
+    int mb, gb, tb;
     size_t len;
-    int64_t n;
+    int64_t n = 0;
     char b[32];
     char dec[4];
 
@@ -2000,46 +2000,64 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
                 access_typ, num_sect, sect_sz);
         return;
     }
-    mb = 0;
+    gb = 0;
     if ((num_sect > 0) && (sect_sz > 0)) {
         n = num_sect * sect_sz;
-        mb = n / 1000000;
+        gb = n / 1000000000;
     }
-
-    if (mb > 999999) {
-        gb = mb / 1000;
-        snprintf(b, sizeof(b), "%d", gb);
+    if (gb > 999999) {
+        tb = gb / 1000;
+        snprintf(b, sizeof(b), "%d", tb);
         len = strlen(b); // len must be >= 4
         dec[0] = b[len - 3];
         dec[1] = b[len - 2];
         dec[2] = '\0';
         b[len - 3] = '\0';
         fprintf(stderr, "  %s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
-                "_bs=%d, %s.%s TB\n", fname, access_typ, num_sect,
+                "_bs=%d, %s.%s PB\n", fname, access_typ, num_sect,
                 num_sect, sect_sz, b, dec);
-    } else if (mb > 99999) {
-        gb = mb / 1000;
+    } else if (gb > 99999) {
+        tb = gb / 1000;
         fprintf(stderr, "  %s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
-                "_bs=%d, %d GB\n", fname, access_typ, num_sect,
-                num_sect, sect_sz, gb);
-    } else if (mb > 999) {
-        snprintf(b, sizeof(b), "%d", mb);
-        len = strlen(b); // len must be >= 4
-        dec[0] = b[len - 3];
-        dec[1] = b[len - 2];
-        dec[2] = '\0';
-        b[len - 3] = '\0';
-        fprintf(stderr, "  %s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
-                "_bs=%d, %s.%s GB\n", fname, access_typ, num_sect,
-                num_sect, sect_sz, b, dec);
-    } else if (mb > 0) {
-        fprintf(stderr, "  %s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
-                "_bs=%d, %d MB%s\n", fname, access_typ, num_sect,
-                num_sect, sect_sz, mb, ((mb < 10) ? " approx" : ""));
-    } else
-        fprintf(stderr, "  %s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
-                "_bs=%d\n", fname, access_typ, num_sect, num_sect,
-                sect_sz);
+                "_bs=%d, %d TB\n", fname, access_typ, num_sect,
+                num_sect, sect_sz, tb);
+    } else {
+        mb = n / 1000000;
+        if (mb > 999999) {
+            gb = mb / 1000;
+            snprintf(b, sizeof(b), "%d", gb);
+            len = strlen(b); // len must be >= 4
+            dec[0] = b[len - 3];
+            dec[1] = b[len - 2];
+            dec[2] = '\0';
+            b[len - 3] = '\0';
+            fprintf(stderr, "  %s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
+                    "_bs=%d, %s.%s TB\n", fname, access_typ, num_sect,
+                    num_sect, sect_sz, b, dec);
+        } else if (mb > 99999) {
+            gb = mb / 1000;
+            fprintf(stderr, "  %s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
+                    "_bs=%d, %d GB\n", fname, access_typ, num_sect,
+                    num_sect, sect_sz, gb);
+        } else if (mb > 999) {
+            snprintf(b, sizeof(b), "%d", mb);
+            len = strlen(b); // len must be >= 4
+            dec[0] = b[len - 3];
+            dec[1] = b[len - 2];
+            dec[2] = '\0';
+            b[len - 3] = '\0';
+            fprintf(stderr, "  %s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
+                    "_bs=%d, %s.%s GB\n", fname, access_typ, num_sect,
+                    num_sect, sect_sz, b, dec);
+        } else if (mb > 0) {
+            fprintf(stderr, "  %s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
+                    "_bs=%d, %d MB%s\n", fname, access_typ, num_sect,
+                    num_sect, sect_sz, mb, ((mb < 10) ? " approx" : ""));
+        } else
+            fprintf(stderr, "  %s [%s]: blocks=%"PRId64" [0x%"PRIx64"], "
+                    "_bs=%d\n", fname, access_typ, num_sect, num_sect,
+                    sect_sz);
+    }
 }
 
 /* Calculates transfer throughput, typically in Megabytes per second.
@@ -3251,7 +3269,7 @@ cp_write_pt(struct opts_t * optsp, struct cp_state_t * csp, int seek_delta,
  * or -1 . */
 static int
 cp_write_tape(struct opts_t * optsp, struct cp_state_t * csp,
-              unsigned char * wrkPos)
+              unsigned char * wrkPos, int could_be_last)
 {
     int res, err;
     int numbytes;
@@ -3281,9 +3299,13 @@ cp_write_tape(struct opts_t * optsp, struct cp_state_t * csp,
         ++interrupted_retries;
 
     err = errno;
-    if (verbose > 2)
-        fprintf(stderr, "write(tape%s): requested bytes=%d, res=%d\n",
-                (partial ? ", partial" : ""), numbytes, res);
+    if ((verbose > 2) || ((verbose > 0) && could_be_last)) {
+        const char * cp;
+
+        cp = ((! optsp->oflagp->nopad) && partial) ? ", padded" : "";
+        fprintf(stderr, "write(tape%s%s): requested bytes=%d, res=%d\n",
+                (partial ? ", partial" : ""), cp, numbytes, res);
+    }
     if (res < 0) {
         fprintf(stderr, "writing, seek=%"PRId64" : %s\n", aseek,
                 safe_strerror(err));
@@ -3748,6 +3770,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
 {
     int ibpt, obpt, res, n, sparse_skip, sparing_skip, continual_read;
     int ret = 0;
+    int could_be_last = 0;
     int in_type = optsp->in_type;
     int out_type = optsp->out_type;
     struct cp_state_t cp_st;
@@ -3845,6 +3868,8 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
             }
         }
         /* Start of writing section */
+        if ((! continual_read) && (csp->icbpt >= dd_count))
+            could_be_last = 1;
         if (sparing_skip || sparse_skip) {
             out_sparse += csp->ocbpt;
             if (csp->partial_write_bytes > 0)
@@ -3856,7 +3881,7 @@ do_copy(struct opts_t * optsp, unsigned char * wrkPos,
             } else if (FT_DEV_NULL & out_type)
                 ;  /* don't bump out_full (earlier revs did) */
             else if (FT_TAPE & out_type) {
-                if ((ret = cp_write_tape(optsp, csp, wrkPos)))
+                if ((ret = cp_write_tape(optsp, csp, wrkPos, could_be_last)))
                     break;
             } else if ((ret = cp_write_block_reg(optsp, csp, 0, csp->ocbpt,
                                                  wrkPos))) /* plus fifo */
