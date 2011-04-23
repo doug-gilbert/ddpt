@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20110328 [svn: r169]";
+static char * version_str = "0.93 20110423 [svn: r170]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -2993,6 +2993,8 @@ cp_read_tape(struct opts_t * optsp, struct cp_state_t * csp,
              unsigned char * wrkPos)
 {
     int res, err;
+    static int num_consec_same_len_short_reads = 0;
+    static int last_read_len = 0;
     int numbytes = csp->icbpt * optsp->ibs;
 
     while (((res = read(optsp->infd, wrkPos, numbytes)) < 0) &&
@@ -3000,9 +3002,21 @@ cp_read_tape(struct opts_t * optsp, struct cp_state_t * csp,
         ++interrupted_retries;
 
     err = errno;
+
+    /* Summarise previous consecutive same-length short reads. Do that when:
+     * - the last read was short
+     * - short read length (res) is not the same as that of the previous read
+     * - there were more than one consecutive short reads of the same length
+     */
+    if ((verbose > 1) && (res != last_read_len) &&
+        (num_consec_same_len_short_reads > 1))
+            fprintf(stderr, "(there were %d short reads of %d bytes)\n",
+                    num_consec_same_len_short_reads, last_read_len);
+
     if (verbose > 2)
         fprintf(stderr, "read(tape): requested bytes=%d, res=%d\n",
                 numbytes, res);
+
     if (res < 0) {
         fprintf(stderr, "reading, skip=%"PRId64" : %s\n", optsp->skip,
                 safe_strerror(err));
@@ -3020,11 +3034,27 @@ cp_read_tape(struct opts_t * optsp, struct cp_state_t * csp,
         csp->ocbpt = res / optsp->obs;
         ++csp->leave_after_write;
         csp->leave_reason = REASON_TAPE_SHORT_READ;
-        if (verbose > 1)
+        csp->partial_write_bytes = res % optsp->obs;
+        if (verbose > 1) {
+            if (res == last_read_len)
+                num_consec_same_len_short_reads++;
+            else {
+                num_consec_same_len_short_reads = 1;
+                last_read_len = res;
+            }
+            if ((verbose == 2) && (num_consec_same_len_short_reads == 2))
+                fprintf(stderr, "(suppressing further identical messages)\n");
+            else if ((verbose > 2) || ((verbose == 2) &&
+                                       (num_consec_same_len_short_reads == 1)))
                 fprintf(stderr, "short read, requested %d bytes, got "
                         "%d bytes\n", numbytes, res);
-        csp->partial_write_bytes = res % optsp->obs;
-    }
+        }
+    } else
+    /* Here res == numbytes. (res can't be more than numbytes, right???)
+       Remember the last read length. [Should this also be done on
+       encountering an error (i.e. when res<0)???] */
+        last_read_len = res;    /* Remember for next time */
+
     csp->if_filepos += res;
     csp->bytes_read = res;
     in_full += csp->icbpt;
@@ -3896,9 +3926,12 @@ bypass_write:
         optsp->skip += csp->icbpt;
         optsp->seek += csp->ocbpt;
         if (csp->leave_after_write) {
-            if (REASON_TAPE_SHORT_READ == csp->leave_reason)
-                ;       /* allow multiple partial writes for tape */
-            else {      /* other cases: stop copy after partial write */
+            if (REASON_TAPE_SHORT_READ == csp->leave_reason) {
+                /* allow multiple partial writes for tape */
+                csp->partial_write_bytes = 0;
+                csp->leave_after_write = 0;
+            } else {
+                /* other cases: stop copy after partial write */
                 ret = csp->leave_reason;
                 break;
             }
