@@ -2,7 +2,7 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.93 [20110328] [svn: r169]
+Changelog for ddpt-0.93 [20110423] [svn: r170]
   - allow tape device in non-pt mode
   - fix fifo read when bs is large
   - add oflag=pad, oflag=nopad for tape writes
