@@ -1,4 +1,4 @@
-.TH DDPT "8" "March 2011" "ddpt\-0.92" DDPT
+.TH DDPT "8" "April 2011" "ddpt\-0.92" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -831,6 +831,13 @@ SIGPIPE output the number of remaining blocks to be transferred and
 the records in + out counts; then they have their default action.
 SIGUSR1 causes the same information to be output and the copy continues.
 All output caused by signals is sent to stderr.
+.SH TAPE
+There is support for copies to and from tape drives in Linux. Only the
+st driver device names can be used (e.g. /dev/st0 and /dev/nst2). Hence
+use of Linux pass-through device names (e.g. /dev/sg2) for tape drives
+is not supported.
+.PP
+xxxxxxxxx
 .SH EXIT STATUS
 To aid scripts that call ddpt, the exit status is set to indicate
 success (0) or failure (1 or more). Note that some of the lower values

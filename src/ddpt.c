@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20110423 [svn: r170]";
+static char * version_str = "0.93 20110426 [svn: r171]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -137,6 +137,13 @@ static int wr_unrecovered_errs = 0;
 static int trim_errs = 0;
 static int64_t lowest_unrecovered = 0;          /* on reads */
 static int64_t highest_unrecovered = -1;        /* on reads */
+
+/* Next three variables are used for printing tape summary information */
+static int read_tape_numbytes = 0;
+static int last_tape_read_len = 0;  /* Length of previous tape read */
+/* Number of consecutive same-length tape reads */
+static unsigned int consec_same_len_reads = 0;
+
 #ifdef HAVE_POSIX_FADVISE
 static off_t lowest_skip = -1;
 static off_t lowest_seek = -1;
@@ -191,7 +198,7 @@ static struct signum_name_t signum_name_arr[] = {
 
 
 static void calc_duration_throughput(const char * leadin, int contin);
-
+void print_tape_summary(int res, const char * str);
 
 static void
 usage()
@@ -281,6 +288,9 @@ usage()
 static void
 print_stats(const char * str)
 {
+    /* Print tape read summary if necessary . */
+    print_tape_summary(0, str);
+
     if ((0 != dd_count) && (! reading_fifo))
         fprintf(stderr, "  remaining block count=%"PRId64"\n", dd_count);
     fprintf(stderr, "%s%"PRId64"+%d records in\n", str, in_full, in_partial);
@@ -2986,6 +2996,23 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
     return 0;
 }
 
+/* Summarise previous consecutive same-length reads. Do that when:
+ * - read length (res) differs from the previous read length, and
+ * - there were more than one consecutive reads of the same length
+ * The str argument is a prefix string, typically one or two spaces, used
+ * to e.g. make output line up when printing on kill -USR1. */
+void
+print_tape_summary(int res, const char * str)
+{
+    if ((verbose > 1) && (res != last_tape_read_len) &&
+        (consec_same_len_reads >= 1))
+        fprintf(stderr, "%s(%d%s read%s of %d byte%s)\n", str,
+                consec_same_len_reads,
+                (last_tape_read_len < read_tape_numbytes) ? " short" : "",
+                (consec_same_len_reads != 1) ? "s" : "", last_tape_read_len,
+                (last_tape_read_len != 1) ? "s" : "");
+}
+
 /* Main copy loop's read (input) for tape device. Returns 0 on success,
  * else SG_LIB_CAT_MEDIUM_HARD, SG_LIB_CAT_OTHER or -1 . */
 static int
@@ -2993,68 +3020,62 @@ cp_read_tape(struct opts_t * optsp, struct cp_state_t * csp,
              unsigned char * wrkPos)
 {
     int res, err;
-    static int num_consec_same_len_short_reads = 0;
-    static int last_read_len = 0;
-    int numbytes = csp->icbpt * optsp->ibs;
+    read_tape_numbytes = csp->icbpt * optsp->ibs;
 
-    while (((res = read(optsp->infd, wrkPos, numbytes)) < 0) &&
+    while (((res = read(optsp->infd, wrkPos, read_tape_numbytes)) < 0) &&
            (EINTR == errno))
         ++interrupted_retries;
 
     err = errno;
 
-    /* Summarise previous consecutive same-length short reads. Do that when:
-     * - the last read was short
-     * - short read length (res) is not the same as that of the previous read
-     * - there were more than one consecutive short reads of the same length
-     */
-    if ((verbose > 1) && (res != last_read_len) &&
-        (num_consec_same_len_short_reads > 1))
-            fprintf(stderr, "(there were %d short reads of %d bytes)\n",
-                    num_consec_same_len_short_reads, last_read_len);
+    /* Summarise previous consecutive same-length reads. */
+    print_tape_summary(res, "");
 
     if (verbose > 2)
-        fprintf(stderr, "read(tape): requested bytes=%d, res=%d\n",
-                numbytes, res);
+        fprintf(stderr, "read(tape%s): requested bytes=%d, res=%d\n",
+                ((res >= read_tape_numbytes) || (res < 0)) ? "" : ", short",
+                read_tape_numbytes, res);
 
     if (res < 0) {
+        /* If a tape block larger than the requested read length is
+         * encountered, the Linux st driver returns ENOMEM. Handle that case
+         * otherwise we would print a confusing/incorrect message
+         * "Cannot allocate memory". */
         fprintf(stderr, "reading, skip=%"PRId64" : %s\n", optsp->skip,
-                safe_strerror(err));
+                (ENOMEM == err) ? "Tape block larger than requested read"
+                " length" : safe_strerror(err));
+
+        last_tape_read_len = 0; /* So print_stats() doesn't print summary. */
+
         if ((EIO == err) || (EREMOTEIO == err))
             return SG_LIB_CAT_MEDIUM_HARD;
         else
             return SG_LIB_CAT_OTHER;
-    } else if (res < numbytes) {
-        csp->icbpt = res / optsp->ibs;
-        if ((res % optsp->ibs) > 0) {
-            ++csp->icbpt;
-            ++in_partial;
-            --in_full;
-        }
-        csp->ocbpt = res / optsp->obs;
-        ++csp->leave_after_write;
-        csp->leave_reason = REASON_TAPE_SHORT_READ;
-        csp->partial_write_bytes = res % optsp->obs;
+    } else {
         if (verbose > 1) {
-            if (res == last_read_len)
-                num_consec_same_len_short_reads++;
+            if (res == last_tape_read_len)
+                consec_same_len_reads++;
             else {
-                num_consec_same_len_short_reads = 1;
-                last_read_len = res;
+                last_tape_read_len = res;
+                consec_same_len_reads = 1;
             }
-            if ((verbose == 2) && (num_consec_same_len_short_reads == 2))
-                fprintf(stderr, "(suppressing further identical messages)\n");
-            else if ((verbose > 2) || ((verbose == 2) &&
-                                       (num_consec_same_len_short_reads == 1)))
-                fprintf(stderr, "short read, requested %d bytes, got "
-                        "%d bytes\n", numbytes, res);
         }
-    } else
-    /* Here res == numbytes. (res can't be more than numbytes, right???)
-       Remember the last read length. [Should this also be done on
-       encountering an error (i.e. when res<0)???] */
-        last_read_len = res;    /* Remember for next time */
-
+        if (res < read_tape_numbytes) {
+            csp->icbpt = res / optsp->ibs;
+            if ((res % optsp->ibs) > 0) {
+                ++csp->icbpt;
+                ++in_partial;
+                --in_full;
+            }
+            csp->ocbpt = res / optsp->obs;
+            ++csp->leave_after_write;
+            csp->leave_reason = REASON_TAPE_SHORT_READ;
+            csp->partial_write_bytes = res % optsp->obs;
+            if ((verbose == 2) && (consec_same_len_reads == 1))
+                fprintf(stderr, "short read: requested %d bytes, got "
+                        "%d\n", read_tape_numbytes, res);
+        }
+    }
     csp->if_filepos += res;
     csp->bytes_read = res;
     in_full += csp->icbpt;
