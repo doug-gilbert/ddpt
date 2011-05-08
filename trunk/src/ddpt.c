@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20110426 [svn: r171]";
+static char * version_str = "0.93 20110508 [svn: r172]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -89,6 +89,10 @@ static char * version_str = "0.93 20110426 [svn: r171]";
 #include <sys/file.h>
 #include <linux/major.h>
 #include <linux/fs.h>   /* <sys/mount.h> */
+#include <linux/mtio.h> /* For tape ioctls */
+#ifndef MTWEOFI
+#define MTWEOFI 35  /* write an end-of-file record (mark) in immediate mode */
+#endif
 #endif
 
 #ifdef SG_LIB_FREEBSD
@@ -196,9 +200,11 @@ static struct signum_name_t signum_name_arr[] = {
     {0, NULL},
 };
 
-
 static void calc_duration_throughput(const char * leadin, int contin);
-void print_tape_summary(int res, const char * str);
+static void print_tape_summary(int res, const char * str);
+static void print_tape_pos(const char * prefix, const char * postfix,
+                           struct opts_t * optsp);
+static void show_tape_pos_error(const char * postfix);
 
 static void
 usage()
@@ -275,11 +281,11 @@ usage()
            "dd command. Support for block devices, especially those "
            "accessed via\na SCSI pass-through.\n"
            "FLAGS: append(o),coe,direct,dpo,errblk(i),excl,fdatasync(o),"
-           "flock,force\n"
-           "fsync(o),fua,fua_nv,nocache,norcap,nowrite(o),null,pad,pt,"
-           "resume(o),self\n"
-           "sparing(o),sparse(o),ssync(o),strunc(o),sync,trim(o),trunc(o),"
-           "unmap(o).\n"
+           "flock,force,\n"
+           "fsync(o),fua,fua_nv,ignoreew(o),nocache,nofm(o),norcap,"
+           "nowrite(o),null,pad,\n"
+           "pt,resume(o),self,sparing(o),sparse(o),ssync(o),strunc(o),sync,"
+           "trim(o),\ntrunc(o),unmap(o).\n"
            "CONVS: fdatasync,fsync,noerror,null,resume,sparing,sparse,sync,"
            "trunc\n");
 }
@@ -586,12 +592,16 @@ process_flags(const char * arg, struct flags_t * fp)
             ++fp->force;
         else if (0 == strcmp(cp, "fsync"))
             ++fp->fsync;
-        else if (0 == strcmp(cp, "fua_nv"))     /* check fua_nv before fua */
+        else if (0 == strcmp(cp, "fua_nv"))   /* check fua_nv before fua */
             ++fp->fua_nv;
         else if (0 == strcmp(cp, "fua"))
             ++fp->fua;
+        else if (0 == strcmp(cp, "ignoreew")) /* "ignore early warning" */
+            ++fp->ignoreew;
         else if (0 == strcmp(cp, "nocache"))
             ++fp->nocache;
+        else if (0 == strcmp(cp, "nofm"))     /* No filemark on tape close */
+            ++fp->nofm;
         else if (0 == strcmp(cp, "nopad"))
             ++fp->nopad;
         else if (0 == strcmp(cp, "norcap"))
@@ -699,6 +709,10 @@ cl_sanity_defaults(struct opts_t * optsp)
     }
     if (optsp->iflagp->append)
         fprintf(stderr, "append flag ignored on input\n");
+    if (optsp->iflagp->ignoreew)
+        fprintf(stderr, "ignoreew flag ignored on input\n");
+    if (optsp->iflagp->nofm)
+        fprintf(stderr, "nofm flag ignored on input\n");
     if (optsp->iflagp->sparing)
         fprintf(stderr, "sparing flag ignored on input\n");
     if (optsp->iflagp->ssync)
@@ -1530,7 +1544,8 @@ pt_low_read(int sg_fd, int in0_out1, unsigned char * buff, int blocks,
                             ret = SG_LIB_CAT_MEDIUM_HARD_WITH_INFO;
                         } else
                             fprintf(stderr, "MMC READ gave 'illegal mode for "
-                                    "this track' and ILI but no LBA of failure\n");
+                                    "this track' and ILI but no LBA of "
+                                    "failure\n");
                     }
                     ++unrecovered_errs;
                     ret = SG_LIB_CAT_MEDIUM_HARD;
@@ -3001,7 +3016,7 @@ cp_read_block_reg(struct opts_t * optsp, struct cp_state_t * csp,
  * - there were more than one consecutive reads of the same length
  * The str argument is a prefix string, typically one or two spaces, used
  * to e.g. make output line up when printing on kill -USR1. */
-void
+static void
 print_tape_summary(int res, const char * str)
 {
     if ((verbose > 1) && (res != last_tape_read_len) &&
@@ -3035,6 +3050,9 @@ cp_read_tape(struct opts_t * optsp, struct cp_state_t * csp,
         fprintf(stderr, "read(tape%s): requested bytes=%d, res=%d\n",
                 ((res >= read_tape_numbytes) || (res < 0)) ? "" : ", short",
                 read_tape_numbytes, res);
+
+    if (verbose > 3)
+        print_tape_pos("", "", optsp);
 
     if (res < 0) {
         /* If a tape block larger than the requested read length is
@@ -3327,6 +3345,9 @@ cp_write_tape(struct opts_t * optsp, struct cp_state_t * csp,
     int partial = 0;
     int blks = csp->ocbpt;
     int64_t aseek = optsp->seek;
+    int got_early_warning = 0;
+/* Only print early warning message once when verbose=2 */
+    static int printed_ew_message = 0;
 
     numbytes = blks * optsp->obs;
     if (optsp->oflagp->nowrite)
@@ -3345,6 +3366,8 @@ cp_write_tape(struct opts_t * optsp, struct cp_state_t * csp,
             numbytes = res;
         }
     }
+
+ew_retry:
     while (((res = write(optsp->outfd, wrkPos, numbytes)) < 0) &&
            (EINTR == errno))
         ++interrupted_retries;
@@ -3357,6 +3380,33 @@ cp_write_tape(struct opts_t * optsp, struct cp_state_t * csp,
         fprintf(stderr, "write(tape%s%s): requested bytes=%d, res=%d\n",
                 (partial ? ", partial" : ""), cp, numbytes, res);
     }
+
+/* Handle EOM early warning. */
+/* The Linux st driver returns -1 and ENOSPC to indicate the drive has reached
+ * end of medium early warning. It is still possible to write a significant
+ * amount of data before reaching end of tape (e.g. over 200MB for LTO 1). If
+ * the user specified oflag=ignoreew (ignore early warning) retry the write.
+ * The st driver should allow it; writes alternate until EOM, i.e. write okay,
+ * ENOSPC, write okay, ENOSPC, etc. Exit if more than one ENOSPC in a row. */
+    if ((optsp->oflagp->ignoreew) && (-1 == res) && (ENOSPC == err) &&
+        (0 == got_early_warning)) {
+        got_early_warning = 1;
+        if (0 == printed_ew_message) {
+            if (verbose > 1)
+                fprintf(stderr, "writing, seek=%"PRId64" : EOM early warning,"
+                        " continuing...\n", aseek);
+             if (2 == verbose) {
+                fprintf(stderr, "(suppressing further early warning"
+                        " messages)\n");
+                printed_ew_message = 1;  
+            }      
+        }
+        goto ew_retry;
+    }
+
+    if (verbose > 3)
+        print_tape_pos("", "", optsp);
+
     if (res < 0) {
         fprintf(stderr, "writing, seek=%"PRId64" : %s\n", aseek,
                 safe_strerror(err));
@@ -3990,6 +4040,73 @@ copy_end:
     return ret;
 }
 
+/* Print tape position(s) if verbose > 1. If both reading from and writing to
+ * tape, make clear in output which is which. Also only print the position if
+ * necessary, i.e. not already printed.
+ * Prefix argument is e.g. "Initial " or "Final ". */
+static void
+print_tape_pos(const char * prefix, const char * postfix,
+               struct opts_t * optsp)
+{
+#ifdef SG_LIB_LINUX
+    static int lastreadpos, lastwritepos;
+    static char lastreadposvalid = 0;
+    static char lastwriteposvalid = 0;
+    int res;
+    struct mtpos pos;
+
+    if (verbose > 1) {
+        if (FT_TAPE & optsp->in_type) {
+            res = ioctl(optsp->infd, MTIOCPOS, &pos);
+            if (0 == res) {
+                if ((pos.mt_blkno != lastreadpos) ||
+                    (0 == lastreadposvalid)) {
+                    lastreadpos = pos.mt_blkno;
+                    lastreadposvalid = 1;
+                    fprintf(stderr, "%stape position%s: %u%s\n", prefix,
+                            (FT_TAPE & optsp->out_type) ? " (reading)" : "",
+                            lastreadpos, postfix);
+                }
+            } else {
+                lastreadposvalid = 0;
+                show_tape_pos_error((FT_TAPE & optsp->out_type) ?
+                                    " (reading)" : "");
+            }
+        }
+
+        if (FT_TAPE & optsp->out_type) {
+            res = ioctl(optsp->outfd, MTIOCPOS, &pos);
+            if (0 == res) {
+                if ((pos.mt_blkno != lastwritepos) ||
+                    (0 == lastwriteposvalid)) {
+                    lastwritepos = pos.mt_blkno;
+                    lastwriteposvalid = 1;
+                    fprintf(stderr, "%stape position%s: %u%s\n", prefix,
+                            (FT_TAPE & optsp->in_type) ? " (writing)" : "",
+                            lastwritepos, postfix);
+                }
+            } else {
+                lastwriteposvalid = 0;
+                show_tape_pos_error((FT_TAPE & optsp->in_type) ?
+                                    " (writing)" : "");
+            }
+        }
+
+    }
+#else
+    prefix = prefix;
+    postfix = postfix;
+    optsp = optsp;
+#endif
+}
+
+static void
+show_tape_pos_error(const char * postfix)
+{
+    fprintf(stderr, "Could not get tape position%s: %s\n", postfix,
+            safe_strerror(errno));
+}
+
 
 int
 main(int argc, char * argv[])
@@ -4004,6 +4121,9 @@ main(int argc, char * argv[])
     struct opts_t opts;
     struct flags_t iflag;
     struct flags_t oflag;
+#ifdef SG_LIB_LINUX
+    struct mtop mt_cmd;
+#endif
 
     memset(&opts, 0, sizeof(opts));
     opts.out_type = FT_OTHER;
@@ -4127,17 +4247,24 @@ main(int argc, char * argv[])
         fd = -1;
     opts.out2fd = fd;
 
+    if (0 == opts.bpt_given) {
+/* If reading from or writing to tape, use default bpt 1 if user did not
+ * specify. Avoids inadvertent/accidental use of wrong tape block size. */
+        if ((FT_TAPE & opts.in_type) || (FT_TAPE & opts.out_type)) {
+            opts.bpt_i = 1;
+        }
 #ifdef SG_LIB_FREEBSD
-    /* FreeBSD (7+8 [DFLTPHYS]) doesn't like buffers larger than 64 KB being
+        else {
+     /* FreeBSD (7+8 [DFLTPHYS]) doesn't like buffers larger than 64 KB being
      * sent to its pt interface (CAM), so take that into account when choosing
      * the default bpt value. There is overhead in the pt interface so reduce
      * default bpt value so bpt*ibs <= 32 KB .*/
-    if ((0 == opts.bpt_given) &&
-        ((FT_PT & opts.in_type) || (FT_PT & opts.out_type))) {
-        if ((opts.ibs <= 32768) && (opts.bpt_i * opts.ibs) > 32768)
+        if (((FT_PT & opts.in_type) || (FT_PT & opts.out_type)) &&
+            ((opts.ibs <= 32768) && (opts.bpt_i * opts.ibs) > 32768))
             opts.bpt_i = 32768 / opts.ibs;
-    }
+        }
 #endif
+    }
 
     if (opts.iflagp->sparse && (! opts.oflagp->sparse)) {
         if (FT_DEV_NULL & opts.out_type) {
@@ -4273,6 +4400,8 @@ main(int argc, char * argv[])
         open_errblk();
 #endif
 
+    print_tape_pos("Initial ", "", &opts);
+
     // <<<<<<<<<<<<<< finally ready to do copy
     ++started_copy;
     ret = do_copy(&opts, wrkPos, wrkPos2);
@@ -4283,6 +4412,14 @@ main(int argc, char * argv[])
 #endif
 
     print_stats("");
+
+    /* For writing, the st driver writes a filemark on closing the file
+     * (unless user specified oflag=nofm), so make clear that the position
+     * shown is prior to closing. */
+    print_tape_pos("Final ", " (before closing file)", &opts);
+    if ((FT_TAPE & opts.out_type) && (verbose > 1) && opts.oflagp->nofm)
+        fprintf(stderr, "(suppressing writing of filemark on close)\n");
+
     if (sum_of_resids)
         fprintf(stderr, ">> Non-zero sum of residual counts=%d\n",
                 sum_of_resids);
@@ -4315,8 +4452,42 @@ cleanup:
     if (FT_PT & opts.out_type)
         scsi_pt_close_device(opts.outfd);
     if ((opts.outfd >= 0) && (STDOUT_FILENO != opts.outfd) &&
-        !(FT_DEV_NULL & opts.out_type))
+        !(FT_DEV_NULL & opts.out_type)) {
+#ifdef SG_LIB_LINUX
+/* Before closing OFILE, if writing to tape handle suppressing the writing of
+ * a filemark and/or flushing the drive buffer which the Linux st driver
+ * normally does when tape file is closed after writing. Possibilities depend
+ * on oflags:
+ * nofm:         MTWEOFI 0 if possible (kernel 2.6.37+), else MTBSR 0
+ * nofm & fsync: MTWEOF 0
+ * fsync:        Do nothing; st writes filemark & flushes buffer on close.
+ * neither:      MTWEOFI 1 if possible (2.6.37+), else nothing (drive buffer
+ *               will be flushed if MTWEOFI not possible). */
+        if ((FT_TAPE & opts.out_type) &&
+            (opts.oflagp->nofm || !opts.oflagp->fsync)) {
+            mt_cmd.mt_op = (opts.oflagp->fsync) ? MTWEOF : MTWEOFI;
+            mt_cmd.mt_count = (opts.oflagp->nofm) ? 0 : 1;
+            res = ioctl(opts.outfd, MTIOCTOP, &mt_cmd);
+            if (res != 0) {
+                if (verbose > 0)
+                    fprintf(stderr, "MTWEOF%s %d failed: %s\n",
+                            (opts.oflagp->fsync) ? "" : "I", mt_cmd.mt_count,
+                            safe_strerror(errno));
+                if (opts.oflagp->nofm && !opts.oflagp->fsync) {
+                    if (verbose > 0)
+                        fprintf (stderr, "Trying MTBSR 0 instead\n");
+                    mt_cmd.mt_op = MTBSR; /* mt_cmd.mt_count = 0 from above */
+                    res = ioctl(opts.outfd, MTIOCTOP, &mt_cmd);
+                    if (res != 0)
+                        fprintf(stderr, "MTBSR 0 failed: %s\n(Filemark will"
+                                " be written when tape file is closed)\n",
+                                safe_strerror(errno));
+                }
+            }
+        }
+#endif
         close(opts.outfd);
+    }
     if ((opts.out2fd >= 0) && (STDOUT_FILENO != opts.out2fd))
         close(opts.out2fd);
     if ((0 == ret) && err_to_report)
