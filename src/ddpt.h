@@ -126,8 +126,10 @@ struct flags_t {
     int fsync;
     int fua;
     int fua_nv;
+    int ignoreew;
     int pdt;
     int nocache;
+    int nofm;
     int nopad;
     int norcap;
     int nowrite;
