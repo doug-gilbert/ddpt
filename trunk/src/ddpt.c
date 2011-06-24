@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20110508 [svn: r172]";
+static char * version_str = "0.93 20110624 [svn: r173]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -1845,6 +1845,9 @@ pt_low_write(int sg_fd, unsigned char * buff, int blocks, int64_t to_block,
         case SG_LIB_CAT_UNIT_ATTENTION:
             break;
         case SG_LIB_CAT_NOT_READY:
+        case SG_LIB_CAT_ILLEGAL_REQ:
+        case SG_LIB_CAT_INVALID_OP:
+        case SG_LIB_CAT_SENSE:
             ++wr_unrecovered_errs;
             break;
         case SG_LIB_CAT_MEDIUM_HARD:
@@ -3792,7 +3795,7 @@ count_calculate(struct opts_t * op)
         return res;
     if ((0 == op->oflagp->resume) && (dd_count > 0))
         return 0;
-    if (verbose > 2)
+    if (verbose > 1)
         fprintf(stderr, "calc_count: in_num_sect=%"PRId64", out_num_sect"
                 "=%"PRId64"\n", in_num_sect, out_num_sect);
     if (op->skip && (FT_REG == op->in_type) &&
@@ -3819,9 +3822,10 @@ count_calculate(struct opts_t * op)
         /* Scale back out_num_sect by value of seek */
         if (op->seek && (out_num_sect > op->seek))
             out_num_sect -= op->seek;
+
         if ((out_num_sect < 0) && (in_num_sect > 0))
             dd_count = in_num_sect;
-        else if (reading_fifo)
+        else if ((reading_fifo) && (out_num_sect < 0))
             ;
         else if ((out_num_sect < 0) && (in_num_sect <= 0))
             ;
