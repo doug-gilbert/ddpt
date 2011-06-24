@@ -51,7 +51,7 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Tue Apr 26 2011 - dgilbert at interlog dot com
+* Fri May 24 2011 - dgilbert at interlog dot com
 - allow tape device in non-pt mode
   * ddpt-0.93
 * Thu Feb 17 2011 - dgilbert at interlog dot com
