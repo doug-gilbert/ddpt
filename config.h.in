@@ -27,6 +27,9 @@
 /* Define to 1 if you have the `posix_fadvise' function. */
 #undef HAVE_POSIX_FADVISE
 
+/* Define to 1 if you have the `siginterrupt' function. */
+#undef HAVE_SIGINTERRUPT
+
 /* ignore linux bsg */
 #undef IGNORE_LINUX_BSG
 
