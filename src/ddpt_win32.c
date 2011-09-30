@@ -154,10 +154,11 @@ is_win_blk_dev(const char * fn)
 }
 
 int
-dd_filetype(const char * fn)
+dd_filetype(const char * fn, int verbose)
 {
     size_t len = strlen(fn);
 
+    verbose = verbose;	/* suppress warning */
     if ((1 == len) && ('.' == fn[0]))
         return FT_DEV_NULL;
     else if ((3 == len) && (
@@ -173,7 +174,7 @@ dd_filetype(const char * fn)
 
 /* Adjust device file name for Windows */
 void
-win32_adjust_fns(struct opts_t * optsp)
+win32_adjust_fns(struct opts_t * op)
 {
     char b[INOUTF_SZ];
     char * fn_arr[2];
@@ -181,8 +182,8 @@ win32_adjust_fns(struct opts_t * optsp)
     int k, j, len;
 
     memset(fn_arr, 0 , sizeof(fn_arr));
-    fn_arr[0] = optsp->inf;
-    fn_arr[1] = optsp->outf;
+    fn_arr[0] = op->inf;
+    fn_arr[1] = op->outf;
     for (k = 0; k < 2; ++k) {
         cp = fn_arr[k];
         if (NULL == cp)
@@ -211,13 +212,13 @@ win32_adjust_fns(struct opts_t * optsp)
 /* Main copy loop's read (input) for win32 block device. Returns 0 on
  * success, else SG_LIB_FILE_ERROR, SG_LIB_CAT_MEDIUM_HARD or -1 . */
 int
-win32_cp_read_block(struct opts_t * optsp, struct cp_state_t * csp,
+win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
                     unsigned char * wrkPos, int * ifull_extrap,
                     int verbose)
 {
     int k, res, res2;
-    int ibs = optsp->ibs;
-    int64_t offset = optsp->skip * ibs;
+    int ibs = op->ibs;
+    int64_t offset = op->skip * ibs;
     int64_t my_skip;
     int numbytes = csp->icbpt * ibs;
 
@@ -227,52 +228,52 @@ win32_cp_read_block(struct opts_t * optsp, struct cp_state_t * csp,
         if (verbose > 2)
             fprintf(stderr, "moving if filepos: new_pos="
                     "%"PRId64"\n", (int64_t)offset);
-        if (win32_set_file_pos(optsp, DDPT_ARG_IN, offset, verbose))
+        if (win32_set_file_pos(op, DDPT_ARG_IN, offset, verbose))
             return SG_LIB_FILE_ERROR;
         csp->if_filepos = offset;
     }
-    res = win32_block_read(optsp, wrkPos, numbytes, verbose);
+    res = win32_block_read(op, wrkPos, numbytes, verbose);
     if (res < 0) {
-        if ((-SG_LIB_CAT_MEDIUM_HARD == res) && (optsp->iflagp->coe)) {
+        if ((-SG_LIB_CAT_MEDIUM_HARD == res) && (op->iflagp->coe)) {
             if (1 == csp->icbpt) {
                 // Don't read again, this must be bad block
                 memset(wrkPos, 0, ibs);
-                if ((res2 = coe_process_eio(optsp->skip)))
+                if ((res2 = coe_process_eio(op, op->skip)))
                     return res2;
                 ++*ifull_extrap;
                 csp->bytes_read += ibs;
                 return 0;
             } else {
-                my_skip = optsp->skip;
+                my_skip = op->skip;
                 for (k = 0; k < csp->icbpt;
                      ++k, ++my_skip, wrkPos += ibs, offset += ibs) {
                     if (offset != csp->if_filepos) {
                         if (verbose > 2)
                             fprintf(stderr, "moving if filepos: new_pos="
                                     "%"PRId64"\n", (int64_t)offset);
-                        if (win32_set_file_pos(optsp, DDPT_ARG_IN, offset,
+                        if (win32_set_file_pos(op, DDPT_ARG_IN, offset,
                             verbose))
                             return SG_LIB_FILE_ERROR;
                         csp->if_filepos = offset;
                     }
                     memset(wrkPos, 0, ibs);
-                    res = win32_block_read(optsp, wrkPos, ibs, verbose);
+                    res = win32_block_read(op, wrkPos, ibs, verbose);
                     if (ibs == res) {
-                        zero_coe_limit_count();
+                        zero_coe_limit_count(op);
                         csp->if_filepos += ibs;
                         if (verbose > 2)
                             fprintf(stderr, "reading 1 block, skip=%"PRId64
                                     " : okay\n", my_skip);
                     } else if (-SG_LIB_CAT_MEDIUM_HARD == res) {
-                        if ((res2 = coe_process_eio(my_skip)))
+                        if ((res2 = coe_process_eio(op, my_skip)))
                             return res2;
                     } else {
                         fprintf(stderr, "reading 1 block, skip=%"PRId64
                                 " failed\n", my_skip);
                         csp->leave_reason = SG_LIB_CAT_OTHER;
                         csp->icbpt = k;
-                        csp->ocbpt = (k * ibs) / optsp->obs;
-                        if (((k * ibs) % optsp->obs) > 0)
+                        csp->ocbpt = (k * ibs) / op->obs;
+                        if (((k * ibs) % op->obs) > 0)
                             ++csp->ocbpt;
                         return 0;
                     }
@@ -283,7 +284,7 @@ win32_cp_read_block(struct opts_t * optsp, struct cp_state_t * csp,
             }
         } else {
             fprintf(stderr, "read(win32_block), skip=%"PRId64
-                    " error occurred\n", optsp->skip);
+                    " error occurred\n", op->skip);
             return (-SG_LIB_CAT_MEDIUM_HARD == res) ? -res : -1;
         }
     } else {
@@ -292,7 +293,7 @@ win32_cp_read_block(struct opts_t * optsp, struct cp_state_t * csp,
             csp->icbpt = res / ibs;
             ++csp->leave_after_write;
             csp->leave_reason = 0; /* assume at end rather than error */
-            csp->ocbpt = res / optsp->obs;
+            csp->ocbpt = res / op->obs;
             if (verbose > 1)
                 fprintf(stderr, "short read, requested %d blocks, got "
                         "%d blocks\n", numbytes / ibs, csp->icbpt);
@@ -306,22 +307,22 @@ win32_cp_read_block(struct opts_t * optsp, struct cp_state_t * csp,
 
 /* Returns 0 on success, 1 on error */
 int
-win32_open_if(struct opts_t * optsp, int verbose)
+win32_open_if(struct opts_t * op, int verbose)
 {
     DISK_GEOMETRY g;
     DWORD count, err;
     char b[80];
 
     if (verbose)
-        fprintf(stderr, "CreateFile(%s , in)\n", optsp->inf);
-    optsp->ib_fh = CreateFile(optsp->inf,
+        fprintf(stderr, "CreateFile(%s , in)\n", op->inf);
+    op->ib_fh = CreateFile(op->inf,
                               GENERIC_READ | GENERIC_WRITE,
                               FILE_SHARE_WRITE | FILE_SHARE_READ,
                               NULL,
                               OPEN_EXISTING,
                               0,
                               NULL);
-    if (INVALID_HANDLE_VALUE == optsp->ib_fh) {
+    if (INVALID_HANDLE_VALUE == op->ib_fh) {
         err = GetLastError();
         if (win32_errmsg(err, b, sizeof(b)) < 0)
             fprintf(stderr, "CreateFile(in) failed, error=%ld [and "
@@ -330,15 +331,15 @@ win32_open_if(struct opts_t * optsp, int verbose)
             fprintf(stderr, "CreateFile(in) failed, %s [%ld]\n", b, err);
         return 1;
     }
-    if (0 == DeviceIoControl(optsp->ib_fh, IOCTL_DISK_GET_DRIVE_GEOMETRY,
+    if (0 == DeviceIoControl(op->ib_fh, IOCTL_DISK_GET_DRIVE_GEOMETRY,
                              NULL, 0, &g, sizeof(g), &count, NULL)) {
         fprintf(stderr, "DeviceIoControl(in, geometry) error=%ld\n",
                 GetLastError());
         return 1;
     }
-    if ((int)g.BytesPerSector != optsp->ibs) {
+    if ((int)g.BytesPerSector != op->ibs) {
         fprintf(stderr, "Specified in block size (%d) doesn't match device "
-                "geometry block size: %d\n", optsp->ibs,
+                "geometry block size: %d\n", op->ibs,
                 (int)g.BytesPerSector);
         return 1;
     }
@@ -347,22 +348,22 @@ win32_open_if(struct opts_t * optsp, int verbose)
 
 /* Returns 0 on success, 1 on error. */
 int
-win32_open_of(struct opts_t * optsp, int verbose)
+win32_open_of(struct opts_t * op, int verbose)
 {
     DISK_GEOMETRY g;
     DWORD count, err;
     char b[80];
 
     if (verbose)
-        fprintf(stderr, "CreateFile(%s , out)\n", optsp->outf);
-    optsp->ob_fh = CreateFile(optsp->outf,
+        fprintf(stderr, "CreateFile(%s , out)\n", op->outf);
+    op->ob_fh = CreateFile(op->outf,
                               GENERIC_READ | GENERIC_WRITE,
                               FILE_SHARE_WRITE | FILE_SHARE_READ,
                               NULL,
                               OPEN_EXISTING,
                               0,
                               NULL);
-    if (INVALID_HANDLE_VALUE == optsp->ob_fh) {
+    if (INVALID_HANDLE_VALUE == op->ob_fh) {
         err = GetLastError();
         if (win32_errmsg(err, b, sizeof(b)) < 0)
             fprintf(stderr, "CreateFile(out) failed, error=%ld [and "
@@ -371,15 +372,15 @@ win32_open_of(struct opts_t * optsp, int verbose)
             fprintf(stderr, "CreateFile(out) failed, %s [%ld]\n", b, err);
         return 1;
     }
-    if (0 == DeviceIoControl(optsp->ob_fh, IOCTL_DISK_GET_DRIVE_GEOMETRY,
+    if (0 == DeviceIoControl(op->ob_fh, IOCTL_DISK_GET_DRIVE_GEOMETRY,
                              NULL, 0, &g, sizeof(g), &count, NULL)) {
         fprintf(stderr, "DeviceIoControl(out, geometry) error=%ld\n",
                 GetLastError());
         return 1;
     }
-    if ((int)g.BytesPerSector != optsp->obs) {
+    if ((int)g.BytesPerSector != op->obs) {
         fprintf(stderr, "Specified out block size (%d) doesn't match device "
-                "geometry block size: %d\n", optsp->obs,
+                "geometry block size: %d\n", op->obs,
                 (int)g.BytesPerSector);
         return 1;
     }
@@ -388,7 +389,7 @@ win32_open_of(struct opts_t * optsp, int verbose)
 
 /* Returns 0 on success, 1 on error */
 int
-win32_set_file_pos(struct opts_t * optsp, int which_arg, int64_t pos,
+win32_set_file_pos(struct opts_t * op, int which_arg, int64_t pos,
                    int verbose)
 {
     LONG lo32 = pos & 0xffffffff;
@@ -398,7 +399,7 @@ win32_set_file_pos(struct opts_t * optsp, int which_arg, int64_t pos,
     HANDLE fh;
     const char * cp;
 
-    fh = (DDPT_ARG_IN == which_arg) ? optsp->ib_fh : optsp->ob_fh;
+    fh = (DDPT_ARG_IN == which_arg) ? op->ib_fh : op->ob_fh;
     cp = (DDPT_ARG_IN == which_arg) ? "in" : "out";
     if (verbose > 2)
         fprintf(stderr, "SetFilePointer( 0x%"PRIx64", %s)\n", pos, cp);
@@ -415,7 +416,7 @@ win32_set_file_pos(struct opts_t * optsp, int which_arg, int64_t pos,
 
 /* Returns number read, -SG_LIB_CAT_MEDIUM_HARD or -1 on error */
 int
-win32_block_read(struct opts_t * optsp, unsigned char * bp, int num_bytes,
+win32_block_read(struct opts_t * op, unsigned char * bp, int num_bytes,
                  int verbose)
 {
     DWORD num = num_bytes;
@@ -424,7 +425,7 @@ win32_block_read(struct opts_t * optsp, unsigned char * bp, int num_bytes,
 
     if (verbose > 2)
         fprintf(stderr, "ReadFile(num=%d, in)\n", num_bytes);
-    if (ReadFile(optsp->ib_fh, bp, num, &howMany, NULL) == 0) {
+    if (ReadFile(op->ib_fh, bp, num, &howMany, NULL) == 0) {
         err = GetLastError();
         if (verbose) { 
             if (win32_errmsg(err, b, sizeof(b)) < 0)
@@ -443,7 +444,7 @@ win32_block_read(struct opts_t * optsp, unsigned char * bp, int num_bytes,
 
 /* Returns number read from OFILE, -SG_LIB_CAT_MEDIUM_HARD or -1 on error */
 int
-win32_block_read_from_of(struct opts_t * optsp, unsigned char * bp,
+win32_block_read_from_of(struct opts_t * op, unsigned char * bp,
                          int num_bytes, int verbose)
 {
     DWORD num = num_bytes;
@@ -452,7 +453,7 @@ win32_block_read_from_of(struct opts_t * optsp, unsigned char * bp,
 
     if (verbose > 2)
         fprintf(stderr, "ReadFile(num=%d, out)\n", num_bytes);
-    if (ReadFile(optsp->ob_fh, bp, num, &howMany, NULL) == 0) {
+    if (ReadFile(op->ob_fh, bp, num, &howMany, NULL) == 0) {
         err = GetLastError();
         if (verbose) { 
             if (win32_errmsg(err, b, sizeof(b)) < 0)
@@ -471,7 +472,7 @@ win32_block_read_from_of(struct opts_t * optsp, unsigned char * bp,
 
 /* Returns number written, -SG_LIB_CAT_MEDIUM_HARD or -1 on error */
 int
-win32_block_write(struct opts_t * optsp, const unsigned char * bp,
+win32_block_write(struct opts_t * op, const unsigned char * bp,
                   int num_bytes, int verbose)
 {
     DWORD num = num_bytes;
@@ -480,7 +481,7 @@ win32_block_write(struct opts_t * optsp, const unsigned char * bp,
 
     if (verbose > 2)
         fprintf(stderr, "WriteFile(num=%d, out)\n", num_bytes);
-    if (WriteFile(optsp->ob_fh, bp, num, &howMany, NULL) == 0) {
+    if (WriteFile(op->ob_fh, bp, num, &howMany, NULL) == 0) {
         err = GetLastError();
         if (verbose) {
             if (win32_errmsg(err, b, sizeof(b)) < 0)
@@ -502,7 +503,7 @@ win32_block_write(struct opts_t * optsp, const unsigned char * bp,
  * pointer. Also writes back the number of sectors (logical blocks) on the
  * block device using num_sect pointer. Win32 version. */
 int
-get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
+get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
                     int * sect_sz, int verbose)
 {
     DISK_GEOMETRY g;
@@ -515,8 +516,8 @@ get_blkdev_capacity(struct opts_t * optsp, int which_arg, int64_t * num_sect,
     int fname_len;
     char dirName[64];
 
-    fh = (DDPT_ARG_IN == which_arg) ? optsp->ib_fh : optsp->ob_fh;
-    fname = (DDPT_ARG_IN == which_arg) ? optsp->inf : optsp->outf;
+    fh = (DDPT_ARG_IN == which_arg) ? op->ib_fh : op->ob_fh;
+    fname = (DDPT_ARG_IN == which_arg) ? op->inf : op->outf;
     if (verbose > 2)
         fprintf(stderr, "get_blkdev_capacity: for %s\n", fname);
     if (0 == DeviceIoControl(fh, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0, &g,

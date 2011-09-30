@@ -1205,6 +1205,7 @@ dd_filetype(const char * filename, int verbose)
     struct stat st;
     size_t len = strlen(filename);
 
+    verbose = verbose;    /* suppress warning */
     if ((1 == len) && ('.' == filename[0]))
         return FT_DEV_NULL;
     if (stat(filename, &st) < 0)
