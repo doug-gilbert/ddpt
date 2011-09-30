@@ -1,4 +1,4 @@
-.TH DDPT "8" "April 2011" "ddpt\-0.92" DDPT
+.TH DDPT "8" "September 2011" "ddpt\-0.93" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -6,11 +6,11 @@ devices that understand the SCSI command set.
 .B ddpt
 [\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fR6|10|12|16]
 [\fIcoe=\fR0|1] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
-[\fIibs=IBS\fR] \fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIiseek=SKIP\fR]
-[\fIobs=OBS\fR] [\fIof=OFILE\fR] [\fIof2=OFILE2\fR] [\fIoflag=FLAGS\fR]
-[\fIoseek=SEEK\fR] [\fIretries=RETR\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR]
-[\fIstatus=STAT\fR] [\fIverbose=VERB\fR] [\fI\-\-help\fR] [\fI\-\-verbose\fR]
-[\fI\-\-version\fR] [\fI\-\-wscan\fR]
+[\fIibs=IBS\fR] \fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIintio=\fR0|1]
+[\fIiseek=SKIP\fR] [\fIobs=OBS\fR] [\fIof=OFILE\fR] [\fIof2=OFILE2\fR]
+[\fIoflag=FLAGS\fR] [\fIoseek=SEEK\fR] [\fIretries=RETR\fR] [\fIseek=SEEK\fR]
+[\fIskip=SKIP\fR] [\fIstatus=STAT\fR] [\fIverbose=VERB\fR] [\fI\-\-help\fR]
+[\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
 .PP
@@ -139,6 +139,12 @@ read from \fIIFILE\fR. This option must be given (i.e. it is mandatory). If
 where \fIFLAGS\fR is a comma separated list of one or more flags outlined
 in the FLAGS section below.  These flags are associated with \fIIFILE\fR and
 are ignored when \fIIFILE\fR is stdin.
+.TP
+\fBintio\fR=0 | 1
+set to 1 for allow signals (SIGINT, SIGPIPE and SIGUSR1 (or SIGINFO)) to be
+received during IO from \fIIFILE\fR or IO to \fIOFILE\fR or \fIOFILE2\fR.
+Default is 0 and these signals are masked during IO operations with a check
+prior IO.
 .TP
 \fBiseek\fR=\fISKIP\fR
 start reading \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of
@@ -829,8 +835,21 @@ this package's distribution tarball.
 The signal handling has been borrowed from dd: SIGINT, SIGQUIT and
 SIGPIPE output the number of remaining blocks to be transferred and
 the records in + out counts; then they have their default action.
-SIGUSR1 causes the same information to be output and the copy continues.
-All output caused by signals is sent to stderr.
+SIGUSR1 (or SIGINFO) causes the same information to be output and the
+copy continues. All output caused by signals is sent to stderr.
+.PP
+Unix system calls that do IO can be interrupted by signal processing,
+typically returning an EINTR error number. The dd utility (and many other
+Unix utilities) restart the IO operation that was interrupted. While
+this will work most of the time for disk IO it is problematic for tape
+drives because the implicit position pointer on the tape may have moved.
+So the default (i.e. "intio=0") in this utility is to mask those signals
+during IO operations and only check them prior to starting an IO operation.
+Most low level IO (e.g. using SCSI command to write to a disk) will
+timeout if there is a low level error. However NFS (the Network File
+System) will potentially wait for a long time (e.g. expecting a network
+problem will soon be fixed) and in this case using "intio=1" may be
+best.
 .SH TAPE
 There is support for copies to and from tape drives in Linux. Only the
 st driver device names can be used (e.g. /dev/st0 and /dev/nst2). Hence
