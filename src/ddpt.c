@@ -461,7 +461,7 @@ install_signal_handlers(struct opts_t * op)
         ++num_members;
     }
 
-    if ((0 == op->interruptio) && (num_members > 0))
+    if ((0 == op->interrupt_io) && (num_members > 0))
         sigprocmask(SIG_BLOCK, &caught_signals, NULL);
 #else
     if (catch_siginfo && signal(SIGINFO, SIG_IGN) != SIG_IGN) {
@@ -485,7 +485,7 @@ process_signals(struct opts_t * op)
     int normally_blocked = 0;
     char b[32];
 
-    if ((0 == op->interruptio) &&
+    if ((0 == op->interrupt_io) &&
         (sigismember(&caught_signals, SIGINT) ||
          sigismember(&caught_signals, SIGPIPE) ||
          sigismember(&caught_signals, SIGINFO))) {
@@ -1020,6 +1020,8 @@ process_cl(struct opts_t * op, int argc, char * argv[])
                 fprintf(stderr, "bad argument to 'iflag='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
+        } else if (0 == strcmp(key, "intio")) {
+            op->interrupt_io = sg_get_num(buf);
         } else if (0 == strcmp(key, "iseek")) {
             op->skip = sg_get_llnum(buf);
             if (-1LL == op->skip) {

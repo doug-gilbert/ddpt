@@ -185,7 +185,7 @@ struct opts_t {
     int obpc;
     char inf[INOUTF_SZ];
     int in_type;
-    int interruptio;    /* if 0 then mask SIGINT+SIGINFO during IO */
+    int interrupt_io;    /* if 0 then mask SIGINT+SIGINFO during IO */
     char outf[INOUTF_SZ];
     int outf_given;
     int out_type;
