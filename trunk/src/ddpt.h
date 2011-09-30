@@ -279,7 +279,7 @@ struct signum_name_t {
 
 
 #ifdef SG_LIB_WIN32
-extern int dd_filetype(const char * fn);
+extern int dd_filetype(const char * fn, int verbose);
 extern int get_blkdev_capacity(struct opts_t * optsp, int which_arg,
                                int64_t * num_sect, int * sect_sz,
                                int verbose);
@@ -297,8 +297,8 @@ extern int win32_block_write(struct opts_t * optsp, const unsigned char * bp,
 extern int win32_cp_read_block(struct opts_t * optsp, struct cp_state_t * csp,
                                unsigned char * wrkPos, int * ifull_extrap,
                                int verbose);
-extern int coe_process_eio(int64_t skip);
-extern void zero_coe_limit_count(void);
+extern int coe_process_eio(struct opts_t * op, int64_t skip);
+extern void zero_coe_limit_count(struct opts_t * op);
 
 extern int sg_do_wscan(char letter, int do_scan, int verb);
 
