@@ -40,6 +40,28 @@
 #endif
 #endif
 
+/* Borrow signal handling from dd (dd.c in coreutils-8.13) */
+/* Use SA_NOCLDSTOP as a proxy for whether the sigaction machinery is
+   present.  */
+#ifndef SA_NOCLDSTOP
+# define SA_NOCLDSTOP 0
+# define sigprocmask(How, Set, Oset) /* empty */
+# define sigset_t int
+# if ! HAVE_SIGINTERRUPT
+#  define siginterrupt(sig, flag) /* empty */
+# endif
+#endif
+
+/* NonStop circa 2011 lacks SA_RESETHAND; see Bug#9076.  */
+#ifndef SA_RESETHAND
+# define SA_RESETHAND 0
+#endif
+
+#ifndef SIGINFO
+# define SIGINFO SIGUSR1
+#endif
+/* end of borrow from dd signal handling defines */
+
 
 #define STR_SZ 1024
 #define INOUTF_SZ 512
@@ -147,9 +169,10 @@ struct flags_t {
     int wsame16;
 };
 
-/* command line options */
+/* command line options, statistics and other semi-static data */
 /* The _given fields indicate whether option was given or is a default */
 struct opts_t {
+    /* command line related variables */
     int64_t skip;
     int64_t seek;
     int bs_given;       /* 1 implies bs= option given on command line */
@@ -162,20 +185,75 @@ struct opts_t {
     int obpc;
     char inf[INOUTF_SZ];
     int in_type;
-    int infd;
+    int interruptio;    /* if 0 then mask SIGINT+SIGINFO during IO */
     char outf[INOUTF_SZ];
     int outf_given;
     int out_type;
-    int outfd;
     char out2f[INOUTF_SZ];
     int out2_type;
     int out2fd;
     int cdbsz_given;
+    int coe_limit;
+    int coe_count;
+    int verbose;
+    int quiet;
     struct flags_t * iflagp;
     struct flags_t * oflagp;
+    /* working variables and statistics */
+    int64_t dd_count;
+    int64_t in_full;
+    int64_t out_full;
+    int64_t out_sparse;  /* used for sparse, sparing + trim */
+    int64_t lowest_unrecovered;         /* on reads */
+    int64_t highest_unrecovered;        /* on reads */
+    int in_partial;
+    int max_aborted;
+    int max_uas;
+    int out_partial;
+    int out_sparse_active;
+    int out_sparing_active;
+    int out_sparse_partial;
+    int out_trim_active;
+    int recovered_errs;          /* on reads */
+    int unrecovered_errs;        /* on reads */
+    int wr_recovered_errs;
+    int wr_unrecovered_errs;
+    int do_time;
+    int trim_errs;
+    int read_tape_numbytes;
+    int last_tape_read_len;  /* Length of previous tape read */
+    unsigned int consec_same_len_reads;
+    int num_retries;
+    int sum_of_resids;
+    int interrupted_retries;
+    int err_to_report;
+    int reading_fifo;
+    int read1_or_transfer; /* 1 when of=/dev/null or similar */
+    int ibs_hold;
+    int out_type_hold;
+    int infd;
+    int outfd;
+    struct sg_pt_base * if_ptvp;
+    struct sg_pt_base * of_ptvp;
+    unsigned char * zeros_buff;
+#ifdef HAVE_POSIX_FADVISE
+    off_t lowest_skip;
+    off_t lowest_seek;
+#endif
 #ifdef SG_LIB_WIN32
+    int wscan;
     HANDLE ib_fh;
     HANDLE ob_fh;
+#endif
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+    int start_tm_valid;
+    struct timespec start_tm;
+#elif defined(HAVE_GETTIMEOFDAY)
+    int start_tm_valid;
+    struct timeval start_tm;
+#endif
+#ifdef ERRBLK_SUPPORTED
+    FILE * errblk_fp;
 #endif
 };
 
