@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20110930 [svn: r176]";
+static char * version_str = "0.93 20111002 [svn: r179]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -485,6 +485,7 @@ process_signals(struct opts_t * op)
     int normally_blocked = 0;
     char b[32];
 
+#if SA_NOCLDSTOP
     if ((0 == op->interrupt_io) &&
         (sigismember(&caught_signals, SIGINT) ||
          sigismember(&caught_signals, SIGPIPE) ||
@@ -503,6 +504,7 @@ process_signals(struct opts_t * op)
         } else
             return;
     }
+#endif
 
     while (interrupt_signal || info_signal_count) {
         int interrupt;
@@ -4153,8 +4155,9 @@ bypass_write:
         op->oflagp->sparse)
         cp_sparse_cleanup(op, csp);
 
-    if ((FT_PT | FT_DEV_NULL | FT_FIFO | FT_CHAR | FT_TAPE) & out_type)
+    if ((FT_PT | FT_DEV_NULL | FT_FIFO | FT_CHAR | FT_TAPE) & out_type) {
         ;       // negating things makes it less clear ...
+    }
 #ifdef HAVE_FDATASYNC
     else if (op->oflagp->fdatasync) {
         if (fdatasync(op->outfd) < 0)
