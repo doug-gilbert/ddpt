@@ -240,6 +240,9 @@ struct opts_t {
     off_t lowest_skip;
     off_t lowest_seek;
 #endif
+#if SA_NOCLDSTOP
+    sigset_t caught_signals;
+#endif
 #ifdef SG_LIB_WIN32
     int wscan;
     HANDLE ib_fh;
