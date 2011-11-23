@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20111017 [svn: r181]";
+static char * version_str = "0.93 20111122 [svn: r182]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -3965,6 +3965,8 @@ count_calculate(struct opts_t * op)
 
         if ((out_num_sect < 0) && (in_num_sect > 0))
             op->dd_count = in_num_sect;
+        else if ((op->reading_fifo) && (op->dd_count < 0))
+            ;
         else if ((op->reading_fifo) && (out_num_sect < 0))
             ;
         else if ((out_num_sect < 0) && (in_num_sect <= 0))
@@ -4021,9 +4023,16 @@ do_copy(struct opts_t * op, unsigned char * wrkPos,
     struct cp_state_t cp_st;
     struct cp_state_t * csp;
 
+    continual_read = op->reading_fifo && (op->dd_count < 0);
+    if (op->verbose > 3) {
+        if (continual_read)
+            fprintf(stderr, "do_copy: reading fifo continually\n");
+        else
+            fprintf(stderr, "do_copy: dd_count=%"PRId64"\n",
+                    op->dd_count);
+    }
     if ((op->dd_count <= 0) && (! op->reading_fifo))
         return 0;
-    continual_read = op->reading_fifo && (op->dd_count < 0);
     csp = &cp_st;
     memset(csp, 0, sizeof(struct cp_state_t));
     ibpt = op->bpt_i;
@@ -4439,11 +4448,15 @@ main(int argc, char * argv[])
             opts.out_sparing_active = 1;
     }
 
-    if ((ret = count_calculate(&opts)))
+    if ((ret = count_calculate(&opts))) {
+        if (opts.verbose)
+            fprintf(stderr, "count_calculate() returned %d, exit\n", ret);
         goto cleanup;
+    }
     if ((opts.dd_count < 0) && (! opts.reading_fifo)) {
         fprintf(stderr, "Couldn't calculate count, please give one\n");
-        return SG_LIB_CAT_OTHER;
+        ret = SG_LIB_CAT_OTHER;
+        goto cleanup;
     }
     if (! opts.cdbsz_given) {
         if ((FT_PT & opts.in_type) && (MAX_SCSI_CDBSZ != opts.iflagp->cdbsz)
@@ -4477,7 +4490,8 @@ main(int argc, char * argv[])
         wrkBuff = (unsigned char*)calloc(opts.ibs * opts.bpt_i + psz, 1);
         if (0 == wrkBuff) {
             fprintf(stderr, "Not enough user memory for aligned usage\n");
-            return SG_LIB_CAT_OTHER;
+            ret = SG_LIB_CAT_OTHER;
+            goto cleanup;
         }
         // posix_memalign() could be a better way to do this
         wrkPos = (unsigned char *)(((unsigned long)wrkBuff + psz - 1) &
@@ -4487,7 +4501,8 @@ main(int argc, char * argv[])
             if (0 == wrkBuff2) {
                 fprintf(stderr, "Not enough user memory for aligned "
                         "usage(2)\n");
-                return SG_LIB_CAT_OTHER;
+                ret = SG_LIB_CAT_OTHER;
+                goto cleanup;
             }
             wrkPos2 = (unsigned char *)(((unsigned long)wrkBuff2 + psz - 1) &
                                    (~(psz - 1)));
@@ -4496,14 +4511,16 @@ main(int argc, char * argv[])
         wrkBuff = (unsigned char*)calloc(opts.ibs * opts.bpt_i, 1);
         if (0 == wrkBuff) {
             fprintf(stderr, "Not enough user memory\n");
-            return SG_LIB_CAT_OTHER;
+            ret = SG_LIB_CAT_OTHER;
+            goto cleanup;
         }
         wrkPos = wrkBuff;
         if (opts.oflagp->sparing) {
             wrkBuff2 = (unsigned char*)calloc(opts.ibs * opts.bpt_i, 1);
             if (0 == wrkBuff2) {
                 fprintf(stderr, "Not enough user memory(2)\n");
-                return SG_LIB_CAT_OTHER;
+                ret = SG_LIB_CAT_OTHER;
+                goto cleanup;
             }
             wrkPos2 = wrkBuff2;
         }
@@ -4515,8 +4532,12 @@ main(int argc, char * argv[])
         if (opts.verbose > 1)
             fprintf(stderr, "  ibs=%d bytes, obs=%d bytes, OBPC=%d\n",
                     opts.ibs, opts.obs, opts.obpc);
-        fprintf(stderr, "  initial count=%"PRId64" (blocks of input), "
-                "blocks_per_transfer=%d\n", opts.dd_count, opts.bpt_i);
+        if (opts.reading_fifo && (opts.dd_count < 0))
+            fprintf(stderr, "  reading fifo, blocks_per_transfer=%d\n",
+                    opts.bpt_i);
+        else
+            fprintf(stderr, "  initial count=%"PRId64" (blocks of input), "
+                    "blocks_per_transfer=%d\n", opts.dd_count, opts.bpt_i);
     }
     opts.read1_or_transfer = !! (FT_DEV_NULL & opts.out_type);
     if (opts.read1_or_transfer && (! opts.outf_given) &&
