@@ -1,4 +1,4 @@
-.TH DDPT "8" "September 2011" "ddpt\-0.93" DDPT
+.TH DDPT "8" "November 2011" "ddpt\-0.93" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -293,6 +293,10 @@ is for compatibility with GNU's dd.
 noerror
 this conversion is very close to "iflag=coe" and is treated as such. See
 the "coe" flag. Note that an error on \fIOFILE\fR will stop the copy.
+.TP
+notrunc
+this conversion is accepted for compatibilty with dd and ignored since
+the default action of this utility is not to truncate \fIOFILE\fR.
 .TP
 null
 has no affect, just a placeholder.
