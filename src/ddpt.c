@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20111122 [svn: r182]";
+static char * version_str = "0.93 20111130 [svn: r183]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -237,8 +237,8 @@ usage()
            "nowrite(o),null,pad,\n"
            "pt,resume(o),self,sparing(o),sparse(o),ssync(o),strunc(o),sync,"
            "trim(o),\ntrunc(o),unmap(o).\n"
-           "CONVS: fdatasync,fsync,noerror,null,resume,sparing,sparse,sync,"
-           "trunc\n");
+           "CONVS: fdatasync,fsync,noerror,notrunc,null,resume,sparing,"
+           "sparse,sync,\ntrunc\n");
 }
 
 
@@ -650,6 +650,8 @@ process_conv(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
             ++ofp->fsync;
         else if (0 == strcmp(cp, "noerror"))
             ++ifp->coe;         /* will still fail on write error */
+        else if (0 == strcmp(cp, "notrunc"))
+            ;         /* this is the default action of ddpt so ignore */
         else if (0 == strcmp(cp, "null"))
             ;
         else if (0 == strcmp(cp, "resume"))
@@ -3965,8 +3967,6 @@ count_calculate(struct opts_t * op)
 
         if ((out_num_sect < 0) && (in_num_sect > 0))
             op->dd_count = in_num_sect;
-        else if ((op->reading_fifo) && (op->dd_count < 0))
-            ;
         else if ((op->reading_fifo) && (out_num_sect < 0))
             ;
         else if ((out_num_sect < 0) && (in_num_sect <= 0))
