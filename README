@@ -13,7 +13,7 @@ and Windows.
 
 Relationship to sg3_utils
 -------------------------
-The sg3_utils (version 1.27) package contains several utilities that mimic
+The sg3_utils (version 1.33) package contains several utilities that mimic
 the standard Unix dd command. Currently those utilities are sg_dd, sgm_dd
 and sgp_dd. Even though most of the other utilities in the sg3_utils package
 are ported to other operating systems, sg_dd and friends are not ported
@@ -36,10 +36,12 @@ for this utility, various files are "exported" out of the subversion
 repository and "svn:externals" redirection is no longer visible (but the
 unused files are visible).
 
-Currently the shared code is statically linked into ddpt. It is the
-intention of the author to make a common library called libsgutils.so in a
-separate package that both ddpt and sg3_utils will depend on at some point
-in the future.
+In Linux (with Debian and rpm style packages) if the libsgutils2-dev
+package is present at build time, then the ddpt executable will
+use the libsgutils shared library. If the libsgutils2-dev package
+is not detected at build time, then the ddpt executable built
+will compile and link the relevant code from the "include/" and "lib/"
+subdirectories.
 
 Documentation
 -------------
