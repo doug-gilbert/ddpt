@@ -156,6 +156,7 @@ struct flags_t {
     int norcap;
     int nowrite;
     int pad;
+    int prealloc;
     int pt;
     int resume;
     int retries;

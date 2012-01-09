@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2011 Douglas Gilbert.
+ * Copyright (c) 2008-2012 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -44,7 +44,10 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20111220 [svn: r184]";
+static char * version_str = "0.93 20120106 [svn: r185]";
+
+/* Used for outputting diagnostic messages for oflag=pre-alloc */
+#define PREALLOC_DEBUG 1
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -92,6 +95,10 @@ static char * version_str = "0.93 20111220 [svn: r184]";
 #include <linux/mtio.h> /* For tape ioctls */
 #ifndef MTWEOFI
 #define MTWEOFI 35  /* write an end-of-file record (mark) in immediate mode */
+#endif
+#include <linux/falloc.h>
+#ifndef FALLOC_FL_KEEP_SIZE
+#define FALLOC_FL_KEEP_SIZE     0x01    /* from lk 3.1 linux/falloc.h */
 #endif
 #endif
 
@@ -235,8 +242,8 @@ usage()
            "flock,force,\n"
            "fsync(o),fua,fua_nv,ignoreew(o),nocache,nofm(o),norcap,"
            "nowrite(o),null,pad,\n"
-           "pt,resume(o),self,sparing(o),sparse(o),ssync(o),strunc(o),sync,"
-           "trim(o),\ntrunc(o),unmap(o).\n"
+           "pre-alloc(o),pt,resume(o),self,sparing(o),sparse(o),ssync(o),"
+           "strunc(o),\nsync,trim(o),trunc(o),unmap(o).\n"
            "CONVS: fdatasync,fsync,noerror,notrunc,null,resume,sparing,"
            "sparse,sync,\ntrunc\n");
 }
@@ -531,7 +538,10 @@ process_signals(struct opts_t * op)
             fprintf(stderr, "Interrupted by signal %s\n",
                     get_signal_name(interrupt, b, sizeof(b)));
             print_stats("", op);
-            if ((0 == op->reading_fifo) && (FT_REG & op->out_type_hold))
+            /* Don't show next message if using oflag=pre-alloc and we didn't
+             * use FALLOC_FL_KEEP_SIZE */
+            if ((0 == op->reading_fifo) && (FT_REG & op->out_type_hold)
+                 && (0 == op->oflagp->prealloc))
                 fprintf(stderr, "To resume, invoke with same arguments plus "
                         "oflag=resume\n");
             ; // >>>>>>>>>>>>> cleanup ();
@@ -736,6 +746,8 @@ process_flags(const char * arg, struct flags_t * fp)
             ;
         else if (0 == strcmp(cp, "pad"))
             ++fp->pad;
+        else if (0 == strcmp(cp, "pre-alloc") || 0 == strcmp(cp, "prealloc"))
+            ++fp->prealloc;
         else if (0 == strcmp(cp, "pt"))
             ++fp->pt;
         else if (0 == strcmp(cp, "resume"))
@@ -837,6 +849,8 @@ cl_sanity_defaults(struct opts_t * op)
         fprintf(stderr, "ignoreew flag ignored on input\n");
     if (op->iflagp->nofm)
         fprintf(stderr, "nofm flag ignored on input\n");
+    if (op->iflagp->prealloc)
+        fprintf(stderr, "pre-alloc flag ignored on input\n");
     if (op->iflagp->sparing)
         fprintf(stderr, "sparing flag ignored on input\n");
     if (op->iflagp->ssync)
@@ -4447,7 +4461,6 @@ main(int argc, char * argv[])
         } else
             opts.out_sparing_active = 1;
     }
-
     if ((ret = count_calculate(&opts))) {
         if (opts.verbose)
             fprintf(stderr, "count_calculate() returned %d, exit\n", ret);
@@ -4457,6 +4470,13 @@ main(int argc, char * argv[])
         fprintf(stderr, "Couldn't calculate count, please give one\n");
         ret = SG_LIB_CAT_OTHER;
         goto cleanup;
+    }
+    if (oflag.prealloc) {
+        if ((FT_DEV_NULL | FT_FIFO | FT_TAPE | FT_PT) & opts.out_type) {
+            fprintf(stderr, "oflag=pre-alloc needs a normal output file, "
+                    "ignore\n");
+            oflag.prealloc = 0;
+        }
     }
     if (! opts.cdbsz_given) {
         if ((FT_PT & opts.in_type) && (MAX_SCSI_CDBSZ != opts.iflagp->cdbsz)
@@ -4567,6 +4587,76 @@ main(int argc, char * argv[])
 #endif
 
     print_tape_pos("Initial ", "", &opts);
+
+/* Try to pre-allocate space in the output file.
+ *
+ * If fallocate() does not succeed, exit with an error message. The user can
+ * then either free up some disk space or invoke ddpt without oflag=pre-alloc
+ * (at the risk of running out of disk space).
+ *
+ * TODO/DISCUSSION: Some filesystems (e.g. FAT32) don't support fallocate().
+ * In that case we should probably have a way to continue if fallocate() fails,
+ * rather than exiting; useful for use in scripts where the user would like to
+ * pre-allocate space when possible.
+ */
+    if (opts.oflagp->prealloc) {
+#ifdef SG_LIB_LINUX
+/* On Linux, try fallocate() with
+ * the FALLOC_FL_KEEP_SIZE flag, which allocates space but doesn't change the
+ * apparent file size (useful since oflag=resume can be used).
+ *
+ * If fallocate() with FALLOC_FL_KEEP_SIZE returns ENOTTY, EINVAL or EOPNOTSUPP,
+ * retry without that flag (since the flag is only supported in recent Linux
+ * kernels). */
+
+#ifdef PREALLOC_DEBUG
+        fprintf(stderr, "About to call fallocate() with FALLOC_FL_KEEP_SIZE\n");
+#endif
+        res = fallocate(opts.outfd, FALLOC_FL_KEEP_SIZE, opts.obs*opts.seek,
+                        opts.obs*opts.dd_count);
+#ifdef PREALLOC_DEBUG
+        fprintf(stderr, "fallocate() returned %d\n", res);
+#endif
+    /* fallocate() fails if the kernel does not support FALLOC_FL_KEEP_SIZE,
+     * so retry without that flag. */
+        if (-1 == res) {
+            if ((ENOTTY == errno) || (EINVAL == errno)
+                 || (EOPNOTSUPP == errno)) {
+                if (opts.verbose)
+                    fprintf(stderr, "Could not pre-allocate with "
+                                    "FALLOC_FL_KEEP_SIZE (%s), retrying "
+                                    "without...\n",
+                            safe_strerror(errno));
+                res = fallocate(opts.outfd, 0, opts.obs*opts.seek,
+                                opts.obs*opts.dd_count);
+#ifdef PREALLOC_DEBUG
+                fprintf(stderr, "fallocate() without FALLOC_FL_KEEP_SIZE "
+                                " returned %d\n", res);
+#endif
+            }
+        } else {
+            /* fallocate() with FALLOC_FL_KEEP_SIZE succeeded. Set
+             * opts.oflagp->prealloc to 0 so the possible message about using
+             * oflag=resume is not suppressed later. */
+            opts.oflagp->prealloc = 0;
+        }
+
+#else
+    /* If not on Linux, use posix_fallocate(). (That sets the file size to its
+     * full length, so re-invoking ddpt with oflag=resume will do nothing.) */
+        res = posix_fallocate(opts.outfd, opts.obs*opts.seek,
+                              opts.obs*opts.dd_count);
+#endif
+        if (-1 == res) {
+                fprintf(stderr, "Unable to pre-allocate space: %s\n",
+                        safe_strerror(errno));
+                ret = SG_LIB_CAT_OTHER;
+                goto cleanup;
+        }
+        if (opts.verbose > 1)
+            fprintf(stderr, "Pre-allocated %" PRId64 " bytes at offset %"
+                    PRId64 "\n", opts.obs*opts.dd_count, opts.obs*opts.seek);
+    }
 
     // <<<<<<<<<<<<<< finally ready to do copy
     ++started_copy;
