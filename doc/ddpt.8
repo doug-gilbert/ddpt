@@ -1,16 +1,16 @@
-.TH DDPT "8" "January 2012" "ddpt\-0.93" DDPT
+.TH DDPT "8" "February 2012" "ddpt\-0.93" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
 .SH SYNOPSIS
 .B ddpt
-[\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fR6|10|12|16]
-[\fIcoe=\fR0|1] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
-[\fIibs=IBS\fR] \fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIintio=\fR0|1]
-[\fIiseek=SKIP\fR] [\fIobs=OBS\fR] [\fIof=OFILE\fR] [\fIof2=OFILE2\fR]
-[\fIoflag=FLAGS\fR] [\fIoseek=SEEK\fR] [\fIretries=RETR\fR] [\fIseek=SEEK\fR]
-[\fIskip=SKIP\fR] [\fIstatus=STAT\fR] [\fIverbose=VERB\fR] [\fI\-\-help\fR]
-[\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR]
+[\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fR6|10|12|16] [\fIcoe=\fR0|1]
+[\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR] [\fIibs=IBS\fR]
+\fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIintio=\fR0|1] [\fIiseek=SKIP\fR]
+[\fIobs=OBS\fR] [\fIof=OFILE\fR] [\fIof2=OFILE2\fR] [\fIoflag=FLAGS\fR]
+[\fIoseek=SEEK\fR] [\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR]
+[\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR] [\fIverbose=VERB\fR]
+[\fI\-\-help\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
 .PP
@@ -187,6 +187,15 @@ ignored when \fIOFILE\fR is /dev/null, '.' (period), or stdout.
 start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
 \fIOFILE\fR. Default is block 0 (i.e. start of file). This option is a
 synontm for "seek=".
+.TP
+\fBprotect\fR=\fIRDP[,WRP]\fR
+where \fIRDP\fR is the RDPROTECT field in SCSI READ commands and \fIWRP\fR
+is the WRPROTECT field in SCSI WRITE commands. The default value for both
+is 0 which implies no additional protection information (typically 8 bytes)
+will be transferred. Both \fIRDP\fR and \fIWRP\fR can be from 0 to 7.
+If \fIRDP\fR is greater than 0 then \fIIFILE\fR must be a pt device. If
+\fIWRP\fR is greater than 0 then \fIOFILE\fR must be a pt device. See the
+PROTECTION section below.
 .TP
 \fBretries\fR=\fIRETR\fR
 sometimes retries at the host are useful, for example when there is a
@@ -665,6 +674,31 @@ define and the user to control.
 .PP
 ddpt does not support dd's "cbs=" option (conversion block size). If
 the "cbs=" option is given to ddpt then it is ignored.
+.SH PROTECTION
+This section is about protection information which is typically an extra 8
+bytes associated with each logical block. Those 8 byte are divided into 3
+fields: logical block guard (16 bit (2 byte) CRC), logical block application
+tag (2 bytes) and the logical block reference tag (4 bytes). The acronym
+DIF is sometimes used for protection information.
+.PP
+The feature to read and/or write protection information by using the
+\fIprotect=RDP[,WRP]\fR option is currently experimental. It should be used
+with care and may not "play well" with some other features such as write
+sparing and sparse writing. It should be used to copy user data plus the
+associated protection information to or from a regular file. It could also
+be used for a device to device copy assuming the "pt" interface is used
+for both. Also only modern SCSI disks support protection information.
+.PP
+When \fIRDP\fR or \fIWRP\fR is greater than 0 then a copy with associated
+protection information is active. In this state \fIIBS\fR and \fIOBS\fR
+must be the same and equal to the logical block size of the device(s)
+formatted with protection information. If a SCSI disk with 512 byte logical
+block size has protection information then the actual number of bytes
+transferred for each logical block is typically 520 bytes. For such a disk
+\fIBS=512\fR is required even when additional protection information is
+being transferred.
+.PP
+To be continued xxxxxxxxxxxxx
 .SH NOTES
 A partial write is a write to the \fIOFILE\fR of less than \fIOBS\fR
 bytes. This typically occurs at the end of a copy. dd can do partial
@@ -860,7 +894,7 @@ st driver device names can be used (e.g. /dev/st0 and /dev/nst2). Hence
 use of Linux pass-through device names (e.g. /dev/sg2) for tape drives
 is not supported.
 .PP
-xxxxxxxxx
+To be continued xxxxxxxxx
 .SH EXIT STATUS
 To aid scripts that call ddpt, the exit status is set to indicate
 success (0) or failure (1 or more). Note that some of the lower values

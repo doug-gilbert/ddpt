@@ -178,8 +178,10 @@ struct opts_t {
     int64_t seek;
     int bs_given;       /* 1 implies bs= option given on command line */
     int ibs;
+    int ibs_pi;    /* if (protect) ibs_pi = ibs+pi_len else ibs_pi=ibs */
     int ibs_given;
     int obs;
+    int obs_pi;    /* if (protect) obs_pi = obs+pi_len else obs_pi=obs */
     int obs_given;
     int bpt_i;          /* blocks (of input) per transfer */
     int bpt_given;
@@ -193,6 +195,12 @@ struct opts_t {
     char out2f[INOUTF_SZ];
     int out2_type;
     int out2fd;
+    int rdprotect;
+    int rdprot_typ;
+    int rdp_i_exp;
+    int wrprotect;
+    int wrprot_typ;
+    int wrp_i_exp;
     int cdbsz_given;
     int coe_limit;
     int coe_count;
