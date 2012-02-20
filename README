@@ -25,7 +25,7 @@ the command line syntax which is still based on the distinctive dd command
 command line syntax. Note that the dd command line syntax is unlike any
 other Unix command (probably imported from some IBM OS many years ago).
 
-This package shares code with sg3_utils (version 1.27). With the subversion
+This package shares code with sg3_utils (version 1.33). With the subversion
 revision control system this is done by having ddpt's "include/" and "lib/"
 sub-directories pointing to the correspondingly named directories in the
 sg3_utils package using the "svn:externals" property. These two "external"
@@ -37,11 +37,10 @@ repository and "svn:externals" redirection is no longer visible (but the
 unused files are visible).
 
 In Linux (with Debian and rpm style packages) if the libsgutils2-dev
-package is present at build time, then the ddpt executable will
-use the libsgutils shared library. If the libsgutils2-dev package
-is not detected at build time, then the ddpt executable built
-will compile and link the relevant code from the "include/" and "lib/"
-subdirectories.
+package is present at build time, then the ddpt executable will use the
+libsgutils shared library. If the libsgutils2-dev package is not detected
+at build time, then the ddpt executable built will compile and link the
+relevant code from the "include/" and "lib/" subdirectories.
 
 Documentation
 -------------
@@ -106,4 +105,4 @@ See README.win32
 
 
 Douglas Gilbert
-30th September 2011
+19th February 2012
