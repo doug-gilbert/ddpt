@@ -44,10 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20120219 [svn: r186]";
-
-/* Used for outputting diagnostic messages for oflag=pre-alloc */
-#define PREALLOC_DEBUG 1
+static char * version_str = "0.93 20120229 [svn: r187]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -73,6 +70,7 @@ static char * version_str = "0.93 20120219 [svn: r186]";
 #include <sys/types.h>
 #include <sys/stat.h>
 
+/* N.B. config.h must precede anything that depends on HAVE_*  */
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -96,11 +94,15 @@ static char * version_str = "0.93 20120219 [svn: r186]";
 #ifndef MTWEOFI
 #define MTWEOFI 35  /* write an end-of-file record (mark) in immediate mode */
 #endif
+
+#ifdef HAVE_FALLOCATE
 #include <linux/falloc.h>
 #ifndef FALLOC_FL_KEEP_SIZE
 #define FALLOC_FL_KEEP_SIZE     0x01    /* from lk 3.1 linux/falloc.h */
 #endif
 #endif
+
+#endif  /* SG_LIB_LINUX */
 
 #ifdef SG_LIB_FREEBSD
 #include <sys/ioctl.h>
@@ -129,6 +131,9 @@ static char * version_str = "0.93 20120219 [svn: r186]";
 #ifndef EREMOTEIO
 #define EREMOTEIO EIO
 #endif
+
+/* Used for outputting diagnostic messages for oflag=pre-alloc */
+#define PREALLOC_DEBUG 1
 
 
 /* If nonzero, the value of the pending fatal signal.  */
@@ -4700,6 +4705,8 @@ main(int argc, char * argv[])
 
     print_tape_pos("Initial ", "", &ops);
 
+#ifdef SG_LIB_LINUX
+#ifdef HAVE_FALLOCATE
 /* Try to pre-allocate space in the output file.
  *
  * If fallocate() does not succeed, exit with an error message. The user can
@@ -4712,7 +4719,6 @@ main(int argc, char * argv[])
  * pre-allocate space when possible.
  */
     if (ops.oflagp->prealloc) {
-#ifdef SG_LIB_LINUX
 /* On Linux, try fallocate() with
  * the FALLOC_FL_KEEP_SIZE flag, which allocates space but doesn't change the
  * apparent file size (useful since oflag=resume can be used).
@@ -4752,13 +4758,6 @@ main(int argc, char * argv[])
              * oflag=resume is not suppressed later. */
             ops.oflagp->prealloc = 0;
         }
-
-#else
-    /* If not on Linux, use posix_fallocate(). (That sets the file size to its
-     * full length, so re-invoking ddpt with oflag=resume will do nothing.) */
-        res = posix_fallocate(ops.outfd, ops.obs*ops.seek,
-                              ops.obs*ops.dd_count);
-#endif
         if (-1 == res) {
                 fprintf(stderr, "Unable to pre-allocate space: %s\n",
                         safe_strerror(errno));
@@ -4769,6 +4768,27 @@ main(int argc, char * argv[])
             fprintf(stderr, "Pre-allocated %" PRId64 " bytes at offset %"
                     PRId64 "\n", ops.obs*ops.dd_count, ops.obs*ops.seek);
     }
+
+#endif  /* HAVE_FALLOCATE */
+#else   /* SG_LIB_LINUX */
+#ifdef HAVE_POSIX_FALLOCATE
+    if (ops.oflagp->prealloc) {
+    /* If not on Linux, use posix_fallocate(). (That sets the file size to its
+     * full length, so re-invoking ddpt with oflag=resume will do nothing.) */
+        res = posix_fallocate(ops.outfd, ops.obs*ops.seek,
+                              ops.obs*ops.dd_count);
+        if (-1 == res) {
+                fprintf(stderr, "Unable to pre-allocate space: %s\n",
+                        safe_strerror(errno));
+                ret = SG_LIB_CAT_OTHER;
+                goto cleanup;
+        }
+        if (ops.verbose > 1)
+            fprintf(stderr, "Pre-allocated %" PRId64 " bytes at offset %"
+                    PRId64 "\n", ops.obs*ops.dd_count, ops.obs*ops.seek);
+    }
+#endif  /* HAVE_POSIX_FALLOCATE */
+#endif  /* SG_LIB_LINUX */
 
     // <<<<<<<<<<<<<< finally ready to do copy
     ++started_copy;
