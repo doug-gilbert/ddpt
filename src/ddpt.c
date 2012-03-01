@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20120229 [svn: r187]";
+static char * version_str = "0.93 20120229 [svn: r188]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -1701,8 +1701,11 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
             if (sg_scsi_normalize_sense(sense_b, slen, &ssh) &&
                 (0x10 == ssh.asc)) {    /* Protection problem, so no retry */
                 ++op->unrecovered_errs;
-                ret = SG_LIB_CAT_MEDIUM_HARD;
-                // ret = SG_LIB_CAT_OTHER;
+                info_valid = sg_get_sense_info_fld(sense_b, slen, io_addrp);
+                if (info_valid)
+                    ret = SG_LIB_CAT_PROTECTION_WITH_INFO;
+                else
+                    ret = SG_LIB_CAT_PROTECTION;
             }
             break;
         case SG_LIB_CAT_RECOVERED:
@@ -1758,7 +1761,8 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
         ret = 0;
 
     /* We are going to re-read those good blocks */
-    if (SG_LIB_CAT_MEDIUM_HARD_WITH_INFO != ret)
+    if ((SG_LIB_CAT_MEDIUM_HARD_WITH_INFO != ret) &&
+        (SG_LIB_CAT_PROTECTION_WITH_INFO != ret))
         op->sum_of_resids += get_scsi_pt_resid(ptvp);
     return ret;
 }
@@ -1788,7 +1792,7 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
     int64_t lba;
     int bs;
     struct flags_t * fp;
-    int res, blks, use_io_addr, xferred;
+    int res, blks, use_io_addr, xferred, pi_len;
     unsigned char * bp;
     int retries_tmp;
     int ret = 0;
@@ -1797,10 +1801,12 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
     if (in0_out1) {
         from_block = op->seek;
         bs = op->obs_pi;
+        pi_len = op->obs_pi - op->obs;
         fp = op->oflagp;
     } else {
         from_block = op->skip;
         bs = op->ibs_pi;
+        pi_len = op->ibs_pi - op->ibs;
         fp = op->iflagp;
     }
     retries_tmp = fp->retries;
@@ -1838,6 +1844,10 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
                 return res;
             }
             break;
+        case SG_LIB_CAT_PROTECTION_WITH_INFO:
+            use_io_addr = 1;
+            ret = res;
+            break; /* unrecovered read error at lba=io_addr */
         case SG_LIB_CAT_MEDIUM_HARD_WITH_INFO:
             if (retries_tmp > 0) {
                 fprintf(stderr, ">>> retrying pt read: starting "
@@ -1936,6 +1946,10 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
             case SG_LIB_CAT_MEDIUM_HARD:
                 ret = SG_LIB_CAT_MEDIUM_HARD;
                 goto err_out;
+            case SG_LIB_CAT_PROTECTION_WITH_INFO:
+            case SG_LIB_CAT_PROTECTION:
+                ret = SG_LIB_CAT_PROTECTION;
+                goto err_out;
             case SG_LIB_SYNTAX_ERROR:
             default:
                 fprintf(stderr, ">> unexpected result=%d from "
@@ -1954,8 +1968,13 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
         bp += (blks * bs);
         lba += blks;
         fprintf(stderr, ">> unrecovered read error at blk=%"PRId64", "
-                "substitute zeros\n", lba);
-        memset(bp, 0, bs);
+                "substitute zeros%s\n", lba,
+                ((pi_len > 0) ? " (PI with 0xFFs)" : ""));
+        if (pi_len > 0) {
+            memset(bp, 0, bs - pi_len);
+            memset(bp + bs - pi_len, 0xff, pi_len);
+        } else
+            memset(bp, 0, bs);
         ++xferred;
         bp += bs;
         ++lba;
@@ -2008,6 +2027,7 @@ pt_low_write(struct opts_t * op, unsigned char * buff, int blocks,
     uint64_t io_addr = 0;
     struct sg_pt_base * ptvp = op->of_ptvp;
     const struct flags_t * ofp = op->oflagp;
+    struct sg_scsi_sense_hdr ssh;
 
     if (pt_build_scsi_cdb(wrCmd, ofp->cdbsz, blocks, to_block, 1, ofp->fua,
                           ofp->fua_nv, ofp->dpo, op->wrprotect)) {
@@ -2056,6 +2076,12 @@ pt_low_write(struct opts_t * op, unsigned char * buff, int blocks,
                         "block=0x%"PRIx64", num=%d\n", to_block, blocks);
             break;
         case SG_LIB_CAT_ABORTED_COMMAND:
+            if (sg_scsi_normalize_sense(sense_b, slen, &ssh) &&
+                (0x10 == ssh.asc)) {    /* Protection problem, so no retry */
+                ++op->wr_unrecovered_errs;
+                ret = SG_LIB_CAT_PROTECTION;
+            }
+            break;
         case SG_LIB_CAT_UNIT_ATTENTION:
             break;
         case SG_LIB_CAT_NOT_READY:
@@ -4883,8 +4909,12 @@ cleanup:
     if (started_copy && (0 != ops.dd_count) && (! ops.reading_fifo)) {
         if (0 == ret)
             fprintf(stderr, "Early termination, EOF on input?\n");
-        else if (3 == ret)
+        else if (SG_LIB_CAT_MEDIUM_HARD == ret)
             fprintf(stderr, "Early termination, medium error occurred\n");
+        else if ((SG_LIB_CAT_PROTECTION == ret) ||
+                 (SG_LIB_CAT_PROTECTION_WITH_INFO == ret))
+            fprintf(stderr, "Early termination, protection information "
+                    "error occurred\n");
         else
             fprintf(stderr, "Early termination, some error occurred\n");
     }
