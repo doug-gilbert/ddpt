@@ -129,6 +129,11 @@
 
 #define REASON_TAPE_SHORT_READ 1024     /* leave_reason indication */
 
+#ifndef SG_LIB_CAT_PROTECTION
+#define SG_LIB_CAT_PROTECTION 0x40
+#define SG_LIB_CAT_PROTECTION_WITH_INFO 0x41
+#endif
+
 
 /* One instance for arguments to iflag= , another instance for oflag= */
 /* conv= arguments are mapped to flag arguments */
