@@ -2,7 +2,7 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.93 [20120229] [svn: r188]
+Changelog for ddpt-0.93 [20120313] [svn: r189]
   - add intio=0|1 ; rework signal handling
   - allow tape device in non-pt mode
   - fix fifo read when bs is large
@@ -11,6 +11,10 @@ Changelog for ddpt-0.93 [20120229] [svn: r188]
   - add oseek= option, synonym for seek=
   - add protect=RDP,WRP option
   - fix overflow on OFILE when input fifo
+  - ./configure options:
+    - change --enable-no-linux-bsg to --disable-linuxbsg
+    - add --disable-scsistrings to reduce utility size
+      with non-libsgutils build
 
 Changelog for ddpt-0.92 [20110217] [svn: r157]
   - when pt used on block device and discrepancy between size
