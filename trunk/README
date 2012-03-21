@@ -36,11 +36,14 @@ for this utility, various files are "exported" out of the subversion
 repository and "svn:externals" redirection is no longer visible (but the
 unused files are visible).
 
-In Linux (with Debian and rpm style packages) if the libsgutils2-dev
-package is present at build time, then the ddpt executable will use the
-libsgutils shared library. If the libsgutils2-dev package is not detected
-at build time, then the ddpt executable built will compile and link the
-relevant code from the "include/" and "lib/" subdirectories.
+The ddpt executable may or may not be built depending on the libsgutils
+(shared) library. Currently the ./configure rules are looking for a library
+called libsgutils2.a or libsgutils2.so . In Debian those libraries are found
+only in the libsgutils2-dev package, not the libsgutils2 package. If one of
+those libraries is detected then ddpt will be built depending on libsgutils
+(check 'ldd ddpt'). If neither of those libraries is detected at build time,
+then the ddpt executable built will compile and link the relevant code from
+its "include/" and "lib/" subdirectories.
 
 Documentation
 -------------
@@ -66,6 +69,12 @@ build files in the "debian" directory and a script called build_debian.sh in
 the main directory. Amongst other things debian builds are sensitive to the
 value in the debian/compat file. If it contains "7" then it works on lenny and
 gives warning on squeeze (but fails on the earlier etch).
+
+The ./configure script contains two extra options: '--disable-linuxbsg' and
+'--disable-scsistrings'. The former drops Linux bsg driver support which
+should no longer be necessary. The latter option drops asc/ascq and command
+name strings (defined by SCSI) in an attempt to reduce the size of the
+executable.
 
 License
 -------
@@ -105,4 +114,4 @@ See README.win32
 
 
 Douglas Gilbert
-19th February 2012
+20th March 2012
