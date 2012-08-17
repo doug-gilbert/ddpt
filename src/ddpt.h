@@ -125,8 +125,6 @@
 #define MAX_UNIT_ATTENTIONS 10
 #define MAX_ABORTED_CMDS 16
 
-#define ERRBLK_SUPPORTED 1
-
 #define REASON_TAPE_SHORT_READ 1024     /* leave_reason indication */
 
 #ifndef SG_LIB_CAT_PROTECTION
@@ -143,9 +141,7 @@ struct flags_t {
     int coe;
     int direct;
     int dpo;
-#ifdef ERRBLK_SUPPORTED
     int errblk;
-#endif
     int excl;
     int fdatasync;
     int flock;
@@ -269,9 +265,7 @@ struct opts_t {
     int start_tm_valid;
     struct timeval start_tm;
 #endif
-#ifdef ERRBLK_SUPPORTED
     FILE * errblk_fp;
-#endif
 };
 
 /* state of working variables within do_copy() */
@@ -294,6 +288,25 @@ struct signum_name_t {
     char * name;
 };
 
+extern void * pt_construct_obj(void);
+extern void pt_destruct_obj(void * vp);
+extern int pt_open_if(struct opts_t * op);
+extern int pt_open_of(struct opts_t * op);
+extern void pt_close(int fd);
+extern int pt_read_capacity(struct opts_t * op, int in0_out1,
+                            int64_t * num_sect, int * sect_sz);
+extern int pt_read(struct opts_t * op, int in0_out1, unsigned char * buff,
+                   int blocks, int * blks_readp);
+extern int pt_write(struct opts_t * op, unsigned char * buff, int blocks,
+                    int64_t to_block);
+extern int pt_write_same16(struct opts_t * op, unsigned char * buff, int bs,
+                           int blocks, int64_t start_block);
+extern void pt_sync_cache(int fd);
+
+extern void put_errblk(uint64_t lba, struct opts_t * op);
+extern void put_range_errblk(uint64_t lba, int num, struct opts_t * op);
+extern void zero_coe_limit_count(struct opts_t * op);
+
 
 #ifdef SG_LIB_WIN32
 extern int dd_filetype(const char * fn, int verbose);
@@ -315,7 +328,6 @@ extern int win32_cp_read_block(struct opts_t * optsp, struct cp_state_t * csp,
                                unsigned char * wrkPos, int * ifull_extrap,
                                int verbose);
 extern int coe_process_eio(struct opts_t * op, int64_t skip);
-extern void zero_coe_limit_count(struct opts_t * op);
 
 extern int sg_do_wscan(char letter, int do_scan, int verb);
 

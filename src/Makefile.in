@@ -49,17 +49,18 @@ CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
-am__ddpt_SOURCES_DIST = ddpt.c ddpt.h ddpt_win32.c ddpt_wscan.c \
-	../lib/sg_lib.c ../include/sg_lib.h ../lib/sg_lib_data.c \
-	../include/sg_lib_data.h ../lib/sg_cmds_basic.c \
-	../lib/sg_cmds_basic2.c ../include/sg_cmds_basic.h \
-	../include/sg_pt.h ../lib/sg_pt_common.c
+am__ddpt_SOURCES_DIST = ddpt.c ddpt.h ddpt_pt.c ddpt_win32.c \
+	ddpt_wscan.c ../lib/sg_lib.c ../include/sg_lib.h \
+	../lib/sg_lib_data.c ../include/sg_lib_data.h \
+	../lib/sg_cmds_basic.c ../lib/sg_cmds_basic2.c \
+	../include/sg_cmds_basic.h ../include/sg_pt.h \
+	../lib/sg_pt_common.c
 am__objects_1 = sg_lib.$(OBJEXT) sg_lib_data.$(OBJEXT) \
 	sg_cmds_basic.$(OBJEXT) sg_cmds_basic2.$(OBJEXT) \
 	sg_pt_common.$(OBJEXT)
 @HAVE_SGUTILS_FALSE@am__objects_2 = $(am__objects_1)
-am_ddpt_OBJECTS = ddpt.$(OBJEXT) ddpt_win32.$(OBJEXT) \
-	ddpt_wscan.$(OBJEXT) $(am__objects_2)
+am_ddpt_OBJECTS = ddpt.$(OBJEXT) ddpt_pt.$(OBJEXT) \
+	ddpt_win32.$(OBJEXT) ddpt_wscan.$(OBJEXT) $(am__objects_2)
 ddpt_OBJECTS = $(am_ddpt_OBJECTS)
 DEFAULT_INCLUDES = -I.@am__isrc@ -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/depcomp
@@ -177,7 +178,8 @@ top_srcdir = @top_srcdir@
 # INCLUDES = -I$(top_srcdir)/include -I$(top_srcdir)/include/scsi
 AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W
 # AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W -pedantic -std=c99
-ddpt_SOURCES = ddpt.c ddpt.h ddpt_win32.c ddpt_wscan.c $(am__append_1)
+ddpt_SOURCES = ddpt.c ddpt.h ddpt_pt.c ddpt_win32.c ddpt_wscan.c \
+	$(am__append_1)
 sglib_SOURCES = ../lib/sg_lib.c \
                         ../include/sg_lib.h     \
                         ../lib/sg_lib_data.c    \
@@ -283,6 +285,7 @@ distclean-compile:
 	-rm -f *.tab.c
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt_pt.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt_win32.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt_wscan.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sg_cmds_basic.Po@am__quote@
