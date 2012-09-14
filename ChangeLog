@@ -2,7 +2,7 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.93 [20120817] [svn: r191]
+Changelog for ddpt-0.93 [20120914] [svn: r192]
   - add intio=0|1 ; rework signal handling
   - allow tape device in non-pt mode
   - fix fifo read when bs is large
@@ -16,6 +16,7 @@ Changelog for ddpt-0.93 [20120817] [svn: r191]
     - add --disable-scsistrings to reduce utility size
       with non-libsgutils build
   - reduce ddpt.c size by adding ddpt_pt.c
+  - point svn:externals to rev 453 of sg3_utils
 
 Changelog for ddpt-0.92 [20110217] [svn: r157]
   - when pt used on block device and discrepancy between size
