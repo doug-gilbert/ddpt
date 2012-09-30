@@ -311,8 +311,7 @@ extern void zero_coe_limit_count(struct opts_t * op);
 #ifdef SG_LIB_WIN32
 extern int dd_filetype(const char * fn, int verbose);
 extern int get_blkdev_capacity(struct opts_t * optsp, int which_arg,
-                               int64_t * num_sect, int * sect_sz,
-                               int verbose);
+                               int64_t * num_sect, int * sect_sz);
 extern void win32_adjust_fns(struct opts_t * optsp);
 extern int win32_open_if(struct opts_t * optsp, int verbose);
 extern int win32_open_of(struct opts_t * optsp, int verbose);
