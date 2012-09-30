@@ -1,4 +1,4 @@
-.TH DDPT "8" "February 2012" "ddpt\-0.93" DDPT
+.TH DDPT "8" "September 2012" "ddpt\-0.93" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -993,7 +993,11 @@ To change mode parameters that effect a SCSI device's caching and error
 recovery see
 .B sdparm(sdparm)
 .PP
+To verify the data on the media or to verify it against some other
+copy of the data see
+.B sg_verify(sg3_utils)
+.PP
 To scan and repair disk partitions see TestDisk (testdisk).
 .PP
 Additional references:
-.B dd(1), ddrescue(GNU), open(2), flock(2), sg_dd,sg3_utils(sg3_utils)
+.B dd(1), ddrescue(GNU), open(2), flock(2), sg_dd(sg3_utils)
