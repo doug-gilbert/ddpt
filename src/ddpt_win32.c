@@ -504,7 +504,7 @@ win32_block_write(struct opts_t * op, const unsigned char * bp,
  * block device using num_sect pointer. Win32 version. */
 int
 get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
-                    int * sect_sz, int verbose)
+                    int * sect_sz)
 {
     DISK_GEOMETRY g;
     GET_LENGTH_INFORMATION gli;
@@ -518,11 +518,11 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
 
     fh = (DDPT_ARG_IN == which_arg) ? op->ib_fh : op->ob_fh;
     fname = (DDPT_ARG_IN == which_arg) ? op->inf : op->outf;
-    if (verbose > 2)
+    if (op->verbose > 2)
         fprintf(stderr, "get_blkdev_capacity: for %s\n", fname);
     if (0 == DeviceIoControl(fh, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0, &g,
                              sizeof(g), &count, NULL)) {
-        if (verbose)
+        if (op->verbose)
             fprintf(stderr, "DeviceIoControl(blkdev, geometry) error=%ld\n",
                     GetLastError());
         *num_sect = 0;
@@ -537,7 +537,7 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
         byte_len = gli.Length.QuadPart;
         *num_sect = byte_len / (int)g.BytesPerSector;
         return 0;
-    } else if (verbose > 2)
+    } else if (op->verbose > 2)
         fprintf(stderr, "DeviceIoControl(blkdev, length_info) "
                 "error=%ld\n", GetLastError());
 
@@ -563,7 +563,7 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
     if (GetDiskFreeSpaceEx(dirName, NULL, &total_bytes, NULL)) {
         byte_len = total_bytes.QuadPart;
         *num_sect = byte_len / (int)g.BytesPerSector;
-    } else if (verbose > 1) {
+    } else if (op->verbose > 1) {
             fprintf(stderr, "GetDiskFreeSpaceEx(%s) "
                     "error=%ld\n", dirName, GetLastError());
         *num_sect = 0;
