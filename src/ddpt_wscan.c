@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006-2011 Douglas Gilbert.
+ * Copyright (c) 2006-2012 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,8 @@
 #include <getopt.h>
 
 #include "sg_lib.h"
+
+#define _WIN32_WINNT 0x0602
 #include "sg_pt_win32.h"
 
 /*
@@ -71,6 +73,7 @@
     CTL_CODE(IOCTL_STORAGE_BASE, 0x0500, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 
+#ifndef _DEVIOCTL_
 typedef enum _STORAGE_BUS_TYPE {
     BusTypeUnknown      = 0x00,
     BusTypeScsi         = 0x01,
@@ -86,7 +89,9 @@ typedef enum _STORAGE_BUS_TYPE {
     BusTypeSata         = 0x0B,
     BusTypeSd           = 0x0C,
     BusTypeMmc          = 0x0D,
-    BusTypeMax          = 0x0E,
+    BusTypeVirtual             = 0xE,
+    BusTypeFileBackedVirtual   = 0xF,
+    BusTypeMax,
     BusTypeMaxReserved  = 0x7F
 } STORAGE_BUS_TYPE, *PSTORAGE_BUS_TYPE;
 
@@ -105,6 +110,7 @@ typedef struct _STORAGE_DEVICE_DESCRIPTOR {
     ULONG RawPropertiesLength;
     UCHAR RawDeviceProperties[1];
 } STORAGE_DEVICE_DESCRIPTOR, *PSTORAGE_DEVICE_DESCRIPTOR;
+#endif
 
 typedef struct _STORAGE_DEVICE_UNIQUE_IDENTIFIER {
     ULONG  Version;
@@ -117,6 +123,7 @@ typedef struct _STORAGE_DEVICE_UNIQUE_IDENTIFIER {
 // Use CompareStorageDuids(PSTORAGE_DEVICE_UNIQUE_IDENTIFIER duid1, duid2)
 // to test for equality
 
+#ifndef _DEVIOCTL_
 typedef enum _STORAGE_QUERY_TYPE {
     PropertyStandardQuery = 0,
     PropertyExistsQuery,
@@ -139,6 +146,7 @@ typedef struct _STORAGE_PROPERTY_QUERY {
     STORAGE_QUERY_TYPE QueryType;
     UCHAR AdditionalParameters[1];
 } STORAGE_PROPERTY_QUERY, *PSTORAGE_PROPERTY_QUERY;
+#endif
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -233,6 +241,10 @@ get_bus_type(int bt)
         return "Sd   ";
     case BusTypeMmc:
         return "Mmc  ";
+    case BusTypeVirtual:
+        return "Virt ";
+    case BusTypeFileBackedVirtual:
+        return "FBVir";
     case BusTypeMax:
         return "Max  ";
     default:
