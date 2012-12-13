@@ -174,7 +174,8 @@ pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_sect,
     verb = (op->verbose ? op->verbose - 1: 0);
     memset(rcBuff, 0, sizeof(rcBuff));
     if (! protect) {
-        res = sg_ll_readcap_10(sg_fd, 0, 0, rcBuff, READ_CAP_REPLY_LEN, 0, verb);
+        res = sg_ll_readcap_10(sg_fd, 0, 0, rcBuff, READ_CAP_REPLY_LEN, 0,
+			       verb);
         if (0 != res)
             return res;
     }
@@ -372,7 +373,7 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
     vt = (op->verbose ? (op->verbose - 1) : 0);
     while (((res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, vt)) < 0) &&
            (-EINTR == res))
-        ++op->interrupted_retries;     /* resubmit if interrupted system call */
+        ++op->interrupted_retries; /* resubmit if interrupted system call */
 
     vt = ((op->verbose > 1) ? (op->verbose - 1) : op->verbose);
     ret = sg_cmds_process_resp(ptvp, "READ", res, bs * blocks, sense_b,
@@ -735,7 +736,7 @@ pt_low_write(struct opts_t * op, unsigned char * buff, int blocks,
     vt = (op->verbose ? (op->verbose - 1) : 0);
     while (((res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, vt)) < 0) &&
            (-EINTR == res))
-        ++op->interrupted_retries;     /* resubmit if interrupted system call */
+        ++op->interrupted_retries; /* resubmit if interrupted system call */
 
     vt = ((op->verbose > 1) ? (op->verbose - 1) : op->verbose);
     ret = sg_cmds_process_resp(ptvp, "WRITE", res, bs * blocks, sense_b,
@@ -894,7 +895,7 @@ pt_write_same16(struct opts_t * op, unsigned char * buff, int bs, int blocks,
     vt = ((op->verbose > 1) ? (op->verbose - 1) : 0);
     while (((res = do_scsi_pt(ptvp, sg_fd, WRITE_SAME16_TIMEOUT, vt)) < 0) &&
            (-EINTR == res))
-        ++op->interrupted_retries;     /* resubmit if interrupted system call */
+        ++op->interrupted_retries; /* resubmit if interrupted system call */
     ret = sg_cmds_process_resp(ptvp, "Write same(16)", res, 0, sense_b,
                                1 /*noisy */, vt, &sense_cat);
     if (-1 == ret)

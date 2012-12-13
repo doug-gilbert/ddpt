@@ -94,9 +94,9 @@ win32_errmsg(int errnum, char * b, int blen)
         len = strlen(err_txt);
         if (len) {
             if ('\n' == err_txt[len - 1]) {
-                err_txt[len - 1] = '\0'; 
+                err_txt[len - 1] = '\0';
                 if ((len > 1) && ('\r' == err_txt[len - 2]))
-                    err_txt[len - 2] = '\0'; 
+                    err_txt[len - 2] = '\0';
                 len = strlen(err_txt);
             }
         }
@@ -427,7 +427,7 @@ win32_block_read(struct opts_t * op, unsigned char * bp, int num_bytes,
         fprintf(stderr, "ReadFile(num=%d, in)\n", num_bytes);
     if (ReadFile(op->ib_fh, bp, num, &howMany, NULL) == 0) {
         err = GetLastError();
-        if (verbose) { 
+        if (verbose) {
             if (win32_errmsg(err, b, sizeof(b)) < 0)
                 fprintf(stderr, "ReadFile failed, error=%ld [and "
                         "win32_errmsg() failed]\n", err);
@@ -455,7 +455,7 @@ win32_block_read_from_of(struct opts_t * op, unsigned char * bp,
         fprintf(stderr, "ReadFile(num=%d, out)\n", num_bytes);
     if (ReadFile(op->ob_fh, bp, num, &howMany, NULL) == 0) {
         err = GetLastError();
-        if (verbose) { 
+        if (verbose) {
             if (win32_errmsg(err, b, sizeof(b)) < 0)
                 fprintf(stderr, "ReadFile failed, error=%ld [and "
                         "win32_errmsg() failed]\n", err);
