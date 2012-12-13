@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20121026 [svn: r198]";
+static char * version_str = "0.93 20121213 [svn: r199]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -425,8 +425,8 @@ process_signals(struct opts_t * op)
         sigset_t pending_set;
 
         sigpending(&pending_set);
-        if (sigismember(&pending_set, SIGINT) || 
-            sigismember(&pending_set, SIGPIPE) || 
+        if (sigismember(&pending_set, SIGINT) ||
+            sigismember(&pending_set, SIGPIPE) ||
             sigismember(&pending_set, SIGINFO)) {
             sigprocmask(SIG_UNBLOCK, &op->caught_signals, &oldset);
             /* window to allow SIGINT+SIGINFO handlers to run */
@@ -505,7 +505,7 @@ open_errblk(struct opts_t * op)
         {
             time_t t;
             char b[64];
-    
+
             t = time(NULL);
             strftime(b, sizeof(b), "# start: %Y-%m-%d %H:%M:%S\n",
                      localtime(&t));
@@ -736,12 +736,12 @@ cl_sanity_defaults(struct opts_t * op)
         op->obs = DEF_BLOCK_SIZE;
         if ((op->ibs != DEF_BLOCK_SIZE) && op->outf[0])
             fprintf(stderr, "Neither obs nor bs given so set obs=%d "
-                    "(default block size)\n", op->obs); 
+                    "(default block size)\n", op->obs);
     } else if (0 == op->ibs) {
         op->ibs = DEF_BLOCK_SIZE;
         if (op->obs != DEF_BLOCK_SIZE)
             fprintf(stderr, "Neither ibs nor bs given so set ibs=%d "
-                    "(default block size)\n", op->ibs); 
+                    "(default block size)\n", op->ibs);
     }
     op->ibs_hold = op->ibs;
     if (0 == op->bpt_given)
@@ -1213,7 +1213,7 @@ dd_filetype(const char * filename, int verbose)
         }
 #elif SG_LIB_SOLARIS
         /* might be /dev/rdsk or /dev/scsi , require pt override */
-        return FT_BLOCK;  
+        return FT_BLOCK;
 #else
         return FT_PT;
 #endif
@@ -1380,7 +1380,7 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
 
 void
 zero_coe_limit_count(struct opts_t * op)
-{ 
+{
     if (op->coe_limit > 0)
         op->coe_count = 0;
 }
@@ -1502,7 +1502,8 @@ calc_duration_throughput(const char * leadin, int contin, struct opts_t * op)
             fprintf(stderr, "\n");
         if (contin && (! op->reading_fifo) && (r > 0.01) &&
             (op->dd_count > 100)) {
-            secs = (int)(((double)op->ibs_hold * op->dd_count) / (r * 1000000));
+            secs = (int)(((double)op->ibs_hold * op->dd_count) /
+                         (r * 1000000));
             if (secs > 10) {
                 h = secs / 3600;
                 secs = secs - (h * 3600);
@@ -1547,7 +1548,8 @@ calc_duration_throughput(const char * leadin, int contin, struct opts_t * op)
             fprintf(stderr, "\n");
         if (contin && (! op->reading_fifo) && (r > 0.01) &&
             (op->dd_count > 100)) {
-            secs = (int)(((double)op->ibs_hold * op->dd_count) / (r * 1000000));
+            secs = (int)(((double)op->ibs_hold * op->dd_count) /
+                         (r * 1000000));
             if (secs > 10) {
                 h = secs / 3600;
                 secs = secs - (h * 3600);
@@ -2280,7 +2282,7 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
         fprintf(stderr, "read(unix): requested bytes=%d, res=%d\n",
                 numbytes, res);
     if ((op->iflagp->coe) && (res < numbytes)) {
-        res2 = (res >= 0) ? res : -errno; 
+        res2 = (res >= 0) ? res : -errno;
         if ((res < 0) && op->verbose) {
             fprintf(stderr, "reading, skip=%"PRId64" : %s, go to coe\n",
                     op->skip, safe_strerror(errno));
@@ -2359,13 +2361,14 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
 static void
 print_tape_summary(struct opts_t * op, int res, const char * str)
 {
-    if ((op->verbose > 1) && (res != op->last_tape_read_len) &&
-        (op->consec_same_len_reads >= 1))
+    int len = op->last_tape_read_len;
+    int num = op->read_tape_numbytes;
+
+    if ((op->verbose > 1) && (res != len) && (op->consec_same_len_reads >= 1))
         fprintf(stderr, "%s(%d%s read%s of %d byte%s)\n", str,
-                op->consec_same_len_reads,
-                (op->last_tape_read_len < op->read_tape_numbytes) ? " short" : "",
-                (op->consec_same_len_reads != 1) ? "s" : "", op->last_tape_read_len,
-                (op->last_tape_read_len != 1) ? "s" : "");
+                op->consec_same_len_reads, (len < num) ? " short" : "",
+                (op->consec_same_len_reads != 1) ? "s" : "", len,
+                (len != 1) ? "s" : "");
 }
 
 /* Main copy loop's read (input) for tape device. Returns 0 on success,
@@ -2374,10 +2377,11 @@ static int
 cp_read_tape(struct opts_t * op, struct cp_state_t * csp,
              unsigned char * wrkPos)
 {
-    int res, err;
+    int res, err, num;
 
-    op->read_tape_numbytes = csp->icbpt * op->ibs;
-    while (((res = read(op->infd, wrkPos, op->read_tape_numbytes)) < 0) &&
+    num = csp->icbpt * op->ibs;
+    op->read_tape_numbytes = num;
+    while (((res = read(op->infd, wrkPos, num)) < 0) &&
            (EINTR == errno))
         ++op->interrupted_retries;
 
@@ -2388,8 +2392,7 @@ cp_read_tape(struct opts_t * op, struct cp_state_t * csp,
 
     if (op->verbose > 2)
         fprintf(stderr, "read(tape%s): requested bytes=%d, res=%d\n",
-                ((res >= op->read_tape_numbytes) || (res < 0)) ? "" : ", short",
-                op->read_tape_numbytes, res);
+                ((res >= num) || (res < 0)) ? "" : ", short", num, res);
 
     if (op->verbose > 3)
         print_tape_pos("", "", op);
@@ -2403,7 +2406,8 @@ cp_read_tape(struct opts_t * op, struct cp_state_t * csp,
                 (ENOMEM == err) ? "Tape block larger than requested read"
                 " length" : safe_strerror(err));
 
-        op->last_tape_read_len = 0; /* So print_stats() doesn't print summary. */
+        /* So print_stats() doesn't print summary. */
+        op->last_tape_read_len = 0;
 
         if ((EIO == err) || (EREMOTEIO == err))
             return SG_LIB_CAT_MEDIUM_HARD;
@@ -2418,7 +2422,7 @@ cp_read_tape(struct opts_t * op, struct cp_state_t * csp,
                 op->consec_same_len_reads = 1;
             }
         }
-        if (res < op->read_tape_numbytes) {
+        if (res < num) {
             csp->icbpt = res / op->ibs;
             if ((res % op->ibs) > 0) {
                 ++csp->icbpt;
@@ -2736,8 +2740,8 @@ ew_retry:
              if (2 == op->verbose) {
                 fprintf(stderr, "(suppressing further early warning"
                         " messages)\n");
-                printed_ew_message = 1;  
-            }      
+                printed_ew_message = 1;
+            }
         }
         goto ew_retry;
     }
@@ -2852,7 +2856,7 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
                     fprintf(stderr, "write(unix): padding probable final "
                             "write at seek=%"PRId64"\n", aseek);
             } else {
-                if (FT_BLOCK & out_type) 
+                if (FT_BLOCK & out_type)
                     fprintf(stderr, ">>> ignore partial write of %d bytes "
                         "to block device\n", csp->partial_write_bytes);
                 else {
@@ -3829,12 +3833,13 @@ main(int argc, char * argv[])
  * the FALLOC_FL_KEEP_SIZE flag, which allocates space but doesn't change the
  * apparent file size (useful since oflag=resume can be used).
  *
- * If fallocate() with FALLOC_FL_KEEP_SIZE returns ENOTTY, EINVAL or EOPNOTSUPP,
- * retry without that flag (since the flag is only supported in recent Linux
- * kernels). */
+ * If fallocate() with FALLOC_FL_KEEP_SIZE returns ENOTTY, EINVAL or
+ * EOPNOTSUPP, retry without that flag (since the flag is only supported in
+ * recent Linux kernels). */
 
 #ifdef PREALLOC_DEBUG
-        fprintf(stderr, "About to call fallocate() with FALLOC_FL_KEEP_SIZE\n");
+        fprintf(stderr, "About to call fallocate() with "
+                "FALLOC_FL_KEEP_SIZE\n");
 #endif
         res = fallocate(ops.outfd, FALLOC_FL_KEEP_SIZE, ops.obs*ops.seek,
                         ops.obs*ops.dd_count);
