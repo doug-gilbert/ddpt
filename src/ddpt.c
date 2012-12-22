@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20121213 [svn: r199]";
+static char * version_str = "0.93 20121221 [svn: r200]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -198,7 +198,7 @@ usage()
            "(see below)\n"
            "    count       number of input blocks to copy (def: "
            "(remaining)\n"
-           "                device size)\n"
+           "                device/file size)\n"
            "    ibs         input block size (default 512 bytes)\n"
            "    if          file or device to read from (for stdin use "
            "'-')\n"
@@ -208,9 +208,9 @@ usage()
            "and writes\n"
            "                (def: 0 causes signals to be masked during IO)\n"
            "    iseek       block position to start reading from IFILE\n"
-           "    obs         output block size (def: 512), when IBS is "
+           "    obs         output block size (def: 512). When IBS is "
            "not equal to OBS\n"
-           "                [ (((IBS * BPT) %% OBS) == 0) is required\n"
+           "                then (((IBS * BPT) %% OBS) == 0) is required\n"
            "    of          file or device to write to (def: /dev/null)\n");
     fprintf(stderr,
            "    of2         additional output file (def: /dev/null), "

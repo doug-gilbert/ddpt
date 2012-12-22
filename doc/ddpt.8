@@ -1,4 +1,4 @@
-.TH DDPT "8" "September 2012" "ddpt\-0.93" DDPT
+.TH DDPT "8" "December 2012" "ddpt\-0.93" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -33,7 +33,7 @@ For comparison, the SYNOPSIS section above shows both the
 .B ddpt
 command line options followed by GNU's
 .B dd(1)
-command line options. Broadly speaking ddpt can be considered a super-set
+command line options. Broadly speaking ddpt can be considered a super\-set
 of dd. See the section on DD DIFFERENCES for significant differences
 between ddpt and dd.
 .PP
@@ -295,7 +295,7 @@ equivalent to "oflag=fdatasync". Flushes data associated with the
 for compatibility with GNU's dd.
 .TP
 fsync
-equivalent to "oflag=fsync". Flushes data and meta-data associated
+equivalent to "oflag=fsync". Flushes data and meta\-data associated
 with the \fIOFILE\fR to storage at the end of the copy. This conversion
 is for compatibility with GNU's dd.
 .TP
@@ -854,11 +854,11 @@ Following is an example run on a Windows OS using the '\-\-wscan' option
 which shows the available device names (e.g. PD1) and the associated volume
 name(s):
 .PP
-   ddpt -w
+   ddpt \-w
 .br
 PD0     [C]     FUJITSU   MHY2160BH         0000
 .br
-PD1     [DF]    WD        2500BEV External  1.05  WD-WXE90
+PD1     [DF]    WD        2500BEV External  1.05  WD\-WXE90
 .br
 CDROM0  [E]     MATSHITA DVD/CDRW UJDA775  CB03
 .PP
@@ -891,7 +891,7 @@ best.
 .SH TAPE
 There is support for copies to and from tape drives in Linux. Only the
 st driver device names can be used (e.g. /dev/st0 and /dev/nst2). Hence
-use of Linux pass-through device names (e.g. /dev/sg2) for tape drives
+use of Linux pass\-through device names (e.g. /dev/sg2) for tape drives
 is not supported.
 .PP
 To be continued xxxxxxxxx
