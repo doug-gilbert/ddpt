@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2012 Douglas Gilbert.
+ * Copyright (c) 2008-2013 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20121221 [svn: r200]";
+static char * version_str = "0.93 20130208 [svn: r201]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -57,6 +57,7 @@ static char * version_str = "0.93 20121221 [svn: r200]";
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <signal.h>
 #include <ctype.h>
@@ -250,6 +251,26 @@ usage()
            "sparse,sync,\ntrunc\n");
 }
 
+/* Want safe, 'n += snprintf(b + n, blen - n, ...)' style sequence of
+ * functions. Returns number number of chars placed in cp excluding the
+ * trailing null char. So for cp_max_len > 0 the return value is always
+ * < cp_max_len; for cp_max_len <= 1 the return value is 0 and no chars
+ * are written to cp. Note this means that when cp_max_len = 1, this
+ * function assumes that cp[0] is the null character and does nothing
+ * (and returns 0).  */
+static int
+my_snprintf(char * cp, int cp_max_len, const char * fmt, ...)
+{
+    va_list args;
+    int n;
+
+    if (cp_max_len < 2)
+        return 0;
+    va_start(args, fmt);
+    n = vsnprintf(cp, cp_max_len, fmt, args);
+    va_end(args);
+    return (n < cp_max_len) ? n : (cp_max_len - 1);
+}
 
 static void
 print_stats(const char * str, struct opts_t * op)
@@ -319,11 +340,13 @@ get_signal_name(int signum, char * b, int blen)
         if (signum == sp->num)
             break;
     }
+    if (blen < 1)
+        return b;
     b[blen - 1] = '\0';
     if (sp->num)
         strncpy(b, sp->name, blen - 1);
     else
-        snprintf(b, blen - 1, "%d", signum);
+        snprintf(b, blen, "%d", signum);
     return b;
 }
 
@@ -1231,26 +1254,26 @@ dd_filetype_str(int ft, char * buff, int max_bufflen, const char * fname)
     int off = 0;
 
     if (FT_DEV_NULL & ft)
-        off += snprintf(buff + off, max_bufflen - off, "null device ");
+        off += my_snprintf(buff + off, max_bufflen - off, "null device ");
     if (FT_PT & ft)
-        off += snprintf(buff + off, max_bufflen - off,
-                        "pass-through [pt] device ");
+        off += my_snprintf(buff + off, max_bufflen - off,
+                           "pass-through [pt] device ");
     if (FT_TAPE & ft)
-        off += snprintf(buff + off, max_bufflen - off, "SCSI tape device ");
+        off += my_snprintf(buff + off, max_bufflen - off, "SCSI tape device ");
     if (FT_BLOCK & ft)
-        off += snprintf(buff + off, max_bufflen - off, "block device ");
+        off += my_snprintf(buff + off, max_bufflen - off, "block device ");
     if (FT_FIFO & ft)
-        off += snprintf(buff + off, max_bufflen - off,
-                        "fifo [stdin, stdout, named pipe] ");
+        off += my_snprintf(buff + off, max_bufflen - off,
+                           "fifo [stdin, stdout, named pipe] ");
     if (FT_REG & ft)
-        off += snprintf(buff + off, max_bufflen - off, "regular file ");
+        off += my_snprintf(buff + off, max_bufflen - off, "regular file ");
     if (FT_CHAR & ft)
-        off += snprintf(buff + off, max_bufflen - off, "char device ");
+        off += my_snprintf(buff + off, max_bufflen - off, "char device ");
     if (FT_OTHER & ft)
-        off += snprintf(buff + off, max_bufflen - off, "other file type ");
+        off += my_snprintf(buff + off, max_bufflen - off, "other file type ");
     if (FT_ERROR & ft)
-        off += snprintf(buff + off, max_bufflen - off,
-                        "unable to 'stat' %s ", (fname ? fname : "file"));
+        off += my_snprintf(buff + off, max_bufflen - off,
+                           "unable to 'stat' %s ", (fname ? fname : "file"));
     return buff;
 }
 
