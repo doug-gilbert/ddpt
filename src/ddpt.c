@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20130228 [svn: r202]";
+static char * version_str = "0.93 20130315 [svn: r203]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -165,7 +165,7 @@ static void
 usage()
 {
     fprintf(stderr, "Usage: "
-           "ddpt  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=6|10|12|16] [coe=0|1]\n"
+           "ddpt  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=6|10|12|16|32] [coe=0|1]\n"
            "             [coe_limit=CL] [conv=CONVS] [count=COUNT] "
            "[ibs=IBS] if=IFILE\n"
            "             [iflag=FLAGS] [intio=0|1] [iseek=SKIP] [obs=OBS] "
@@ -245,8 +245,8 @@ usage()
            "flock,force,\n"
            "fsync(o),fua,fua_nv,ignoreew(o),nocache,nofm(o),norcap,"
            "nowrite(o),null,pad,\n"
-           "pre-alloc(o),pt,resume(o),self,sparing(o),sparse(o),ssync(o),"
-           "strunc(o),\nsync,trim(o),trunc(o),unmap(o).\n"
+           "pre-alloc(o),pt,rarc(i),resume(o),self,sparing(o),sparse(o),"
+           "ssync(o),\nstrunc(o),sync,trim(o),trunc(o),unmap(o).\n"
            "CONVS: fdatasync,fsync,noerror,notrunc,null,resume,sparing,"
            "sparse,sync,\ntrunc\n");
 }
@@ -695,6 +695,8 @@ process_flags(const char * arg, struct flags_t * fp)
             ++fp->prealloc;
         else if (0 == strcmp(cp, "pt"))
             ++fp->pt;
+        else if (0 == strcmp(cp, "rarc"))
+            ++fp->rarc;
         else if (0 == strcmp(cp, "resume"))
             ++fp->resume;
         else if (0 == strcmp(cp, "self"))
@@ -1520,7 +1522,10 @@ calc_duration_throughput(const char * leadin, int contin, struct opts_t * op)
         r = 0.0;
         if ((a > 0.00001) && (b > 511)) {
             r = b / (a * 1000000.0);
-            fprintf(stderr, " at %.2f MB/sec\n", r);
+            if (r < 1.0)
+                fprintf(stderr, " at %.1f KB/sec\n", r * 1000);
+            else
+                fprintf(stderr, " at %.2f MB/sec\n", r);
         } else
             fprintf(stderr, "\n");
         if (contin && (! op->reading_fifo) && (r > 0.01) &&
@@ -1566,7 +1571,10 @@ calc_duration_throughput(const char * leadin, int contin, struct opts_t * op)
         r = 0.0;
         if ((a > 0.00001) && (b > 511)) {
             r = b / (a * 1000000.0);
-            fprintf(stderr, " at %.2f MB/sec\n", r);
+            if (r < 1.0)
+                fprintf(stderr, " at %.1f KB/sec\n", r * 1000);
+            else
+                fprintf(stderr, " at %.2f MB/sec\n", r);
         } else
             fprintf(stderr, "\n");
         if (contin && (! op->reading_fifo) && (r > 0.01) &&
@@ -3667,20 +3675,6 @@ main(int argc, char * argv[])
 #ifdef PI_WORK
     ops.ibs_pi = ops.ibs;
     ops.obs_pi = ops.obs;
-    if (ops.wrprotect) {
-        if ((0 == ops.wrprot_typ) || (! (FT_PT & ops.out_type))) {
-            fprintf(stderr, "OFILE is not a pt device or doesn't have "
-                    "protection information\n");
-            ret = SG_LIB_CAT_OTHER;
-            goto cleanup;
-        }
-        if (ops.ibs != ops.obs) {
-            fprintf(stderr, "protect: don't support IFILE and OFILE "
-                    "with different block sizes\n");
-            ret = SG_LIB_CAT_OTHER;
-            goto cleanup;
-        }
-    }
     if (ops.rdprotect) {
         if ((0 == ops.rdprot_typ) || (! (FT_PT & ops.in_type))) {
             fprintf(stderr, "IFILE is not a pt device or doesn't have "
@@ -3694,8 +3688,6 @@ main(int argc, char * argv[])
             ret = SG_LIB_CAT_OTHER;
             goto cleanup;
         }
-        res = (ops.rdp_i_exp ? (1 << ops.rdp_i_exp) : 1) * 8;
-        ops.ibs_pi += res;
         if (ops.wrprotect) {
             if (ops.rdp_i_exp != ops.wrp_i_exp) {
                 fprintf(stderr, "Don't support IFILE and OFILE with "
@@ -3704,14 +3696,27 @@ main(int argc, char * argv[])
                 goto cleanup;
             }
         }
+        res = (ops.rdp_i_exp ? (1 << ops.rdp_i_exp) : 1) * 8;
+        ops.ibs_pi += res;
         ops.obs_pi += res;
-    } else if (ops.wrprotect) {
+    }
+    if (ops.wrprotect) {
+        if ((0 == ops.wrprot_typ) || (! (FT_PT & ops.out_type))) {
+            fprintf(stderr, "OFILE is not a pt device or doesn't have "
+                    "protection information\n");
+            ret = SG_LIB_CAT_OTHER;
+            goto cleanup;
+        }
+        if (ops.ibs != ops.obs) {
+            fprintf(stderr, "protect: don't support IFILE and OFILE "
+                    "with different block sizes\n");
+            ret = SG_LIB_CAT_OTHER;
+            goto cleanup;
+        }
         res = (ops.wrp_i_exp ? (1 << ops.wrp_i_exp) : 1) * 8;
         ops.ibs_pi += res;
         ops.obs_pi += res;
     }
-// xxxxxxxxxxxxxxxxxxxxxxx
-
 #endif  /* PI_WORK */
 
     if ((ops.dd_count < 0) && (! ops.reading_fifo)) {
@@ -3727,22 +3732,21 @@ main(int argc, char * argv[])
         }
     }
     if (! ops.cdbsz_given) {
-        if ((FT_PT & ops.in_type) && (MAX_SCSI_CDBSZ != ops.iflagp->cdbsz)
-            && (((ops.dd_count + ops.skip) > UINT_MAX) ||
-                (ops.bpt_i > USHRT_MAX))) {
+        if ((FT_PT & ops.in_type) && (ops.iflagp->cdbsz < 16) &&
+            (((ops.dd_count + ops.skip) > UINT_MAX) ||
+             (ops.bpt_i > USHRT_MAX))) {
             if (ops.verbose > 0)
                 fprintf(stderr, "SCSI command size increased from 10 to 16 "
                         "bytes on %s\n", ops.inf);
-            ops.iflagp->cdbsz = MAX_SCSI_CDBSZ;
+            ops.iflagp->cdbsz = 16;
         }
-        if ((FT_PT & ops.out_type) &&
-            (MAX_SCSI_CDBSZ != ops.oflagp->cdbsz) &&
+        if ((FT_PT & ops.out_type) && (ops.oflagp->cdbsz < 16) &&
             (((ops.dd_count + ops.seek) > UINT_MAX) ||
              (((ops.ibs * ops.bpt_i) / ops.obs) > USHRT_MAX))) {
             if (ops.verbose)
-                fprintf(stderr, "SCSI command size increased from 12 to 16 "
+                fprintf(stderr, "SCSI command size increased from 10 to 16 "
                         "bytes on %s\n", ops.outf);
-            ops.oflagp->cdbsz = MAX_SCSI_CDBSZ;
+            ops.oflagp->cdbsz = 16;
         }
     }
 

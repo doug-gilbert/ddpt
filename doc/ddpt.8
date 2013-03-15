@@ -1,16 +1,17 @@
-.TH DDPT "8" "February 2013" "ddpt\-0.93" DDPT
+.TH DDPT "8" "March 2013" "ddpt\-0.93" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
 .SH SYNOPSIS
 .B ddpt
-[\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fR6|10|12|16] [\fIcoe=\fR0|1]
-[\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR] [\fIibs=IBS\fR]
-\fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIintio=\fR0|1] [\fIiseek=SKIP\fR]
-[\fIobs=OBS\fR] [\fIof=OFILE\fR] [\fIof2=OFILE2\fR] [\fIoflag=FLAGS\fR]
-[\fIoseek=SEEK\fR] [\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR]
-[\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR] [\fIverbose=VERB\fR]
-[\fI\-\-help\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR]
+[\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fR6|10|12|16|32]
+[\fIcoe=\fR0|1] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
+[\fIibs=IBS\fR] \fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIintio=\fR0|1]
+[\fIiseek=SKIP\fR] [\fIobs=OBS\fR] [\fIof=OFILE\fR] [\fIof2=OFILE2\fR]
+[\fIoflag=FLAGS\fR] [\fIoseek=SEEK\fR] [\fIprotect=RDP[,WRP]\fR]
+[\fIretries=RETR\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR]
+[\fIverbose=VERB\fR] [\fI\-\-help\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR]
+[\fI\-\-wscan\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
 .PP
@@ -98,7 +99,7 @@ below. Default is 512 which to date has been correct for hard disks.
 Other logical block sizes are 2048 bytes for DVDs and 4096 bytes for
 the coming generation of hard disks.
 .TP
-\fBcdbsz\fR=6 | 10 | 12 | 16
+\fBcdbsz\fR=6 | 10 | 12 | 16 | 32
 size of SCSI READ and/or WRITE commands issued on pt devices.
 Default is 10 byte SCSI command blocks (unless calculations indicate
 that a 4 byte block number may be exceeded or \fIBPT\fR is greater than
@@ -191,11 +192,10 @@ synontm for "seek=".
 \fBprotect\fR=\fIRDP[,WRP]\fR
 where \fIRDP\fR is the RDPROTECT field in SCSI READ commands and \fIWRP\fR
 is the WRPROTECT field in SCSI WRITE commands. The default value for both
-is 0 which implies no additional protection information (typically 8 bytes)
-will be transferred. Both \fIRDP\fR and \fIWRP\fR can be from 0 to 7.
-If \fIRDP\fR is greater than 0 then \fIIFILE\fR must be a pt device. If
-\fIWRP\fR is greater than 0 then \fIOFILE\fR must be a pt device. See the
-PROTECTION section below.
+is 0 which implies no additional protection information will be transferred.
+Both \fIRDP\fR and \fIWRP\fR can be from 0 to 7. If \fIRDP\fR is greater
+than 0 then \fIIFILE\fR must be a pt device. If \fIWRP\fR is greater than 0
+then \fIOFILE\fR must be a pt device. See the PROTECTION section below.
 .TP
 \fBretries\fR=\fIRETR\fR
 sometimes retries at the host are useful, for example when there is a
@@ -483,6 +483,10 @@ Linux). This flag is needed for device nodes that can be accessed both
 via standard UNIX read() and write() commands as well as SCSI commands.
 Such devices default standard UNIX read() and write() commands in the
 absence of this flag.
+.TP
+rarc [i] [pt]
+bit set in READ(10, 12, 16 and 32) to suppress RAID rebuild functions
+when a bad (or recovered after difficulties) block is detected.
 .TP
 resume [o] [reg]
 when a copy is interrupted (e.g. with Control\-C from the keyboard)

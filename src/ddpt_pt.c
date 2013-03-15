@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2012 Douglas Gilbert.
+ * Copyright (c) 2008-2013 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -66,6 +66,18 @@
 #include "sg_cmds_basic.h"
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
+
+#define DDPT_READ6_OC 0x8
+#define DDPT_READ10_OC 0x28
+#define DDPT_READ12_OC 0xa8
+#define DDPT_READ16_OC 0x88
+#define DDPT_WRITE6_OC 0xa
+#define DDPT_WRITE10_OC 0x2a
+#define DDPT_WRITE12_OC 0xaa
+#define DDPT_WRITE16_OC 0x8a
+#define DDPT_VARIABLE_LEN_OC 0x7f
+#define DDPT_READ32_SA 0x9
+#define DDPT_WRITE32_SA 0xb
 
 
 void *
@@ -174,8 +186,8 @@ pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_sect,
     verb = (op->verbose ? op->verbose - 1: 0);
     memset(rcBuff, 0, sizeof(rcBuff));
     if (! protect) {
-        res = sg_ll_readcap_10(sg_fd, 0, 0, rcBuff, READ_CAP_REPLY_LEN, 0,
-			       verb);
+        res = sg_ll_readcap_10(sg_fd, 0, 0, rcBuff, READ_CAP_REPLY_LEN, 1,
+                               verb);
         if (0 != res)
             return res;
     }
@@ -188,7 +200,7 @@ pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_sect,
         if (verb && ! protect)
             fprintf(stderr, "    READ CAPACITY (10) response cannot "
                     "represent this capacity\n");
-        res = sg_ll_readcap_16(sg_fd, 0, 0, rcBuff, RCAP16_REPLY_LEN, 0,
+        res = sg_ll_readcap_16(sg_fd, 0, 0, rcBuff, RCAP16_REPLY_LEN, 1,
                                verb);
         if (0 != res)
             return res;
@@ -226,24 +238,34 @@ pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_sect,
 /* Build a SCSI READ or WRITE CDB. */
 static int
 pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
-                  int64_t start_block, int write_true, int fua, int fua_nv,
-                  int dpo, int protect)
+                  int64_t start_block, int write_true,
+                  const struct flags_t * fp, int protect)
 {
-    int rd_opcode[] = {0x8, 0x28, 0xa8, 0x88};
-    int wr_opcode[] = {0xa, 0x2a, 0xaa, 0x8a};
-    int sz_ind;
+    int rd_opcode[] = {DDPT_READ6_OC, DDPT_READ10_OC, DDPT_READ12_OC,
+                       DDPT_READ16_OC, DDPT_READ32_SA};
+    int wr_opcode[] = {DDPT_WRITE6_OC, DDPT_WRITE10_OC, DDPT_WRITE12_OC,
+                       DDPT_WRITE16_OC, DDPT_WRITE32_SA};
+    int sz_ind, options_byte, rw_sa;
 
     memset(cdbp, 0, cdb_sz);
-    if (cdb_sz > 6) {
-        if (dpo)
-            cdbp[1] |= 0x10;
-        if (fua)
-            cdbp[1] |= 0x8;
-        if (fua_nv)
-            cdbp[1] |= 0x2;
-        if (protect)
-            cdbp[1] |= ((protect & 0x7) << 5);
+    options_byte = 0;
+    if (cdb_sz < 6) {
+        fprintf(stderr, "cdb_sz too small\n");
+        return 1;
     }
+    if (cdb_sz > 6) {
+        if (fp->dpo)
+            options_byte |= 0x10;
+        if (fp->fua)
+            options_byte |= 0x8;
+        if (fp->fua_nv)
+            options_byte |= 0x2;
+        if (protect)
+            options_byte |= ((protect & 0x7) << 5);
+    }
+    if ((! write_true) && fp->rarc)
+        options_byte |= 0x4;
+
     switch (cdb_sz) {
     case 6:
         sz_ind = 0;
@@ -264,9 +286,9 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
                             " beyond %d\n", 0x1fffff);
             return 1;
         }
-        if (dpo || fua) {
-            fprintf(stderr, "for 6 byte commands, neither dpo nor fua"
-                            " bits supported\n");
+        if (fp->dpo || fp->fua || fp->rarc) {
+            fprintf(stderr, "for 6 byte commands, neither dpo, fua, nor "
+                            "rarc bits supported\n");
             return 1;
         }
         break;
@@ -274,6 +296,7 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
         sz_ind = 1;
         cdbp[0] = (unsigned char)(write_true ? wr_opcode[sz_ind] :
                                                rd_opcode[sz_ind]);
+        cdbp[1] = (unsigned char)options_byte;
         cdbp[2] = (unsigned char)((start_block >> 24) & 0xff);
         cdbp[3] = (unsigned char)((start_block >> 16) & 0xff);
         cdbp[4] = (unsigned char)((start_block >> 8) & 0xff);
@@ -290,6 +313,7 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
         sz_ind = 2;
         cdbp[0] = (unsigned char)(write_true ? wr_opcode[sz_ind] :
                                                rd_opcode[sz_ind]);
+        cdbp[1] = (unsigned char)options_byte;
         cdbp[2] = (unsigned char)((start_block >> 24) & 0xff);
         cdbp[3] = (unsigned char)((start_block >> 16) & 0xff);
         cdbp[4] = (unsigned char)((start_block >> 8) & 0xff);
@@ -303,6 +327,7 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
         sz_ind = 3;
         cdbp[0] = (unsigned char)(write_true ? wr_opcode[sz_ind] :
                                                rd_opcode[sz_ind]);
+        cdbp[1] = (unsigned char)options_byte;
         cdbp[2] = (unsigned char)((start_block >> 56) & 0xff);
         cdbp[3] = (unsigned char)((start_block >> 48) & 0xff);
         cdbp[4] = (unsigned char)((start_block >> 40) & 0xff);
@@ -316,9 +341,30 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
         cdbp[12] = (unsigned char)((blocks >> 8) & 0xff);
         cdbp[13] = (unsigned char)(blocks & 0xff);
         break;
+    case 32:
+        sz_ind = 4;
+        cdbp[0] = (unsigned char)DDPT_VARIABLE_LEN_OC;
+        cdbp[7] = (unsigned char)0x18;  /* additional length=>32 byte cdb */
+        rw_sa = write_true ? wr_opcode[sz_ind] : rd_opcode[sz_ind];
+        cdbp[8] = (unsigned char)((rw_sa >> 8) & 0xff);
+        cdbp[9] = (unsigned char)(rw_sa & 0xff);
+        cdbp[10] = (unsigned char)options_byte;
+        cdbp[12] = (unsigned char)((start_block >> 56) & 0xff);
+        cdbp[13] = (unsigned char)((start_block >> 48) & 0xff);
+        cdbp[14] = (unsigned char)((start_block >> 40) & 0xff);
+        cdbp[15] = (unsigned char)((start_block >> 32) & 0xff);
+        cdbp[16] = (unsigned char)((start_block >> 24) & 0xff);
+        cdbp[17] = (unsigned char)((start_block >> 16) & 0xff);
+        cdbp[18] = (unsigned char)((start_block >> 8) & 0xff);
+        cdbp[19] = (unsigned char)(start_block & 0xff);
+        cdbp[28] = (unsigned char)((blocks >> 24) & 0xff);
+        cdbp[29] = (unsigned char)((blocks >> 16) & 0xff);
+        cdbp[30] = (unsigned char)((blocks >> 8) & 0xff);
+        cdbp[31] = (unsigned char)(blocks & 0xff);
+        break;
     default:
-        fprintf(stderr, "expected cdb size of 6, 10, 12, or 16 but got"
-                        " %d\n", cdb_sz);
+        fprintf(stderr, "expected cdb size of 6, 10, 12, 16 or 32 but got "
+                        "%d\n", cdb_sz);
         return 1;
     }
     return 0;
@@ -347,7 +393,7 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
     struct sg_scsi_sense_hdr ssh;
 
     if (pt_build_scsi_cdb(rdCmd, fp->cdbsz, blocks, from_block, 0,
-                          fp->fua, fp->fua_nv, fp->dpo, protect)) {
+                          fp, protect)) {
         fprintf(stderr, "bad rd cdb build, from_block=%"PRId64", "
                 "blocks=%d\n", from_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
@@ -712,8 +758,8 @@ pt_low_write(struct opts_t * op, unsigned char * buff, int blocks,
     const struct flags_t * ofp = op->oflagp;
     struct sg_scsi_sense_hdr ssh;
 
-    if (pt_build_scsi_cdb(wrCmd, ofp->cdbsz, blocks, to_block, 1, ofp->fua,
-                          ofp->fua_nv, ofp->dpo, op->wrprotect)) {
+    if (pt_build_scsi_cdb(wrCmd, ofp->cdbsz, blocks, to_block, 1, ofp,
+                          op->wrprotect)) {
         fprintf(stderr, "bad wr cdb build, to_block=%"PRId64", blocks=%d\n",
                 to_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
@@ -941,11 +987,11 @@ pt_sync_cache(int fd)
 {
     int res;
 
-    res = sg_ll_sync_cache_10(fd, 0, 0, 0, 0, 0, 0, 0);
+    res = sg_ll_sync_cache_10(fd, 0, 0, 0, 0, 0, 1, 0);
     if (SG_LIB_CAT_UNIT_ATTENTION == res) {
         fprintf(stderr, "Unit attention (out, sync cache), "
                 "continuing\n");
-        res = sg_ll_sync_cache_10(fd, 0, 0, 0, 0, 0, 0, 0);
+        res = sg_ll_sync_cache_10(fd, 0, 0, 0, 0, 0, 1, 0);
     }
     if (0 != res)
         fprintf(stderr, "Unable to do SCSI synchronize cache\n");

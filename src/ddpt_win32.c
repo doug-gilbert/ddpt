@@ -158,7 +158,7 @@ dd_filetype(const char * fn, int verbose)
 {
     size_t len = strlen(fn);
 
-    verbose = verbose;	/* suppress warning */
+    verbose = verbose;  /* suppress warning */
     if ((1 == len) && ('.' == fn[0]))
         return FT_DEV_NULL;
     else if ((3 == len) && (

@@ -47,7 +47,7 @@ $ stat -c %s dst2
 # Sometimes it may be useful to preserve permissions and timestamps
 # of the src file. After the copy (by ddpt or dd) call these:
 $ chmod --reference=src dst2
-$ touch --reference=src dst2 
+$ touch --reference=src dst2
 # and to preserve the src's ACL (Access Control List):
 $ getfacl src | setfacl --set-file=- dst2
 
@@ -56,7 +56,7 @@ $ getfacl src | setfacl --set-file=- dst2
 # had a block size of 512 bytes. However for copying regular (normal)
 # files bs=1 would be a clearer choice. dd is relatively inefficient when
 # bs=1 but ddpt should be faster. So we can do this:
-$ ddpt if=src bs=1 of=dst2 oflag=trunc          
+$ ddpt if=src bs=1 of=dst2 oflag=trunc
 6915+0 records in
 6915+0 records out
 time to transfer data: 0.000134 secs at 51.60 MB/sec
@@ -127,7 +127,7 @@ time to read data: 20.575803 secs at 260.92 MB/sec
 # Zero filled blocks are listed as "bypassed records out" (even though
 # nothing is actually written). When the granularity of the check for
 # zeros is 64 KB then 5672704 zero blocks are found. When the granularity
-# of the check is reduced to 512 bytes then 6317217 zero blocks are found. 
+# of the check is reduced to 512 bytes then 6317217 zero blocks are found.
 
 
 # As an example of write sparing, assume the regular file t exists
@@ -175,7 +175,7 @@ time to transfer data: 10.543506 secs at 68.45 MB/sec
 # By checking the size of sda2.bin the resume logic has adjusted
 # the skip, seek and count options to complete the rest of the
 # copy. If the copy was finished then making the same invocation
-# is harmless: 
+# is harmless:
 $ ddpt if=/dev/sda2 of=sda2.bin bs=512 oflag=resume
 resume finds copy complete, exiting
 # And if sda2.bin was empty on did not exist then a full copy
@@ -187,8 +187,8 @@ resume finds copy complete, exiting
 # operation (also known as unmap) with "deterministic read
 # zero after trim". ddpt treats a trim like sparse, however
 # instead of bypassing a segment of zeros a trim command is sent.
-# In SCSI parlance trim is a WRITE SAME with the UNMAP bit set. 
-$ ddpt if=/dev/sdb1 bs=512 of=/dev/sg1 seek=73899000 oflag=trim          
+# In SCSI parlance trim is a WRITE SAME with the UNMAP bit set.
+$ ddpt if=/dev/sdb1 bs=512 of=/dev/sg1 seek=73899000 oflag=trim
 18314037+0 records in
 16970165+0 records out
 1343872 trimmed records out

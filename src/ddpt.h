@@ -75,7 +75,7 @@
 #define DEF_BPT_LT32768 4    /* BPT when IBS < 32768 */
 #define DEF_BPT_GE32768 1    /* BPT when IBS >= 32768 */
 #define DEF_SCSI_CDBSZ 10
-#define MAX_SCSI_CDBSZ 16
+#define MAX_SCSI_CDBSZ 32
 
 #define SENSE_BUFF_LEN 32       /* Arbitrary, could be larger */
 #define READ_CAP_REPLY_LEN 8
@@ -160,6 +160,7 @@ struct flags_t {
     int prealloc;
     int pt;
     int resume;
+    int rarc;
     int retries;
     int self;
     int sparing;
@@ -197,11 +198,11 @@ struct opts_t {
     int out2_type;
     int out2fd;
     int rdprotect;
-    int rdprot_typ;
-    int rdp_i_exp;
+    int rdprot_typ;     /* from RCAP(16) */
+    int rdp_i_exp;      /* from RCAP(16) */
     int wrprotect;
-    int wrprot_typ;
-    int wrp_i_exp;
+    int wrprot_typ;     /* from RCAP(16) */
+    int wrp_i_exp;      /* from RCAP(16) */
     int cdbsz_given;
     int coe_limit;
     int coe_count;
