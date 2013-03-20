@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20130315 [svn: r203]";
+static char * version_str = "0.93 20130319 [svn: r204]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -134,11 +134,15 @@ static char * version_str = "0.93 20130315 [svn: r203]";
 #define PREALLOC_DEBUG 1
 
 
+/* The use of signals is borrowed from GNU's dd source code which is
+ * found in their coreutils package. If SA_NOCLDSTOP is non-zero then
+ * a modern Posix compliant version of signals is assumed . */
+
 /* If nonzero, the value of the pending fatal signal.  */
 static sig_atomic_t volatile interrupt_signal;
 
-/* A count of the number of pending info signals that have been received.  */
-static sig_atomic_t volatile info_signal_count;
+/* A count of pending info(usr1) signals, decremented as processed */
+static sig_atomic_t volatile info_signals_pending;
 
 static const char * errblk_file = "errblk.txt";
 
@@ -365,32 +369,60 @@ siginfo_handler(int sig)
 {
     if (! SA_NOCLDSTOP)
         signal(sig, siginfo_handler);
-    info_signal_count++;
+    ++info_signals_pending;
 }
 
-/* Install the signal handlers.  */
+/* Install the signal handlers. We try to cope gracefully with signals whose
+ * disposition is 'ignored'. SUSv3 recommends that a process should start
+ * with no blocked signals; if needed unblock SIGINFO, SIGINT or SIGPIPE.  */
 static void
 install_signal_handlers(struct opts_t * op)
 {
-    int catch_siginfo = !((SIGINFO == SIGUSR1) && getenv("POSIXLY_CORRECT"));
+#if SIGINFO == SIGUSR1
+    const char * sname = "SIGUSR1";
+#else
+    const char * sname = "SIGINFO";
+#endif
 
 #if SA_NOCLDSTOP
     struct sigaction act;
+    sigset_t starting_mask;
     int num_members = 0;
+    int unblock_starting_mask = 0;
 
     sigemptyset(&op->caught_signals);
-    if (catch_siginfo) {
-        sigaction(SIGINFO, NULL, &act);
-        if (act.sa_handler != SIG_IGN)
-            sigaddset(&op->caught_signals, SIGINFO);
-    }
+    sigaction(SIGINFO, NULL, &act);
+    if (act.sa_handler != SIG_IGN)
+        sigaddset(&op->caught_signals, SIGINFO);
+    else if (op->verbose)
+        fprintf(stderr, "%s ignored, progress report not available\n", sname);
     sigaction(SIGINT, NULL, &act);
     if (act.sa_handler != SIG_IGN)
         sigaddset(&op->caught_signals, SIGINT);
+    else if (op->verbose)
+        fprintf(stderr, "SIGINT ignored\n");
     sigaction(SIGPIPE, NULL, &act);
     if (act.sa_handler != SIG_IGN)
         sigaddset(&op->caught_signals, SIGPIPE);
+    else if (op->verbose)
+        fprintf(stderr, "SIGPIPE ignored\n");
 
+    sigprocmask(SIG_UNBLOCK /* ignored */, NULL, &starting_mask);
+    if (sigismember(&starting_mask, SIGINFO)) {
+        if (op->verbose)
+            fprintf(stderr, "%s blocked on entry, unblock\n", sname);
+        ++unblock_starting_mask;
+    }
+    if (sigismember(&starting_mask, SIGINT)) {
+        if (op->verbose)
+            fprintf(stderr, "SIGINT blocked on entry, unblock\n");
+        ++unblock_starting_mask;
+    }
+    if (sigismember(&starting_mask, SIGPIPE)) {
+        if (op->verbose)
+            fprintf(stderr, "SIGPIPE blocked on entry, unblock\n");
+        ++unblock_starting_mask;
+    }
     act.sa_mask = op->caught_signals;
 
     if (sigismember(&op->caught_signals, SIGINFO)) {
@@ -413,19 +445,24 @@ install_signal_handlers(struct opts_t * op)
         sigaction(SIGPIPE, &act, NULL);
         ++num_members;
     }
+    if (unblock_starting_mask)
+        sigprocmask(SIG_UNBLOCK, &op->caught_signals, NULL);
 
     if ((0 == op->interrupt_io) && (num_members > 0))
-        sigprocmask(SIG_BLOCK, &op->caught_signals, NULL);
+        sigprocmask(SIG_BLOCK, &op->caught_signals, &op->orig_mask);
 #else
     op = op;    /* suppress warning */
-    if (catch_siginfo && signal(SIGINFO, SIG_IGN) != SIG_IGN) {
+    if (signal(SIGINFO, SIG_IGN) != SIG_IGN) {
         signal(SIGINFO, siginfo_handler);
         siginterrupt(SIGINFO, 1);
-    }
+    } else if (op->verbose)
+        fprintf(stderr, "old %s ignored, progress report not available\n",
+                sname);
     if (signal(SIGINT, SIG_IGN) != SIG_IGN) {
         signal(SIGINT, interrupt_handler);
         siginterrupt(SIGINT, 1);
-    }
+    } else if (op->verbose)
+        fprintf(stderr, "old SIGINT ignored\n");
 #endif
 }
 
@@ -435,12 +472,9 @@ install_signal_handlers(struct opts_t * op)
 static void
 process_signals(struct opts_t * op)
 {
-    sigset_t oldset;
     char b[32];
 
 #if SA_NOCLDSTOP
-    int normally_blocked = 0;
-
     if ((0 == op->interrupt_io) &&
         (sigismember(&op->caught_signals, SIGINT) ||
          sigismember(&op->caught_signals, SIGPIPE) ||
@@ -450,37 +484,34 @@ process_signals(struct opts_t * op)
         sigpending(&pending_set);
         if (sigismember(&pending_set, SIGINT) ||
             sigismember(&pending_set, SIGPIPE) ||
-            sigismember(&pending_set, SIGINFO)) {
-            sigprocmask(SIG_UNBLOCK, &op->caught_signals, &oldset);
-            /* window to allow SIGINT+SIGINFO handlers to run */
-            sleep(0);   // Is there a better way to force reschedule?
-            sigprocmask(SIG_SETMASK, &oldset, NULL);
-            ++normally_blocked;
-        } else
+            sigismember(&pending_set, SIGINFO))
+            /* Signal handler for a pending signal run during suspend */
+            sigsuspend(&op->orig_mask);
+        else
             return;
     }
 #endif
 
-    while (interrupt_signal || info_signal_count) {
+    while (interrupt_signal || info_signals_pending) {
         int interrupt;
         int infos;
 
 #if SA_NOCLDSTOP
-        if (! normally_blocked)
-            sigprocmask(SIG_BLOCK, &op->caught_signals, &oldset);
+        if (op->interrupt_io)
+            sigprocmask(SIG_BLOCK, &op->caught_signals, NULL);
 #endif
 
-        /* Reload interrupt_signal and info_signal_count, in case a new
+        /* Reload interrupt_signal and info_signals_pending, in case a new
            signal was handled before sigprocmask took effect.  */
         interrupt = interrupt_signal;
-        infos = info_signal_count;
+        infos = info_signals_pending;
 
         if (infos)
-            info_signal_count = infos - 1;
+            info_signals_pending = infos - 1;
 
 #if SA_NOCLDSTOP
-        if (! normally_blocked)
-            sigprocmask (SIG_SETMASK, &oldset, NULL);
+        if (op->interrupt_io)
+            sigprocmask (SIG_SETMASK, &op->orig_mask, NULL);
 #endif
 
         if (interrupt) {
@@ -503,10 +534,12 @@ process_signals(struct opts_t * op)
         }
         if (interrupt) {
 #if SA_NOCLDSTOP
-            if (normally_blocked) {
-                sigemptyset(&oldset);
-                sigaddset(&oldset, interrupt);
-                sigprocmask(SIG_UNBLOCK, &oldset, NULL);
+            if (op->interrupt_io) {
+                sigset_t int_set;
+
+                sigemptyset(&int_set);
+                sigaddset(&int_set, interrupt);
+                sigprocmask(SIG_UNBLOCK, &int_set, NULL);
             }
 #endif
             raise(interrupt);
@@ -3539,6 +3572,11 @@ main(int argc, char * argv[])
     }
 
     install_signal_handlers(&ops);
+    if (ops.verbose > 1)
+        fprintf(stderr, " >> %s signal implementation assumed "
+                "[SA_NOCLDSTOP=%d], %smasking during IO\n",
+                (SA_NOCLDSTOP ? "modern" : "old"), SA_NOCLDSTOP,
+                (ops.interrupt_io ? "not " : ""));
 
 #ifdef SG_LIB_WIN32
     win32_adjust_fns(&ops);
