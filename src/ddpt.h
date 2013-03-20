@@ -40,7 +40,7 @@
 #endif
 #endif
 
-/* Borrow signal handling from dd (dd.c in coreutils-8.13) */
+/* Borrow signal handling from dd (src/dd.c in coreutils-8.13) */
 /* Use SA_NOCLDSTOP as a proxy for whether the sigaction machinery is
    present.  */
 #ifndef SA_NOCLDSTOP
@@ -190,7 +190,7 @@ struct opts_t {
     int obpc;
     char inf[INOUTF_SZ];
     int in_type;
-    int interrupt_io;    /* if 0 then mask SIGINT+SIGINFO during IO */
+    int interrupt_io;    /* [intio=0|1] if 0, mask SIGINFO++ during IO */
     char outf[INOUTF_SZ];
     int outf_given;
     int out_type;
@@ -253,6 +253,7 @@ struct opts_t {
 #endif
 #if SA_NOCLDSTOP
     sigset_t caught_signals;
+    sigset_t orig_mask;
 #endif
 #ifdef SG_LIB_WIN32
     int wscan;
