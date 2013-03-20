@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20130319 [svn: r204]";
+static char * version_str = "0.93 20130320 [svn: r205]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -391,6 +391,7 @@ install_signal_handlers(struct opts_t * op)
     int unblock_starting_mask = 0;
 
     sigemptyset(&op->caught_signals);
+    sigemptyset(&op->orig_mask);
     sigaction(SIGINFO, NULL, &act);
     if (act.sa_handler != SIG_IGN)
         sigaddset(&op->caught_signals, SIGINFO);
@@ -475,6 +476,8 @@ process_signals(struct opts_t * op)
     char b[32];
 
 #if SA_NOCLDSTOP
+    int found_pending = 0;
+
     if ((0 == op->interrupt_io) &&
         (sigismember(&op->caught_signals, SIGINT) ||
          sigismember(&op->caught_signals, SIGPIPE) ||
@@ -484,10 +487,11 @@ process_signals(struct opts_t * op)
         sigpending(&pending_set);
         if (sigismember(&pending_set, SIGINT) ||
             sigismember(&pending_set, SIGPIPE) ||
-            sigismember(&pending_set, SIGINFO))
+            sigismember(&pending_set, SIGINFO)) {
             /* Signal handler for a pending signal run during suspend */
             sigsuspend(&op->orig_mask);
-        else
+            found_pending = 1;
+        } else
             return;
     }
 #endif
@@ -497,7 +501,7 @@ process_signals(struct opts_t * op)
         int infos;
 
 #if SA_NOCLDSTOP
-        if (op->interrupt_io)
+        if (! found_pending)
             sigprocmask(SIG_BLOCK, &op->caught_signals, NULL);
 #endif
 
@@ -510,7 +514,7 @@ process_signals(struct opts_t * op)
             info_signals_pending = infos - 1;
 
 #if SA_NOCLDSTOP
-        if (op->interrupt_io)
+        if (! found_pending)
             sigprocmask (SIG_SETMASK, &op->orig_mask, NULL);
 #endif
 
@@ -534,7 +538,7 @@ process_signals(struct opts_t * op)
         }
         if (interrupt) {
 #if SA_NOCLDSTOP
-            if (op->interrupt_io) {
+            if (found_pending) {
                 sigset_t int_set;
 
                 sigemptyset(&int_set);

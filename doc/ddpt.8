@@ -53,10 +53,10 @@ The term "pt device" is used for a pass\-through device to which SCSI
 commands like READ(10) and WRITE(10) may be sent. A pt device may only be
 able to process SCSI commands in which case the "pt" flag is assumed. The
 ability to recognize such a pt only device may vary depending on the
-operating system (e.g. in Linux '/dev/sg2' is recognized). However
-if a device can process either normal UNIX read()/write() calls or
-pass\-through SCSI commands then the default is to use UNIX read()/write()
-calls. That default can be overridden by using the "pt"
+operating system (e.g. in Linux '/dev/sg2' and /dev/bsg/3:0:1:0 are
+recognized). However if a device can process either normal UNIX read()/
+rite() calls or pass\-through SCSI commands then the default is to use
+UNIX read()/write() calls. That default can be overridden by using the "pt"
 flag (e.g. "if=/dev/sdc iflag=pt"). When pt access is specified any
 partition information is
 .B ignored.
@@ -153,8 +153,8 @@ start reading \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of
 synonym for "skip=".
 .TP
 \fBobs\fR=\fIOBS\fR
-where \fIOBS\fR is the \fIOFILE\fR block size in bytes. The default value 
-is \fIBS\fR or its default (512). Conflicts the "bs=" option (e.g. giving 
+where \fIOBS\fR is the \fIOFILE\fR block size in bytes. The default value
+is \fIBS\fR or its default (512). Conflicts the "bs=" option (e.g. giving
 both "bs=512 obs=512" is considered a syntax error).
 If \fIOBS\fR is given then it has the following restriction: the integer
 expression (((\fIIBS\fR * \fIBPT\fR) % \fIOBS\fR) == 0) must be true.
@@ -478,11 +478,11 @@ pt [io] [blk,pt]
 causes a device to be accessed in "pt" mode. In "pt" mode SCSI READ and
 WRITE commands are sent to access blocks rather than standard UNIX read()
 and write() commands. The "pt" mode may be implicit if the device is only
-capable of passing through SCSI commands (e.g. the /dev/sg devices in
-Linux). This flag is needed for device nodes that can be accessed both
-via standard UNIX read() and write() commands as well as SCSI commands.
-Such devices default standard UNIX read() and write() commands in the
-absence of this flag.
+capable of passing through SCSI commands (e.g. the /dev/sg* and
+some /dev/bsg/* devices in Linux). This flag is needed for device nodes
+that can be accessed both via standard UNIX read() and write() commands
+as well as SCSI commands. Such devices default standard UNIX read()
+and write() commands in the absence of this flag.
 .TP
 rarc [i] [pt]
 bit set in READ(10, 12, 16 and 32) to suppress RAID rebuild functions
@@ -701,8 +701,6 @@ block size has protection information then the actual number of bytes
 transferred for each logical block is typically 520 bytes. For such a disk
 \fIBS=512\fR is required even when additional protection information is
 being transferred.
-.PP
-To be continued xxxxxxxxxxxxx
 .SH NOTES
 A partial write is a write to the \fIOFILE\fR of less than \fIOBS\fR
 bytes. This typically occurs at the end of a copy. dd can do partial
