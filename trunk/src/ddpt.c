@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20130320 [svn: r205]";
+static char * version_str = "0.93 20130322 [svn: r206]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -396,7 +396,7 @@ install_signal_handlers(struct opts_t * op)
     if (act.sa_handler != SIG_IGN)
         sigaddset(&op->caught_signals, SIGINFO);
     else if (op->verbose)
-        fprintf(stderr, "%s ignored, progress report not available\n", sname);
+        fprintf(stderr, "%s ignored, progress reports not available\n", sname);
     sigaction(SIGINT, NULL, &act);
     if (act.sa_handler != SIG_IGN)
         sigaddset(&op->caught_signals, SIGINT);
