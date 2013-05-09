@@ -93,7 +93,7 @@ pt_construct_obj(void)
 void
 pt_destruct_obj(void * vp)
 {
-    destruct_scsi_pt_obj(vp);
+    destruct_scsi_pt_obj((struct sg_pt_base *)vp);
 }
 
 int
