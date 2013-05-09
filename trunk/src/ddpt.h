@@ -287,7 +287,7 @@ struct cp_state_t {
 
 struct signum_name_t {
     int num;
-    char * name;
+    const char * name;
 };
 
 extern void * pt_construct_obj(void);

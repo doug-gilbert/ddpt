@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static char * version_str = "0.93 20130322 [svn: r206]";
+static const char * version_str = "0.93 20130508 [svn: r207]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -3150,12 +3150,12 @@ static int
 cp_construct_pt_zero_buff(struct opts_t * op, int obpt)
 {
     if ((FT_PT & op->in_type) && (NULL == op->if_ptvp)) {
-        op->if_ptvp = pt_construct_obj();
+        op->if_ptvp = (struct sg_pt_base *)pt_construct_obj();
         if (NULL == op->if_ptvp)
             return -1;
     }
     if ((FT_PT & op->out_type) && (NULL == op->of_ptvp)) {
-        op->of_ptvp = pt_construct_obj();
+        op->of_ptvp = (struct sg_pt_base *)pt_construct_obj();
         if (NULL == op->of_ptvp)
             return -1;
     }
