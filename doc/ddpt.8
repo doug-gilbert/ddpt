@@ -1,4 +1,4 @@
-.TH DDPT "8" "May 2013" "ddpt\-0.93" DDPT
+.TH DDPT "8" "June 2013" "ddpt\-0.93" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -439,7 +439,7 @@ fua_nv [io] [pt]
 causes the FUA_NV (force unit access non\-volatile cache) bit to be set in
 SCSI READ and/or WRITE commands. This only has an effect with pt devices.
 The 6 byte variants of the SCSI READ and WRITE commands do not support the
-FUA_NV bit.
+FUA_NV bit. The FUA_NV bit was made obsolete in SBC\-3 revision 35d.
 .TP
 ignoreew [o] [tape]
 ignore the early warning indication (of end of tape) when writing to tape.
