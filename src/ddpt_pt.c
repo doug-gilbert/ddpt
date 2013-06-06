@@ -394,7 +394,7 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
 
     if (pt_build_scsi_cdb(rdCmd, fp->cdbsz, blocks, from_block, 0,
                           fp, protect)) {
-        fprintf(stderr, "bad rd cdb build, from_block=%"PRId64", "
+        fprintf(stderr, "bad rd cdb build, from_block=%" PRId64 ", "
                 "blocks=%d\n", from_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
     }
@@ -453,10 +453,10 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
             info_valid = sg_get_sense_info_fld(sense_b, slen, io_addrp);
             if (info_valid)
                 fprintf(stderr, "    lba of last recovered error in this "
-                        "READ=0x%"PRIx64"\n", *io_addrp);
+                        "READ=0x%" PRIx64 "\n", *io_addrp);
             else
                 fprintf(stderr, "Recovered error: [no info] reading from "
-                        "block=0x%"PRIx64", num=%d\n", from_block, blocks);
+                        "block=0x%" PRIx64 ", num=%d\n", from_block, blocks);
             break;
         case SG_LIB_CAT_MEDIUM_HARD:
             ++op->unrecovered_errs;
@@ -584,7 +584,7 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
         case SG_LIB_CAT_MEDIUM_HARD_WITH_INFO:
             if (retries_tmp > 0) {
                 fprintf(stderr, ">>> retrying pt read: starting "
-                        "lba=%"PRId64" [0x%"PRIx64"] blocks=%d\n", lba,
+                        "lba=%" PRId64 " [0x%" PRIx64 "] blocks=%d\n", lba,
                         (uint64_t)lba, blks);
                 --retries_tmp;
                 ++op->num_retries;
@@ -610,7 +610,7 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
         default:
             if (retries_tmp > 0) {
                 fprintf(stderr, ">>> retrying pt read: starting "
-                        "lba=%"PRId64" [0x%"PRIx64"] blocks=%d\n", lba,
+                        "lba=%" PRId64 " [0x%" PRIx64 "] blocks=%d\n", lba,
                         (uint64_t)lba, blks);
                 --retries_tmp;
                 ++op->num_retries;
@@ -625,10 +625,10 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
             continue;
         if ((io_addr < (uint64_t)lba) ||
             (io_addr >= (uint64_t)(lba + blks))) {
-                fprintf(stderr, "  Unrecovered error lba 0x%"PRIx64" not in "
-                    "correct range:\n\t[0x%"PRIx64",0x%"PRIx64"]\n", io_addr,
-                    (uint64_t)lba,
-                    (uint64_t)(lba + blks - 1));
+                fprintf(stderr, "  Unrecovered error lba 0x%" PRIx64 " not "
+                        "in correct range:\n\t[0x%" PRIx64 ",0x%" PRIx64
+                        "]\n", io_addr, (uint64_t)lba,
+                        (uint64_t)(lba + blks - 1));
             may_coe = 1;
             goto err_out;
         }
@@ -696,7 +696,7 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
         }
         bp += (blks * bs);
         lba += blks;
-        fprintf(stderr, ">> unrecovered read error at blk=%"PRId64", "
+        fprintf(stderr, ">> unrecovered read error at blk=%" PRId64 ", "
                 "substitute zeros%s\n", lba,
                 ((pi_len > 0) ? " (PI with 0xFFs)" : ""));
         if (pi_len > 0) {
@@ -722,7 +722,7 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
 err_out:
     if (fp->coe) {
         memset(bp, 0, bs * blks);
-        fprintf(stderr, ">> unable to read at blk=%"PRId64" for "
+        fprintf(stderr, ">> unable to read at blk=%" PRId64 " for "
                 "%d bytes, use zeros\n", lba, bs * blks);
         if (blks > 1)
             fprintf(stderr, ">>   try reducing bpt to limit number "
@@ -760,7 +760,7 @@ pt_low_write(struct opts_t * op, unsigned char * buff, int blocks,
 
     if (pt_build_scsi_cdb(wrCmd, ofp->cdbsz, blocks, to_block, 1, ofp,
                           op->wrprotect)) {
-        fprintf(stderr, "bad wr cdb build, to_block=%"PRId64", blocks=%d\n",
+        fprintf(stderr, "bad wr cdb build, to_block=%" PRId64 ", blocks=%d\n",
                 to_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
     }
@@ -799,10 +799,10 @@ pt_low_write(struct opts_t * op, unsigned char * buff, int blocks,
             info_valid = sg_get_sense_info_fld(sense_b, slen, &io_addr);
             if (info_valid)
                 fprintf(stderr, "    lba of last recovered error in this "
-                        "WRITE=0x%"PRIx64"\n", io_addr);
+                        "WRITE=0x%" PRIx64 "\n", io_addr);
             else
                 fprintf(stderr, "Recovered error: [no info] writing to "
-                        "block=0x%"PRIx64", num=%d\n", to_block, blocks);
+                        "block=0x%" PRIx64 ", num=%d\n", to_block, blocks);
             break;
         case SG_LIB_CAT_ABORTED_COMMAND:
             if (sg_scsi_normalize_sense(sense_b, slen, &ssh) &&
@@ -823,8 +823,8 @@ pt_low_write(struct opts_t * op, unsigned char * buff, int blocks,
         default:
             ++op->wr_unrecovered_errs;
             if (ofp->coe) {
-                fprintf(stderr, ">> ignored errors for out blk=%"PRId64" for "
-                        "%d bytes\n", to_block, bs * blocks);
+                fprintf(stderr, ">> ignored errors for out blk=%" PRId64
+                        " for %d bytes\n", to_block, bs * blocks);
                 ret = 0; /* fudge success */
             }
             break;
@@ -875,8 +875,8 @@ pt_write(struct opts_t * op, unsigned char * buff, int blocks,
         } else if (ret < 0)
             break;
         else if (retries_tmp > 0) {
-            fprintf(stderr, ">>> retrying pt write: starting lba=%"PRId64" "
-                    "[0x%"PRIx64"] blocks=%d\n", to_block,
+            fprintf(stderr, ">>> retrying pt write: starting lba=%" PRId64 " "
+                    "[0x%" PRIx64 "] blocks=%d\n", to_block,
                     (uint64_t)to_block, blocks);
             --retries_tmp;
             ++op->num_retries;
@@ -968,7 +968,7 @@ pt_write_same16(struct opts_t * op, unsigned char * buff, int bs, int blocks,
                 valid = sg_get_sense_info_fld(sense_b, slen, &ull);
                 if (valid)
                     fprintf(stderr, "Medium or hardware error starting at "
-                            "lba=%"PRIu64" [0x%"PRIx64"]\n", ull, ull);
+                            "lba=%" PRIu64 " [0x%" PRIx64 "]\n", ull, ull);
             }
             ret = sense_cat;
             break;

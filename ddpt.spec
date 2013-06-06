@@ -51,7 +51,7 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Mon Jun 03 2013 - dgilbert at interlog dot com
+* Wed Jun 05 2013 - dgilbert at interlog dot com
 - allow tape device in non-pt mode; rework signal handling
   * ddpt-0.93
 * Thu Feb 17 2011 - dgilbert at interlog dot com

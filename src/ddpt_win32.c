@@ -227,7 +227,7 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
     if (offset != csp->if_filepos) {
         if (verbose > 2)
             fprintf(stderr, "moving if filepos: new_pos="
-                    "%"PRId64"\n", (int64_t)offset);
+                    "%" PRId64 "\n", (int64_t)offset);
         if (win32_set_file_pos(op, DDPT_ARG_IN, offset, verbose))
             return SG_LIB_FILE_ERROR;
         csp->if_filepos = offset;
@@ -250,7 +250,7 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
                     if (offset != csp->if_filepos) {
                         if (verbose > 2)
                             fprintf(stderr, "moving if filepos: new_pos="
-                                    "%"PRId64"\n", (int64_t)offset);
+                                    "%" PRId64 "\n", (int64_t)offset);
                         if (win32_set_file_pos(op, DDPT_ARG_IN, offset,
                             verbose))
                             return SG_LIB_FILE_ERROR;
@@ -262,13 +262,13 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
                         zero_coe_limit_count(op);
                         csp->if_filepos += ibs;
                         if (verbose > 2)
-                            fprintf(stderr, "reading 1 block, skip=%"PRId64
+                            fprintf(stderr, "reading 1 block, skip=%" PRId64
                                     " : okay\n", my_skip);
                     } else if (-SG_LIB_CAT_MEDIUM_HARD == res) {
                         if ((res2 = coe_process_eio(op, my_skip)))
                             return res2;
                     } else {
-                        fprintf(stderr, "reading 1 block, skip=%"PRId64
+                        fprintf(stderr, "reading 1 block, skip=%" PRId64
                                 " failed\n", my_skip);
                         csp->leave_reason = SG_LIB_CAT_OTHER;
                         csp->icbpt = k;
@@ -283,7 +283,7 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
                 return 0;
             }
         } else {
-            fprintf(stderr, "read(win32_block), skip=%"PRId64
+            fprintf(stderr, "read(win32_block), skip=%" PRId64
                     " error occurred\n", op->skip);
             return (-SG_LIB_CAT_MEDIUM_HARD == res) ? -res : -1;
         }
@@ -402,13 +402,13 @@ win32_set_file_pos(struct opts_t * op, int which_arg, int64_t pos,
     fh = (DDPT_ARG_IN == which_arg) ? op->ib_fh : op->ob_fh;
     cp = (DDPT_ARG_IN == which_arg) ? "in" : "out";
     if (verbose > 2)
-        fprintf(stderr, "SetFilePointer( 0x%"PRIx64", %s)\n", pos, cp);
+        fprintf(stderr, "SetFilePointer( 0x%" PRIx64 ", %s)\n", pos, cp);
     lo_ret = SetFilePointer(fh, lo32, &hi32, FILE_BEGIN);
     if ((INVALID_SET_FILE_POINTER == lo_ret) &&
         (NO_ERROR != (err = GetLastError()))) {
         if (verbose)
             fprintf(stderr, "SetFilePointer failed to set "
-                    "pos=[0x%"PRIx64"], error=%ld\n", pos, err);
+                    "pos=[0x%" PRIx64 "], error=%ld\n", pos, err);
         return 1;
     }
     return 0;

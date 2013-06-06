@@ -52,7 +52,13 @@ POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
 bin_PROGRAMS = ddpt$(EXEEXT)
-@HAVE_SGUTILS_FALSE@am__append_1 = $(sglib_SOURCES)
+@OS_WIN32_MINGW_TRUE@am__append_1 = ddpt_win32.c \
+@OS_WIN32_MINGW_TRUE@			ddpt_wscan.c
+
+@OS_WIN32_CYGWIN_TRUE@am__append_2 = ddpt_win32.c \
+@OS_WIN32_CYGWIN_TRUE@			ddpt_wscan.c
+
+@HAVE_SGUTILS_FALSE@am__append_3 = $(sglib_SOURCES)
 @HAVE_SGUTILS_TRUE@ddpt_DEPENDENCIES =
 subdir = src
 DIST_COMMON = $(srcdir)/Makefile.am $(srcdir)/Makefile.in
@@ -72,12 +78,16 @@ am__ddpt_SOURCES_DIST = ddpt.c ddpt.h ddpt_pt.c ddpt_win32.c \
 	../lib/sg_cmds_basic.c ../lib/sg_cmds_basic2.c \
 	../include/sg_cmds_basic.h ../include/sg_pt.h \
 	../lib/sg_pt_common.c
-am__objects_1 = sg_lib.$(OBJEXT) sg_lib_data.$(OBJEXT) \
+@OS_WIN32_MINGW_TRUE@am__objects_1 = ddpt_win32.$(OBJEXT) \
+@OS_WIN32_MINGW_TRUE@	ddpt_wscan.$(OBJEXT)
+@OS_WIN32_CYGWIN_TRUE@am__objects_2 = ddpt_win32.$(OBJEXT) \
+@OS_WIN32_CYGWIN_TRUE@	ddpt_wscan.$(OBJEXT)
+am__objects_3 = sg_lib.$(OBJEXT) sg_lib_data.$(OBJEXT) \
 	sg_cmds_basic.$(OBJEXT) sg_cmds_basic2.$(OBJEXT) \
 	sg_pt_common.$(OBJEXT)
-@HAVE_SGUTILS_FALSE@am__objects_2 = $(am__objects_1)
-am_ddpt_OBJECTS = ddpt.$(OBJEXT) ddpt_pt.$(OBJEXT) \
-	ddpt_win32.$(OBJEXT) ddpt_wscan.$(OBJEXT) $(am__objects_2)
+@HAVE_SGUTILS_FALSE@am__objects_4 = $(am__objects_3)
+am_ddpt_OBJECTS = ddpt.$(OBJEXT) ddpt_pt.$(OBJEXT) $(am__objects_1) \
+	$(am__objects_2) $(am__objects_4)
 ddpt_OBJECTS = $(am_ddpt_OBJECTS)
 DEFAULT_INCLUDES = -I.@am__isrc@ -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/depcomp
@@ -197,14 +207,15 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 
-# for C++ testing
-# CC = g++
+# for C++/clang testing
 
 # INCLUDES = -I$(top_srcdir)/include -I$(top_srcdir)/include/scsi
+
+# -std=<s> can be c99, c11, gnu11, etc. Default is gnu89 (gnu90 is the same)
 AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W
-# AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W -pedantic -std=c99
-ddpt_SOURCES = ddpt.c ddpt.h ddpt_pt.c ddpt_win32.c ddpt_wscan.c \
-	$(am__append_1)
+# AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W -pedantic -std=c11
+ddpt_SOURCES = ddpt.c ddpt.h ddpt_pt.c $(am__append_1) $(am__append_2) \
+	$(am__append_3)
 sglib_SOURCES = ../lib/sg_lib.c \
                         ../include/sg_lib.h     \
                         ../lib/sg_lib_data.c    \
