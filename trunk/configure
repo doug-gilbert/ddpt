@@ -592,6 +592,16 @@ LIBOBJS
 HAVE_SGUTILS_FALSE
 HAVE_SGUTILS_TRUE
 SGUTILS_LIBS
+OS_WIN32_CYGWIN_FALSE
+OS_WIN32_CYGWIN_TRUE
+OS_WIN32_MINGW_FALSE
+OS_WIN32_MINGW_TRUE
+OS_SOLARIS_FALSE
+OS_SOLARIS_TRUE
+OS_LINUX_FALSE
+OS_LINUX_TRUE
+OS_FREEBSD_FALSE
+OS_FREEBSD_TRUE
 os_libs
 os_deps
 host_os
@@ -4292,6 +4302,48 @@ _ACEOF
  ;;
 esac
 
+# Define platform-specific symbol.
+ if echo $host_os | grep 'freebsd' > /dev/null; then
+  OS_FREEBSD_TRUE=
+  OS_FREEBSD_FALSE='#'
+else
+  OS_FREEBSD_TRUE='#'
+  OS_FREEBSD_FALSE=
+fi
+
+ if echo $host_os | grep '^linux' > /dev/null; then
+  OS_LINUX_TRUE=
+  OS_LINUX_FALSE='#'
+else
+  OS_LINUX_TRUE='#'
+  OS_LINUX_FALSE=
+fi
+
+ if echo $host_os | grep '^solaris' > /dev/null; then
+  OS_SOLARIS_TRUE=
+  OS_SOLARIS_FALSE='#'
+else
+  OS_SOLARIS_TRUE='#'
+  OS_SOLARIS_FALSE=
+fi
+
+ if echo $host_os | grep '^mingw' > /dev/null; then
+  OS_WIN32_MINGW_TRUE=
+  OS_WIN32_MINGW_FALSE='#'
+else
+  OS_WIN32_MINGW_TRUE='#'
+  OS_WIN32_MINGW_FALSE=
+fi
+
+ if echo $host_os | grep '^cygwin' > /dev/null; then
+  OS_WIN32_CYGWIN_TRUE=
+  OS_WIN32_CYGWIN_FALSE='#'
+else
+  OS_WIN32_CYGWIN_TRUE='#'
+  OS_WIN32_CYGWIN_FALSE=
+fi
+
+
 # Check whether --enable-linuxbsg was given.
 if test "${enable_linuxbsg+set}" = set; then :
   enableval=$enable_linuxbsg;
@@ -4496,6 +4548,26 @@ Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${am__fastdepCC_TRUE}" && test -z "${am__fastdepCC_FALSE}"; then
   as_fn_error $? "conditional \"am__fastdepCC\" was never defined.
+Usually this means the macro was only invoked conditionally." "$LINENO" 5
+fi
+if test -z "${OS_FREEBSD_TRUE}" && test -z "${OS_FREEBSD_FALSE}"; then
+  as_fn_error $? "conditional \"OS_FREEBSD\" was never defined.
+Usually this means the macro was only invoked conditionally." "$LINENO" 5
+fi
+if test -z "${OS_LINUX_TRUE}" && test -z "${OS_LINUX_FALSE}"; then
+  as_fn_error $? "conditional \"OS_LINUX\" was never defined.
+Usually this means the macro was only invoked conditionally." "$LINENO" 5
+fi
+if test -z "${OS_SOLARIS_TRUE}" && test -z "${OS_SOLARIS_FALSE}"; then
+  as_fn_error $? "conditional \"OS_SOLARIS\" was never defined.
+Usually this means the macro was only invoked conditionally." "$LINENO" 5
+fi
+if test -z "${OS_WIN32_MINGW_TRUE}" && test -z "${OS_WIN32_MINGW_FALSE}"; then
+  as_fn_error $? "conditional \"OS_WIN32_MINGW\" was never defined.
+Usually this means the macro was only invoked conditionally." "$LINENO" 5
+fi
+if test -z "${OS_WIN32_CYGWIN_TRUE}" && test -z "${OS_WIN32_CYGWIN_FALSE}"; then
+  as_fn_error $? "conditional \"OS_WIN32_CYGWIN\" was never defined.
 Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${HAVE_SGUTILS_TRUE}" && test -z "${HAVE_SGUTILS_FALSE}"; then

@@ -1,20 +1,21 @@
 bin_PROGRAMS = ddpt
 
-# for C++ testing
-# CC = g++
+# for C++/clang testing
+## CC = g++ -std=c++11
+## CC = g++
+## CC =clang
 
 # INCLUDES = -I$(top_srcdir)/include -I$(top_srcdir)/include/scsi
 
+# -std=<s> can be c99, c11, gnu11, etc. Default is gnu89 (gnu90 is the same)
 AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W
-# AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W -pedantic -std=c99
+# AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W -pedantic -std=c11
 
 
 
 ddpt_SOURCES =		ddpt.c	\
 			ddpt.h	\
-			ddpt_pt.c \
-			ddpt_win32.c \
-			ddpt_wscan.c
+			ddpt_pt.c
 
 sglib_SOURCES =         ../lib/sg_lib.c \
                         ../include/sg_lib.h     \
@@ -25,6 +26,16 @@ sglib_SOURCES =         ../lib/sg_lib.c \
                         ../include/sg_cmds_basic.h      \
                         ../include/sg_pt.h      \
                         ../lib/sg_pt_common.c
+
+if OS_WIN32_MINGW
+ddpt_SOURCES +=         ddpt_win32.c \
+			ddpt_wscan.c
+endif
+
+if OS_WIN32_CYGWIN
+ddpt_SOURCES +=         ddpt_win32.c \
+			ddpt_wscan.c
+endif
 
 if HAVE_SGUTILS
 INCLUDES = -I/usr/include/scsi
