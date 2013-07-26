@@ -137,8 +137,10 @@
 /* conv= arguments are mapped to flag arguments */
 struct flags_t {
     int append;
+    int cat;            /* xcopy related */
     int cdbsz;
     int coe;
+    int dc;             /* xcopy related */
     int direct;
     int dpo;
     int errblk;
@@ -158,7 +160,7 @@ struct flags_t {
     int nowrite;
     int pad;
     int prealloc;
-    int pt;
+    int pt;     /* use pass-through to inject SCSI commands */
     int resume;
     int rarc;
     int retries;
@@ -170,6 +172,7 @@ struct flags_t {
     int sync;
     int trunc;
     int wsame16;
+    int xcopy;
 };
 
 /* command line options, statistics and other semi-static data */
@@ -188,15 +191,19 @@ struct opts_t {
     int bpt_i;          /* blocks (of input) per transfer */
     int bpt_given;
     int obpc;
+    int id_usage;       /* xcopy related, init to -1 */
     char inf[INOUTF_SZ];
     int in_type;
-    int interrupt_io;    /* [intio=0|1] if 0, mask SIGINFO++ during IO */
+    int interrupt_io;   /* [intio=0|1] if 0, mask SIGINFO++ during IO */
+    int list_id;        /* xcopy related */
+    int list_id_given;  /* xcopy related */
     char outf[INOUTF_SZ];
     int outf_given;
     int out_type;
     char out2f[INOUTF_SZ];
     int out2_type;
     int out2fd;
+    int prio;           /* xcopy related */
     int rdprotect;
     int rdprot_typ;     /* from RCAP(16) */
     int rdp_i_exp;      /* from RCAP(16) */
@@ -229,7 +236,14 @@ struct opts_t {
     int unrecovered_errs;        /* on reads */
     int wr_recovered_errs;
     int wr_unrecovered_errs;
+    int do_help;
     int do_time;
+    int has_xcopy;
+    int xc_cat;
+    int xc_dc;
+    unsigned long xc_min_bytes;
+    unsigned long xc_max_bytes;
+    int status_none;
     int trim_errs;
     int read_tape_numbytes;
     int last_tape_read_len;  /* Length of previous tape read */
@@ -289,6 +303,8 @@ struct signum_name_t {
     int num;
     const char * name;
 };
+
+extern int pr2serr(const char * fmt, ...);
 
 extern void * pt_construct_obj(void);
 extern void pt_destruct_obj(void * vp);
