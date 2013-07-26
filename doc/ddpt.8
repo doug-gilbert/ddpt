@@ -4,14 +4,14 @@ ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
 .SH SYNOPSIS
 .B ddpt
-[\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fR6|10|12|16|32]
-[\fIcoe=\fR0|1] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
-[\fIibs=IBS\fR] \fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIintio=\fR0|1]
-[\fIiseek=SKIP\fR] [\fIobs=OBS\fR] [\fIof=OFILE\fR] [\fIof2=OFILE2\fR]
-[\fIoflag=FLAGS\fR] [\fIoseek=SEEK\fR] [\fIprotect=RDP[,WRP]\fR]
-[\fIretries=RETR\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR]
-[\fIverbose=VERB\fR] [\fI\-\-help\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR]
-[\fI\-\-wscan\fR]
+[\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fR{6|10|12|16|32}]
+[\fIcoe=\fR{0|1}] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
+[\fIibs=IBS\fR] [\fIid_usage=LIU\fR] \fIif=IFILE\fR [\fIiflag=FLAGS\fR]
+[\fIintio=\fR{0|1}] [\fIiseek=SKIP\fR] [\fIlist_id=LID\fR] [\fIobs=OBS\fR]
+[\fIof=OFILE\fR] [\fIof2=OFILE2\fR] [\fIoflag=FLAGS\fR] [\fIoseek=SEEK\fR]
+[\fIprio=PRIO\fR] [\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR]
+[\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR] [\fIverbose=VERB\fR]
+[\fI\-\-help\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
 .PP
@@ -63,6 +63,14 @@ partition information is
 So "if=/dev/sdc2 iflag=pt skip=3" will start at logical block address 3
 of '/dev/sdc'. As a protection measure in version 0.92 ddpt will only
 accept that if the force flag is given in addition to pt.
+.PP
+Via the SCSI pass\-through this utility supports the EXTENDED COPY (LID1)
+command. LID1 stands for List IDentifier length of 1 byte which is found
+in SPC\-4, SPC\-3 and earlier standards. Recent SPC\-4 drafts have added
+the EXTENDED COPY (LID4) command which is not yet supported by this utility.
+EXTENDED COPY is often shortened to XCOPY and the lower case form: xcopy,
+is used below to indicate EXTENDED COPY specific options, flags and related
+information.
 .SH OPTIONS
 .TP
 \fBbpt\fR=\fIBPT[,OBPC]\fR
@@ -99,13 +107,13 @@ below. Default is 512 which to date has been correct for hard disks.
 Other logical block sizes are 2048 bytes for DVDs and 4096 bytes for
 the coming generation of hard disks.
 .TP
-\fBcdbsz\fR=6 | 10 | 12 | 16 | 32
+\fBcdbsz\fR={6|10|12|16|32}
 size of SCSI READ and/or WRITE commands issued on pt devices.
 Default is 10 byte SCSI command blocks (unless calculations indicate
 that a 4 byte block number may be exceeded or \fIBPT\fR is greater than
 16 bits (65535), in which case it defaults to 16 byte SCSI commands).
 .TP
-\fBcoe\fR=0 | 1
+\fBcoe\fR={0|1}
 set to 1 for continue on error. Applies to errors on input and output pt
 devices plus input from block devices or regular files. Errors on other
 files will stop ddpt. Default is 0 which implies stop on any error. See
@@ -131,6 +139,9 @@ where \fIIBS\fR is the \fIIFILE\fR block size in bytes. The default value
 is \fIBS\fR or its default (512). Conflicts the "bs=" option (e.g. giving
 both "bs=512 ibs=512" is considered a syntax error).
 .TP
+\fBid_usage\fR=\fILIU\fR
+xcopy: xxxxxxxxxxxxxxx
+.TP
 \fBif\fR=\fIIFILE\fR
 read from \fIIFILE\fR. This option must be given (i.e. it is mandatory). If
 \fIIFILE\fR is '\-' then stdin is read. Starts reading at the beginning of
@@ -141,7 +152,7 @@ where \fIFLAGS\fR is a comma separated list of one or more flags outlined
 in the FLAGS section below.  These flags are associated with \fIIFILE\fR and
 are ignored when \fIIFILE\fR is stdin.
 .TP
-\fBintio\fR=0 | 1
+\fBintio\fR={0|1}
 set to 1 for allow signals (SIGINT, SIGPIPE and SIGUSR1 (or SIGINFO)) to be
 received during IO from \fIIFILE\fR or IO to \fIOFILE\fR or \fIOFILE2\fR.
 Default is 0 and these signals are masked during IO operations with a check
@@ -151,6 +162,9 @@ prior IO.
 start reading \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of
 \fIIFILE\fR. Default is block 0 (i.e. start of file). This option is a
 synonym for "skip=".
+.TP
+\fBlist_id\fR=\fILID\fR
+xcopy: xxxxxxxxxxxxxxx
 .TP
 \fBobs\fR=\fIOBS\fR
 where \fIOBS\fR is the \fIOFILE\fR block size in bytes. The default value
@@ -188,6 +202,9 @@ ignored when \fIOFILE\fR is /dev/null, '.' (period), or stdout.
 start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
 \fIOFILE\fR. Default is block 0 (i.e. start of file). This option is a
 synonym for "seek=".
+.TP
+\fBprio\fR=\fIPRIO\fR
+xcopy: xxxxxxxxxxxxxxx
 .TP
 \fBprotect\fR=\fIRDP[,WRP]\fR
 where \fIRDP\fR is the RDPROTECT field in SCSI READ commands and \fIWRP\fR
@@ -798,6 +815,9 @@ should be same:
    ddpt if=/dev/sdb of=tt bs=512
 .PP
    ddpt if=/dev/sg2 of=ttt bs=512
+.PP
+The SCSI READ(32) and WRITE(32) commands are restricted to media that is
+formatted with protection type 2. This is a T10 restriction.
 .SH EXAMPLES
 The examples in this page use Linux device names. For suitable device
 names in other supported Operating Systems see this web page:

@@ -15,7 +15,8 @@ AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
 
 ddpt_SOURCES =		ddpt.c	\
 			ddpt.h	\
-			ddpt_pt.c
+			ddpt_pt.c \
+			ddpt_xcopy.c
 
 sglib_SOURCES =         ../lib/sg_lib.c \
                         ../include/sg_lib.h     \
