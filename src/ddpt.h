@@ -133,8 +133,9 @@
 #endif
 
 
-/* One instance for arguments to iflag= , another instance for oflag= */
-/* conv= arguments are mapped to flag arguments */
+/* One instance for arguments to iflag= , another instance for oflag=
+ * conv= arguments are mapped to flag arguments.
+ * General or for disk unless otherwise marked. */
 struct flags_t {
     int append;
     int cat;            /* xcopy related */
@@ -151,14 +152,14 @@ struct flags_t {
     int fsync;
     int fua;
     int fua_nv;
-    int ignoreew;
+    int ignoreew;	/* tape */
     int pdt;
     int nocache;
-    int nofm;
+    int nofm;		/* tape */
     int nopad;
     int norcap;
     int nowrite;
-    int pad;
+    int pad;		/* used for xcopy or tape */
     int prealloc;
     int pt;     /* use pass-through to inject SCSI commands */
     int resume;

@@ -743,7 +743,7 @@ process_flags(const char * arg, struct flags_t * fp)
             ++fp->fua_nv;
         else if (0 == strcmp(cp, "fua"))
             ++fp->fua;
-        else if (0 == strcmp(cp, "ignoreew")) /* "ignore early warning" */
+        else if (0 == strcmp(cp, "ignoreew")) /* tape: ignore early warning */
             ++fp->ignoreew;
         else if (0 == strcmp(cp, "nocache"))
             ++fp->nocache;
@@ -923,7 +923,7 @@ cl_sanity_defaults(struct opts_t * op)
     if (op->iflagp->xcopy || op->oflagp->xcopy) {
         if (op->iflagp->xcopy && op->oflagp->xcopy) {
             pr2serr("Since xcopy set in both iflag= and oflags"
-                    "will sent xcopy to if=%s\n", op->inf);
+                    "will send xcopy to if=%s\n", op->inf);
             op->oflagp->xcopy = 0;
         }
         op->has_xcopy = 1;
