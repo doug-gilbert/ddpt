@@ -172,9 +172,9 @@ dd_filetype(const char * fn, int verbose)
         return FT_REG;
 }
 
-/* Adjust device file name for Windows */
+/* Adjust device file name for Windows; pass-through setup */
 void
-win32_adjust_fns(struct opts_t * op)
+win32_adjust_fns_pt(struct opts_t * op)
 {
     char b[INOUTF_SZ];
     char * fn_arr[2];
@@ -207,14 +207,19 @@ win32_adjust_fns(struct opts_t * op)
             }
         }
     }
+#ifdef SG_LIB_WIN32_DIRECT
+    if (op->verbose > 4)
+        pr2serr("Initial win32 SPT interface state: %s\n",
+                scsi_pt_win32_spt_state() ? "direct" : "indirect");
+    scsi_pt_win32_direct(SG_LIB_WIN32_DIRECT /* SPT pt interface */);
+#endif
 }
 
 /* Main copy loop's read (input) for win32 block device. Returns 0 on
  * success, else SG_LIB_FILE_ERROR, SG_LIB_CAT_MEDIUM_HARD or -1 . */
 int
 win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
-                    unsigned char * wrkPos, int * ifull_extrap,
-                    int verbose)
+                    unsigned char * bp, int * ifull_extrap, int verbose)
 {
     int k, res, res2;
     int ibs = op->ibs;
@@ -232,12 +237,12 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
             return SG_LIB_FILE_ERROR;
         csp->if_filepos = offset;
     }
-    res = win32_block_read(op, wrkPos, numbytes, verbose);
+    res = win32_block_read(op, bp, numbytes, verbose);
     if (res < 0) {
         if ((-SG_LIB_CAT_MEDIUM_HARD == res) && (op->iflagp->coe)) {
             if (1 == csp->icbpt) {
                 // Don't read again, this must be bad block
-                memset(wrkPos, 0, ibs);
+                memset(bp, 0, ibs);
                 if ((res2 = coe_process_eio(op, op->skip)))
                     return res2;
                 ++*ifull_extrap;
@@ -246,7 +251,7 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
             } else {
                 my_skip = op->skip;
                 for (k = 0; k < csp->icbpt;
-                     ++k, ++my_skip, wrkPos += ibs, offset += ibs) {
+                     ++k, ++my_skip, bp += ibs, offset += ibs) {
                     if (offset != csp->if_filepos) {
                         if (verbose > 2)
                             fprintf(stderr, "moving if filepos: new_pos="
@@ -256,8 +261,8 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
                             return SG_LIB_FILE_ERROR;
                         csp->if_filepos = offset;
                     }
-                    memset(wrkPos, 0, ibs);
-                    res = win32_block_read(op, wrkPos, ibs, verbose);
+                    memset(bp, 0, ibs);
+                    res = win32_block_read(op, bp, ibs, verbose);
                     if (ibs == res) {
                         zero_coe_limit_count(op);
                         csp->if_filepos += ibs;

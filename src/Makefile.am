@@ -25,6 +25,8 @@ sglib_SOURCES =         ../lib/sg_lib.c \
                         ../lib/sg_cmds_basic.c  \
                         ../lib/sg_cmds_basic2.c  \
                         ../include/sg_cmds_basic.h      \
+                        ../lib/sg_cmds_extra.c  \
+                        ../include/sg_cmds_extra.h      \
                         ../include/sg_pt.h      \
                         ../lib/sg_pt_common.c
 
