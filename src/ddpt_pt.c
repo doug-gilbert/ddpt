@@ -746,7 +746,7 @@ err_out:
  * SG_LIB_CAT_ABORTED_COMMAND, -2 -> recoverable (ENOMEM),
  * -1 -> unrecoverable error + others */
 static int
-pt_low_write(struct opts_t * op, unsigned char * buff, int blocks,
+pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
              int64_t to_block, int bs)
 {
     unsigned char wrCmd[MAX_SCSI_CDBSZ];
@@ -842,7 +842,7 @@ pt_low_write(struct opts_t * op, unsigned char * buff, int blocks,
  * SG_LIB_CAT_MEDIUM_HARD, SG_LIB_CAT_ABORTED_COMMAND,
  * -2 -> ENOMEM, -1 other errors */
 int
-pt_write(struct opts_t * op, unsigned char * buff, int blocks,
+pt_write(struct opts_t * op, const unsigned char * buff, int blocks,
          int64_t to_block)
 {
     int retries_tmp;
@@ -895,8 +895,8 @@ pt_write(struct opts_t * op, unsigned char * buff, int blocks,
  * translates this to the ATA DATA SET MANAGEMENT command with the trim
  * field set. Returns 0 on success. */
 int
-pt_write_same16(struct opts_t * op, unsigned char * buff, int bs, int blocks,
-                int64_t start_block)
+pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
+                int blocks, int64_t start_block)
 {
     int k, ret, res, sense_cat, vt;
     uint64_t llba;

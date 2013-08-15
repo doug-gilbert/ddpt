@@ -156,7 +156,7 @@ scsi_extended_copy(struct opts_t * op, unsigned char *src_desc,
     return sg_ll_extended_copy(fd, xcopyBuff, desc_offset, 1, verb);
 }
 
-static int
+int
 scsi_operating_parameter(struct opts_t * op, int is_target)
 {
     int res, fd, ftype, verb;
@@ -446,7 +446,7 @@ scsi_operating_parameter(struct opts_t * op, int is_target)
     return td_list;
 }
 
-static int
+int
 desc_from_vpd_id(struct opts_t * op, int sg_fd, unsigned char *desc,
                  int desc_len, unsigned int block_size, int pad)
 {
