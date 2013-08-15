@@ -152,14 +152,14 @@ struct flags_t {
     int fsync;
     int fua;
     int fua_nv;
-    int ignoreew;	/* tape */
+    int ignoreew;       /* tape */
     int pdt;
     int nocache;
-    int nofm;		/* tape */
+    int nofm;           /* tape */
     int nopad;
     int norcap;
     int nowrite;
-    int pad;		/* used for xcopy or tape */
+    int pad;            /* used for xcopy or tape */
     int prealloc;
     int pt;     /* use pass-through to inject SCSI commands */
     int resume;
@@ -261,6 +261,10 @@ struct opts_t {
     int outfd;
     struct sg_pt_base * if_ptvp;
     struct sg_pt_base * of_ptvp;
+    unsigned char * wrkBuff;
+    unsigned char * wrkPos;
+    unsigned char * wrkBuff2;
+    unsigned char * wrkPos2;
     unsigned char * zeros_buff;
 #ifdef HAVE_POSIX_FADVISE
     off_t lowest_skip;
@@ -316,22 +320,27 @@ extern int pt_read_capacity(struct opts_t * op, int in0_out1,
                             int64_t * num_sect, int * sect_sz);
 extern int pt_read(struct opts_t * op, int in0_out1, unsigned char * buff,
                    int blocks, int * blks_readp);
-extern int pt_write(struct opts_t * op, unsigned char * buff, int blocks,
-                    int64_t to_block);
-extern int pt_write_same16(struct opts_t * op, unsigned char * buff, int bs,
-                           int blocks, int64_t start_block);
+extern int pt_write(struct opts_t * op, const unsigned char * buff,
+                    int blocks, int64_t to_block);
+extern int pt_write_same16(struct opts_t * op, const unsigned char * buff,
+                           int bs, int blocks, int64_t start_block);
 extern void pt_sync_cache(int fd);
 
 extern void put_errblk(uint64_t lba, struct opts_t * op);
 extern void put_range_errblk(uint64_t lba, int num, struct opts_t * op);
 extern void zero_coe_limit_count(struct opts_t * op);
 
+extern int scsi_operating_parameter(struct opts_t * op, int is_target);
+extern int desc_from_vpd_id(struct opts_t * op, int sg_fd,
+                            unsigned char *desc, int desc_len,
+                            unsigned int block_size, int pad);
+
 
 #ifdef SG_LIB_WIN32
 extern int dd_filetype(const char * fn, int verbose);
 extern int get_blkdev_capacity(struct opts_t * optsp, int which_arg,
                                int64_t * num_sect, int * sect_sz);
-extern void win32_adjust_fns(struct opts_t * optsp);
+extern void win32_adjust_fns_pt(struct opts_t * optsp);
 extern int win32_open_if(struct opts_t * optsp, int verbose);
 extern int win32_open_of(struct opts_t * optsp, int verbose);
 extern int win32_set_file_pos(struct opts_t * optsp, int if0_of1,
