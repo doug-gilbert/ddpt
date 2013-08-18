@@ -42,6 +42,8 @@
 #include <ctype.h>
 #include <getopt.h>
 
+#include "ddpt.h"
+
 #include "sg_lib.h"
 
 #define _WIN32_WINNT 0x0602
@@ -267,15 +269,15 @@ query_dev_property(HANDLE hdevice,
                           &num_out, NULL)) {
         if (verbose > 2) {
             err = GetLastError();
-            fprintf(stderr, "  IOCTL_STORAGE_QUERY_PROPERTY(Devprop) failed, "
+            pr2serr("  IOCTL_STORAGE_QUERY_PROPERTY(Devprop) failed, "
                     "Error=%ld %s\n", err, get_err_str(err, sizeof(b), b));
         }
         return -ENOSYS;
     }
 
     if (verbose > 3)
-        fprintf(stderr, "  IOCTL_STORAGE_QUERY_PROPERTY(DevProp) "
-                "num_out=%ld\n", num_out);
+        pr2serr("  IOCTL_STORAGE_QUERY_PROPERTY(DevProp) num_out=%ld\n",
+                num_out);
     return 0;
 }
 
@@ -294,13 +296,13 @@ query_dev_uid(HANDLE hdevice,
                           &num_out, NULL)) {
         if (verbose > 2) {
             err = GetLastError();
-            fprintf(stderr, "  IOCTL_STORAGE_QUERY_PROPERTY(DevUid) failed, "
+            pr2serr("  IOCTL_STORAGE_QUERY_PROPERTY(DevUid) failed, "
                     "Error=%ld %s\n", err, get_err_str(err, sizeof(b), b));
         }
         return -ENOSYS;
     }
     if (verbose > 3)
-        fprintf(stderr, "  IOCTL_STORAGE_QUERY_PROPERTY(DevUid) num_out=%ld\n",
+        pr2serr("  IOCTL_STORAGE_QUERY_PROPERTY(DevUid) num_out=%ld\n",
                 num_out);
     return 0;
 }
@@ -388,16 +390,16 @@ enum_scsi_adapters(void)
                 }
             } else {
                 err = GetLastError();
-                fprintf(stderr, "%s: IOCTL_SCSI_GET_INQUIRY_DATA failed "
-                        "err=%lu\n\t%s",
-                        adapter_name, err, get_err_str(err, sizeof(b), b));
+                pr2serr("%s: IOCTL_SCSI_GET_INQUIRY_DATA failed err=%lu\n"
+                        "\t%s", adapter_name, err,
+                        get_err_str(err, sizeof(b), b));
             }
             CloseHandle(fh);
         } else {
             if (verbose > 3) {
                 err = GetLastError();
-                fprintf(stderr, "%s: CreateFile failed err=%lu\n\t%s",
-                        adapter_name, err, get_err_str(err, sizeof(b), b));
+                pr2serr("%s: CreateFile failed err=%lu\n\t%s", adapter_name,
+                        err, get_err_str(err, sizeof(b), b));
             }
             if (++hole_count >= MAX_HOLE_COUNT)
                 break;
@@ -415,7 +417,7 @@ enum_volumes(char letter)
     struct storage_elem tmp_se;
 
     if (verbose > 2)
-        fprintf(stderr, "%s: enter\n", __FUNCTION__ );
+        pr2serr("%s: enter\n", __FUNCTION__ );
     for (k = 0; k < 24; ++k) {
         memset(&tmp_se, 0, sizeof(tmp_se));
         snprintf(adapter_name, sizeof (adapter_name), "\\\\.\\%c:", 'C' + k);
@@ -425,14 +427,12 @@ enum_volumes(char letter)
                         OPEN_EXISTING, 0, NULL);
         if (fh != INVALID_HANDLE_VALUE) {
             if (query_dev_property(fh, &tmp_se.qp_descriptor) < 0)
-                fprintf(stderr, "%s: query_dev_property failed\n",
-                        __FUNCTION__ );
+                pr2serr("%s: query_dev_property failed\n", __FUNCTION__ );
             else
                 tmp_se.qp_descriptor_valid = 1;
             if (query_dev_uid(fh, &tmp_se.qp_uid) < 0) {
                 if (verbose > 2)
-                    fprintf(stderr, "%s: query_dev_uid failed\n",
-                            __FUNCTION__ );
+                    pr2serr("%s: query_dev_uid failed\n", __FUNCTION__ );
             } else
                 tmp_se.qp_uid_valid = 1;
             if (('\0' == letter) || (letter == tmp_se.name[0]))
@@ -455,7 +455,7 @@ enum_pds(void)
     struct storage_elem tmp_se;
 
     if (verbose > 2)
-        fprintf(stderr, "%s: enter\n", __FUNCTION__ );
+        pr2serr("%s: enter\n", __FUNCTION__ );
     for (k = 0; k < MAX_PHYSICALDRIVE_NUM; ++k) {
         memset(&tmp_se, 0, sizeof(tmp_se));
         snprintf(adapter_name, sizeof (adapter_name),
@@ -466,14 +466,12 @@ enum_pds(void)
                         OPEN_EXISTING, 0, NULL);
         if (fh != INVALID_HANDLE_VALUE) {
             if (query_dev_property(fh, &tmp_se.qp_descriptor) < 0)
-                fprintf(stderr, "%s: query_dev_property failed\n",
-                        __FUNCTION__ );
+                pr2serr("%s: query_dev_property failed\n", __FUNCTION__ );
             else
                 tmp_se.qp_descriptor_valid = 1;
             if (query_dev_uid(fh, &tmp_se.qp_uid) < 0) {
                 if (verbose > 2)
-                    fprintf(stderr, "%s: query_dev_uid failed\n",
-                            __FUNCTION__ );
+                    pr2serr("%s: query_dev_uid failed\n", __FUNCTION__ );
             } else
                 tmp_se.qp_uid_valid = 1;
             hole_count = 0;
@@ -482,8 +480,8 @@ enum_pds(void)
         } else {
             if (verbose > 3) {
                 err = GetLastError();
-                fprintf(stderr, "%s: CreateFile failed err=%lu\n\t%s",
-                        adapter_name, err, get_err_str(err, sizeof(b), b));
+                pr2serr("%s: CreateFile failed err=%lu\n\t%s", adapter_name,
+                        err, get_err_str(err, sizeof(b), b));
             }
             if (++hole_count >= MAX_HOLE_COUNT)
                 break;
@@ -504,7 +502,7 @@ enum_cdroms(void)
     struct storage_elem tmp_se;
 
     if (verbose > 2)
-        fprintf(stderr, "%s: enter\n", __FUNCTION__ );
+        pr2serr("%s: enter\n", __FUNCTION__ );
     for (k = 0; k < MAX_CDROM_NUM; ++k) {
         memset(&tmp_se, 0, sizeof(tmp_se));
         snprintf(adapter_name, sizeof (adapter_name), "\\\\.\\CDROM%d", k);
@@ -514,14 +512,12 @@ enum_cdroms(void)
                         OPEN_EXISTING, 0, NULL);
         if (fh != INVALID_HANDLE_VALUE) {
             if (query_dev_property(fh, &tmp_se.qp_descriptor) < 0)
-                fprintf(stderr, "%s: query_dev_property failed\n",
-                        __FUNCTION__ );
+                pr2serr("%s: query_dev_property failed\n", __FUNCTION__ );
             else
                 tmp_se.qp_descriptor_valid = 1;
             if (query_dev_uid(fh, &tmp_se.qp_uid) < 0) {
                 if (verbose > 2)
-                    fprintf(stderr, "%s: query_dev_uid failed\n",
-                            __FUNCTION__ );
+                    pr2serr("%s: query_dev_uid failed\n", __FUNCTION__ );
             } else
                 tmp_se.qp_uid_valid = 1;
             hole_count = 0;
@@ -530,8 +526,8 @@ enum_cdroms(void)
         } else {
             if (verbose > 3) {
                 err = GetLastError();
-                fprintf(stderr, "%s: CreateFile failed err=%lu\n\t%s",
-                        adapter_name, err, get_err_str(err, sizeof(b), b));
+                pr2serr("%s: CreateFile failed err=%lu\n\t%s", adapter_name,
+                        err, get_err_str(err, sizeof(b), b));
             }
             if (++hole_count >= MAX_HOLE_COUNT)
                 break;
@@ -552,7 +548,7 @@ enum_tapes(void)
     struct storage_elem tmp_se;
 
     if (verbose > 2)
-        fprintf(stderr, "%s: enter\n", __FUNCTION__ );
+        pr2serr("%s: enter\n", __FUNCTION__ );
     for (k = 0; k < MAX_TAPE_NUM; ++k) {
         memset(&tmp_se, 0, sizeof(tmp_se));
         snprintf(adapter_name, sizeof (adapter_name), "\\\\.\\TAPE%d", k);
@@ -562,14 +558,12 @@ enum_tapes(void)
                         OPEN_EXISTING, 0, NULL);
         if (fh != INVALID_HANDLE_VALUE) {
             if (query_dev_property(fh, &tmp_se.qp_descriptor) < 0)
-                fprintf(stderr, "%s: query_dev_property failed\n",
-                        __FUNCTION__ );
+                pr2serr("%s: query_dev_property failed\n", __FUNCTION__ );
             else
                 tmp_se.qp_descriptor_valid = 1;
             if (query_dev_uid(fh, &tmp_se.qp_uid) < 0) {
                 if (verbose > 2)
-                    fprintf(stderr, "%s: query_dev_uid failed\n",
-                            __FUNCTION__ );
+                    pr2serr("%s: query_dev_uid failed\n", __FUNCTION__ );
             } else
                 tmp_se.qp_uid_valid = 1;
             hole_count = 0;
@@ -578,8 +572,8 @@ enum_tapes(void)
         } else {
             if (verbose > 3) {
                 err = GetLastError();
-                fprintf(stderr, "%s: CreateFile failed err=%lu\n\t%s",
-                        adapter_name, err, get_err_str(err, sizeof(b), b));
+                pr2serr("%s: CreateFile failed err=%lu\n\t%s", adapter_name,
+                        err, get_err_str(err, sizeof(b), b));
             }
             if (++hole_count >= MAX_HOLE_COUNT)
                 break;
@@ -672,7 +666,7 @@ sg_do_wscan(char letter, int do_scan, int verb)
         ret = do_wscan(letter, show_bt, scsi_scan);
         free(storage_arr);
     } else {
-        fprintf(stderr, "Failed to allocate storage_arr on heap\n");
+        pr2serr("Failed to allocate storage_arr on heap\n");
         ret = SG_LIB_SYNTAX_ERROR;
     }
     return ret;

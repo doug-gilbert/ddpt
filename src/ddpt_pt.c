@@ -86,7 +86,7 @@ pt_construct_obj(void)
     void * vp;
 
     if (NULL == (vp = construct_scsi_pt_obj()))
-        fprintf(stderr, "construct_scsi_pt_obj: out of memory\n");
+        pr2serr("construct_scsi_pt_obj: out of memory\n");
     return vp;
 }
 
@@ -101,34 +101,35 @@ pt_open_if(struct opts_t * op)
 {
     int verb, flags, fl, fd;
     struct sg_simple_inquiry_resp sir;
-    struct flags_t * ifp = op->iflagp;
-    const char * inf = op->inf;
+    struct flags_t * fp = op->iflagp;
+    struct dev_info_t * dip = op->idip;
+    const char * fn = op->idip->fn;
 
     verb = (op->verbose ? op->verbose - 1: 0);
     flags = O_NONBLOCK;
-    if (ifp->direct)
+    if (fp->direct)
         flags |= O_DIRECT;
-    if (ifp->excl)
+    if (fp->excl)
         flags |= O_EXCL;
-    if (ifp->sync)
+    if (fp->sync)
         flags |= O_SYNC;
     fl = O_RDWR;
-    if ((fd = scsi_pt_open_flags(inf, (fl | flags), op->verbose)) < 0) {
+    if ((fd = scsi_pt_open_flags(fn, (fl | flags), op->verbose)) < 0) {
         fl = O_RDONLY;
-        if ((fd = scsi_pt_open_flags(inf, (fl | flags), op->verbose)) < 0) {
-            fprintf(stderr, "could not open %s for pt reading: %s\n", inf,
+        if ((fd = scsi_pt_open_flags(fn, (fl | flags), op->verbose)) < 0) {
+            pr2serr("could not open %s for pt reading: %s\n", fn,
                     safe_strerror(-fd));
             return -1;
         }
     }
     if (sg_simple_inquiry(fd, &sir, 0, verb)) {
-        fprintf(stderr, "INQUIRY failed on %s\n", inf);
+        pr2serr("INQUIRY failed on %s\n", fn);
         return -2;
     }
-    ifp->pdt = sir.peripheral_type;
+    dip->pdt = sir.peripheral_type;
     if (op->verbose)
-        fprintf(stderr, "    %s: %.8s  %.16s  %.4s  [pdt=%d]\n",
-                inf, sir.vendor, sir.product, sir.revision, ifp->pdt);
+        pr2serr("    %s: %.8s  %.16s  %.4s  [pdt=%d]\n",
+                fn, sir.vendor, sir.product, sir.revision, dip->pdt);
     return fd;
 }
 
@@ -137,30 +138,31 @@ pt_open_of(struct opts_t * op)
 {
     int verb, flags, fd;
     struct sg_simple_inquiry_resp sir;
-    struct flags_t * ofp = op->oflagp;
-    const char * outf = op->outf;
+    struct flags_t * fp = op->oflagp;
+    struct dev_info_t * dip = op->odip;
+    const char * fn = dip->fn;
 
     verb = (op->verbose ? op->verbose - 1: 0);
     flags = O_RDWR | O_NONBLOCK;
-    if (ofp->direct)
+    if (fp->direct)
         flags |= O_DIRECT;
-    if (ofp->excl)
+    if (fp->excl)
         flags |= O_EXCL;
-    if (ofp->sync)
+    if (fp->sync)
         flags |= O_SYNC;
-    if ((fd = scsi_pt_open_flags(outf, flags, op->verbose)) < 0) {
-        fprintf(stderr, "could not open %s for pt writing: %s\n",
-                outf, safe_strerror(-fd));
+    if ((fd = scsi_pt_open_flags(fn, flags, op->verbose)) < 0) {
+        pr2serr("could not open %s for pt writing: %s\n", fn,
+                safe_strerror(-fd));
         return -1;
     }
     if (sg_simple_inquiry(fd, &sir, 0, verb)) {
-        fprintf(stderr, "INQUIRY failed on %s\n", outf);
+        pr2serr("INQUIRY failed on %s\n", fn);
         return -2;
     }
-    ofp->pdt = sir.peripheral_type;
+    dip->pdt = sir.peripheral_type;
     if (op->verbose)
-        fprintf(stderr, "    %s: %.8s  %.16s  %.4s  [pdt=%d]\n",
-                outf, sir.vendor, sir.product, sir.revision, ofp->pdt);
+        pr2serr("    %s: %.8s  %.16s  %.4s  [pdt=%d]\n", fn, sir.vendor,
+                sir.product, sir.revision, dip->pdt);
     return fd;
 }
 
@@ -180,7 +182,7 @@ pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_sect,
     unsigned int ui;
     unsigned char rcBuff[RCAP16_REPLY_LEN];
     int verb;
-    int sg_fd = (in0_out1 ? op->outfd : op->infd);
+    int sg_fd = (in0_out1 ? op->odip->fd : op->idip->fd);
     int protect = (in0_out1 ? op->wrprotect : op->rdprotect);
 
     verb = (op->verbose ? op->verbose - 1: 0);
@@ -198,8 +200,8 @@ pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_sect,
         int prot_typ, p_i_exp;
 
         if (verb && ! protect)
-            fprintf(stderr, "    READ CAPACITY (10) response cannot "
-                    "represent this capacity\n");
+            pr2serr("    READ CAPACITY (10) response cannot represent this "
+                    "capacity\n");
         res = sg_ll_readcap_16(sg_fd, 0, 0, rcBuff, RCAP16_REPLY_LEN, 1,
                                verb);
         if (0 != res)
@@ -250,7 +252,7 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
     memset(cdbp, 0, cdb_sz);
     options_byte = 0;
     if (cdb_sz < 6) {
-        fprintf(stderr, "cdb_sz too small\n");
+        pr2serr("cdb_sz too small\n");
         return 1;
     }
     if (cdb_sz > 6) {
@@ -277,18 +279,17 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
         cdbp[3] = (unsigned char)(start_block & 0xff);
         cdbp[4] = (256 == blocks) ? 0 : (unsigned char)blocks;
         if (blocks > 256) {
-            fprintf(stderr, "for 6 byte commands, maximum number of "
-                            "blocks is 256\n");
+            pr2serr("for 6 byte commands, maximum number of blocks is 256\n");
             return 1;
         }
         if ((start_block + blocks - 1) & (~0x1fffff)) {
-            fprintf(stderr, "for 6 byte commands, can't address blocks"
-                            " beyond %d\n", 0x1fffff);
+            pr2serr("for 6 byte commands, can't address blocks beyond %d\n",
+                    0x1fffff);
             return 1;
         }
         if (fp->dpo || fp->fua || fp->rarc) {
-            fprintf(stderr, "for 6 byte commands, neither dpo, fua, nor "
-                            "rarc bits supported\n");
+            pr2serr("for 6 byte commands, neither dpo, fua, nor rarc bits "
+                    "supported\n");
             return 1;
         }
         break;
@@ -304,8 +305,8 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
         cdbp[7] = (unsigned char)((blocks >> 8) & 0xff);
         cdbp[8] = (unsigned char)(blocks & 0xff);
         if (blocks & (~0xffff)) {
-            fprintf(stderr, "for 10 byte commands, maximum number of "
-                            "blocks is %d\n", 0xffff);
+            pr2serr("for 10 byte commands, maximum number of blocks is %d\n",
+                    0xffff);
             return 1;
         }
         break;
@@ -363,8 +364,8 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
         cdbp[31] = (unsigned char)(blocks & 0xff);
         break;
     default:
-        fprintf(stderr, "expected cdb size of 6, 10, 12, 16 or 32 but got "
-                        "%d\n", cdb_sz);
+        pr2serr("expected cdb size of 6, 10, 12, 16 or 32 but got %d\n",
+                cdb_sz);
         return 1;
     }
     return 0;
@@ -386,27 +387,27 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
     unsigned char rdCmd[MAX_SCSI_CDBSZ];
     unsigned char sense_b[SENSE_BUFF_LEN];
     int res, k, info_valid, slen, sense_cat, ret, vt;
-    struct sg_pt_base * ptvp = (in0_out1 ? op->of_ptvp : op->if_ptvp);
+    struct sg_pt_base * ptvp = (in0_out1 ? op->odip->ptvp : op->idip->ptvp);
     const struct flags_t * fp = (in0_out1 ? op->oflagp : op->iflagp);
-    int sg_fd = (in0_out1 ? op->outfd : op->infd);
+    const struct dev_info_t * dip = (in0_out1 ? op->odip : op->idip);
     int protect = (in0_out1 ? op->wrprotect : op->rdprotect);
     struct sg_scsi_sense_hdr ssh;
 
     if (pt_build_scsi_cdb(rdCmd, fp->cdbsz, blocks, from_block, 0,
                           fp, protect)) {
-        fprintf(stderr, "bad rd cdb build, from_block=%" PRId64 ", "
-                "blocks=%d\n", from_block, blocks);
+        pr2serr("bad rd cdb build, from_block=%" PRId64 ", blocks=%d\n",
+                from_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
     }
     if (op->verbose > 2) {
-        fprintf(stderr, "    READ cdb: ");
+        pr2serr("    READ cdb: ");
         for (k = 0; k < fp->cdbsz; ++k)
-            fprintf(stderr, "%02x ", rdCmd[k]);
-        fprintf(stderr, "\n");
+            pr2serr("%02x ", rdCmd[k]);
+        pr2serr("\n");
     }
 
     if (NULL == ptvp) {
-        fprintf(stderr, "pt_low_read: ptvp NULL?\n");
+        pr2serr("pt_low_read: ptvp NULL?\n");
         return -1;
     }
     clear_scsi_pt_obj(ptvp);
@@ -417,7 +418,7 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
     set_scsi_pt_flags(ptvp, SCSI_PT_FLAGS_QUEUE_AT_TAIL);
 #endif
     vt = (op->verbose ? (op->verbose - 1) : 0);
-    while (((res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, vt)) < 0) &&
+    while (((res = do_scsi_pt(ptvp, dip->fd, DEF_TIMEOUT, vt)) < 0) &&
            (-EINTR == res))
         ++op->interrupted_retries; /* resubmit if interrupted system call */
 
@@ -452,28 +453,28 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
             ++op->recovered_errs;
             info_valid = sg_get_sense_info_fld(sense_b, slen, io_addrp);
             if (info_valid)
-                fprintf(stderr, "    lba of last recovered error in this "
-                        "READ=0x%" PRIx64 "\n", *io_addrp);
+                pr2serr("    lba of last recovered error in this READ=0x%"
+                        PRIx64 "\n", *io_addrp);
             else
-                fprintf(stderr, "Recovered error: [no info] reading from "
-                        "block=0x%" PRIx64 ", num=%d\n", from_block, blocks);
+                pr2serr("Recovered error: [no info] reading from block=0x%"
+                        PRIx64 ", num=%d\n", from_block, blocks);
             break;
         case SG_LIB_CAT_MEDIUM_HARD:
             ++op->unrecovered_errs;
             info_valid = sg_get_sense_info_fld(sense_b, slen, io_addrp);
             /* MMC and MO devices don't necessarily set VALID bit */
             if (info_valid || ((*io_addrp > 0) &&
-                               ((5 == fp->pdt) || (7 == fp->pdt))))
+                               ((5 == dip->pdt) || (7 == dip->pdt))))
                 ret = SG_LIB_CAT_MEDIUM_HARD_WITH_INFO; // <<<<<<<<<<<<
             else
-                fprintf(stderr, "Medium, hardware or blank check error but "
-                        "no lba of failure in sense data\n");
+                pr2serr("Medium, hardware or blank check error but no lba "
+                        "of failure in sense data\n");
             break;
         case SG_LIB_CAT_NO_SENSE:
             ret = 0;
             break;
         case SG_LIB_CAT_ILLEGAL_REQ:
-            if (5 == fp->pdt) {    /* MMC READs can go down this path */
+            if (5 == dip->pdt) {    /* MMC READs can go down this path */
                 int ili;
 
                 if (sg_scsi_normalize_sense(sense_b, slen, &ssh) &&
@@ -486,9 +487,8 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
                             ++op->unrecovered_errs;
                             ret = SG_LIB_CAT_MEDIUM_HARD_WITH_INFO;
                         } else
-                            fprintf(stderr, "MMC READ gave 'illegal mode for "
-                                    "this track' and ILI but no LBA of "
-                                    "failure\n");
+                            pr2serr("MMC READ gave 'illegal mode for this "
+                                    "track' and ILI but no LBA of failure\n");
                     }
                     ++op->unrecovered_errs;
                     ret = SG_LIB_CAT_MEDIUM_HARD;
@@ -559,21 +559,21 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
         case -2:        /* ENOMEM */
             return res;
         case SG_LIB_CAT_NOT_READY:
-            fprintf(stderr, "Device (r) not ready\n");
+            pr2serr("Device (r) not ready\n");
             return res;
         case SG_LIB_CAT_ABORTED_COMMAND:
             if (--op->max_aborted > 0)
-                fprintf(stderr, "Aborted command, continuing (r)\n");
+                pr2serr("Aborted command, continuing (r)\n");
             else {
-                fprintf(stderr, "Aborted command, too many (r)\n");
+                pr2serr("Aborted command, too many (r)\n");
                 return res;
             }
             break;
         case SG_LIB_CAT_UNIT_ATTENTION:
             if (--op->max_uas > 0)
-                fprintf(stderr, "Unit attention, continuing (r)\n");
+                pr2serr("Unit attention, continuing (r)\n");
             else {
-                fprintf(stderr, "Unit attention, too many (r)\n");
+                pr2serr("Unit attention, too many (r)\n");
                 return res;
             }
             break;
@@ -583,9 +583,8 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
             break; /* unrecovered read error at lba=io_addr */
         case SG_LIB_CAT_MEDIUM_HARD_WITH_INFO:
             if (retries_tmp > 0) {
-                fprintf(stderr, ">>> retrying pt read: starting "
-                        "lba=%" PRId64 " [0x%" PRIx64 "] blocks=%d\n", lba,
-                        (uint64_t)lba, blks);
+                pr2serr(">>> retrying pt read: starting lba=%" PRId64 " [0x%"
+                        PRIx64 "] blocks=%d\n", lba, (uint64_t)lba, blks);
                 --retries_tmp;
                 ++op->num_retries;
                 if (op->unrecovered_errs > 0)
@@ -609,9 +608,8 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
             /* fall through */
         default:
             if (retries_tmp > 0) {
-                fprintf(stderr, ">>> retrying pt read: starting "
-                        "lba=%" PRId64 " [0x%" PRIx64 "] blocks=%d\n", lba,
-                        (uint64_t)lba, blks);
+                pr2serr(">>> retrying pt read: starting lba=%" PRId64 " [0x%"
+                        PRIx64 "] blocks=%d\n", lba, (uint64_t)lba, blks);
                 --retries_tmp;
                 ++op->num_retries;
                 if (op->unrecovered_errs > 0)
@@ -625,10 +623,9 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
             continue;
         if ((io_addr < (uint64_t)lba) ||
             (io_addr >= (uint64_t)(lba + blks))) {
-                fprintf(stderr, "  Unrecovered error lba 0x%" PRIx64 " not "
-                        "in correct range:\n\t[0x%" PRIx64 ",0x%" PRIx64
-                        "]\n", io_addr, (uint64_t)lba,
-                        (uint64_t)(lba + blks - 1));
+                pr2serr("  Unrecovered error lba 0x%" PRIx64 " not in "
+                        "correct range:\n\t[0x%" PRIx64 ",0x%" PRIx64 "]\n",
+                        io_addr, (uint64_t)lba, (uint64_t)(lba + blks - 1));
             may_coe = 1;
             goto err_out;
         }
@@ -649,8 +646,8 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
         blks = (int)(io_addr - (uint64_t)lba);
         if (blks > 0) {
             if (op->verbose)
-                fprintf(stderr, "  partial re-read of %d blocks prior to "
-                        "medium error\n", blks);
+                pr2serr("  partial re-read of %d blocks prior to medium "
+                        "error\n", blks);
             res = pt_low_read(op, in0_out1, bp, blks, lba, bs, &io_addr);
             switch (res) {
             case 0:
@@ -660,16 +657,16 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
                 ret = res;
                 goto err_out;
             case -2:
-                fprintf(stderr, "ENOMEM again, unexpected (r)\n");
+                pr2serr("ENOMEM again, unexpected (r)\n");
                 return -1;
             case SG_LIB_CAT_NOT_READY:
-                fprintf(stderr, "device (r) not ready\n");
+                pr2serr("device (r) not ready\n");
                 return res;
             case SG_LIB_CAT_UNIT_ATTENTION:
-                fprintf(stderr, "Unit attention, unexpected (r)\n");
+                pr2serr("Unit attention, unexpected (r)\n");
                 return res;
             case SG_LIB_CAT_ABORTED_COMMAND:
-                fprintf(stderr, "Aborted command, unexpected (r)\n");
+                pr2serr("Aborted command, unexpected (r)\n");
                 return res;
             case SG_LIB_CAT_MEDIUM_HARD_WITH_INFO:
             case SG_LIB_CAT_MEDIUM_HARD:
@@ -681,8 +678,8 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
                 goto err_out;
             case SG_LIB_SYNTAX_ERROR:
             default:
-                fprintf(stderr, ">> unexpected result=%d from "
-                        "pt_low_read() 2\n", res);
+                pr2serr(">> unexpected result=%d from pt_low_read() 2\n",
+                        res);
                 ret = res;
                 goto err_out;
             }
@@ -696,9 +693,8 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
         }
         bp += (blks * bs);
         lba += blks;
-        fprintf(stderr, ">> unrecovered read error at blk=%" PRId64 ", "
-                "substitute zeros%s\n", lba,
-                ((pi_len > 0) ? " (PI with 0xFFs)" : ""));
+        pr2serr(">> unrecovered read error at blk=%" PRId64 ", substitute "
+                "zeros%s\n", lba, ((pi_len > 0) ? " (PI with 0xFFs)" : ""));
         if (pi_len > 0) {
             memset(bp, 0, bs - pi_len);
             memset(bp + bs - pi_len, 0xff, pi_len);
@@ -710,7 +706,7 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
         if ((op->coe_limit > 0) && (++op->coe_count > op->coe_limit)) {
             if (blks_readp)
                 *blks_readp = xferred + blks;
-            fprintf(stderr, ">> coe_limit on consecutive reads exceeded\n");
+            pr2serr(">> coe_limit on consecutive reads exceeded\n");
             return SG_LIB_CAT_MEDIUM_HARD;
         }
         retries_tmp = fp->retries;
@@ -722,16 +718,16 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
 err_out:
     if (fp->coe) {
         memset(bp, 0, bs * blks);
-        fprintf(stderr, ">> unable to read at blk=%" PRId64 " for "
-                "%d bytes, use zeros\n", lba, bs * blks);
+        pr2serr(">> unable to read at blk=%" PRId64 " for %d bytes, use "
+                "zeros\n", lba, bs * blks);
         if (blks > 1)
-            fprintf(stderr, ">>   try reducing bpt to limit number "
-                    "of zeros written near bad block(s)\n");
+            pr2serr(">>   try reducing bpt to limit number of zeros written "
+                    "near bad block(s)\n");
         /* fudge success */
         if (blks_readp)
             *blks_readp = xferred + blks;
         if ((op->coe_limit > 0) && (++op->coe_count > op->coe_limit)) {
-            fprintf(stderr, ">> coe_limit on consecutive reads exceeded\n");
+            pr2serr(">> coe_limit on consecutive reads exceeded\n");
             return ret;
         }
         return may_coe ? 0 : ret;
@@ -752,31 +748,31 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
     unsigned char wrCmd[MAX_SCSI_CDBSZ];
     unsigned char sense_b[SENSE_BUFF_LEN];
     int res, k, info_valid, ret, sense_cat, slen, vt;
-    int sg_fd = op->outfd;
+    int sg_fd = op->odip->fd;
     uint64_t io_addr = 0;
-    struct sg_pt_base * ptvp = op->of_ptvp;
-    const struct flags_t * ofp = op->oflagp;
+    struct sg_pt_base * ptvp = op->odip->ptvp;
+    const struct flags_t * fp = op->oflagp;
     struct sg_scsi_sense_hdr ssh;
 
-    if (pt_build_scsi_cdb(wrCmd, ofp->cdbsz, blocks, to_block, 1, ofp,
+    if (pt_build_scsi_cdb(wrCmd, fp->cdbsz, blocks, to_block, 1, fp,
                           op->wrprotect)) {
-        fprintf(stderr, "bad wr cdb build, to_block=%" PRId64 ", blocks=%d\n",
+        pr2serr("bad wr cdb build, to_block=%" PRId64 ", blocks=%d\n",
                 to_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
     }
     if (op->verbose > 2) {
-        fprintf(stderr, "    WRITE cdb: ");
-        for (k = 0; k < ofp->cdbsz; ++k)
-            fprintf(stderr, "%02x ", wrCmd[k]);
-        fprintf(stderr, "\n");
+        pr2serr("    WRITE cdb: ");
+        for (k = 0; k < fp->cdbsz; ++k)
+            pr2serr("%02x ", wrCmd[k]);
+        pr2serr("\n");
     }
 
     if (NULL == ptvp) {
-        fprintf(stderr, "pt_low_write: of_ptvp NULL?\n");
+        pr2serr("pt_low_write: of_ptvp NULL?\n");
         return -1;
     }
     clear_scsi_pt_obj(ptvp);
-    set_scsi_pt_cdb(ptvp, wrCmd, ofp->cdbsz);
+    set_scsi_pt_cdb(ptvp, wrCmd, fp->cdbsz);
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_out(ptvp, buff, bs * blocks);
     vt = (op->verbose ? (op->verbose - 1) : 0);
@@ -798,11 +794,11 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
             ++op->wr_recovered_errs;
             info_valid = sg_get_sense_info_fld(sense_b, slen, &io_addr);
             if (info_valid)
-                fprintf(stderr, "    lba of last recovered error in this "
-                        "WRITE=0x%" PRIx64 "\n", io_addr);
+                pr2serr("    lba of last recovered error in this WRITE=0x%"
+                        PRIx64 "\n", io_addr);
             else
-                fprintf(stderr, "Recovered error: [no info] writing to "
-                        "block=0x%" PRIx64 ", num=%d\n", to_block, blocks);
+                pr2serr("Recovered error: [no info] writing to block=0x%"
+                        PRIx64 ", num=%d\n", to_block, blocks);
             break;
         case SG_LIB_CAT_ABORTED_COMMAND:
             if (sg_scsi_normalize_sense(sense_b, slen, &ssh) &&
@@ -822,9 +818,9 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
         case SG_LIB_CAT_MEDIUM_HARD:
         default:
             ++op->wr_unrecovered_errs;
-            if (ofp->coe) {
-                fprintf(stderr, ">> ignored errors for out blk=%" PRId64
-                        " for %d bytes\n", to_block, bs * blocks);
+            if (fp->coe) {
+                pr2serr(">> ignored errors for out blk=%" PRId64 " for %d "
+                        "bytes\n", to_block, bs * blocks);
                 ret = 0; /* fudge success */
             }
             break;
@@ -860,24 +856,24 @@ pt_write(struct opts_t * op, const unsigned char * buff, int blocks,
             break;
         else if ((SG_LIB_CAT_UNIT_ATTENTION == ret) && first) {
             if (--op->max_uas > 0)
-                fprintf(stderr, "Unit attention, continuing (w)\n");
+                pr2serr("Unit attention, continuing (w)\n");
             else {
-                fprintf(stderr, "Unit attention, too many (w)\n");
+                pr2serr("Unit attention, too many (w)\n");
                 break;
             }
         } else if ((SG_LIB_CAT_ABORTED_COMMAND == ret) && first) {
             if (--op->max_aborted > 0)
-                fprintf(stderr, "Aborted command, continuing (w)\n");
+                pr2serr("Aborted command, continuing (w)\n");
             else {
-                fprintf(stderr, "Aborted command, too many (w)\n");
+                pr2serr("Aborted command, too many (w)\n");
                 break;
             }
         } else if (ret < 0)
             break;
         else if (retries_tmp > 0) {
-            fprintf(stderr, ">>> retrying pt write: starting lba=%" PRId64 " "
-                    "[0x%" PRIx64 "] blocks=%d\n", to_block,
-                    (uint64_t)to_block, blocks);
+            pr2serr(">>> retrying pt write: starting lba=%" PRId64 " [0x%"
+                    PRIx64 "] blocks=%d\n", to_block, (uint64_t)to_block,
+                    blocks);
             --retries_tmp;
             ++op->num_retries;
             if (op->wr_unrecovered_errs > 0)
@@ -903,8 +899,8 @@ pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
     uint32_t unum;
     unsigned char wsCmdBlk[16];
     unsigned char sense_b[SENSE_BUFF_LEN];
-    struct sg_pt_base * ptvp = op->of_ptvp;
-    int sg_fd = op->outfd;
+    struct sg_pt_base * ptvp = op->odip->ptvp;
+    int sg_fd = op->odip->fd;
 
     memset(wsCmdBlk, 0, sizeof(wsCmdBlk));
     wsCmdBlk[0] = 0x93;         /* WRITE SAME(16) opcode */
@@ -921,17 +917,16 @@ pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
         unum >>= 8;
     }
     if (op->verbose > 2) {
-        fprintf(stderr, "    WRITE SAME(16) cdb: ");
+        pr2serr("    WRITE SAME(16) cdb: ");
         for (k = 0; k < (int)sizeof(wsCmdBlk); ++k)
-            fprintf(stderr, "%02x ", wsCmdBlk[k]);
-        fprintf(stderr, "\n");
+            pr2serr("%02x ", wsCmdBlk[k]);
+        pr2serr("\n");
         if (op->verbose > 4)
-            fprintf(stderr, "    Data-out buffer length=%d\n",
-                    bs);
+            pr2serr("    Data-out buffer length=%d\n", bs);
     }
 
     if (NULL == ptvp) {
-        fprintf(stderr, "pt_write_same16: ptvp NULL?\n");
+        pr2serr("pt_write_same16: ptvp NULL?\n");
         return -1;
     }
     clear_scsi_pt_obj(ptvp);
@@ -967,8 +962,8 @@ pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
                 slen = get_scsi_pt_sense_len(ptvp);
                 valid = sg_get_sense_info_fld(sense_b, slen, &ull);
                 if (valid)
-                    fprintf(stderr, "Medium or hardware error starting at "
-                            "lba=%" PRIu64 " [0x%" PRIx64 "]\n", ull, ull);
+                    pr2serr("Medium or hardware error starting at lba=%"
+                            PRIu64 " [0x%" PRIx64 "]\n", ull, ull);
             }
             ret = sense_cat;
             break;
@@ -989,10 +984,9 @@ pt_sync_cache(int fd)
 
     res = sg_ll_sync_cache_10(fd, 0, 0, 0, 0, 0, 1, 0);
     if (SG_LIB_CAT_UNIT_ATTENTION == res) {
-        fprintf(stderr, "Unit attention (out, sync cache), "
-                "continuing\n");
+        pr2serr("Unit attention (out, sync cache), continuing\n");
         res = sg_ll_sync_cache_10(fd, 0, 0, 0, 0, 0, 1, 0);
     }
     if (0 != res)
-        fprintf(stderr, "Unable to do SCSI synchronize cache\n");
+        pr2serr("Unable to do SCSI synchronize cache\n");
 }

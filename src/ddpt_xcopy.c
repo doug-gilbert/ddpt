@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2013 Douglas Gilbert.
+ * Copyright (c) 2013 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -83,6 +83,86 @@
 
 
 static int
+simplified_dt(const struct dev_info_t * dip)
+{
+    int d_type = dip->d_type;
+
+    switch (d_type) {
+    case FT_BLOCK:
+    case FT_TAPE:
+    case FT_REG:
+    case FT_DEV_NULL:
+    case FT_FIFO:
+    case FT_ERROR:
+        return d_type;
+    default:
+        if (FT_PT & d_type) {
+            if ((0 == dip->pdt) || (0xe == dip->pdt)) /* D-A or RBC */
+            return FT_BLOCK;
+        else if (0x1 == dip->pdt)
+            return FT_TAPE;
+        }
+        return FT_OTHER;
+    }
+}
+
+static int
+seg_desc_from_d_type(int in_dt, int in_off, int out_dt, int out_off)
+{
+    int desc_type = -1;
+
+    switch (in_dt) {
+    case FT_BLOCK:
+        switch (out_dt) {
+        case FT_TAPE:
+            if (out_off)
+                break;
+            if (in_off)
+                desc_type = 0x8;
+            else
+                desc_type = 0;
+            break;
+        case FT_BLOCK:
+            if (in_off || out_off)
+                desc_type = 0xA;
+            else
+                desc_type = 2;
+            break;
+        default:
+            break;
+        }
+        break;
+    case FT_TAPE:
+        if (in_off)
+            break;
+
+        switch (out_dt) {
+        case FT_TAPE:
+            if (!out_off) {
+                desc_type = 3;
+                break;
+            }
+            break;
+        case FT_BLOCK:
+            if (out_off)
+                desc_type = 9;
+            else
+                desc_type = 3;
+            break;
+        case FT_DEV_NULL:
+            desc_type = 6;
+            break;
+        default:
+            break;
+        }
+        break;
+    default:
+        break;
+    }
+    return desc_type;
+}
+
+static int
 scsi_encode_seg_desc(struct opts_t * op, unsigned char *seg_desc,
                      int seg_desc_type, int64_t num_blk, uint64_t src_lba,
                      uint64_t dst_lba)
@@ -124,15 +204,15 @@ scsi_encode_seg_desc(struct opts_t * op, unsigned char *seg_desc,
 static int
 scsi_extended_copy(struct opts_t * op, unsigned char *src_desc,
                    int src_desc_len, unsigned char *dst_desc,
-                   int dst_desc_len, int seg_desc_type,
-                   int64_t num_blk, uint64_t src_lba,
-                   uint64_t dst_lba)
+                   int dst_desc_len, int seg_desc_type, int64_t num_blk)
 {
     unsigned char xcopyBuff[256];
     int desc_offset = 16;
     int seg_desc_len, verb, fd;
+    uint64_t src_lba = op->skip;
+    uint64_t dst_lba = op->seek;
 
-    fd = (op->iflagp->xcopy) ? op->infd : op->outfd;
+    fd = (op->iflagp->xcopy) ? op->idip->fd : op->odip->fd;
     verb = (op->verbose ? op->verbose - 1: 0);
 
     memset(xcopyBuff, 0, 256);
@@ -151,40 +231,53 @@ scsi_extended_copy(struct opts_t * op, unsigned char *src_desc,
     desc_offset += seg_desc_len;
     if (op->verbose > 3) {
         pr2serr("\nParameter list in hex (length %d):\n", desc_offset);
-        dStrHex((const char *)xcopyBuff, desc_offset, 1);
+        dStrHexErr((const char *)xcopyBuff, desc_offset, 1);
     }
     return sg_ll_extended_copy(fd, xcopyBuff, desc_offset, 1, verb);
 }
 
-int
-scsi_operating_parameter(struct opts_t * op, int is_target)
+static int
+scsi_operating_parameter(struct opts_t * op, int is_dest)
 {
-    int res, fd, ftype, verb;
+    int res, fd, ftype, pdt, verb;
     unsigned char rcBuff[256];
     unsigned int rcBuffLen = 256, len, n, td_list = 0;
     unsigned long num, max_target_num, max_segment_num, max_segment_len;
     unsigned long max_desc_len, max_inline_data, held_data_limit;
     int valid = 0;
+    struct dev_info_t * dip;
 
     verb = (op->verbose ? op->verbose - 1: 0);
-    fd = (op->iflagp->xcopy) ? op->infd : op->outfd;
-    ftype = (op->iflagp->xcopy) ? op->in_type : op->out_type;
+    dip = is_dest ? op->odip : op->idip;
+    fd = dip->fd;
+    ftype = dip->d_type;
+pr2serr(">>> dip->d_type=0x%x\n", ftype);
+    if (FT_PT & ftype) {
+        pdt = dip->pdt;
+pr2serr(">>> pdt=0x%x\n", pdt);
+        if ((0 == pdt) || (0xe == pdt)) /* direct-access or RBC */
+            ftype |= FT_BLOCK;
+        else if (0x1 == pdt)
+            ftype |= FT_TAPE;
+    } else if (FT_FIFO & ftype)
+        ftype |= FT_REG;
+
     /* In SPC-4 opcode 0x84, service action 0x3 is called RECEIVE COPY
      * OPERATING PARAMETERS */
-    res = sg_ll_receive_copy_results(fd, 0x03, 0, rcBuff, rcBuffLen,
-                                     1, verb);
+    res = sg_ll_receive_copy_results(fd, 0x3, 0, rcBuff, rcBuffLen, 1, verb);
     if (0 != res)
         return -res;
 
     len = (rcBuff[0] << 24) | (rcBuff[1] << 16) | (rcBuff[2] << 8) |
           rcBuff[3];
     if (len > rcBuffLen) {
-        pr2serr("  <<report too long for internal buffer,"
-                " output truncated\n");
+        pr2serr("  <<report too long for internal buffer, output "
+                "truncated\n");
     }
     if (op->verbose > 2) {
-        pr2serr("\nOutput response in hex:\n");
-        dStrHex((const char *)rcBuff, len, 1);
+        pr2serr("\nOutput receive copy operating parameters response in "
+                "hex:\n");
+        dStrHexErr((const char *)rcBuff, len, 1);
     }
     max_target_num = rcBuff[8] << 8 | rcBuff[9];
     max_segment_num = rcBuff[10] << 8 | rcBuff[11];
@@ -192,14 +285,13 @@ scsi_operating_parameter(struct opts_t * op, int is_target)
                    rcBuff[15];
     max_segment_len = rcBuff[16] << 24 | rcBuff[17] << 16 |
                       rcBuff[18] << 8 | rcBuff[19];
-    op->xc_max_bytes = max_segment_len ? max_segment_len : ULONG_MAX;
+    dip->xc_max_bytes = max_segment_len ? max_segment_len : ULONG_MAX;
     max_inline_data = rcBuff[20] << 24 | rcBuff[21] << 16 | rcBuff[22] << 8 |
                       rcBuff[23];
     if (op->verbose) {
-        pr2serr(" >> Receive copy results (report operating "
-                  "parameters):\n");
-        pr2serr("    Maximum target descriptor count: %lu\n",
-                  max_target_num);
+        pr2serr(" >> Report operating parameters, %sput [%s]:\n",
+                (is_dest ? "out" : "in"), dip->fn);
+        pr2serr("    Maximum target descriptor count: %lu\n", max_target_num);
         pr2serr("    Maximum segment descriptor count: %lu\n",
                 max_segment_num);
         pr2serr("    Maximum descriptor list length: %lu\n", max_desc_len);
@@ -227,87 +319,87 @@ scsi_operating_parameter(struct opts_t * op, int is_target)
 
         pr2serr("    Implemented descriptor list:\n");
     }
-    op->xc_min_bytes = 1 << rcBuff[37];
+    dip->xc_min_bytes = 1 << rcBuff[37];
 
     for (n = 0; n < rcBuff[43]; n++) {
         switch(rcBuff[44 + n]) {
         case 0x00: /* copy block to stream device */
-            if (!is_target && (ftype & FT_BLOCK))
+            if (!is_dest && (ftype & FT_BLOCK))
                 valid++;
-            if (is_target && (ftype & FT_TAPE))
+            if (is_dest && (ftype & FT_TAPE))
                 valid++;
             if (op->verbose)
                 pr2serr("        Copy Block to Stream device\n");
             break;
         case 0x01: /* copy stream to block device */
-            if (!is_target && (ftype & FT_TAPE))
+            if (!is_dest && (ftype & FT_TAPE))
                 valid++;
-            if (is_target && (ftype & FT_BLOCK))
+            if (is_dest && (ftype & FT_BLOCK))
                 valid++;
             if (op->verbose)
                 pr2serr("        Copy Stream to Block device\n");
             break;
         case 0x02: /* copy block to block device */
-            if (!is_target && (ftype & FT_BLOCK))
+            if (!is_dest && (ftype & FT_BLOCK))
                 valid++;
-            if (is_target && (ftype & FT_BLOCK))
+            if (is_dest && (ftype & FT_BLOCK))
                 valid++;
             if (op->verbose)
                 pr2serr("        Copy Block to Block device\n");
             break;
         case 0x03: /* copy stream to stream device */
-            if (!is_target && (ftype & FT_TAPE))
+            if (!is_dest && (ftype & FT_TAPE))
                 valid++;
-            if (is_target && (ftype & FT_TAPE))
+            if (is_dest && (ftype & FT_TAPE))
                 valid++;
             if (op->verbose)
                 pr2serr("        Copy Stream to Stream device\n");
             break;
         case 0x04: /* copy inline data to stream device */
-            if (!is_target && (ftype & FT_OTHER))
+            if (!is_dest && (ftype & FT_REG))
                 valid++;
-            if (is_target && (ftype & FT_TAPE))
+            if (is_dest && (ftype & FT_TAPE))
                 valid++;
             if (op->verbose)
                 pr2serr("        Copy inline data to Stream device\n");
             break;
         case 0x05: /* copy embedded data to stream device */
-            if (!is_target && (ftype & FT_OTHER))
+            if (!is_dest && (ftype & FT_REG))
                 valid++;
-            if (is_target && (ftype & FT_TAPE))
+            if (is_dest && (ftype & FT_TAPE))
                 valid++;
             if (op->verbose)
                 pr2serr("        Copy embedded data to Stream device\n");
             break;
         case 0x06: /* Read from stream device and discard */
-            if (!is_target && (ftype & FT_TAPE))
+            if (!is_dest && (ftype & FT_TAPE))
                 valid++;
-            if (is_target && (ftype & FT_DEV_NULL))
+            if (is_dest && (ftype & FT_DEV_NULL))
                 valid++;
             if (op->verbose)
                 pr2serr("        Read from stream device and discard\n");
             break;
         case 0x07: /* Verify block or stream device operation */
-            if (!is_target && (ftype & (FT_TAPE | FT_BLOCK)))
+            if (!is_dest && (ftype & (FT_TAPE | FT_BLOCK)))
                 valid++;
-            if (is_target && (ftype & (FT_TAPE | FT_BLOCK)))
+            if (is_dest && (ftype & (FT_TAPE | FT_BLOCK)))
                 valid++;
             if (op->verbose)
                 pr2serr("        Verify block or stream device operation\n");
             break;
         case 0x08: /* copy block device with offset to stream device */
-            if (!is_target && (ftype & FT_BLOCK))
+            if (!is_dest && (ftype & FT_BLOCK))
                 valid++;
-            if (is_target && (ftype & FT_TAPE))
+            if (is_dest && (ftype & FT_TAPE))
                 valid++;
             if (op->verbose)
                 pr2serr("        Copy block device with offset to stream "
                        "device\n");
             break;
         case 0x09: /* copy stream device to block device with offset */
-            if (!is_target && (ftype & FT_TAPE))
+            if (!is_dest && (ftype & FT_TAPE))
                 valid++;
-            if (is_target && (ftype & FT_BLOCK))
+            if (is_dest && (ftype & FT_BLOCK))
                 valid++;
             if (op->verbose)
                 pr2serr("        Copy stream device to block device with "
@@ -315,54 +407,54 @@ scsi_operating_parameter(struct opts_t * op, int is_target)
             break;
         case 0x0a: /* copy block device with offset to block device with
                     * offset */
-            if (!is_target && (ftype & FT_BLOCK))
+            if (!is_dest && (ftype & FT_BLOCK))
                 valid++;
-            if (is_target && (ftype & FT_BLOCK))
+            if (is_dest && (ftype & FT_BLOCK))
                 valid++;
             if (op->verbose)
                 pr2serr("        Copy block device with offset to block "
                        "device with offset\n");
             break;
         case 0x0b: /* copy block device to stream device and hold data */
-            if (!is_target && (ftype & FT_BLOCK))
+            if (!is_dest && (ftype & FT_BLOCK))
                 valid++;
-            if (is_target && (ftype & FT_TAPE))
+            if (is_dest && (ftype & FT_TAPE))
                 valid++;
             if (op->verbose)
                 pr2serr("        Copy block device to stream device and hold "
                        "data\n");
             break;
         case 0x0c: /* copy stream device to block device and hold data */
-            if (!is_target && (ftype & FT_TAPE))
+            if (!is_dest && (ftype & FT_TAPE))
                 valid++;
-            if (is_target && (ftype & FT_BLOCK))
+            if (is_dest && (ftype & FT_BLOCK))
                 valid++;
             if (op->verbose)
                 pr2serr("        Copy stream device to block device and hold "
                        "data\n");
             break;
         case 0x0d: /* copy block device to block device and hold data */
-            if (!is_target && (ftype & FT_BLOCK))
+            if (!is_dest && (ftype & FT_BLOCK))
                 valid++;
-            if (is_target && (ftype & FT_BLOCK))
+            if (is_dest && (ftype & FT_BLOCK))
                 valid++;
             if (op->verbose)
                 pr2serr("        Copy block device to block device and hold "
                        "data\n");
             break;
         case 0x0e: /* copy stream device to stream device and hold data */
-            if (!is_target && (ftype & FT_TAPE))
+            if (!is_dest && (ftype & FT_TAPE))
                 valid++;
-            if (is_target && (ftype & FT_TAPE))
+            if (is_dest && (ftype & FT_TAPE))
                 valid++;
             if (op->verbose)
                 pr2serr("        Copy block device to block device and hold "
                        "data\n");
             break;
         case 0x0f: /* read from stream device and hold data */
-            if (!is_target && (ftype & FT_TAPE))
+            if (!is_dest && (ftype & FT_TAPE))
                 valid++;
-            if (is_target && (ftype & FT_DEV_NULL))
+            if (is_dest && (ftype & FT_DEV_NULL))
                 valid++;
             if (op->verbose)
                 pr2serr("        Read from stream device and hold data\n");
@@ -446,17 +538,26 @@ scsi_operating_parameter(struct opts_t * op, int is_target)
     return td_list;
 }
 
-int
-desc_from_vpd_id(struct opts_t * op, int sg_fd, unsigned char *desc,
-                 int desc_len, unsigned int block_size, int pad)
+static int
+desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
+                 int is_dest)
 {
-    int res;
+    int fd, res, u, i_len, assoc, desig;
     unsigned char rcBuff[256], *ucp, *best = NULL;
     unsigned int len = 254;
-    int off = -1, u, i_len, best_len = 0, assoc, desig, f_desig = 0;
+    unsigned int block_size;
+    int off = -1;
+    int best_len = 0;
+    int f_desig = 0;
+    struct flags_t * flp;
+    struct dev_info_t * dip;
 
+    dip = is_dest ? op->odip : op->idip;
+    fd = dip->fd;
+    flp = is_dest ? op->oflagp : op->iflagp;
+    block_size = is_dest ? op->obs : op->ibs;
     memset(rcBuff, 0xff, len);
-    res = sg_ll_inquiry(sg_fd, 0, 1, 0x83, rcBuff, 4, 1, op->verbose);
+    res = sg_ll_inquiry(fd, 0, 1, 0x83, rcBuff, 4, 1, op->verbose);
     if (0 != res) {
         pr2serr("VPD inquiry failed with %d\n", res);
         return res;
@@ -465,7 +566,7 @@ desc_from_vpd_id(struct opts_t * op, int sg_fd, unsigned char *desc,
         return SG_LIB_CAT_MALFORMED;
     }
     len = ((rcBuff[2] << 8) + rcBuff[3]) + 4;
-    res = sg_ll_inquiry(sg_fd, 0, 1, 0x83, rcBuff, len, 1, op->verbose);
+    res = sg_ll_inquiry(fd, 0, 1, 0x83, rcBuff, len, 1, op->verbose);
     if (0 != res) {
         pr2serr("VPD inquiry failed with %d\n", res);
         return res;
@@ -474,8 +575,8 @@ desc_from_vpd_id(struct opts_t * op, int sg_fd, unsigned char *desc,
         return SG_LIB_CAT_MALFORMED;
     }
     if (op->verbose > 2) {
-        pr2serr("Output response in hex:\n");
-        dStrHex((const char *)rcBuff, len, 1);
+        pr2serr("Output inquiry VPD page 0x83 (di) response in hex:\n");
+        dStrHexErr((const char *)rcBuff, len, 1);
     }
 
     while ((u = sg_vpd_dev_id_iter(rcBuff + 4, len - 4, &off, 0, -1, -1)) ==
@@ -531,17 +632,160 @@ desc_from_vpd_id(struct opts_t * op, int sg_fd, unsigned char *desc,
             desc[0] = 0xe4;
             memcpy(desc + 4, best, best_len + 4);
             desc[4] &= 0x1f;
-            desc[28] = pad << 2;
+            desc[28] = flp->pad << 2;
             desc[29] = (block_size >> 16) & 0xff;
             desc[30] = (block_size >> 8) & 0xff;
             desc[31] = block_size & 0xff;
             if (op->verbose > 3) {
                 pr2serr("Descriptor in hex (bs %d):\n", block_size);
-                dStrHex((const char *)desc, 32, 1);
+                dStrHexErr((const char *)desc, 32, 1);
             }
             return 32;
         }
         return  best_len + 8;
     }
     return 0;
+}
+
+/* Called from main() in ddpt.c */
+int
+do_xcopy(struct opts_t * op)
+{
+    int res, ibpt, obpt, bs_same, max_bpt, blocks;
+    int src_desc_len, dst_desc_len, seg_desc_type;
+    unsigned char src_desc[256];
+    unsigned char dst_desc[256];
+    const struct flags_t * ifp = op->iflagp;
+    const struct flags_t * ofp = op->oflagp;
+    const struct dev_info_t * idip = op->idip;
+    const struct dev_info_t * odip = op->odip;
+
+    if (op->verbose)
+        pr2serr("do_xcopy: enter\n");
+
+    res = scsi_operating_parameter(op, 0);
+    if (res < 0) {
+        if (SG_LIB_CAT_UNIT_ATTENTION == -res) {
+            fprintf(stderr, "Unit attention (oper parm), continuing\n");
+            res = scsi_operating_parameter(op, 0);
+        } else {
+            if (-res == SG_LIB_CAT_INVALID_OP) {
+                fprintf(stderr, "receive copy operating parameters not "
+                        "supported on %s\n", idip->fn);
+                return EINVAL;
+            } else if (-res == SG_LIB_CAT_NOT_READY)
+                fprintf(stderr, "receive copy operating parameters failed "
+                        "on %s - not ready\n", idip->fn);
+            else {
+                fprintf(stderr, "Unable to receive copy operating "
+                        "parameters on %s\n", idip->fn);
+                return -res;
+            }
+        }
+    } else if (res == 0)
+        return SG_LIB_CAT_INVALID_OP;
+    if (res & TD_VPD) {
+        if (op->verbose)
+            pr2serr("  >> using VPD identification for source %s\n",
+                    op->idip->fn);
+        src_desc_len = desc_from_vpd_id(op, src_desc, sizeof(src_desc), 0);
+        if (src_desc_len > (int)sizeof(src_desc)) {
+            pr2serr("source descriptor too large (%d bytes)\n", res);
+            return SG_LIB_CAT_MALFORMED;
+        }
+    } else
+        return SG_LIB_CAT_INVALID_OP;
+
+    res = scsi_operating_parameter(op, 1);
+    if (res < 0) {
+        if (SG_LIB_CAT_UNIT_ATTENTION == -res) {
+            fprintf(stderr, "Unit attention (oper parm), continuing\n");
+            res = scsi_operating_parameter(op, 1);
+        } else {
+            if (-res == SG_LIB_CAT_INVALID_OP) {
+                fprintf(stderr, "receive copy operating parameters not "
+                        "supported on %s\n", odip->fn);
+                return EINVAL;
+            } else if (-res == SG_LIB_CAT_NOT_READY)
+                fprintf(stderr, "receive copy operating parameters failed "
+                        "on %s - not ready\n", odip->fn);
+            else {
+                fprintf(stderr, "Unable to receive copy operating "
+                        "parameters on %s\n", odip->fn);
+                return -res;
+            }
+        }
+    } else if (res == 0)
+        return SG_LIB_CAT_INVALID_OP;
+    if (res & TD_VPD) {
+        if (op->verbose)
+            pr2serr("  >> using VPD identification for destination %s\n",
+                    odip->fn);
+        dst_desc_len = desc_from_vpd_id(op, dst_desc, sizeof(dst_desc), 1);
+        if (dst_desc_len > (int)sizeof(dst_desc)) {
+            pr2serr("destination descriptor too large (%d bytes)\n", res);
+            return SG_LIB_CAT_MALFORMED;
+        }
+    } else
+        return SG_LIB_CAT_INVALID_OP;
+
+    bs_same = (op->ibs == op->obs);
+    max_bpt = bs_same ? MAX_XC_BPT : MAX_XC_BPT_POW2;
+    /* Beware, xc_max_bytes may be ULONG_MAX hence unsigned long division */
+    if (op->bpt_given) {
+        ibpt = op->bpt_i;
+        ibpt = (ibpt > max_bpt) ? max_bpt : ibpt;
+        obpt = bs_same ? ibpt : ((op->ibs * op->bpt_i) / op->obs);
+        if (ifp->dc || ofp->dc) {
+            if ((unsigned long)obpt * op->obs > odip->xc_max_bytes) {
+                pr2serr("bpt too large (max %ld blocks)\n",
+                        odip->xc_max_bytes / op->obs);
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else {
+            if ((unsigned long)ibpt * op->ibs > idip->xc_max_bytes) {
+                pr2serr("bpt too large (max %ld blocks)\n",
+                        idip->xc_max_bytes / op->ibs);
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        }
+    } else {
+        unsigned long r;
+
+        if (ifp->dc || ofp->dc) {
+            r = odip->xc_max_bytes / (unsigned long)op->obs;
+            obpt = (r > INT_MAX) ? INT_MAX : (int)r;
+            ibpt = bs_same ? obpt : ((op->obs * obpt) / op->ibs);
+            ibpt = (ibpt > max_bpt) ? max_bpt : ibpt;
+            obpt = bs_same ? ibpt : ((op->ibs * op->bpt_i) / op->obs);
+        } else {
+            r = idip->xc_max_bytes / (unsigned long)op->ibs;
+            ibpt = (r > (unsigned long)max_bpt) ? max_bpt : (int)r;
+            obpt = bs_same ? ibpt : ((op->ibs * op->bpt_i) / op->obs);
+        }
+    }
+    if (op->verbose > 1)
+	pr2serr("do_xcopy: final ibpt=%d, obpt=%d\n", ibpt, obpt);
+    seg_desc_type = seg_desc_from_d_type(simplified_dt(op->idip), 0,
+                                         simplified_dt(op->odip), 0);
+
+    res = 0;
+    while (op->dd_count > 0) {
+        if (op->dd_count > ibpt)
+            blocks = ibpt;
+        else
+            blocks = op->dd_count;
+        res = scsi_extended_copy(op, src_desc, src_desc_len, dst_desc,
+                                 dst_desc_len, seg_desc_type, blocks);
+        if (res != 0)
+            break;
+        op->in_full += blocks;
+        op->skip += blocks;
+        op->seek += obpt;
+        op->dd_count -= blocks;
+        // num_xcopy++;
+    }
+// xxxxxxxxxxxxx
+
+    return res;
 }
