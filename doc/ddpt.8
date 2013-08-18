@@ -1,4 +1,4 @@
-.TH DDPT "8" "June 2013" "ddpt\-0.93" DDPT
+.TH DDPT "8" "August 2013" "ddpt\-0.93" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -391,6 +391,10 @@ the segment is re\-read one block (i.e. \fIIBS\fR bytes) at a time. Any
 block that yields a EIO or EREMOTEIO error is replaced by zeros. Any
 other error, a short read or an end of file will terminate the copy,
 usually after the data that has been read is written to the output file.
+.TP
+dc [io] [blk,pt,tape]
+set DC (destination counter) bit in EXTENDED COPY (LID1) parameter list.
+May appear in either flag list when xcopy is being used.
 .TP
 direct [io] [reg,blk]
 causes the O_DIRECT flag to be added to the open of \fIIFILE\fR and/or
@@ -939,6 +943,8 @@ There is support for copies to and from tape drives in Linux. Only the
 st driver device names can be used (e.g. /dev/st0 and /dev/nst2). Hence
 use of Linux pass\-through device names (e.g. /dev/sg2) for tape drives
 is not supported.
+To be continued xxxxxxxxx
+.SH XCOPY
 .PP
 To be continued xxxxxxxxx
 .SH EXIT STATUS
