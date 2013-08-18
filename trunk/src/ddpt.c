@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.93 20130814 [svn: r214]";
+static const char * version_str = "0.93 20130818 [svn: r215]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -167,6 +167,7 @@ static void print_tape_summary(struct opts_t * op, int res, const char * str);
 static void print_tape_pos(const char * prefix, const char * postfix,
                            struct opts_t * op);
 static void show_tape_pos_error(const char * postfix);
+
 
 static void
 usage(int help)
@@ -559,7 +560,7 @@ process_signals(struct opts_t * op)
             print_stats("", op);
             /* Don't show next message if using oflag=pre-alloc and we didn't
              * use FALLOC_FL_KEEP_SIZE */
-            if ((0 == op->reading_fifo) && (FT_REG & op->out_type_hold)
+            if ((0 == op->reading_fifo) && (FT_REG & op->odip->d_type_hold)
                  && (0 == op->oflagp->prealloc))
                 pr2serr("To resume, invoke with same arguments plus "
                         "oflag=resume\n");
@@ -832,19 +833,19 @@ cl_sanity_defaults(struct opts_t * op)
     if ((0 == op->ibs) && (0 == op->obs)) {
         op->ibs = DEF_BLOCK_SIZE;
         op->obs = DEF_BLOCK_SIZE;
-        if (op->inf[0])
-            pr2serr("Assume block size of %d bytes for both "
-                    "input and output\n", DEF_BLOCK_SIZE);
+        if (op->idip->fn[0])
+            pr2serr("Assume block size of %d bytes for both input and "
+                    "output\n", DEF_BLOCK_SIZE);
     } else if (0 == op->obs) {
         op->obs = DEF_BLOCK_SIZE;
-        if ((op->ibs != DEF_BLOCK_SIZE) && op->outf[0])
-            pr2serr("Neither obs nor bs given so set obs=%d "
-                    "(default block size)\n", op->obs);
+        if ((op->ibs != DEF_BLOCK_SIZE) && op->odip->fn[0])
+            pr2serr("Neither obs nor bs given so set obs=%d (default "
+                    "block size)\n", op->obs);
     } else if (0 == op->ibs) {
         op->ibs = DEF_BLOCK_SIZE;
         if (op->obs != DEF_BLOCK_SIZE)
-            pr2serr("Neither ibs nor bs given so set ibs=%d "
-                    "(default block size)\n", op->ibs);
+            pr2serr("Neither ibs nor bs given so set ibs=%d (default "
+                    "block size)\n", op->ibs);
     }
     op->ibs_hold = op->ibs;
     if (0 == op->bpt_given)
@@ -852,8 +853,8 @@ cl_sanity_defaults(struct opts_t * op)
 
     if ((op->ibs != op->obs) &&
         (0 != ((op->ibs * op->bpt_i) % op->obs))) {
-        pr2serr("when 'ibs' and 'obs' differ, ((ibs*bpt)/obs) "
-                "must have no remainder (bpt=%d)\n", op->bpt_i);
+        pr2serr("when 'ibs' and 'obs' differ, ((ibs*bpt)/obs) must have "
+                "no remainder (bpt=%d)\n", op->bpt_i);
         return SG_LIB_SYNTAX_ERROR;
     }
     if ((op->skip < 0) || (op->seek < 0)) {
@@ -903,8 +904,8 @@ cl_sanity_defaults(struct opts_t * op)
             if (! op->oflagp->nowrite)
                 ++op->oflagp->nowrite;
         }
-        if ('\0' == op->outf[0])
-            strcpy(op->outf, op->inf);
+        if ('\0' == op->odip->fn[0])
+            strcpy(op->odip->fn, op->idip->fn);
         if ((0 == op->seek) && (op->skip > 0)) {
             if (op->ibs == op->obs)
                 op->seek = op->skip;
@@ -931,7 +932,7 @@ cl_sanity_defaults(struct opts_t * op)
     if (op->iflagp->xcopy || op->oflagp->xcopy) {
         if (op->iflagp->xcopy && op->oflagp->xcopy) {
             pr2serr("Since xcopy set in both iflag= and oflags"
-                    "will send xcopy to if=%s\n", op->inf);
+                    "will send xcopy to if=%s\n", op->idip->fn);
             op->oflagp->xcopy = 0;
         }
         op->has_xcopy = 1;
@@ -1104,11 +1105,11 @@ process_cl(struct opts_t * op, int argc, char * argv[])
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (strcmp(key, "if") == 0) {
-            if ('\0' != op->inf[0]) {
+            if ('\0' != op->idip->fn[0]) {
                 pr2serr("Second IFILE argument??\n");
                 return SG_LIB_SYNTAX_ERROR;
             } else
-                strncpy(op->inf, buf, INOUTF_SZ);
+                strncpy(op->idip->fn, buf, INOUTF_SZ);
         } else if (0 == strcmp(key, "iflag")) {
             if (process_flags(buf, op->iflagp)) {
                 pr2serr("bad argument to 'iflag='\n");
@@ -1144,18 +1145,18 @@ process_cl(struct opts_t * op, int argc, char * argv[])
             ++op->obs_given;
             op->obs = n;
         } else if (strcmp(key, "of") == 0) {
-            if ('\0' != op->outf[0]) {
+            if ('\0' != op->odip->fn[0]) {
                 pr2serr("Second OFILE argument??\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-            strncpy(op->outf, buf, INOUTF_SZ);
+            strncpy(op->odip->fn, buf, INOUTF_SZ);
             ++op->outf_given;
         } else if (strcmp(key, "of2") == 0) {
-            if ('\0' != op->out2f[0]) {
+            if ('\0' != op->o2dip->fn[0]) {
                 pr2serr("Second OFILE2 argument??\n");
                 return SG_LIB_SYNTAX_ERROR;
             } else
-                strncpy(op->out2f, buf, INOUTF_SZ);
+                strncpy(op->o2dip->fn, buf, INOUTF_SZ);
         } else if (0 == strcmp(key, "oflag")) {
             if (process_flags(buf, op->oflagp)) {
                 pr2serr("bad argument to 'oflag='\n");
@@ -1435,8 +1436,8 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
     int blk_fd;
     const char * fname;
 
-    blk_fd = (DDPT_ARG_IN == which_arg) ? op->infd : op->outfd;
-    fname = (DDPT_ARG_IN == which_arg) ? op->inf : op->outf;
+    blk_fd = (DDPT_ARG_IN == which_arg) ? op->idip->fd : op->odip->fd;
+    fname = (DDPT_ARG_IN == which_arg) ? op->idip->fn : op->odip->fn;
     if (op->verbose > 2)
         pr2serr("get_blkdev_capacity: for %s\n", fname);
     /* BLKGETSIZE64, BLKGETSIZE and BLKSSZGET macros problematic (from
@@ -1493,8 +1494,8 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
     int blk_fd;
     const char * fname;
 
-    blk_fd = (DDPT_ARG_IN == which_arg) ? op->infd : op->outfd;
-    fname = (DDPT_ARG_IN == which_arg) ? op->inf : op->outf;
+    blk_fd = (DDPT_ARG_IN == which_arg) ? op->idip->fd : op->odip->fd;
+    fname = (DDPT_ARG_IN == which_arg) ? op->idip->fn : op->odip->fn;
     if (op->verbose > 2)
         pr2serr("get_blkdev_capacity: for %s\n", fname);
 
@@ -1527,8 +1528,8 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
     int blk_fd;
     const char * fname;
 
-    blk_fd = (DDPT_ARG_IN == which_arg) ? op->infd : op->outfd;
-    fname = (DDPT_ARG_IN == which_arg) ? op->inf : op->outf;
+    blk_fd = (DDPT_ARG_IN == which_arg) ? op->idip->fd : op->odip->fd;
+    fname = (DDPT_ARG_IN == which_arg) ? op->idip->fn : op->odip->fn;
     if (op->verbose > 2)
         pr2serr("get_blkdev_capacity: for %s\n", fname);
 
@@ -1775,27 +1776,28 @@ open_if(struct opts_t * op)
     int fd = -SG_LIB_FILE_ERROR;
     char ebuff[EBUFF_SZ];
     struct flags_t * ifp = op->iflagp;
-    const char * inf = op->inf;
+    struct dev_info_t * idip = op->idip;
+    const char * ifn = idip->fn;
 
-    op->in_type = dd_filetype(inf, op->verbose);
-    if (FT_ERROR & op->in_type) {
-        pr2serr("unable to access %s\n", inf);
+    idip->d_type = dd_filetype(ifn, op->verbose);
+    if (FT_ERROR & idip->d_type) {
+        pr2serr("unable to access %s\n", ifn);
         goto file_err;
-    } else if (((FT_BLOCK | FT_TAPE | FT_OTHER) & op->in_type) && ifp->pt)
-        op->in_type |= FT_PT;
+    } else if (((FT_BLOCK | FT_TAPE | FT_OTHER) & idip->d_type) && ifp->pt)
+        idip->d_type |= FT_PT;
     if (op->verbose)
         pr2serr(" >> Input file type: %s\n",
-                dd_filetype_str(op->in_type, ebuff, EBUFF_SZ, inf));
-    if (!(FT_PT & op->in_type) && op->rdprotect)
+                dd_filetype_str(idip->d_type, ebuff, EBUFF_SZ, ifn));
+    if (!(FT_PT & idip->d_type) && op->rdprotect)
         pr2serr("rdprotect ignored on non-pt device\n");
-    if ((FT_FIFO | FT_CHAR | FT_TAPE) & op->in_type)
+    if ((FT_FIFO | FT_CHAR | FT_TAPE) & idip->d_type)
         ++op->reading_fifo;
 
-    if ((FT_TAPE & op->in_type) && (FT_PT & op->in_type)) {
-        pr2serr("SCSI tape device %s not supported via pt\n", inf);
+    if ((FT_TAPE & idip->d_type) && (FT_PT & idip->d_type)) {
+        pr2serr("SCSI tape device %s not supported via pt\n", ifn);
         goto file_err;
     }
-    if (FT_PT & op->in_type) {
+    if (FT_PT & idip->d_type) {
         fd = pt_open_if(op);
         if (-1 == fd)
             goto file_err;
@@ -1803,7 +1805,7 @@ open_if(struct opts_t * op)
             goto other_err;
     }
 #ifdef SG_LIB_WIN32
-    else if (FT_BLOCK & op->in_type) {
+    else if (FT_BLOCK & idip->d_type) {
         if (win32_open_if(op, op->verbose))
             goto file_err;
         fd = 0;
@@ -1817,16 +1819,16 @@ open_if(struct opts_t * op)
             flags |= O_EXCL;
         if (ifp->sync)
             flags |= O_SYNC;
-        fd = open(inf, flags);
+        fd = open(ifn, flags);
         if (fd < 0) {
-            pr2serr("could not open %s for reading: %s\n", inf,
+            pr2serr("could not open %s for reading: %s\n", ifn,
                     safe_strerror(errno));
             goto file_err;
         } else {
             if (sg_set_binary_mode(fd) < 0)
                 perror("sg_set_binary_mode");
             if (op->verbose)
-                pr2serr("        open %s, flags=0x%x\n", inf, flags);
+                pr2serr("        open %s, flags=0x%x\n", ifn, flags);
 #ifdef HAVE_POSIX_FADVISE
             if (ifp->nocache) {
                 int rt;
@@ -1847,7 +1849,7 @@ open_if(struct opts_t * op)
         if (res < 0) {
             close(fd);
             pr2serr("flock(LOCK_EX | LOCK_NB) on %s failed: %s\n",
-                    inf, safe_strerror(errno));
+                    ifn, safe_strerror(errno));
             return -SG_LIB_FLOCK_ERR;
         }
     }
@@ -1873,32 +1875,33 @@ open_of(struct opts_t * op)
     char ebuff[EBUFF_SZ];
     struct stat st;
     struct flags_t * ofp = op->oflagp;
-    const char * outf = op->outf;
+    struct dev_info_t * odip = op->odip;
+    const char * ofn = odip->fn;
 
-    op->out_type = dd_filetype(outf, op->verbose);
-    if (((FT_BLOCK | FT_TAPE | FT_OTHER) & op->out_type) && ofp->pt)
-        op->out_type |= FT_PT;
-    op->out_type_hold = op->out_type;
+    odip->d_type = dd_filetype(ofn, op->verbose);
+    if (((FT_BLOCK | FT_TAPE | FT_OTHER) & odip->d_type) && ofp->pt)
+        odip->d_type |= FT_PT;
+    odip->d_type_hold = odip->d_type;
     if (op->verbose)
         pr2serr(" >> Output file type: %s\n",
-                dd_filetype_str(op->out_type, ebuff, EBUFF_SZ, outf));
-    if (!(FT_PT & op->out_type) && op->wrprotect)
+                dd_filetype_str(odip->d_type, ebuff, EBUFF_SZ, ofn));
+    if (!(FT_PT & odip->d_type) && op->wrprotect)
         pr2serr("wrprotect ignored on non-pt device\n");
 
-    if ((FT_TAPE & op->out_type) && (FT_PT & op->out_type)) {
-        pr2serr("SCSI tape device %s not supported via pt\n", outf);
+    if ((FT_TAPE & odip->d_type) && (FT_PT & odip->d_type)) {
+        pr2serr("SCSI tape device %s not supported via pt\n", ofn);
         goto file_err;
     }
-    if (FT_PT & op->out_type) {
+    if (FT_PT & odip->d_type) {
         fd = pt_open_of(op);
         if (-1 == fd)
             goto file_err;
         else if (fd < -1)
             goto other_err;
-    } else if (FT_DEV_NULL & op->out_type)
+    } else if (FT_DEV_NULL & odip->d_type)
         fd = -1; /* don't bother opening */
 #ifdef SG_LIB_WIN32
-    else if (FT_BLOCK & op->out_type) {
+    else if (FT_BLOCK & odip->d_type) {
         if (win32_open_of(op, op->verbose))
             goto file_err;
         fd = 0;
@@ -1909,7 +1912,7 @@ open_of(struct opts_t * op)
         int64_t offset = 0;
 
         memset(&st, 0, sizeof(st));
-        if (0 == stat(outf, &st))
+        if (0 == stat(ofn, &st))
             outf_exists = 1;
         flags = ofp->sparing ? O_RDWR : O_WRONLY;
         if (0 == outf_exists)
@@ -1922,7 +1925,7 @@ open_of(struct opts_t * op)
             flags |= O_SYNC;
         if (ofp->append)
             flags |= O_APPEND;
-        if ((FT_REG & op->out_type) && outf_exists && ofp->trunc &&
+        if ((FT_REG & odip->d_type) && outf_exists && ofp->trunc &&
             (! ofp->nowrite)) {
             if (op->seek > 0) {
                 offset = op->seek * op->obs;
@@ -1931,28 +1934,28 @@ open_of(struct opts_t * op)
             } else
                 flags |= O_TRUNC;
         }
-        if ((fd = open(outf, flags, 0666)) < 0) {
-            pr2serr("could not open %s for writing: %s\n", outf,
+        if ((fd = open(ofn, flags, 0666)) < 0) {
+            pr2serr("could not open %s for writing: %s\n", ofn,
                     safe_strerror(errno));
             goto file_err;
         }
         if (needs_ftruncate && (offset > 0)) {
             if (ftruncate(fd, offset) < 0) {
-                pr2serr("could not ftruncate %s after open (seek): "
-                        "%s\n", outf, safe_strerror(errno));
+                pr2serr("could not ftruncate %s after open (seek): %s\n",
+                        ofn, safe_strerror(errno));
                 goto file_err;
             }
             /* N.B. file offset (pointer) not changed by ftruncate */
         }
-        if ((! outf_exists) && (FT_ERROR & op->out_type)) {
-            op->out_type = FT_REG;   /* exists now */
-            op->out_type_hold = op->out_type;
+        if ((! outf_exists) && (FT_ERROR & odip->d_type)) {
+            odip->d_type = FT_REG;   /* exists now */
+            odip->d_type_hold = odip->d_type;
         }
         if (sg_set_binary_mode(fd) < 0)
             perror("sg_set_binary_mode");
         if (op->verbose) {
             pr2serr("        %s %s, flags=0x%x\n",
-                    (outf_exists ? "open" : "create"), outf, flags);
+                    (outf_exists ? "open" : "create"), ofn, flags);
             if (needs_ftruncate && (offset > 0))
                 pr2serr("        truncated file at byte offset "
                         "%" PRId64 " \n", offset);
@@ -1966,7 +1969,7 @@ open_of(struct opts_t * op)
         if (res < 0) {
             close(fd);
             pr2serr("flock(LOCK_EX | LOCK_NB) on %s failed: %s\n",
-                    outf, safe_strerror(errno));
+                    ofn, safe_strerror(errno));
             return -SG_LIB_FLOCK_ERR;
         }
     }
@@ -1988,9 +1991,10 @@ calc_count_in(struct opts_t * op, int64_t * in_num_sectp)
     struct stat st;
     int64_t num_sect, t;
     int in_sect_sz, sect_sz, in_type;
+    const char * ifn = op->idip->fn;
 
     *in_num_sectp = -1;
-    in_type = op->in_type;
+    in_type = op->idip->d_type;
     if (FT_PT & in_type) {
         if (op->iflagp->norcap) {
             if ((FT_BLOCK & in_type) && (0 == op->iflagp->force)) {
@@ -2011,20 +2015,19 @@ calc_count_in(struct opts_t * op, int64_t * in_num_sectp)
         }
         if (0 != res) {
             if (res == SG_LIB_CAT_INVALID_OP)
-                pr2serr("read capacity not supported on %s\n", op->inf);
+                pr2serr("read capacity not supported on %s\n", ifn);
             else if (res == SG_LIB_CAT_NOT_READY)
-                pr2serr("read capacity failed on %s - not ready\n", op->inf);
+                pr2serr("read capacity failed on %s - not ready\n", ifn);
             else
-                pr2serr("Unable to read capacity on %s\n", op->inf);
+                pr2serr("Unable to read capacity on %s\n", ifn);
             *in_num_sectp = -1;
             return res;
         } else {
             if (op->verbose)
-                print_blk_sizes(op->inf, "pt", *in_num_sectp, in_sect_sz);
+                print_blk_sizes(ifn, "pt", *in_num_sectp, in_sect_sz);
             if ((*in_num_sectp > 0) && (in_sect_sz != op->ibs)) {
                 pr2serr(">> warning: %s block size confusion: ibs=%d, "
-                        "device claims=%d\n", op->inf, op->ibs,
-                        in_sect_sz);
+                        "device claims=%d\n", ifn, op->ibs, in_sect_sz);
                 if (0 == op->iflagp->force) {
                     pr2serr(">> abort copy, use iflag=force to override\n");
                     return -1;
@@ -2048,26 +2051,25 @@ calc_count_in(struct opts_t * op, int64_t * in_num_sectp)
     else if (FT_BLOCK & in_type) {
         if (0 != get_blkdev_capacity(op, DDPT_ARG_IN, in_num_sectp,
                                      &in_sect_sz)) {
-            pr2serr("Unable to read block capacity on %s\n", op->inf);
+            pr2serr("Unable to read block capacity on %s\n", ifn);
             *in_num_sectp = -1;
         }
         if (op->verbose)
-            print_blk_sizes(op->inf, "blk", *in_num_sectp, in_sect_sz);
+            print_blk_sizes(ifn, "blk", *in_num_sectp, in_sect_sz);
         if ((*in_num_sectp > 0) && (op->ibs != in_sect_sz)) {
             pr2serr(">> warning: %s block size confusion: bs=%d, "
-                    "device claims=%d\n", op->inf, op->ibs,
-                     in_sect_sz);
+                    "device claims=%d\n", ifn, op->ibs, in_sect_sz);
             *in_num_sectp = -1;
         }
     } else if (FT_REG & in_type) {
-        if (fstat(op->infd, &st) < 0) {
-            perror("fstat(infd) error");
+        if (fstat(op->idip->fd, &st) < 0) {
+            perror("fstat(idip->fd) error");
             *in_num_sectp = -1;
         } else {
             *in_num_sectp = st.st_size / op->ibs;
             res = st.st_size % op->ibs;
             if (op->verbose) {
-                print_blk_sizes(op->inf, "reg", *in_num_sectp, op->ibs);
+                print_blk_sizes(ifn, "reg", *in_num_sectp, op->ibs);
                 if (res)
                     pr2serr("    residual_bytes=%d\n", res);
             }
@@ -2087,9 +2089,10 @@ calc_count_out(struct opts_t * op, int64_t * out_num_sectp)
     struct stat st;
     int64_t num_sect, t;
     int out_sect_sz, sect_sz, out_type;
+    const char * ofn = op->odip->fn;
 
     *out_num_sectp = -1;
-    out_type = op->out_type;
+    out_type = op->odip->d_type;
     if (FT_PT & out_type) {
         if (op->oflagp->norcap) {
             if ((FT_BLOCK & out_type) && (0 == op->oflagp->force)) {
@@ -2110,19 +2113,18 @@ calc_count_out(struct opts_t * op, int64_t * out_num_sectp)
         }
         if (0 != res) {
             if (res == SG_LIB_CAT_INVALID_OP)
-                pr2serr("read capacity not supported on %s\n", op->outf);
+                pr2serr("read capacity not supported on %s\n", ofn);
             else
-                pr2serr("Unable to read capacity on %s\n", op->outf);
+                pr2serr("Unable to read capacity on %s\n", ofn);
             *out_num_sectp = -1;
             return res;
         } else {
             if (op->verbose)
-                print_blk_sizes(op->outf, "pt", *out_num_sectp,
-                                out_sect_sz);
+                print_blk_sizes(ofn, "pt", *out_num_sectp, out_sect_sz);
             if ((*out_num_sectp > 0) && (op->obs != out_sect_sz)) {
                 pr2serr(">> warning: %s block size confusion: "
-                        "obs=%d, device claims=%d\n", op->outf,
-                        op->obs, out_sect_sz);
+                        "obs=%d, device claims=%d\n", ofn, op->obs,
+                        out_sect_sz);
                 if (0 == op->oflagp->force) {
                     pr2serr(">> abort copy, use oflag=force to override\n");
                     return -1;
@@ -2146,29 +2148,26 @@ calc_count_out(struct opts_t * op, int64_t * out_num_sectp)
     if (FT_BLOCK & out_type) {
         if (0 != get_blkdev_capacity(op, DDPT_ARG_OUT, out_num_sectp,
                                      &out_sect_sz)) {
-            pr2serr("Unable to read block capacity on %s\n", op->outf);
+            pr2serr("Unable to read block capacity on %s\n", ofn);
             *out_num_sectp = -1;
         } else {
             if (op->verbose)
-                print_blk_sizes(op->outf, "blk", *out_num_sectp,
-                                out_sect_sz);
+                print_blk_sizes(ofn, "blk", *out_num_sectp, out_sect_sz);
             if ((*out_num_sectp > 0) && (op->obs != out_sect_sz)) {
-                pr2serr(">> warning: %s block size confusion: "
-                        "obs=%d, device claims=%d\n", op->outf,
-                        op->obs, out_sect_sz);
+                pr2serr(">> warning: %s block size confusion: obs=%d, "
+                        "device claims=%d\n", ofn, op->obs, out_sect_sz);
                 *out_num_sectp = -1;
             }
         }
     } else if (FT_REG & out_type) {
-        if (fstat(op->outfd, &st) < 0) {
-            perror("fstat(outfd) error");
+        if (fstat(op->odip->fd, &st) < 0) {
+            perror("fstat(odip->fd) error");
             *out_num_sectp = -1;
         } else {
             *out_num_sectp = st.st_size / op->obs;
             res = st.st_size % op->obs;
             if (op->verbose) {
-                print_blk_sizes(op->outf, "reg", *out_num_sectp,
-                                op->obs);
+                print_blk_sizes(ofn, "reg", *out_num_sectp, op->obs);
                 if (res)
                     pr2serr("    residual_bytes=%d\n", res);
             }
@@ -2206,23 +2205,26 @@ calc_count(struct opts_t * op, int64_t * in_num_sectp,
 static void
 do_fadvise(struct opts_t * op, int bytes_if, int bytes_of, int bytes_of2)
 {
-    int rt, in_valid, out2_valid, out_valid;
+    int rt, in_valid, out2_valid, out_valid, id_type, od_type, o2d_type;
 
-    in_valid = ((FT_REG == op->in_type) || (FT_BLOCK == op->in_type));
-    out2_valid = ((FT_REG == op->out2_type) || (FT_BLOCK == op->out2_type));
-    out_valid = ((FT_REG == op->out_type) || (FT_BLOCK == op->out_type));
+    id_type = op->idip->d_type;
+    od_type = op->odip->d_type;
+    o2d_type = op->o2dip->d_type;
+    in_valid = ((FT_REG == id_type) || (FT_BLOCK == id_type));
+    out2_valid = ((FT_REG == o2d_type) || (FT_BLOCK == o2d_type));
+    out_valid = ((FT_REG == od_type) || (FT_BLOCK == od_type));
     if (op->iflagp->nocache && (bytes_if > 0) && in_valid) {
         if ((op->lowest_skip < 0) || (op->skip > op->lowest_skip))
             op->lowest_skip = op->skip;
-        rt = posix_fadvise(op->infd, (op->lowest_skip * op->ibs),
+        rt = posix_fadvise(op->idip->fd, (op->lowest_skip * op->ibs),
                            ((op->skip - op->lowest_skip) * op->ibs) + bytes_if,
                            POSIX_FADV_DONTNEED);
         if (rt)         /* returns error as result */
-            pr2serr("posix_fadvise on read, skip=%" PRId64
-                    " ,err=%d\n", op->skip, rt);
+            pr2serr("posix_fadvise on read, skip=%" PRId64 " ,err=%d\n",
+                    op->skip, rt);
     }
     if ((op->oflagp->nocache & 2) && (bytes_of2 > 0) && out2_valid) {
-        rt = posix_fadvise(op->out2fd, 0, 0, POSIX_FADV_DONTNEED);
+        rt = posix_fadvise(op->o2dip->fd, 0, 0, POSIX_FADV_DONTNEED);
         if (rt)
             pr2serr("posix_fadvise on of2, seek=%" PRId64 " ,err=%d\n",
                     op->seek, rt);
@@ -2230,7 +2232,7 @@ do_fadvise(struct opts_t * op, int bytes_if, int bytes_of, int bytes_of2)
     if ((op->oflagp->nocache & 1) && (bytes_of > 0) && out_valid) {
         if ((op->lowest_seek < 0) || (op->seek > op->lowest_seek))
             op->lowest_seek = op->seek;
-        rt = posix_fadvise(op->outfd, (op->lowest_seek * op->obs),
+        rt = posix_fadvise(op->odip->fd, (op->lowest_seek * op->obs),
                    ((op->seek - op->lowest_seek) * op->obs) + bytes_of,
                            POSIX_FADV_DONTNEED);
         if (rt)
@@ -2353,7 +2355,7 @@ coe_cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
             if (op->verbose > 2)
                 pr2serr("moving if filepos: new_pos=%" PRId64 "\n",
                         (int64_t)offset);
-            off_res = lseek(op->infd, offset, SEEK_SET);
+            off_res = lseek(op->idip->fd, offset, SEEK_SET);
             if (off_res < 0) {
                 pr2serr("failed moving if filepos: new_pos="
                         "%" PRId64 "\nlseek on input: %s\n", (int64_t)offset,
@@ -2363,7 +2365,7 @@ coe_cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
             csp->if_filepos = offset;
         }
         memset(bp, 0, ibs);
-        while (((res = read(op->infd, bp, ibs)) < 0) &&
+        while (((res = read(op->idip->fd, bp, ibs)) < 0) &&
                (EINTR == errno))
             ++op->interrupted_retries;
         if (0 == res) {
@@ -2428,7 +2430,7 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
     int numbytes = csp->icbpt * op->ibs_pi;
     int ibs = op->ibs_pi;
 
-    in_type = op->in_type;
+    in_type = op->idip->d_type;
 #ifdef SG_LIB_WIN32
     if (FT_BLOCK & in_type) {
         int ifull_extra;
@@ -2446,7 +2448,7 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
         if (op->verbose > 2)
             pr2serr("moving if filepos: new_pos=%" PRId64 "\n",
                     (int64_t)offset);
-        off_res = lseek(op->infd, offset, SEEK_SET);
+        off_res = lseek(op->idip->fd, offset, SEEK_SET);
         if (off_res < 0) {
             pr2serr("failed moving if filepos: new_pos="
                     "%" PRId64 "\nlseek on input: %s\n", (int64_t)offset,
@@ -2455,7 +2457,7 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
         }
         csp->if_filepos = offset;
     }
-    while (((res = read(op->infd, bp, numbytes)) < 0) &&
+    while (((res = read(op->idip->fd, bp, numbytes)) < 0) &&
            (EINTR == errno))
         ++op->interrupted_retries;
 
@@ -2502,7 +2504,7 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
         res2 = 0;
         if ((res >= ibs) && (res <= (numbytes - ibs))) {
             /* Want to check for a EIO lurking */
-            while (((res2 = read(op->infd, bp + res, ibs)) < 0) &&
+            while (((res2 = read(op->idip->fd, bp + res, ibs)) < 0) &&
                    (EINTR == errno))
                 ++op->interrupted_retries;
             if (res2 < 0) {
@@ -2559,7 +2561,7 @@ cp_read_tape(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
 
     num = csp->icbpt * op->ibs;
     op->read_tape_numbytes = num;
-    while (((res = read(op->infd, bp, num)) < 0) && (EINTR == errno))
+    while (((res = read(op->idip->fd, bp, num)) < 0) && (EINTR == errno))
         ++op->interrupted_retries;
 
     err = errno;
@@ -2638,7 +2640,7 @@ cp_read_fifo(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
     }
 
     for (k = 0; k < numbytes; k += res) {
-        while (((res = read(op->infd, bp + k, numbytes - k)) < 0) &&
+        while (((res = read(op->idip->fd, bp + k, numbytes - k)) < 0) &&
                (EINTR == errno))
             ++op->interrupted_retries;
 
@@ -2683,13 +2685,13 @@ cp_write_of2(struct opts_t * op, struct cp_state_t * csp,
     off = 0;
     part = 0;
     do {
-        while (((res = write(op->out2fd, bp + off, numbytes - off)) < 0) &&
+        while (((res = write(op->o2dip->fd, bp + off, numbytes - off)) < 0) &&
                (EINTR == errno))
             ++op->interrupted_retries;
         err = errno;
         if ((res > 0) && (res < (numbytes - off)))
             ++part;
-    } while ((FT_FIFO & op->out2_type) && (res > 0) &&
+    } while ((FT_FIFO & op->o2dip->d_type) && (res > 0) &&
              ((off += res) < numbytes));
     if (off >= numbytes) {
         res = numbytes;
@@ -2772,7 +2774,7 @@ cp_read_of_block_reg(struct opts_t * op, struct cp_state_t * csp,
             if (op->verbose > 2)
                 pr2serr("moving of filepos: new_pos=%" PRId64 "\n",
                         (int64_t)offset);
-            off_res = lseek(op->outfd, offset, SEEK_SET);
+            off_res = lseek(op->odip->fd, offset, SEEK_SET);
             if (off_res < 0) {
                 pr2serr("failed moving of filepos: new_pos="
                         "%" PRId64 "\nlseek on output: %s\n", (int64_t)offset,
@@ -2787,7 +2789,7 @@ cp_read_of_block_reg(struct opts_t * op, struct cp_state_t * csp,
                 pr2serr("read(sparing): %d bytes extra to fetch "
                         "due to partial read\n", csp->partial_write_bytes);
         }
-        while (((res = read(op->outfd, bp, numbytes)) < 0) &&
+        while (((res = read(op->odip->fd, bp, numbytes)) < 0) &&
                (EINTR == errno))
             ++op->interrupted_retries;
 
@@ -2888,7 +2890,7 @@ cp_write_tape(struct opts_t * op, struct cp_state_t * csp,
     }
 
 ew_retry:
-    while (((res = write(op->outfd, bp, numbytes)) < 0) &&
+    while (((res = write(op->odip->fd, bp, numbytes)) < 0) &&
            (EINTR == errno))
         ++op->interrupted_retries;
 
@@ -2967,7 +2969,7 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
 
     if (op->oflagp->nowrite)
         return 0;
-    out_type = op->out_type;
+    out_type = op->odip->d_type;
     offset = aseek * obs;
 #ifdef SG_LIB_WIN32
     if (FT_BLOCK & out_type) {
@@ -3051,7 +3053,7 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
             if (op->verbose > 2)
                 pr2serr("moving of filepos: new_pos=%" PRId64 "\n",
                         (int64_t)offset);
-            off_res = lseek(op->outfd, offset, SEEK_SET);
+            off_res = lseek(op->odip->fd, offset, SEEK_SET);
             if (off_res < 0) {
                 pr2serr("failed moving of filepos: new_pos="
                         "%" PRId64 "\nlseek on output: %s\n", (int64_t)offset,
@@ -3064,7 +3066,7 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
         off = 0;
         part = 0;
         do {
-            while (((res = write(op->outfd, bp + off,
+            while (((res = write(op->odip->fd, bp + off,
                                  numbytes - off)) < 0) && (EINTR == errno))
                 ++op->interrupted_retries;
             err = errno;
@@ -3123,7 +3125,7 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
                 pr2serr("asked to bypass writing sparse last block zeros\n");
             return;
         }
-        if (fstat(op->outfd, &a_st) < 0) {
+        if (fstat(op->odip->fd, &a_st) < 0) {
             pr2serr("cp_sparse_cleanup: fstat: %s\n", safe_strerror(errno));
             return;
         }
@@ -3141,8 +3143,8 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
         if (op->oflagp->strunc) {
             if (op->verbose > 1)
                 pr2serr("About to truncate %s to byte offset "
-                        "%" PRId64 "\n", op->outf, offset);
-            if (ftruncate(op->outfd, offset) < 0) {
+                        "%" PRId64 "\n", op->odip->fn, offset);
+            if (ftruncate(op->odip->fd, offset) < 0) {
                 pr2serr("could not ftruncate after copy: %s\n",
                         safe_strerror(errno));
                 return;
@@ -3171,7 +3173,7 @@ cp_finer_comp_wr(struct opts_t * op, struct cp_state_t * csp,
 
     oblks = csp->ocbpt;
     obs = op->obs;
-    out_type = op->out_type;
+    out_type = op->odip->d_type;
     if (op->obpc >= oblks) {
         if (FT_DEV_NULL & out_type)
             ;
@@ -3256,14 +3258,14 @@ cp_finer_comp_wr(struct opts_t * op, struct cp_state_t * csp,
 static int
 cp_construct_pt_zero_buff(struct opts_t * op, int obpt)
 {
-    if ((FT_PT & op->in_type) && (NULL == op->if_ptvp)) {
-        op->if_ptvp = (struct sg_pt_base *)pt_construct_obj();
-        if (NULL == op->if_ptvp)
+    if ((FT_PT & op->idip->d_type) && (NULL == op->idip->ptvp)) {
+        op->idip->ptvp = (struct sg_pt_base *)pt_construct_obj();
+        if (NULL == op->idip->ptvp)
             return -1;
     }
-    if ((FT_PT & op->out_type) && (NULL == op->of_ptvp)) {
-        op->of_ptvp = (struct sg_pt_base *)pt_construct_obj();
-        if (NULL == op->of_ptvp)
+    if ((FT_PT & op->odip->d_type) && (NULL == op->odip->ptvp)) {
+        op->odip->ptvp = (struct sg_pt_base *)pt_construct_obj();
+        if (NULL == op->odip->ptvp)
             return -1;
     }
     if ((op->oflagp->sparse) && (NULL == op->zeros_buff)) {
@@ -3296,14 +3298,14 @@ count_calculate(struct opts_t * op)
     if (op->verbose > 1)
         pr2serr("calc_count: in_num_sect=%" PRId64 ", out_num_sect"
                 "=%" PRId64 "\n", in_num_sect, out_num_sect);
-    if (op->skip && (FT_REG == op->in_type) &&
+    if (op->skip && (FT_REG == op->idip->d_type) &&
         (op->skip > in_num_sect)) {
-        pr2serr("cannot skip to specified offset on %s\n", op->inf);
+        pr2serr("cannot skip to specified offset on %s\n", op->idip->fn);
         op->dd_count = 0;
         return -1;
     }
     if (op->oflagp->resume) {
-        if (FT_REG == op->out_type) {
+        if (FT_REG == op->odip->d_type) {
             if (out_num_sect < 0)
                 pr2serr("resume cannot determine size of OFILE, ignore\n");
             else
@@ -3330,7 +3332,7 @@ count_calculate(struct opts_t * op)
             obytes = op->obs * out_num_sect;
             if (0 == ibytes)
                 op->dd_count = obytes / op->ibs;
-            else if ((ibytes > obytes) && (FT_REG != op->out_type)) {
+            else if ((ibytes > obytes) && (FT_REG != op->odip->d_type)) {
                 op->dd_count = obytes / op->ibs;
             } else
                 op->dd_count = in_num_sect;
@@ -3366,22 +3368,22 @@ count_calculate(struct opts_t * op)
  * blocks (size given by bs or ibs) in chunks of op->bpt_i blocks.
  * Returns 0 if successful.  */
 static int
-do_copy(struct opts_t * op)
+do_rw_copy(struct opts_t * op)
 {
     int ibpt, obpt, res, n, sparse_skip, sparing_skip, continual_read;
     int ret = 0;
     int could_be_last = 0;
-    int in_type = op->in_type;
-    int out_type = op->out_type;
+    int id_type = op->idip->d_type;
+    int od_type = op->odip->d_type;
     struct cp_state_t cp_st;
     struct cp_state_t * csp;
 
     continual_read = op->reading_fifo && (op->dd_count < 0);
     if (op->verbose > 3) {
         if (continual_read)
-            pr2serr("do_copy: reading fifo continually\n");
+            pr2serr("do_rw_copy: reading fifo continually\n");
         else
-            pr2serr("do_copy: dd_count=%" PRId64 "\n", op->dd_count);
+            pr2serr("do_rw_copy: dd_count=%" PRId64 "\n", op->dd_count);
     }
     if ((op->dd_count <= 0) && (! op->reading_fifo))
         return 0;
@@ -3416,13 +3418,13 @@ do_copy(struct opts_t * op)
 
         /* Start of reading section */
         process_signals(op);
-        if (FT_PT & in_type) {
+        if (FT_PT & id_type) {
             if ((ret = cp_read_pt(op, csp, op->wrkPos)))
                 break;
-        } else if (FT_FIFO & in_type) {
+        } else if (FT_FIFO & id_type) {
              if ((ret = cp_read_fifo(op, csp, op->wrkPos)))
                 break;
-        } else if (FT_TAPE & in_type) {
+        } else if (FT_TAPE & id_type) {
              if ((ret = cp_read_tape(op, csp, op->wrkPos)))
                 break;
         } else {
@@ -3432,7 +3434,7 @@ do_copy(struct opts_t * op)
         if (0 == csp->icbpt)
             break;      /* nothing read so leave loop */
 
-        if ((op->out2fd >= 0) &&
+        if ((op->o2dip->fd >= 0) &&
             ((ret = cp_write_of2(op, csp, op->wrkPos))))
             break;
 
@@ -3440,7 +3442,7 @@ do_copy(struct opts_t * op)
             n = (csp->ocbpt * op->obs) + csp->partial_write_bytes;
             if (0 == memcmp(op->wrkPos, op->zeros_buff, n)) {
                 sparse_skip = 1;
-                if (op->oflagp->wsame16 && (FT_PT & out_type)) {
+                if (op->oflagp->wsame16 && (FT_PT & od_type)) {
                     res = pt_write_same16(op, op->zeros_buff, op->obs,
                                           csp->ocbpt, op->seek);
                     if (res)
@@ -3455,7 +3457,7 @@ do_copy(struct opts_t * op)
         }
         if (op->oflagp->sparing && (! sparse_skip)) {
             /* In write sparing, we read from the output */
-            if (FT_PT & out_type)
+            if (FT_PT & od_type)
                 res = cp_read_of_pt(op, csp, op->wrkPos2);
             else
                 res = cp_read_of_block_reg(op, csp, op->wrkPos2);
@@ -3483,12 +3485,12 @@ do_copy(struct opts_t * op)
             if (csp->partial_write_bytes > 0)
                 ++op->out_sparse_partial;
         } else {
-            if (FT_PT & out_type) {
+            if (FT_PT & od_type) {
                 if ((ret = cp_write_pt(op, csp, 0, csp->ocbpt, op->wrkPos)))
                     break;
-            } else if (FT_DEV_NULL & out_type)
+            } else if (FT_DEV_NULL & od_type)
                 ;  /* don't bump out_full (earlier revs did) */
-            else if (FT_TAPE & out_type) {
+            else if (FT_TAPE & od_type) {
                 if ((ret = cp_write_tape(op, csp, op->wrkPos, could_be_last)))
                     break;
             } else if ((ret = cp_write_block_reg(op, csp, 0, csp->ocbpt,
@@ -3517,38 +3519,38 @@ bypass_write:
     } /* end of main loop that does the copy ... */
 
     /* sparse: clean up ofile length when last block(s) were not written */
-    if ((FT_REG & out_type) && (0 == op->oflagp->nowrite) &&
+    if ((FT_REG & od_type) && (0 == op->oflagp->nowrite) &&
         op->oflagp->sparse)
         cp_sparse_cleanup(op, csp);
 
-    if ((FT_PT | FT_DEV_NULL | FT_FIFO | FT_CHAR | FT_TAPE) & out_type) {
+    if ((FT_PT | FT_DEV_NULL | FT_FIFO | FT_CHAR | FT_TAPE) & od_type) {
         ;       // negating things makes it less clear ...
     }
 #ifdef HAVE_FDATASYNC
     else if (op->oflagp->fdatasync) {
-        if (fdatasync(op->outfd) < 0)
+        if (fdatasync(op->odip->fd) < 0)
             perror("fdatasync() error");
         if (op->verbose)
-            pr2serr("Called fdatasync() on %s successfully\n", op->outf);
+            pr2serr("Called fdatasync() on %s successfully\n", op->odip->fn);
     }
 #endif
 #ifdef HAVE_FSYNC
     else if (op->oflagp->fsync) {
-        if (fsync(op->outfd) < 0)
+        if (fsync(op->odip->fd) < 0)
             perror("fsync() error");
         if (op->verbose)
-            pr2serr("Called fsync() on %s successfully\n", op->outf);
+            pr2serr("Called fsync() on %s successfully\n", op->odip->fn);
     }
 #endif
 
 copy_end:
-    if (op->if_ptvp) {
-        pt_destruct_obj(op->if_ptvp);
-        op->if_ptvp = NULL;
+    if (op->idip->ptvp) {
+        pt_destruct_obj(op->idip->ptvp);
+        op->idip->ptvp = NULL;
     }
-    if (op->of_ptvp) {
-        pt_destruct_obj(op->of_ptvp);
-        op->of_ptvp = NULL;
+    if (op->odip->ptvp) {
+        pt_destruct_obj(op->odip->ptvp);
+        op->odip->ptvp = NULL;
     }
     return ret;
 }
@@ -3569,38 +3571,38 @@ print_tape_pos(const char * prefix, const char * postfix,
     struct mtpos pos;
 
     if (op->verbose > 1) {
-        if (FT_TAPE & op->in_type) {
-            res = ioctl(op->infd, MTIOCPOS, &pos);
+        if (FT_TAPE & op->idip->d_type) {
+            res = ioctl(op->idip->fd, MTIOCPOS, &pos);
             if (0 == res) {
                 if ((pos.mt_blkno != lastreadpos) ||
                     (0 == lastreadposvalid)) {
                     lastreadpos = pos.mt_blkno;
                     lastreadposvalid = 1;
                     pr2serr("%stape position%s: %u%s\n", prefix,
-                            (FT_TAPE & op->out_type) ? " (reading)" : "",
+                            (FT_TAPE & op->odip->d_type) ? " (reading)" : "",
                             lastreadpos, postfix);
                 }
             } else {
                 lastreadposvalid = 0;
-                show_tape_pos_error((FT_TAPE & op->out_type) ?
+                show_tape_pos_error((FT_TAPE & op->odip->d_type) ?
                                     " (reading)" : "");
             }
         }
 
-        if (FT_TAPE & op->out_type) {
-            res = ioctl(op->outfd, MTIOCPOS, &pos);
+        if (FT_TAPE & op->odip->d_type) {
+            res = ioctl(op->odip->fd, MTIOCPOS, &pos);
             if (0 == res) {
                 if ((pos.mt_blkno != lastwritepos) ||
                     (0 == lastwriteposvalid)) {
                     lastwritepos = pos.mt_blkno;
                     lastwriteposvalid = 1;
                     pr2serr("%stape position%s: %u%s\n", prefix,
-                            (FT_TAPE & op->in_type) ? " (writing)" : "",
+                            (FT_TAPE & op->idip->d_type) ? " (writing)" : "",
                             lastwritepos, postfix);
                 }
             } else {
                 lastwriteposvalid = 0;
-                show_tape_pos_error((FT_TAPE & op->in_type) ?
+                show_tape_pos_error((FT_TAPE & op->idip->d_type) ?
                                     " (writing)" : "");
             }
         }
@@ -3631,7 +3633,7 @@ prepare_pi(struct opts_t * op)
     op->ibs_pi = op->ibs;
     op->obs_pi = op->obs;
     if (op->rdprotect) {
-        if ((0 == op->rdprot_typ) || (! (FT_PT & op->in_type))) {
+        if ((0 == op->rdprot_typ) || (! (FT_PT & op->idip->d_type))) {
             pr2serr("IFILE is not a pt device or doesn't have "
                     "protection information\n");
             return SG_LIB_CAT_OTHER;
@@ -3653,7 +3655,7 @@ prepare_pi(struct opts_t * op)
         op->obs_pi += res;
     }
     if (op->wrprotect) {
-        if ((0 == op->wrprot_typ) || (! (FT_PT & op->out_type))) {
+        if ((0 == op->wrprot_typ) || (! (FT_PT & op->odip->d_type))) {
             pr2serr("OFILE is not a pt device or doesn't have "
                     "protection information\n");
             return SG_LIB_CAT_OTHER;
@@ -3674,46 +3676,60 @@ prepare_pi(struct opts_t * op)
 }
 
 static void
-init_opts(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp)
+init_state(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
+           struct dev_info_t * idip, struct dev_info_t * odip,
+           struct dev_info_t * o2dip)
 {
     memset(op, 0, sizeof(struct opts_t));
     op->dd_count = -1;
     op->highest_unrecovered = -1;
     op->do_time = 1;         /* default was 0 in sg_dd */
     op->id_usage = -1;
-    op->out_type = FT_OTHER;
-    op->in_type = FT_OTHER;
+    op->list_id = 1;
+    op->prio = 1;
     op->max_uas = MAX_UNIT_ATTENTIONS;
     op->max_aborted = MAX_ABORTED_CMDS;
     memset(ifp, 0, sizeof(struct flags_t));
     memset(ofp, 0, sizeof(struct flags_t));
     op->iflagp = ifp;
     op->oflagp = ofp;
-    op->infd = -1;
-    op->outfd = -1;
-    op->out2fd = -1;
+    memset(idip, 0, sizeof(struct dev_info_t));
+    memset(odip, 0, sizeof(struct dev_info_t));
+    memset(o2dip, 0, sizeof(struct dev_info_t));
+    idip->d_type = FT_OTHER;
+    idip->fd = -1;
+    odip->d_type = FT_OTHER;
+    odip->fd = -1;
+    o2dip->d_type = FT_OTHER;
+    o2dip->fd = -1;
+    op->idip = idip;
+    op->odip = odip;
+    op->o2dip = o2dip;
     ifp->cdbsz = DEF_SCSI_CDBSZ;
     ofp->cdbsz = DEF_SCSI_CDBSZ;
 #ifdef HAVE_POSIX_FADVISE
     op->lowest_skip = -1;
     op->lowest_seek = -1;
 #endif
-    op->iflagp->pdt = -1;
-    op->oflagp->pdt = -1;
+    op->idip->pdt = -1;
+    op->odip->pdt = -1;
 }
 
 static int
 open_files_devices(struct opts_t * op)
 {
     int fd, ret;
+    struct dev_info_t * idip = op->idip;
+    struct dev_info_t * odip = op->odip;
+    struct dev_info_t * o2dip = op->o2dip;
 
 #ifdef SG_LIB_WIN32
     win32_adjust_fns_pt(op);
 #endif
-    if (op->inf[0]) {
-        if (('-' == op->inf[0]) && ('\0' == op->inf[1])) {
+    if (idip->fn[0]) {
+        if (('-' == idip->fn[0]) && ('\0' == idip->fn[1])) {
             fd = STDIN_FILENO;
-            op->in_type = FT_FIFO;
+            idip->d_type = FT_FIFO;
             ++op->reading_fifo;
             if (op->verbose)
                 pr2serr(" >> Input file type: fifo [stdin, stdout, named "
@@ -3723,7 +3739,7 @@ open_files_devices(struct opts_t * op)
             if (fd < 0)
                 return -fd;
         }
-        op->infd = fd;
+        idip->fd = fd;
     } else {
         pr2serr("'if=IFILE' option must be given. For stdin as input use "
                 "'if=-'\n");
@@ -3731,42 +3747,42 @@ open_files_devices(struct opts_t * op)
         return SG_LIB_SYNTAX_ERROR;
     }
 
-    if ('\0' == op->outf[0])
-        strcpy(op->outf, "."); /* treat no 'of=OFILE' option as /dev/null */
-    if (('-' == op->outf[0]) && ('\0' == op->outf[1])) {
+    if ('\0' == odip->fn[0])
+        strcpy(odip->fn, "."); /* treat no 'of=OFILE' option as /dev/null */
+    if (('-' == odip->fn[0]) && ('\0' == odip->fn[1])) {
         fd = STDOUT_FILENO;
-        op->out_type = FT_FIFO;
-        op->out_type_hold = op->out_type;
+        odip->d_type = FT_FIFO;
+        odip->d_type_hold = odip->d_type;
         if (op->verbose)
-            pr2serr(" >> Output file type: fifo [stdin, stdout, "
-                    "named pipe]\n");
+            pr2serr(" >> Output file type: fifo [stdin, stdout, named "
+                    "pipe]\n");
     } else {
         fd = open_of(op);
         if (fd < -1)
             return -fd;
     }
-    op->outfd = fd;
+    odip->fd = fd;
 
-    if (op->out2f[0]) {
-        if (('-' == op->out2f[0]) && ('\0' == op->out2f[1])) {
+    if (o2dip->fn[0]) {
+        if (('-' == o2dip->fn[0]) && ('\0' == o2dip->fn[1])) {
             fd = STDOUT_FILENO;
-            op->out2_type = FT_FIFO;
+            o2dip->d_type = FT_FIFO;
             if (op->verbose)
-                pr2serr(" >> Output 2 file type: fifo  [stdin, "
-                        "stdout, named pipe]\n");
+                pr2serr(" >> Output 2 file type: fifo  [stdin, stdout, "
+                        "named pipe]\n");
         } else {
-            op->out2_type = dd_filetype(op->out2f, op->verbose);
-            if (FT_DEV_NULL & op->out2_type)
+            o2dip->d_type = dd_filetype(o2dip->fn, op->verbose);
+            if (FT_DEV_NULL & o2dip->d_type)
                 fd = -1;
-            else if (! ((FT_REG | FT_FIFO) & op->out2_type)) {
+            else if (! ((FT_REG | FT_FIFO) & o2dip->d_type)) {
                 pr2serr("Error: output 2 file type must be regular "
                         "file or fifo\n");
                 return SG_LIB_FILE_ERROR;
             } else {
-                if ((fd = open(op->out2f, O_WRONLY | O_CREAT, 0666)) < 0) {
+                if ((fd = open(o2dip->fn, O_WRONLY | O_CREAT, 0666)) < 0) {
                     ret = errno;
-                    pr2serr("could not open %s for writing: %s\n",
-                            op->out2f, safe_strerror(errno));
+                    pr2serr("could not open %s for writing: %s\n", o2dip->fn,
+                            safe_strerror(errno));
                     return ret;
                 }
                 if (sg_set_binary_mode(fd) < 0)
@@ -3777,7 +3793,7 @@ open_files_devices(struct opts_t * op)
         }
     } else
         fd = -1;
-    op->out2fd = fd;
+    o2dip->fd = fd;
     return 0;
 }
 
@@ -3787,7 +3803,7 @@ block_size_bpt_check(struct opts_t * op)
     if (0 == op->bpt_given) {
 /* If reading from or writing to tape, use default bpt 1 if user did not
  * specify. Avoids inadvertent/accidental use of wrong tape block size. */
-        if ((FT_TAPE & op->in_type) || (FT_TAPE & op->out_type)) {
+        if ((FT_TAPE & op->idip->d_type) || (FT_TAPE & op->odip->d_type)) {
             op->bpt_i = 1;
         }
 #ifdef SG_LIB_FREEBSD
@@ -3796,7 +3812,7 @@ block_size_bpt_check(struct opts_t * op)
      * sent to its pt interface (CAM), so take that into account when choosing
      * the default bpt value. There is overhead in the pt interface so reduce
      * default bpt value so bpt*ibs <= 32 KB .*/
-        if (((FT_PT & op->in_type) || (FT_PT & op->out_type)) &&
+        if (((FT_PT & op->idip->d_type) || (FT_PT & op->odip->d_type)) &&
             ((op->ibs <= 32768) && (op->bpt_i * op->ibs) > 32768))
             op->bpt_i = 32768 / op->ibs;
         }
@@ -3808,7 +3824,7 @@ static void
 sparse_sparing_check(struct opts_t * op)
 {
     if (op->iflagp->sparse && (! op->oflagp->sparse)) {
-        if (FT_DEV_NULL & op->out_type) {
+        if (FT_DEV_NULL & op->odip->d_type) {
             pr2serr("sparse flag usually ignored on input; set it "
                     "on output in this case\n");
             ++op->oflagp->sparse;
@@ -3816,7 +3832,7 @@ sparse_sparing_check(struct opts_t * op)
             pr2serr("sparse flag ignored on input\n");
     }
     if (op->oflagp->sparse) {
-        if ((FT_FIFO | FT_TAPE) & op->out_type) {
+        if ((FT_FIFO | FT_TAPE) & op->odip->d_type) {
             pr2serr("oflag=sparse needs seekable output file, ignore\n");
             op->oflagp->sparse = 0;
         } else {
@@ -3826,7 +3842,7 @@ sparse_sparing_check(struct opts_t * op)
         }
     }
     if (op->oflagp->sparing) {
-        if ((FT_DEV_NULL | FT_FIFO | FT_TAPE) & op->out_type) {
+        if ((FT_DEV_NULL | FT_FIFO | FT_TAPE) & op->odip->d_type) {
             pr2serr("oflag=sparing needs a readable and seekable "
                     "output file, ignore\n");
             op->oflagp->sparing = 0;
@@ -3839,26 +3855,26 @@ static void
 cdb_size_prealloc(struct opts_t * op)
 {
     if (op->oflagp->prealloc) {
-        if ((FT_DEV_NULL | FT_FIFO | FT_TAPE | FT_PT) & op->out_type) {
+        if ((FT_DEV_NULL | FT_FIFO | FT_TAPE | FT_PT) & op->odip->d_type) {
             pr2serr("oflag=pre-alloc needs a normal output file, ignore\n");
             op->oflagp->prealloc = 0;
         }
     }
     if (! op->cdbsz_given) {
-        if ((FT_PT & op->in_type) && (op->iflagp->cdbsz < 16) &&
+        if ((FT_PT & op->idip->d_type) && (op->iflagp->cdbsz < 16) &&
             (((op->dd_count + op->skip) > UINT_MAX) ||
              (op->bpt_i > USHRT_MAX))) {
             if (op->verbose > 0)
                 pr2serr("SCSI command size increased from 10 to 16 "
-                        "bytes on %s\n", op->inf);
+                        "bytes on %s\n", op->idip->fn);
             op->iflagp->cdbsz = 16;
         }
-        if ((FT_PT & op->out_type) && (op->oflagp->cdbsz < 16) &&
+        if ((FT_PT & op->odip->d_type) && (op->oflagp->cdbsz < 16) &&
             (((op->dd_count + op->seek) > UINT_MAX) ||
              (((op->ibs * op->bpt_i) / op->obs) > USHRT_MAX))) {
             if (op->verbose)
                 pr2serr("SCSI command size increased from 10 to 16 "
-                        "bytes on %s\n", op->outf);
+                        "bytes on %s\n", op->odip->fn);
             op->oflagp->cdbsz = 16;
         }
     }
@@ -3883,7 +3899,7 @@ of_tape_cleanup(struct opts_t * op)
     if (op->oflagp->nofm || !op->oflagp->fsync) {
         mt_cmd.mt_op = (op->oflagp->fsync) ? MTWEOF : MTWEOFI;
         mt_cmd.mt_count = (op->oflagp->nofm) ? 0 : 1;
-        res = ioctl(op->outfd, MTIOCTOP, &mt_cmd);
+        res = ioctl(op->odip->fd, MTIOCTOP, &mt_cmd);
         if (res != 0) {
             if (op->verbose > 0)
                 pr2serr("MTWEOF%s %d failed: %s\n",
@@ -3893,10 +3909,10 @@ of_tape_cleanup(struct opts_t * op)
                 if (op->verbose > 0)
                     pr2serr("Trying MTBSR 0 instead\n");
                 mt_cmd.mt_op = MTBSR; /* mt_cmd.mt_count = 0 from above */
-                res = ioctl(op->outfd, MTIOCTOP, &mt_cmd);
+                res = ioctl(op->odip->fd, MTIOCTOP, &mt_cmd);
                 if (res != 0)
-                    pr2serr("MTBSR 0 failed: %s\n(Filemark will"
-                            " be written when tape file is closed)\n",
+                    pr2serr("MTBSR 0 failed: %s\n(Filemark will be written "
+                            "when tape file is closed)\n",
                             safe_strerror(errno));
             }
         }
@@ -3934,7 +3950,7 @@ do_falloc(struct opts_t * op)
 #ifdef PREALLOC_DEBUG
     pr2serr("About to call fallocate() with FALLOC_FL_KEEP_SIZE\n");
 #endif
-    res = fallocate(op->outfd, FALLOC_FL_KEEP_SIZE, op->obs*op->seek,
+    res = fallocate(op->odip->fd, FALLOC_FL_KEEP_SIZE, op->obs*op->seek,
                     op->obs*op->dd_count);
 #ifdef PREALLOC_DEBUG
     pr2serr("fallocate() returned %d\n", res);
@@ -3948,7 +3964,7 @@ do_falloc(struct opts_t * op)
                 pr2serr("Could not pre-allocate with "
                         "FALLOC_FL_KEEP_SIZE (%s), retrying without "
                         "...\n", safe_strerror(errno));
-            res = fallocate(op->outfd, 0, op->obs*op->seek,
+            res = fallocate(op->odip->fd, 0, op->obs*op->seek,
                             op->obs*op->dd_count);
 #ifdef PREALLOC_DEBUG
             pr2serr("fallocate() without FALLOC_FL_KEEP_SIZE "
@@ -3977,7 +3993,8 @@ do_falloc(struct opts_t * op)
 
     /* If not on Linux, use posix_fallocate(). (That sets the file size to its
      * full length, so re-invoking ddpt with oflag=resume will do nothing.) */
-    res = posix_fallocate(op->outfd, op->obs*op->seek, op->obs*op->dd_count);
+    res = posix_fallocate(op->odip->fd, op->obs*op->seek,
+                          op->obs*op->dd_count);
     if (-1 == res) {
             pr2serr("Unable to pre-allocate space: %s\n",
                     safe_strerror(errno));
@@ -4015,6 +4032,9 @@ give_details_pre_copy(struct opts_t * op)
 static int
 init_wrk_buffers(struct opts_t * op)
 {
+    if (op->has_xcopy)
+        return 0;
+
     if (op->iflagp->direct || op->oflagp->direct) {
         size_t psz;
 
@@ -4063,12 +4083,13 @@ init_wrk_buffers(struct opts_t * op)
 static void
 cleanup_resources(struct opts_t * op)
 {
-    if ((FT_TAPE & op->in_type) || (FT_TAPE & op->out_type)) {
+    if ((FT_TAPE & op->idip->d_type) || (FT_TAPE & op->odip->d_type)) {
         /* For writing, the st driver writes a filemark on closing the file
          * (unless user specified oflag=nofm), so make clear that the
          * position shown is prior to closing. */
         print_tape_pos("Final ", " (before closing file)", op);
-        if ((FT_TAPE & op->out_type) && (op->verbose > 1) && op->oflagp->nofm)
+        if ((FT_TAPE & op->odip->d_type) && (op->verbose > 1) &&
+            op->oflagp->nofm)
             pr2serr("(suppressing writing of filemark on close)\n");
     }
 
@@ -4081,122 +4102,129 @@ cleanup_resources(struct opts_t * op)
         free(op->wrkBuff2);
     if (op->zeros_buff)
         free(op->zeros_buff);
-    if (FT_PT & op->in_type)
-        pt_close(op->infd);
-    else if ((op->infd >= 0) && (STDIN_FILENO != op->infd))
-        close(op->infd);
-    if (FT_PT & op->out_type)
-        pt_close(op->outfd);
-    if ((op->outfd >= 0) && (STDOUT_FILENO != op->outfd) &&
-        !(FT_DEV_NULL & op->out_type)) {
-        if (FT_TAPE & op->out_type)
+    if (FT_PT & op->idip->d_type)
+        pt_close(op->idip->fd);
+    else if ((op->idip->fd >= 0) && (STDIN_FILENO != op->idip->fd))
+        close(op->idip->fd);
+    if (FT_PT & op->odip->d_type)
+        pt_close(op->odip->fd);
+    if ((op->odip->fd >= 0) && (STDOUT_FILENO != op->odip->fd) &&
+        !(FT_DEV_NULL & op->odip->d_type)) {
+        if (FT_TAPE & op->odip->d_type)
             of_tape_cleanup(op);
-        close(op->outfd);
+        close(op->odip->fd);
     }
-    if ((op->out2fd >= 0) && (STDOUT_FILENO != op->out2fd))
-        close(op->out2fd);
+    if ((op->o2dip->fd >= 0) && (STDOUT_FILENO != op->o2dip->fd))
+        close(op->o2dip->fd);
 }
 
 
+/* The main() function: much of the its complex logic is spawned off to
+ * helper functions shown directly above. */
 int
 main(int argc, char * argv[])
 {
     int ret = 0;
     int started_copy = 0;
     struct opts_t ops;
-    struct flags_t iflag;
-    struct flags_t oflag;
+    struct flags_t iflag, oflag;
+    struct dev_info_t ids, ods, o2ds;
+    struct opts_t * op;
 
-    init_opts(&ops, &iflag, &oflag);
-    ret = process_cl(&ops, argc, argv);
-    if (ops.do_help > 0) {
-        usage(ops.do_help);
+    init_state(&ops, &iflag, &oflag, &ids, &ods, &o2ds);
+    op = &ops;
+    ret = process_cl(op, argc, argv);
+    if (op->do_help > 0) {
+        usage(op->do_help);
         return 0;
     } else if (ret)
         return (ret < 0) ? 0 : ret;
 
-#ifdef SG_LIB_WIN32
-    if (ops.wscan)
-        return sg_do_wscan('\0', ops.wscan, ops.verbose);
-#endif
-
-    if (ops.quiet) {
+    if (op->quiet) {
         if (NULL == freopen("/dev/null", "w", stderr))
             pr2serr("freopen: failed to redirect stderr to /dev/null : %s\n",
                     safe_strerror(errno));
     }
 
-    install_signal_handlers(&ops);
+#ifdef SG_LIB_WIN32
+    if (op->wscan)
+        return sg_do_wscan('\0', op->wscan, op->verbose);
+#endif
 
-    if ((ret = open_files_devices(&ops)))
+    install_signal_handlers(op);
+
+    if ((ret = open_files_devices(op)))
         return ret;
 
-    block_size_bpt_check(&ops);
-    sparse_sparing_check(&ops);
+    block_size_bpt_check(op);
+    sparse_sparing_check(op);
 
-    if ((ret = count_calculate(&ops))) {
-        if (ops.verbose)
+    if ((ret = count_calculate(op))) {
+        if (op->verbose)
             pr2serr("count_calculate() returned %d, exit\n", ret);
         goto cleanup;
     }
 
-    if ((ret = prepare_pi(&ops)))
+    if ((ret = prepare_pi(op)))
         goto cleanup;
 
-    if ((ops.dd_count < 0) && (! ops.reading_fifo)) {
+    if ((op->dd_count < 0) && (! op->reading_fifo)) {
         pr2serr("Couldn't calculate count, please give one\n");
         ret = SG_LIB_CAT_OTHER;
         goto cleanup;
     }
 
-    cdb_size_prealloc(&ops);
+    cdb_size_prealloc(op);
 
-    if ((ret = init_wrk_buffers(&ops)))
+    if ((ret = init_wrk_buffers(op)))
         goto cleanup;
 
     if (ops.verbose)
-        give_details_pre_copy(&ops);
+        give_details_pre_copy(op);
 
-    ops.read1_or_transfer = !! (FT_DEV_NULL & ops.out_type);
-    if (ops.read1_or_transfer && (! ops.outf_given) &&
-        ((ops.dd_count > 0) || ops.reading_fifo))
+    op->read1_or_transfer = !! (FT_DEV_NULL & op->odip->d_type);
+    if (op->read1_or_transfer && (! op->outf_given) &&
+        ((op->dd_count > 0) || op->reading_fifo))
         pr2serr("Output file not specified so no copy, just reading input\n");
 
-    if (ops.do_time)
-        init_calc_duration(&ops);
+    if (op->do_time)
+        init_calc_duration(op);
 
-    if (ops.iflagp->errblk)
-        open_errblk(&ops);
+    if (op->iflagp->errblk)
+        open_errblk(op);
 
-    if ((FT_TAPE & ops.in_type) || (FT_TAPE & ops.out_type))
-        print_tape_pos("Initial ", "", &ops);
+    if ((FT_TAPE & op->idip->d_type) || (FT_TAPE & op->odip->d_type))
+        print_tape_pos("Initial ", "", op);
 
-    if (ops.oflagp->prealloc) {
-        if ((ret = do_falloc(&ops)))
+    if (op->oflagp->prealloc) {
+        if ((ret = do_falloc(op)))
             goto cleanup;
     }
 
     // <<<<<<<<<<<<<< finally ready to do copy
     ++started_copy;
-    ret = do_copy(&ops);
+    if (op->has_xcopy)
+        ret = do_xcopy(op);
+    else
+        ret = do_rw_copy(op);
 
-    print_stats("", &ops);
+    print_stats("", op);
 
-    if ((ops.oflagp->ssync) && (FT_PT & ops.out_type)) {
-        pr2serr(">> SCSI synchronizing cache on %s\n", ops.outf);
-        pt_sync_cache(ops.outfd);
+    if ((op->oflagp->ssync) && (FT_PT & op->odip->d_type)) {
+        pr2serr(">> SCSI synchronizing cache on %s\n", op->odip->fn);
+        pt_sync_cache(op->odip->fd);
     }
-    if (ops.do_time)
-        calc_duration_throughput("", 0, &ops);
+    if (op->do_time)
+        calc_duration_throughput("", 0, op);
 
-    if (ops.sum_of_resids)
-        pr2serr(">> Non-zero sum of residual counts=%d\n", ops.sum_of_resids);
+    if (op->sum_of_resids)
+        pr2serr(">> Non-zero sum of residual counts=%d\n", op->sum_of_resids);
 
 cleanup:
-    cleanup_resources(&ops);
-    if ((0 == ret) && ops.err_to_report)
-        ret = ops.err_to_report;
-    if (started_copy && (0 != ops.dd_count) && (! ops.reading_fifo)) {
+    cleanup_resources(op);
+    if ((0 == ret) && op->err_to_report)
+        ret = op->err_to_report;
+    if (started_copy && (0 != op->dd_count) && (! op->reading_fifo)) {
         if (0 == ret)
             pr2serr("Early termination, EOF on input?\n");
         else if (SG_LIB_CAT_MEDIUM_HARD == ret)

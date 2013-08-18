@@ -74,6 +74,8 @@
 #define DEF_BPT_LT8192 16    /* BPT when IBS < 8192 */
 #define DEF_BPT_LT32768 4    /* BPT when IBS < 32768 */
 #define DEF_BPT_GE32768 1    /* BPT when IBS >= 32768 */
+#define MAX_XC_BPT 65535     /* BPT maximum for xcopy */
+#define MAX_XC_BPT_POW2 32768  /* BPT maximum that is power of 2 */
 #define DEF_SCSI_CDBSZ 10
 #define MAX_SCSI_CDBSZ 32
 
@@ -153,7 +155,6 @@ struct flags_t {
     int fua;
     int fua_nv;
     int ignoreew;       /* tape */
-    int pdt;
     int nocache;
     int nofm;           /* tape */
     int nopad;
@@ -176,7 +177,22 @@ struct flags_t {
     int xcopy;
 };
 
-/* command line options, statistics and other semi-static data */
+/* one instance per file/device: if, of and of2 */
+struct dev_info_t {
+    int d_type;         /* one of FT_* values */
+    int d_type_hold;
+    int fd;
+#ifdef SG_LIB_WIN32
+    HANDLE fh;
+#endif
+    int pdt;
+    unsigned long xc_min_bytes;
+    unsigned long xc_max_bytes;
+    char fn[INOUTF_SZ];
+    struct sg_pt_base * ptvp;
+};
+
+/* command line options and most other state */
 /* The _given fields indicate whether option was given or is a default */
 struct opts_t {
     /* command line related variables */
@@ -193,17 +209,10 @@ struct opts_t {
     int bpt_given;
     int obpc;
     int id_usage;       /* xcopy related, init to -1 */
-    char inf[INOUTF_SZ];
-    int in_type;
     int interrupt_io;   /* [intio=0|1] if 0, mask SIGINFO++ during IO */
     int list_id;        /* xcopy related */
     int list_id_given;  /* xcopy related */
-    char outf[INOUTF_SZ];
     int outf_given;
-    int out_type;
-    char out2f[INOUTF_SZ];
-    int out2_type;
-    int out2fd;
     int prio;           /* xcopy related */
     int rdprotect;
     int rdprot_typ;     /* from RCAP(16) */
@@ -217,7 +226,10 @@ struct opts_t {
     int verbose;
     int quiet;
     struct flags_t * iflagp;
+    struct dev_info_t * idip;
     struct flags_t * oflagp;
+    struct dev_info_t * odip;
+    struct dev_info_t * o2dip;
     /* working variables and statistics */
     int64_t dd_count;
     int64_t in_full;
@@ -242,8 +254,6 @@ struct opts_t {
     int has_xcopy;
     int xc_cat;
     int xc_dc;
-    unsigned long xc_min_bytes;
-    unsigned long xc_max_bytes;
     int status_none;
     int trim_errs;
     int read_tape_numbytes;
@@ -256,11 +266,6 @@ struct opts_t {
     int reading_fifo;
     int read1_or_transfer; /* 1 when of=/dev/null or similar */
     int ibs_hold;
-    int out_type_hold;
-    int infd;
-    int outfd;
-    struct sg_pt_base * if_ptvp;
-    struct sg_pt_base * of_ptvp;
     unsigned char * wrkBuff;
     unsigned char * wrkPos;
     unsigned char * wrkBuff2;
@@ -274,11 +279,6 @@ struct opts_t {
     sigset_t caught_signals;
     sigset_t orig_mask;
 #endif
-#ifdef SG_LIB_WIN32
-    int wscan;
-    HANDLE ib_fh;
-    HANDLE ob_fh;
-#endif
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
     int start_tm_valid;
     struct timespec start_tm;
@@ -287,6 +287,7 @@ struct opts_t {
     struct timeval start_tm;
 #endif
     FILE * errblk_fp;
+    int wscan;  /* only used on Windows, for scanning devices */
 };
 
 /* state of working variables within do_copy() */
@@ -309,7 +310,14 @@ struct signum_name_t {
     const char * name;
 };
 
+
+/* Declared below are functions shared by different compilation units */
+#ifdef __GNUC__
+extern int pr2serr(const char * fmt, ...)
+        __attribute__ ((format (printf, 1, 2)));
+#else
 extern int pr2serr(const char * fmt, ...);
+#endif
 
 extern void * pt_construct_obj(void);
 extern void pt_destruct_obj(void * vp);
@@ -330,10 +338,7 @@ extern void put_errblk(uint64_t lba, struct opts_t * op);
 extern void put_range_errblk(uint64_t lba, int num, struct opts_t * op);
 extern void zero_coe_limit_count(struct opts_t * op);
 
-extern int scsi_operating_parameter(struct opts_t * op, int is_target);
-extern int desc_from_vpd_id(struct opts_t * op, int sg_fd,
-                            unsigned char *desc, int desc_len,
-                            unsigned int block_size, int pad);
+extern int do_xcopy(struct opts_t * op);
 
 
 #ifdef SG_LIB_WIN32
