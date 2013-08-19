@@ -382,7 +382,7 @@ ignored or may cause an error to be reported.
 cat [io] [blk,pt,tape]
 set CAT (residual data handling) bit in EXTENDED COPY (LID1) parameter list
 segment descriptor header. May appear in either flag list when xcopy is
-being used.
+being used. See the XCOPY section below.
 .TP coe [io] [pt], [i] [reg,blk]
 continue on error. 'iflag=coe oflag=coe' and 'coe=1' are equivalent.
 Errors occurring on output regular or block files will stop ddpt.
@@ -519,6 +519,7 @@ zeros (i.e. bytes of binary zero). The default action for a regular file
 and a fifo is to do a partial write. The default action of a block
 and a pt device is to ignore the partial write. The default action of
 a tape is to pad, so this flag is not needed (see the nopad flag).
+May be used when xcopy is active, if so see the XCOPY section below.
 .TP
 prealloc [o] [reg]
 use the fallocate() call prior to starting a copy to set \fIOFILE\fR to its
@@ -841,6 +842,143 @@ should be same:
 .PP
 The SCSI READ(32) and WRITE(32) commands are restricted to media that is
 formatted with protection type 2. This is a T10 restriction.
+.SH SIGNALS
+The signal handling has been borrowed from GNU's dd: SIGINT, SIGQUIT and
+SIGPIPE report the number of remaining blocks to be transferred and the
+records in + out counts; then they have their default action. SIGUSR1 (or
+SIGINFO) causes the same information to be output and the copy continues.
+All output caused by signals is sent to stderr.
+.PP
+Like GNU's dd, ddpt respects the signal disposition of "ignored" (SIG_IGN)
+set by the shell, script or other program that invokes ddpt. So in that
+case it will ignore such signals. Further dd ignores SIGUSR1 if the
+environment variable POSIXLY_CORRECT is set because POSIX defines dd will
+only act on SIGINFO (and Linux has no such signal); ddpt ignores the
+POSIXLY_CORRECT environment variable. As recommended by Susv3, ddpt does
+not expect the signal (blocking) mask to be blocking SIGUSR1 (SIGINFO),
+SIGINT or SIGPIPE on entry.
+.PP
+Unix system calls that do IO can be interrupted by signal processing,
+typically returning an EINTR error number. The dd utility (and many other
+Unix utilities) restart the IO operation that was interrupted. While
+this will work most of the time for disk IO it is problematic for tape
+drives because the implicit position pointer on the tape may have moved.
+So the default (i.e. "intio=0") in this utility is to mask those signals
+during IO operations and only check them prior to starting an IO operation.
+Most low level IO (e.g. using SCSI command to write to a disk) will
+timeout if there is a low level error. However NFS (the Network File
+System) will potentially wait for a long time (e.g. expecting a network
+problem will soon be fixed) and in this case using "intio=1" may be
+best.
+.SH TAPE
+There is support for copies to and from tape drives in Linux. Only the
+st driver device names can be used (e.g. /dev/st0 and /dev/nst2). Hence
+use of Linux pass\-through device names (e.g. /dev/sg2) for tape drives
+is not supported.
+.PP
+To be continued xxxxxxxxx
+.SH XCOPY
+The \fIpad\fR and \fIcat\fR flags control the handling of residual
+data. As the data can be specified either in terms of source or target
+block size and both might have different block sizes residual data is
+likely to happen in these cases.
+If both block sizes are identical these bits have no effect as
+residual data will not occur.
+.PP
+If neither of these flags are set, the EXTENDED COPY command will be
+aborted with additional sense 'UNEXPECTED INEXACT SEGMENT'.
+.PP
+If only the \fIcat\fR flag is set the residual data will be retained
+and made available for subsequent segment descriptors. Residual data
+will be discarded for the last segment descriptor.
+.PP
+If the \fIpad\fR flag is set for the source descriptor only, any
+residual data for both source or destination will be discarded.
+.PP
+If the \fIpad\fR flag is set for the target descriptor only any
+residual source data will be handled as if the \fIcat\fR flag is set,
+but any residual destination data will be padded to make a whole block
+transfer.
+.PP
+If the \fIpad\fR flag is set for both source and target any residual
+source data will be discarded, and any residual destination data will
+be padded.
+.SH EXIT STATUS
+To aid scripts that call ddpt, the exit status is set to indicate
+success (0) or failure (1 or more). Note that some of the lower values
+correspond to the SCSI sense key values. The exit status values are:
+.TP
+.B 0
+success
+.TP
+.B 1
+syntax error. Either illegal command line options, options with bad
+arguments or a combination of options that is not permitted.
+.TP
+.B 2
+the device reports that it is not ready for the operation requested.
+The device may be in the process of becoming ready (e.g.  spinning up but
+not at speed) so the utility may work after a wait.
+.TP
+.B 3
+the device reports a medium or hardware error (or a blank check). For example
+an attempt to read a corrupted block on a disk will yield this value.
+.TP
+.B 5
+the device reports an "illegal request" with an additional sense code other
+than "invalid operation code". This is often a supported command with a
+field set requesting an unsupported capability.
+.TP
+.B 6
+the device reports a "unit attention" condition. This usually indicates
+that something unrelated to the requested command has occurred (e.g. a
+device reset) potentially before the current SCSI command was sent. The
+requested command has not been executed by the device. Note that unit
+attention conditions are usually only reported once by a device.
+.TP
+.B 9
+the device reports an illegal request with an additional sense code
+of "invalid operation code" which means that it doesn't support the
+requested command.
+.TP
+.B 11
+the device reports an aborted command. In some cases aborted commands can
+be retried immediately (e.g. if the transport aborted the command due to
+congestion).
+.TP
+.B 15
+the utility is unable to open, close or use the given \fIIFILE\fR or
+\fIOFILE\fR. The given file name could be incorrect or there may be
+permission problems. Adding the \fI\-v\fR option may give more information.
+.TP
+.B 20
+the device reports it has a check condition but "no sense".
+It is unlikely that this value will occur as an exit status.
+.TP
+.B 21
+the device reports a "recovered error". The requested command was successful.
+Most likely a utility will report a recovered error to stderr and continue,
+probably leaving the utility with an exit status of 0 .
+.TP
+.B 33
+the command sent to device has timed out. This occurs in Linux only; in
+other ports a command timeout will appear as a transport (or OS) error.
+.TP
+.B 90
+the flock flag has been given on a device and some other process holds the
+advisory exclusive lock.
+.TP
+.B 97
+the response to a SCSI command failed sanity checks.
+.TP
+.B 98
+the device reports it has a check condition but the error doesn't fit into
+any of the above categories.
+.TP
+.B 99
+any errors that can't be categorized into values 1 to 98 may yield
+this value. This includes transport and operating system errors
+after the command has been sent to the device.
 .SH EXAMPLES
 The examples in this page use Linux device names. For suitable device
 names in other supported Operating Systems see this web page:
@@ -929,119 +1067,6 @@ Further examples can be found on this web page:
 http://sg.danny.cz/sg/ddpt.html . There is a text file containing examples
 called ddpt_examples.txt in the "doc" directory of this package's
 distribution tarball.
-.SH SIGNALS
-The signal handling has been borrowed from GNU's dd: SIGINT, SIGQUIT and
-SIGPIPE report the number of remaining blocks to be transferred and the
-records in + out counts; then they have their default action. SIGUSR1 (or
-SIGINFO) causes the same information to be output and the copy continues.
-All output caused by signals is sent to stderr.
-.PP
-Like GNU's dd, ddpt respects the signal disposition of "ignored" (SIG_IGN)
-set by the shell, script or other program that invokes ddpt. So in that
-case it will ignore such signals. Further dd ignores SIGUSR1 if the
-environment variable POSIXLY_CORRECT is set because POSIX defines dd will
-only act on SIGINFO (and Linux has no such signal); ddpt ignores the
-POSIXLY_CORRECT environment variable. As recommended by Susv3, ddpt does
-not expect the signal (blocking) mask to be blocking SIGUSR1 (SIGINFO),
-SIGINT or SIGPIPE on entry.
-.PP
-Unix system calls that do IO can be interrupted by signal processing,
-typically returning an EINTR error number. The dd utility (and many other
-Unix utilities) restart the IO operation that was interrupted. While
-this will work most of the time for disk IO it is problematic for tape
-drives because the implicit position pointer on the tape may have moved.
-So the default (i.e. "intio=0") in this utility is to mask those signals
-during IO operations and only check them prior to starting an IO operation.
-Most low level IO (e.g. using SCSI command to write to a disk) will
-timeout if there is a low level error. However NFS (the Network File
-System) will potentially wait for a long time (e.g. expecting a network
-problem will soon be fixed) and in this case using "intio=1" may be
-best.
-.SH TAPE
-There is support for copies to and from tape drives in Linux. Only the
-st driver device names can be used (e.g. /dev/st0 and /dev/nst2). Hence
-use of Linux pass\-through device names (e.g. /dev/sg2) for tape drives
-is not supported.
-.PP
-To be continued xxxxxxxxx
-.SH XCOPY
-To be continued xxxxxxxxx
-.SH EXIT STATUS
-To aid scripts that call ddpt, the exit status is set to indicate
-success (0) or failure (1 or more). Note that some of the lower values
-correspond to the SCSI sense key values. The exit status values are:
-.TP
-.B 0
-success
-.TP
-.B 1
-syntax error. Either illegal command line options, options with bad
-arguments or a combination of options that is not permitted.
-.TP
-.B 2
-the device reports that it is not ready for the operation requested.
-The device may be in the process of becoming ready (e.g.  spinning up but
-not at speed) so the utility may work after a wait.
-.TP
-.B 3
-the device reports a medium or hardware error (or a blank check). For example
-an attempt to read a corrupted block on a disk will yield this value.
-.TP
-.B 5
-the device reports an "illegal request" with an additional sense code other
-than "invalid operation code". This is often a supported command with a
-field set requesting an unsupported capability.
-.TP
-.B 6
-the device reports a "unit attention" condition. This usually indicates
-that something unrelated to the requested command has occurred (e.g. a
-device reset) potentially before the current SCSI command was sent. The
-requested command has not been executed by the device. Note that unit
-attention conditions are usually only reported once by a device.
-.TP
-.B 9
-the device reports an illegal request with an additional sense code
-of "invalid operation code" which means that it doesn't support the
-requested command.
-.TP
-.B 11
-the device reports an aborted command. In some cases aborted commands can
-be retried immediately (e.g. if the transport aborted the command due to
-congestion).
-.TP
-.B 15
-the utility is unable to open, close or use the given \fIIFILE\fR or
-\fIOFILE\fR. The given file name could be incorrect or there may be
-permission problems. Adding the \fI\-v\fR option may give more information.
-.TP
-.B 20
-the device reports it has a check condition but "no sense".
-It is unlikely that this value will occur as an exit status.
-.TP
-.B 21
-the device reports a "recovered error". The requested command was successful.
-Most likely a utility will report a recovered error to stderr and continue,
-probably leaving the utility with an exit status of 0 .
-.TP
-.B 33
-the command sent to device has timed out. This occurs in Linux only; in
-other ports a command timeout will appear as a transport (or OS) error.
-.TP
-.B 90
-the flock flag has been given on a device and some other process holds the
-advisory exclusive lock.
-.TP
-.B 97
-the response to a SCSI command failed sanity checks.
-.TP
-.B 98
-the device reports it has a check condition but the error doesn't fit into
-any of the above categories.
-.TP
-.B 99
-any errors that can't be categorized into values 1 to 98 may yield
-this value. This includes transport and operating system errors
-after the command has been sent to the device.
 .SH AUTHORS
 Written by Doug Gilbert
 .SH "REPORTING BUGS"
@@ -1071,4 +1096,4 @@ copy of the data see
 To scan and repair disk partitions see TestDisk (testdisk).
 .PP
 Additional references:
-.B dd(1), ddrescue(GNU), open(2), flock(2), sg_dd(sg3_utils)
+.B dd(1), ddrescue(GNU), open(2), flock(2), sg_dd,sg_xcopy(sg3_utils)

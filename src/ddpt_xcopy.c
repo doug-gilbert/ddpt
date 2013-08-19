@@ -255,6 +255,11 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
             ftype |= FT_TAPE;
     } else if (FT_FIFO & ftype)
         ftype |= FT_REG;
+    if (FT_REG & ftype) {
+        pr2serr("%s: not expecting a regular file here: %s\n",  __FUNCTION__,
+                dip->fn);
+        return -SG_LIB_FILE_ERROR;
+    }
 
     /* In SPC-4 opcode 0x84, service action 0x3 is called RECEIVE COPY
      * OPERATING PARAMETERS */
@@ -532,11 +537,214 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
     return td_list;
 }
 
+static void
+decode_designation_descriptor(const unsigned char * ucp, int i_len, int verb)
+{
+    int m, p_id, piv, c_set, assoc, desig_type, d_id, naa;
+    int k;
+    const unsigned char * ip;
+    uint64_t vsei;
+    char b[64];
+
+    ip = ucp + 4;
+    p_id = ((ucp[0] >> 4) & 0xf);
+    c_set = (ucp[0] & 0xf);
+    piv = ((ucp[1] & 0x80) ? 1 : 0);
+    assoc = ((ucp[1] >> 4) & 0x3);
+    desig_type = (ucp[1] & 0xf);
+    pr2serr("    designator type: %d,  code set: %d\n", desig_type, c_set);
+    if (piv && ((1 == assoc) || (2 == assoc)))
+        pr2serr("     transport: %s\n",
+                sg_get_trans_proto_str(p_id, sizeof(b), b));
+
+    switch (desig_type) {
+    case 0: /* vendor specific */
+        k = 0;
+        if ((1 == c_set) || (2 == c_set)) { /* ASCII or UTF-8 */
+            for (k = 0; (k < i_len) && isprint(ip[k]); ++k)
+                ;
+            if (k >= i_len)
+                k = 1;
+        }
+        if (k)
+            pr2serr("      vendor specific: %.*s\n", i_len, ip);
+        else {
+            pr2serr("      vendor specific:\n");
+            dStrHexErr((const char *)ip, i_len, 0);
+        }
+        break;
+    case 1: /* T10 vendor identification */
+        pr2serr("      vendor id: %.8s\n", ip);
+        if (i_len > 8)
+            pr2serr("      vendor specific: %.*s\n", i_len - 8, ip + 8);
+        break;
+    case 2: /* EUI-64 based */
+        if ((8 != i_len) && (12 != i_len) && (16 != i_len)) {
+            pr2serr("      << expect 8, 12 and 16 byte EUI, got %d>>\n",
+                    i_len);
+            dStrHexErr((const char *)ip, i_len, 0);
+            break;
+        }
+        pr2serr("      0x");
+        for (m = 0; m < i_len; ++m)
+            pr2serr("%02x", (unsigned int)ip[m]);
+        pr2serr("\n");
+        break;
+    case 3: /* NAA */
+        if (1 != c_set) {
+            pr2serr("      << unexpected code set %d for NAA>>\n", c_set);
+            dStrHexErr((const char *)ip, i_len, 0);
+            break;
+        }
+        naa = (ip[0] >> 4) & 0xff;
+        if (! ((2 == naa) || (5 == naa) || (6 == naa))) {
+            pr2serr("      << unexpected NAA [0x%x]>>\n", naa);
+            dStrHexErr((const char *)ip, i_len, 0);
+            break;
+        }
+        if ((5 == naa) && (0x10 == i_len)) {
+            if (verb > 2)
+                pr2serr("      << unexpected NAA 5 len 16, assuming NAA 6 "
+                        ">>\n");
+            naa = 6;
+        }
+        if (2 == naa) {
+            if (8 != i_len) {
+                pr2serr("      << unexpected NAA 2 identifier length: "
+                        "0x%x>>\n", i_len);
+                dStrHexErr((const char *)ip, i_len, 0);
+                break;
+            }
+            d_id = (((ip[0] & 0xf) << 8) | ip[1]);
+            /* c_id = ((ip[2] << 16) | (ip[3] << 8) | ip[4]); */
+            /* vsi = ((ip[5] << 16) | (ip[6] << 8) | ip[7]); */
+            pr2serr("      0x");
+            for (m = 0; m < 8; ++m)
+                pr2serr("%02x", (unsigned int)ip[m]);
+            pr2serr("\n");
+        } else if (5 == naa) {
+            if (8 != i_len) {
+                pr2serr("      << unexpected NAA 5 identifier length: "
+                        "0x%x>>\n", i_len);
+                dStrHexErr((const char *)ip, i_len, 0);
+                break;
+            }
+            /* c_id = (((ip[0] & 0xf) << 20) | (ip[1] << 12) | */
+                    /* (ip[2] << 4) | ((ip[3] & 0xf0) >> 4)); */
+            vsei = ip[3] & 0xf;
+            for (m = 1; m < 5; ++m) {
+                vsei <<= 8;
+                vsei |= ip[3 + m];
+            }
+            pr2serr("      0x");
+            for (m = 0; m < 8; ++m)
+                pr2serr("%02x", (unsigned int)ip[m]);
+            pr2serr("\n");
+        } else if (6 == naa) {
+            if (16 != i_len) {
+                pr2serr("      << unexpected NAA 6 identifier length: "
+                        "0x%x>>\n", i_len);
+                dStrHexErr((const char *)ip, i_len, 0);
+                break;
+            }
+            /* c_id = (((ip[0] & 0xf) << 20) | (ip[1] << 12) | */
+                    /* (ip[2] << 4) | ((ip[3] & 0xf0) >> 4)); */
+            vsei = ip[3] & 0xf;
+            for (m = 1; m < 5; ++m) {
+                vsei <<= 8;
+                vsei |= ip[3 + m];
+            }
+            pr2serr("      0x");
+            for (m = 0; m < 16; ++m)
+                pr2serr("%02x", (unsigned int)ip[m]);
+            pr2serr("\n");
+        }
+        break;
+    case 4: /* Relative target port */
+        if ((1 != c_set) || (1 != assoc) || (4 != i_len)) {
+            pr2serr("      << expected binary code_set, target port "
+                    "association, length 4>>\n");
+            dStrHexErr((const char *)ip, i_len, 0);
+            break;
+        }
+        d_id = ((ip[2] << 8) | ip[3]);
+        pr2serr("      Relative target port: 0x%x\n", d_id);
+        break;
+    case 5: /* (primary) Target port group */
+        if ((1 != c_set) || (1 != assoc) || (4 != i_len)) {
+            pr2serr("      << expected binary code_set, target port "
+                    "association, length 4>>\n");
+            dStrHexErr((const char *)ip, i_len, 0);
+            break;
+        }
+        d_id = ((ip[2] << 8) | ip[3]);
+        pr2serr("      Target port group: 0x%x\n", d_id);
+        break;
+    case 6: /* Logical unit group */
+        if ((1 != c_set) || (0 != assoc) || (4 != i_len)) {
+            pr2serr("      << expected binary code_set, logical unit "
+                    "association, length 4>>\n");
+            dStrHexErr((const char *)ip, i_len, 0);
+            break;
+        }
+        d_id = ((ip[2] << 8) | ip[3]);
+        pr2serr("      Logical unit group: 0x%x\n", d_id);
+        break;
+    case 7: /* MD5 logical unit identifier */
+        if ((1 != c_set) || (0 != assoc)) {
+            pr2serr("      << expected binary code_set, logical unit "
+                    "association>>\n");
+            dStrHexErr((const char *)ip, i_len, 0);
+            break;
+        }
+        pr2serr("      MD5 logical unit identifier:\n");
+        dStrHexErr((const char *)ip, i_len, 0);
+        break;
+    case 8: /* SCSI name string */
+        if (3 != c_set) {
+            pr2serr("      << expected UTF-8 code_set>>\n");
+            dStrHexErr((const char *)ip, i_len, 0);
+            break;
+        }
+        pr2serr("      SCSI name string:\n");
+        /* does %s print out UTF-8 ok??
+         * Seems to depend on the locale. Looks ok here with my
+         * locale setting: en_AU.UTF-8
+         */
+        pr2serr("      %s\n", (const char *)ip);
+        break;
+    case 9: /* Protocol specific port identifier */
+        /* added in spc4r36, PIV must be set, proto_id indicates */
+        /* whether UAS (USB) or SOP (PCIe) or ... */
+        if (! piv)
+            pr2serr("      >>>> Protocol specific port identifier "
+                    "expects protocol\n"
+                    "           identifier to be valid and it is not\n");
+        if (TPROTO_UAS == p_id) {
+            pr2serr("      USB device address: 0x%x\n", 0x7f & ip[0]);
+            pr2serr("      USB interface number: 0x%x\n", ip[2]);
+        } else if (TPROTO_SOP == p_id) {
+            pr2serr("      PCIe routing ID, bus number: 0x%x\n", ip[0]);
+            pr2serr("          function number: 0x%x\n", ip[1]);
+            pr2serr("          [or device number: 0x%x, function number: "
+                    "0x%x]\n", (0x1f & (ip[1] >> 3)), 0x7 & ip[1]);
+        } else
+            pr2serr("      >>>> unexpected protocol indentifier: 0x%x\n"
+                    "           with Protocol specific port "
+                    "identifier\n", p_id);
+        break;
+    default: /* reserved */
+        pr2serr("      reserved designator=0x%x\n", desig_type);
+        dStrHexErr((const char *)ip, i_len, 0);
+        break;
+    }
+}
+
 static int
 desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
                  int is_dest)
 {
-    int fd, res, u, i_len, assoc, desig;
+    int fd, res, u, i_len, assoc, desig, verb;
     unsigned char rcBuff[256], *ucp, *best = NULL;
     unsigned int len = 254;
     unsigned int block_size;
@@ -546,12 +754,13 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
     struct flags_t * flp;
     struct dev_info_t * dip;
 
+    verb = (op->verbose ? op->verbose - 1: 0);
     dip = is_dest ? op->odip : op->idip;
     fd = dip->fd;
     flp = is_dest ? op->oflagp : op->iflagp;
     block_size = is_dest ? op->obs : op->ibs;
     memset(rcBuff, 0xff, len);
-    res = sg_ll_inquiry(fd, 0, 1, 0x83, rcBuff, 4, 1, op->verbose);
+    res = sg_ll_inquiry(fd, 0, 1, 0x83, rcBuff, 4, 1, verb);
     if (0 != res) {
         pr2serr("VPD inquiry failed with %d\n", res);
         return res;
@@ -560,7 +769,7 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
         return SG_LIB_CAT_MALFORMED;
     }
     len = ((rcBuff[2] << 8) + rcBuff[3]) + 4;
-    res = sg_ll_inquiry(fd, 0, 1, 0x83, rcBuff, len, 1, op->verbose);
+    res = sg_ll_inquiry(fd, 0, 1, 0x83, rcBuff, len, 1, verb);
     if (0 != res) {
         pr2serr("VPD inquiry failed with %d\n", res);
         return res;
@@ -585,7 +794,7 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
         }
         assoc = ((ucp[1] >> 4) & 0x3);
         desig = (ucp[1] & 0xf);
-        if (op->verbose)
+        if (op->verbose > 2)
             pr2serr("    Desc %d: assoc %u desig %u len %d\n", off, assoc,
                     desig, i_len);
         /* Descriptor must be less than 16 bytes */
@@ -617,10 +826,8 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
         }
     }
     if (best) {
-#if 0
         if (op->verbose)
-            decode_designation_descriptor(best, best_len);
-#endif
+            decode_designation_descriptor(best, best_len, op->verbose);
         if (best_len + 4 < desc_len) {
             memset(desc, 0, 32);
             desc[0] = 0xe4;
@@ -654,25 +861,22 @@ do_xcopy(struct opts_t * op)
     const struct dev_info_t * idip = op->idip;
     const struct dev_info_t * odip = op->odip;
 
-    if (op->verbose)
-        pr2serr("do_xcopy: enter\n");
-
     res = scsi_operating_parameter(op, 0);
     if (res < 0) {
         if (SG_LIB_CAT_UNIT_ATTENTION == -res) {
-            fprintf(stderr, "Unit attention (oper parm), continuing\n");
+            pr2serr("Unit attention (oper parm), continuing\n");
             res = scsi_operating_parameter(op, 0);
         } else {
             if (-res == SG_LIB_CAT_INVALID_OP) {
-                fprintf(stderr, "receive copy operating parameters not "
-                        "supported on %s\n", idip->fn);
+                pr2serr("receive copy operating parameters not supported "
+                        "on %s\n", idip->fn);
                 return EINVAL;
             } else if (-res == SG_LIB_CAT_NOT_READY)
-                fprintf(stderr, "receive copy operating parameters failed "
-                        "on %s - not ready\n", idip->fn);
+                pr2serr("receive copy operating parameters failed on %s - "
+                        "not ready\n", idip->fn);
             else {
-                fprintf(stderr, "Unable to receive copy operating "
-                        "parameters on %s\n", idip->fn);
+                pr2serr("Unable to receive copy operating parameters on "
+                        "%s\n", idip->fn);
                 return -res;
             }
         }
@@ -693,19 +897,19 @@ do_xcopy(struct opts_t * op)
     res = scsi_operating_parameter(op, 1);
     if (res < 0) {
         if (SG_LIB_CAT_UNIT_ATTENTION == -res) {
-            fprintf(stderr, "Unit attention (oper parm), continuing\n");
+            pr2serr("Unit attention (oper parm), continuing\n");
             res = scsi_operating_parameter(op, 1);
         } else {
             if (-res == SG_LIB_CAT_INVALID_OP) {
-                fprintf(stderr, "receive copy operating parameters not "
-                        "supported on %s\n", odip->fn);
+                pr2serr("receive copy operating parameters not supported "
+                        "on %s\n", odip->fn);
                 return EINVAL;
             } else if (-res == SG_LIB_CAT_NOT_READY)
-                fprintf(stderr, "receive copy operating parameters failed "
-                        "on %s - not ready\n", odip->fn);
+                pr2serr("receive copy operating parameters failed on %s - "
+                        "not ready\n", odip->fn);
             else {
-                fprintf(stderr, "Unable to receive copy operating "
-                        "parameters on %s\n", odip->fn);
+                pr2serr("Unable to receive copy operating parameters on "
+                        "%s\n", odip->fn);
                 return -res;
             }
         }
@@ -759,16 +963,13 @@ do_xcopy(struct opts_t * op)
         }
     }
     if (op->verbose > 1)
-        pr2serr("do_xcopy: final ibpt=%d, obpt=%d\n", ibpt, obpt);
+        pr2serr("do_xcopy: xcopy will use ibpt=%d, obpt=%d\n", ibpt, obpt);
     seg_desc_type = seg_desc_from_d_type(simplified_dt(op->idip), 0,
                                          simplified_dt(op->odip), 0);
 
     res = 0;
     while (op->dd_count > 0) {
-        if (op->dd_count > ibpt)
-            blocks = ibpt;
-        else
-            blocks = op->dd_count;
+        blocks = (op->dd_count > ibpt) ? ibpt : op->dd_count;
         oblocks = bs_same ? blocks : ((op->ibs * blocks) / op->obs);
 
         res = scsi_extended_copy(op, src_desc, src_desc_len, dst_desc,

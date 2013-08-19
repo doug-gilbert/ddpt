@@ -14,18 +14,19 @@ and Windows.
 Relationship to sg3_utils
 -------------------------
 The sg3_utils (version 1.33) package contains several utilities that mimic
-the standard Unix dd command. Currently those utilities are sg_dd, sgm_dd
-and sgp_dd. Even though most of the other utilities in the sg3_utils package
-are ported to other operating systems, sg_dd and friends are not ported
-since they are too tightly bound to Linux and some of the idiosyncrasies of
-its SCSI generic (sg) driver and the associated SG_IO ioctl. So the ddpt
-utility drops some Linux specific features while adding some more general
-features (e.g. write sparing). An attempt has also been made to simplify
-the command line syntax which is still based on the distinctive dd command
-command line syntax. Note that the dd command line syntax is unlike any
-other Unix command (probably imported from some IBM OS many years ago).
+the standard Unix dd command. Currently those utilities are sg_dd, sgm_dd,
+sgp_dd and sg_xcopy. Even though most of the other utilities in the
+sg3_utils package are ported to other operating systems, sg_dd and friends
+are not ported since they are too tightly bound to Linux and some of the
+idiosyncrasies of its SCSI generic (sg) and bsg drivers and the associated
+SG_IO ioctl. So the ddpt utility drops some Linux specific features while
+adding some more general features (e.g. write sparing). An attempt has also
+been made to simplify the command line syntax which is still based on the
+distinctive dd command command line syntax. Note that the dd command line
+syntax is unlike any other Unix command (probably imported from some IBM
+OS many years ago).
 
-This package shares code with sg3_utils (version 1.33). With the subversion
+This package shares code with sg3_utils (version 1.37). With the subversion
 revision control system this is done by having ddpt's "include/" and "lib/"
 sub-directories pointing to the correspondingly named directories in the
 sg3_utils package using the "svn:externals" property. These two "external"
@@ -78,9 +79,10 @@ executable.
 
 License
 -------
-This utility is covered by a FreeBSD license. The intention of the author
-is that both open source and commercial entities can re-use this code.
-Naturally attribution and improvement/bug feedback are encouraged.
+This utility is covered by a FreeBSD license also known as the BSD 3-clause
+license (see Wikipedia). The intention of the author is that both open
+source and commercial entities can re-use this code. Naturally attribution
+and improvement/bug feedback are encouraged.
 
 Notes
 -----
@@ -94,7 +96,7 @@ The utility can be used on any storage device.
 
 To use the "pt" interface the device needs to support the SG_IO ioctl. In
 the Linux 2.4 series that is only the scsi generic (i.e. /dev/sg* )
-device nodes. In the Linux 2.6 series the supported device nodes have
+device nodes. In the Linux 2.6 and 3 series the supported device nodes have
 expanded to all other SCSI device nodes (e.g. /dev/sd* and /dev/sr*)
 plus block devices such as /dev/hdc when the associated device is a
 DVD drive. The man page and sg.danny.cz/sg/ddpt.html web page examples use
@@ -114,4 +116,4 @@ See README.win32
 
 
 Douglas Gilbert
-18th August 2013
+19th August 2013
