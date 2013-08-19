@@ -21,7 +21,7 @@ Changelog for ddpt-0.93 [20130818] [svn: r215]
       with non-libsgutils build
   - reduce ddpt.c size by adding ddpt_pt.c
   - win32: fixes for cygwin version 1.7.17 headers
-  - point svn:externals to rev 506 of sg3_utils
+  - point svn:externals to rev 508 of sg3_utils
 
 Changelog for ddpt-0.92 [20110217] [svn: r157]
   - when pt used on block device and discrepancy between size
