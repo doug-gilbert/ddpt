@@ -12,6 +12,7 @@ devices that understand the SCSI command set.
 [\fIprio=PRIO\fR] [\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR]
 [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR] [\fIverbose=VERB\fR]
 [\fI\-\-help\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR]
+[\fI\-\-xcopy\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
 .PP
@@ -140,7 +141,10 @@ is \fIBS\fR or its default (512). Conflicts the "bs=" option (e.g. giving
 both "bs=512 ibs=512" is considered a syntax error).
 .TP
 \fBid_usage\fR=\fILIU\fR
-xcopy: xxxxxxxxxxxxxxx
+xcopy: SCSI EXTENDED COPY parameter list LIST ID USAGE field is set to
+\fILIU\fR. The default value is 0 . \fILIU\fR can be a number between 0
+and 3 inclusive or a string. The strings can be either: 'hold' for
+0, 'discard' for 2 or 'disable' for 3.
 .TP
 \fBif\fR=\fIIFILE\fR
 read from \fIIFILE\fR. This option must be given (i.e. it is mandatory). If
@@ -164,7 +168,8 @@ start reading \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of
 synonym for "skip=".
 .TP
 \fBlist_id\fR=\fILID\fR
-xcopy: xxxxxxxxxxxxxxx
+xcopy: SCSI EXTENDED COPY parameter list LIST IDENTIFIER field is set to
+\fILID\fR. The default value is 1 .
 .TP
 \fBobs\fR=\fIOBS\fR
 where \fIOBS\fR is the \fIOFILE\fR block size in bytes. The default value
@@ -204,7 +209,8 @@ start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
 synonym for "seek=".
 .TP
 \fBprio\fR=\fIPRIO\fR
-xcopy: xxxxxxxxxxxxxxx
+xcopy: SCSI EXTENDED COPY parameter list PRIORITY field is set to \fIPRIO\fR.
+The default value is 1 .
 .TP
 \fBprotect\fR=\fIRDP[,WRP]\fR
 where \fIRDP\fR is the RDPROTECT field in SCSI READ commands and \fIWRP\fR
@@ -268,6 +274,13 @@ type" of the closest transport (e.g. a SATA disk in a USB connected
 enclosure has bus type USB). When used three times a SCSI adapter scan
 is added. When used four times only a SCSI adapter scan is shown.
 See EXAMPLES section below and the README.win32 file.
+.TP
+\fB\-x\fR, \fB\-\-xcopy\fR
+this option will attempt to call the SCSI EXTENDED COPY command. In the
+absence of "oflags=xcopy" the xcopy command will be sent to the
+source (i.e. \fIIFILE\fR). If "oflags=xcopy" is given and "iflags=xcopy"
+is not given then the xcopy command will be sent to the
+destination (i.e. \fIOFILE\fR).
 .SH COUNT
 When the \fIcount=COUNT\fR option is not given (or \fICOUNT\fR is '\-1')
 then an attempt is made to deduce \fICOUNT\fR as follows.
@@ -365,6 +378,11 @@ utility is to overwrite any existing data from the beginning of \fIOFILE\fR
 or, if \fISEEK\fR is given, starting at block \fISEEK\fR. Note that
 attempting to 'append' to a device file (e.g. a disk) will usually be
 ignored or may cause an error to be reported.
+.TP
+cat [io] [blk,pt,tape]
+set CAT (residual data handling) bit in EXTENDED COPY (LID1) parameter list
+segment descriptor header. May appear in either flag list when xcopy is
+being used.
 .TP coe [io] [pt], [i] [reg,blk]
 continue on error. 'iflag=coe oflag=coe' and 'coe=1' are equivalent.
 Errors occurring on output regular or block files will stop ddpt.
@@ -393,8 +411,9 @@ other error, a short read or an end of file will terminate the copy,
 usually after the data that has been read is written to the output file.
 .TP
 dc [io] [blk,pt,tape]
-set DC (destination counter) bit in EXTENDED COPY (LID1) parameter list.
-May appear in either flag list when xcopy is being used.
+set DC (destination counter) bit in EXTENDED COPY (LID1) parameter list
+segment descriptor header. May appear in either flag list when xcopy is
+being used.
 .TP
 direct [io] [reg,blk]
 causes the O_DIRECT flag to be added to the open of \fIIFILE\fR and/or
@@ -943,9 +962,9 @@ There is support for copies to and from tape drives in Linux. Only the
 st driver device names can be used (e.g. /dev/st0 and /dev/nst2). Hence
 use of Linux pass\-through device names (e.g. /dev/sg2) for tape drives
 is not supported.
+.PP
 To be continued xxxxxxxxx
 .SH XCOPY
-.PP
 To be continued xxxxxxxxx
 .SH EXIT STATUS
 To aid scripts that call ddpt, the exit status is set to indicate

@@ -237,6 +237,7 @@ struct opts_t {
     int64_t out_sparse;  /* used for sparse, sparing + trim */
     int64_t lowest_unrecovered;         /* on reads */
     int64_t highest_unrecovered;        /* on reads */
+    int64_t num_xcopy;
     int in_partial;
     int max_aborted;
     int max_uas;
