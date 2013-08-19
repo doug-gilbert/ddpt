@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.93 20130818 [svn: r215]";
+static const char * version_str = "0.93 20130819 [svn: r217]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -1925,6 +1925,11 @@ open_of(struct opts_t * op)
         memset(&st, 0, sizeof(st));
         if (0 == stat(ofn, &st))
             outf_exists = 1;
+        else if (ofp->pt) {
+            /* if oflag=pt, then creating a regular file is unhelpful */
+            pr2serr("Cannot create a regular file called %s as a pt\n", ofn);
+            goto other_err;
+        }
         flags = ofp->sparing ? O_RDWR : O_WRONLY;
         if (0 == outf_exists)
             flags |= O_CREAT;
