@@ -256,6 +256,7 @@ primary_help:
 #ifdef SG_LIB_WIN32
            "    --wscan     windows scan for device names and volumes\n"
 #endif
+           "    --xcopy     do xcopy rather than normal rw copy\n"
            "\nCopy all or part of IFILE to OFILE, IBS*BPT bytes at a time. "
            "Similar to\n"
            "dd command. Support for block devices, especially those "
@@ -364,6 +365,9 @@ print_stats(const char * str, struct opts_t * op)
         pr2serr("%s%d %s after interrupted system call(s)\n",
                 str, op->interrupted_retries,
                 ((1 == op->interrupted_retries) ? "retry" : "retries"));
+    if (op->has_xcopy)
+        pr2serr("%s%" PRId64 " xcopy command%s done\n", str, op->num_xcopy,
+                ((op->num_xcopy > 1) ? "s" : ""));
 }
 
 /* Return signal name for signum if known, else return signum as a string. */
@@ -929,6 +933,10 @@ cl_sanity_defaults(struct opts_t * op)
     if (op->oflagp->strunc && (0 == op->oflagp->sparse))
         ++op->oflagp->sparse;
 
+    if (op->has_xcopy) {
+        if (! (op->iflagp->xcopy || op->oflagp->xcopy))
+            op->iflagp->xcopy = 1;
+    }
     if (op->iflagp->xcopy || op->oflagp->xcopy) {
         if (op->iflagp->xcopy && op->oflagp->xcopy) {
             pr2serr("Since xcopy set in both iflag= and oflags"
@@ -1266,6 +1274,9 @@ process_cl(struct opts_t * op, int argc, char * argv[])
         else if (0 == strncmp(key, "-w", 2))
             ++op->wscan;
 #endif
+        else if ((0 == strncmp(key, "--xcopy", 7)) ||
+                 (0 == strncmp(key, "-x", 2)))
+            ++op->has_xcopy;
         else {
             pr2serr("Unrecognized option '%s'\n", key);
             pr2serr("For more information use '--help'\n");

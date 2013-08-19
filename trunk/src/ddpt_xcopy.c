@@ -213,7 +213,7 @@ scsi_extended_copy(struct opts_t * op, unsigned char *src_desc,
     uint64_t dst_lba = op->seek;
 
     fd = (op->iflagp->xcopy) ? op->idip->fd : op->odip->fd;
-    verb = (op->verbose ? op->verbose - 1: 0);
+    verb = (op->verbose > 1) ? (op->verbose - 2): 0;
 
     memset(xcopyBuff, 0, 256);
     xcopyBuff[0] = op->list_id;
@@ -229,10 +229,6 @@ scsi_extended_copy(struct opts_t * op, unsigned char *src_desc,
                                         src_lba, dst_lba);
     xcopyBuff[11] = seg_desc_len; /* One segment descriptor */
     desc_offset += seg_desc_len;
-    if (op->verbose > 3) {
-        pr2serr("\nParameter list in hex (length %d):\n", desc_offset);
-        dStrHexErr((const char *)xcopyBuff, desc_offset, 1);
-    }
     return sg_ll_extended_copy(fd, xcopyBuff, desc_offset, 1, verb);
 }
 
@@ -251,10 +247,8 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
     dip = is_dest ? op->odip : op->idip;
     fd = dip->fd;
     ftype = dip->d_type;
-pr2serr(">>> dip->d_type=0x%x\n", ftype);
     if (FT_PT & ftype) {
         pdt = dip->pdt;
-pr2serr(">>> pdt=0x%x\n", pdt);
         if ((0 == pdt) || (0xe == pdt)) /* direct-access or RBC */
             ftype |= FT_BLOCK;
         else if (0x1 == pdt)
@@ -651,7 +645,7 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
 int
 do_xcopy(struct opts_t * op)
 {
-    int res, ibpt, obpt, bs_same, max_bpt, blocks;
+    int res, ibpt, obpt, bs_same, max_bpt, blocks, oblocks;
     int src_desc_len, dst_desc_len, seg_desc_type;
     unsigned char src_desc[256];
     unsigned char dst_desc[256];
@@ -757,15 +751,15 @@ do_xcopy(struct opts_t * op)
             obpt = (r > INT_MAX) ? INT_MAX : (int)r;
             ibpt = bs_same ? obpt : ((op->obs * obpt) / op->ibs);
             ibpt = (ibpt > max_bpt) ? max_bpt : ibpt;
-            obpt = bs_same ? ibpt : ((op->ibs * op->bpt_i) / op->obs);
+            obpt = bs_same ? ibpt : ((op->ibs * ibpt) / op->obs);
         } else {
             r = idip->xc_max_bytes / (unsigned long)op->ibs;
             ibpt = (r > (unsigned long)max_bpt) ? max_bpt : (int)r;
-            obpt = bs_same ? ibpt : ((op->ibs * op->bpt_i) / op->obs);
+            obpt = bs_same ? ibpt : ((op->ibs * ibpt) / op->obs);
         }
     }
     if (op->verbose > 1)
-	pr2serr("do_xcopy: final ibpt=%d, obpt=%d\n", ibpt, obpt);
+        pr2serr("do_xcopy: final ibpt=%d, obpt=%d\n", ibpt, obpt);
     seg_desc_type = seg_desc_from_d_type(simplified_dt(op->idip), 0,
                                          simplified_dt(op->odip), 0);
 
@@ -775,17 +769,19 @@ do_xcopy(struct opts_t * op)
             blocks = ibpt;
         else
             blocks = op->dd_count;
+        oblocks = bs_same ? blocks : ((op->ibs * blocks) / op->obs);
+
         res = scsi_extended_copy(op, src_desc, src_desc_len, dst_desc,
                                  dst_desc_len, seg_desc_type, blocks);
         if (res != 0)
             break;
         op->in_full += blocks;
+        op->out_full += oblocks;
         op->skip += blocks;
-        op->seek += obpt;
+        op->seek += oblocks;
+        op->num_xcopy++;
         op->dd_count -= blocks;
-        // num_xcopy++;
     }
-// xxxxxxxxxxxxx
 
     return res;
 }
