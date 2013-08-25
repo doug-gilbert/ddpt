@@ -79,6 +79,8 @@
 #define DDPT_READ32_SA 0x9
 #define DDPT_WRITE32_SA 0xb
 
+#define ASC_PROTECTION_INFO_BAD 0x10
+
 
 void *
 pt_construct_obj(void)
@@ -440,7 +442,8 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
             break;
         case SG_LIB_CAT_ABORTED_COMMAND:
             if (sg_scsi_normalize_sense(sense_b, slen, &ssh) &&
-                (0x10 == ssh.asc)) {    /* Protection problem, so no retry */
+                (ASC_PROTECTION_INFO_BAD == ssh.asc)) {
+                /* Protection problem, so no retry */
                 ++op->unrecovered_errs;
                 info_valid = sg_get_sense_info_fld(sense_b, slen, io_addrp);
                 if (info_valid)
@@ -802,7 +805,8 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
             break;
         case SG_LIB_CAT_ABORTED_COMMAND:
             if (sg_scsi_normalize_sense(sense_b, slen, &ssh) &&
-                (0x10 == ssh.asc)) {    /* Protection problem, so no retry */
+                (ASC_PROTECTION_INFO_BAD == ssh.asc)) {
+                /* Protection problem, so no retry */
                 ++op->wr_unrecovered_errs;
                 ret = SG_LIB_CAT_PROTECTION;
             }
