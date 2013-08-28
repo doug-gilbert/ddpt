@@ -42,23 +42,21 @@
 #include <ctype.h>
 #include <getopt.h>
 
-#include "ddpt.h"
 
 #include "sg_lib.h"
 
-#ifdef _WIN32_WINNT
-/* keep it or undef it ?? */
-#else
 #define _WIN32_WINNT 0x0602
-#endif
+/* claim its W8 */
 
 #include "sg_pt_win32.h"
+
+#include "ddpt.h"
 
 /*
  * This is called when the '--wscan' option is given to ddpt. It is
  * Win32 only code and shows the relationship between various device names
- * and volumes in Windows OSes (Windows 2000, 2003, XP, Vista and W7). There
- * is an optional scsi adapter scan.
+ * and volumes in Windows OSes (Windows 2000, 2003, XP, Vista, W7 and W8).
+ * There is an optional scsi adapter scan.
  */
 
 #define MAX_SCSI_ELEMS 1024
