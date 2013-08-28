@@ -314,61 +314,60 @@ struct signum_name_t {
 
 /* Declared below are functions shared by different compilation units */
 #ifdef __GNUC__
-extern int pr2serr(const char * fmt, ...)
-        __attribute__ ((format (printf, 1, 2)));
+int pr2serr(const char * fmt, ...) __attribute__ ((format (printf, 1, 2)));
 #else
-extern int pr2serr(const char * fmt, ...);
+int pr2serr(const char * fmt, ...);
 #endif
 
-extern void * pt_construct_obj(void);
-extern void pt_destruct_obj(void * vp);
-extern int pt_open_if(struct opts_t * op);
-extern int pt_open_of(struct opts_t * op);
-extern void pt_close(int fd);
-extern int pt_read_capacity(struct opts_t * op, int in0_out1,
-                            int64_t * num_sect, int * sect_sz);
-extern int pt_read(struct opts_t * op, int in0_out1, unsigned char * buff,
-                   int blocks, int * blks_readp);
-extern int pt_write(struct opts_t * op, const unsigned char * buff,
-                    int blocks, int64_t to_block);
-extern int pt_write_same16(struct opts_t * op, const unsigned char * buff,
-                           int bs, int blocks, int64_t start_block);
-extern void pt_sync_cache(int fd);
+void * pt_construct_obj(void);
+void pt_destruct_obj(void * vp);
+int pt_open_if(struct opts_t * op);
+int pt_open_of(struct opts_t * op);
+void pt_close(int fd);
+int pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_sect,
+                     int * sect_sz);
+int pt_read(struct opts_t * op, int in0_out1, unsigned char * buff,
+            int blocks, int * blks_readp);
+int pt_write(struct opts_t * op, const unsigned char * buff, int blocks,
+             int64_t to_block);
+int pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
+                    int blocks, int64_t start_block);
+void pt_sync_cache(int fd);
 
-extern void put_errblk(uint64_t lba, struct opts_t * op);
-extern void put_range_errblk(uint64_t lba, int num, struct opts_t * op);
-extern void zero_coe_limit_count(struct opts_t * op);
+void put_errblk(uint64_t lba, struct opts_t * op);
+void put_range_errblk(uint64_t lba, int num, struct opts_t * op);
+void zero_coe_limit_count(struct opts_t * op);
 
-extern int do_xcopy(struct opts_t * op);
+int do_xcopy(struct opts_t * op);
 
 
 #ifdef SG_LIB_WIN32
-extern int dd_filetype(const char * fn, int verbose);
-extern int get_blkdev_capacity(struct opts_t * optsp, int which_arg,
-                               int64_t * num_sect, int * sect_sz);
-extern void win32_adjust_fns_pt(struct opts_t * optsp);
-extern int win32_open_if(struct opts_t * optsp, int verbose);
-extern int win32_open_of(struct opts_t * optsp, int verbose);
-extern int win32_set_file_pos(struct opts_t * optsp, int if0_of1,
-                              int64_t pos, int verbose);
-extern int win32_block_read(struct opts_t * optsp, unsigned char * bp,
-                            int num_bytes, int verbose);
-extern int win32_block_read_from_of(struct opts_t * optsp, unsigned char * bp,
-                                    int num_bytes, int verbose);
-extern int win32_block_write(struct opts_t * optsp, const unsigned char * bp,
+int dd_filetype(const char * fn, int verbose);
+int get_blkdev_capacity(struct opts_t * optsp, int which_arg,
+                        int64_t * num_sect, int * sect_sz);
+void win32_adjust_fns_pt(struct opts_t * optsp);
+int win32_open_if(struct opts_t * optsp, int flags, int verbose);
+int win32_open_of(struct opts_t * optsp, int flags, int verbose);
+int win32_set_file_pos(struct opts_t * optsp, int if0_of1, int64_t pos,
+                       int verbose);
+int win32_block_read(struct opts_t * optsp, unsigned char * bp, int num_bytes,
+                     int verbose);
+int win32_block_read_from_of(struct opts_t * optsp, unsigned char * bp,
                              int num_bytes, int verbose);
-extern int win32_cp_read_block(struct opts_t * optsp, struct cp_state_t * csp,
-                               unsigned char * wrkPos, int * ifull_extrap,
-                               int verbose);
-extern int coe_process_eio(struct opts_t * op, int64_t skip);
+int win32_block_write(struct opts_t * optsp, const unsigned char * bp,
+                      int num_bytes, int verbose);
+int win32_cp_read_block(struct opts_t * optsp, struct cp_state_t * csp,
+                        unsigned char * wrkPos, int * ifull_extrap,
+                        int verbose);
+int coe_process_eio(struct opts_t * op, int64_t skip);
 
-extern int sg_do_wscan(char letter, int do_scan, int verb);
+int sg_do_wscan(char letter, int do_scan, int verb);
 
 #ifdef SG_LIB_MINGW
 /* Without this gives a warning about implicit declaration.
  * This stop the warning but if getpagesize() appears may need to
  * remove this declaration. */
-extern int getpagesize(void);
+int getpagesize(void);
 #endif
 
 #endif

@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.93 20130825 [svn: r218]";
+static const char * version_str = "0.93 20130827 [svn: r219]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -1817,7 +1817,7 @@ open_if(struct opts_t * op)
     }
 #ifdef SG_LIB_WIN32
     else if (FT_BLOCK & idip->d_type) {
-        if (win32_open_if(op, op->verbose))
+        if (win32_open_if(op, (ifp->excl ? O_EXCL : 0), op->verbose))
             goto file_err;
         fd = 0;
     }
@@ -1913,7 +1913,7 @@ open_of(struct opts_t * op)
         fd = -1; /* don't bother opening */
 #ifdef SG_LIB_WIN32
     else if (FT_BLOCK & odip->d_type) {
-        if (win32_open_of(op, op->verbose))
+        if (win32_open_of(op, (ofp->excl ? O_EXCL : 0), op->verbose))
             goto file_err;
         fd = 0;
     }

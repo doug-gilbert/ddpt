@@ -312,17 +312,18 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
 
 /* Returns 0 on success, 1 on error */
 int
-win32_open_if(struct opts_t * op, int verbose)
+win32_open_if(struct opts_t * op, int flags, int verbose)
 {
     DISK_GEOMETRY g;
-    DWORD count, err;
+    DWORD count, share_mode, err;
     char b[80];
 
     if (verbose)
         pr2serr("CreateFile(%s , in)\n", op->inf);
+    share_mode = (O_EXCL & flags) ? 0 : (FILE_SHARE_READ | FILE_SHARE_WRITE);
     op->ib_fh = CreateFile(op->inf,
                               GENERIC_READ | GENERIC_WRITE,
-                              FILE_SHARE_WRITE | FILE_SHARE_READ,
+                              share_mode,
                               NULL,
                               OPEN_EXISTING,
                               0,
@@ -351,17 +352,18 @@ win32_open_if(struct opts_t * op, int verbose)
 
 /* Returns 0 on success, 1 on error. */
 int
-win32_open_of(struct opts_t * op, int verbose)
+win32_open_of(struct opts_t * op, int flags, int verbose)
 {
     DISK_GEOMETRY g;
-    DWORD count, err;
+    DWORD count, share_mode, err;
     char b[80];
 
     if (verbose)
         pr2serr("CreateFile(%s , out)\n", op->outf);
+    share_mode = (O_EXCL & flags) ? 0 : (FILE_SHARE_READ | FILE_SHARE_WRITE);
     op->ob_fh = CreateFile(op->outf,
                               GENERIC_READ | GENERIC_WRITE,
-                              FILE_SHARE_WRITE | FILE_SHARE_READ,
+                              share_mode,
                               NULL,
                               OPEN_EXISTING,
                               0,
