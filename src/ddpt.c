@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.93 20130827 [svn: r219]";
+static const char * version_str = "0.93 20130828 [svn: r220]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -157,7 +157,9 @@ static struct signum_name_t signum_name_arr[] = {
 #else
     {SIGINFO, "SIGINFO"},
 #endif
+#ifndef SG_LIB_WIN32
     {SIGHUP, "SIGHUP"},
+#endif
     {0, NULL},
 };
 
@@ -2757,7 +2759,7 @@ cp_read_of_block_reg(struct opts_t * op, struct cp_state_t * csp,
     int numbytes = csp->ocbpt * op->obs;
 
 #ifdef SG_LIB_WIN32
-    if (FT_BLOCK & op->out_type) {
+    if (FT_BLOCK & op->odip->d_type) {
         if (offset != csp->of_filepos) {
             if (op->verbose > 2)
                 pr2serr("moving of filepos: new_pos=%" PRId64 "\n",
@@ -2996,7 +2998,8 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
                 ++blks;
                 res = blks * obs;
                 if (res > numbytes)
-                    memset(bp + numbytes, 0, res - numbytes);
+                    memset((unsigned char *)bp + numbytes, 0,
+                           res - numbytes);
                 numbytes = res;
                 if (op->verbose > 1)
                     pr2serr("write(win32_block): padding probable "

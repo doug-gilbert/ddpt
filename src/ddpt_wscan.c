@@ -46,7 +46,12 @@
 
 #include "sg_lib.h"
 
+#ifdef _WIN32_WINNT
+/* keep it or undef it ?? */
+#else
 #define _WIN32_WINNT 0x0602
+#endif
+
 #include "sg_pt_win32.h"
 
 /*

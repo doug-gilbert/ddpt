@@ -182,8 +182,8 @@ win32_adjust_fns_pt(struct opts_t * op)
     int k, j, len;
 
     memset(fn_arr, 0 , sizeof(fn_arr));
-    fn_arr[0] = op->inf;
-    fn_arr[1] = op->outf;
+    fn_arr[0] = op->idip->fn;
+    fn_arr[1] = op->odip->fn;
     for (k = 0; k < 2; ++k) {
         cp = fn_arr[k];
         if (NULL == cp)
@@ -319,16 +319,16 @@ win32_open_if(struct opts_t * op, int flags, int verbose)
     char b[80];
 
     if (verbose)
-        pr2serr("CreateFile(%s , in)\n", op->inf);
+        pr2serr("CreateFile(%s , in)\n", op->idip->fn);
     share_mode = (O_EXCL & flags) ? 0 : (FILE_SHARE_READ | FILE_SHARE_WRITE);
-    op->ib_fh = CreateFile(op->inf,
+    op->idip->fh = CreateFile(op->idip->fn,
                               GENERIC_READ | GENERIC_WRITE,
                               share_mode,
                               NULL,
                               OPEN_EXISTING,
                               0,
                               NULL);
-    if (INVALID_HANDLE_VALUE == op->ib_fh) {
+    if (INVALID_HANDLE_VALUE == op->idip->fh) {
         err = GetLastError();
         if (win32_errmsg(err, b, sizeof(b)) < 0)
             pr2serr("CreateFile(in) failed, error=%ld [and win32_errmsg() "
@@ -337,7 +337,7 @@ win32_open_if(struct opts_t * op, int flags, int verbose)
             pr2serr("CreateFile(in) failed, %s [%ld]\n", b, err);
         return 1;
     }
-    if (0 == DeviceIoControl(op->ib_fh, IOCTL_DISK_GET_DRIVE_GEOMETRY,
+    if (0 == DeviceIoControl(op->idip->fh, IOCTL_DISK_GET_DRIVE_GEOMETRY,
                              NULL, 0, &g, sizeof(g), &count, NULL)) {
         pr2serr("DeviceIoControl(in, geometry) error=%ld\n", GetLastError());
         return 1;
@@ -359,16 +359,16 @@ win32_open_of(struct opts_t * op, int flags, int verbose)
     char b[80];
 
     if (verbose)
-        pr2serr("CreateFile(%s , out)\n", op->outf);
+        pr2serr("CreateFile(%s , out)\n", op->odip->fn);
     share_mode = (O_EXCL & flags) ? 0 : (FILE_SHARE_READ | FILE_SHARE_WRITE);
-    op->ob_fh = CreateFile(op->outf,
+    op->odip->fh = CreateFile(op->odip->fn,
                               GENERIC_READ | GENERIC_WRITE,
                               share_mode,
                               NULL,
                               OPEN_EXISTING,
                               0,
                               NULL);
-    if (INVALID_HANDLE_VALUE == op->ob_fh) {
+    if (INVALID_HANDLE_VALUE == op->odip->fh) {
         err = GetLastError();
         if (win32_errmsg(err, b, sizeof(b)) < 0)
             pr2serr("CreateFile(out) failed, error=%ld [and win32_errmsg() "
@@ -377,7 +377,7 @@ win32_open_of(struct opts_t * op, int flags, int verbose)
             pr2serr("CreateFile(out) failed, %s [%ld]\n", b, err);
         return 1;
     }
-    if (0 == DeviceIoControl(op->ob_fh, IOCTL_DISK_GET_DRIVE_GEOMETRY,
+    if (0 == DeviceIoControl(op->odip->fh, IOCTL_DISK_GET_DRIVE_GEOMETRY,
                              NULL, 0, &g, sizeof(g), &count, NULL)) {
         pr2serr("DeviceIoControl(out, geometry) error=%ld\n", GetLastError());
         return 1;
@@ -403,7 +403,7 @@ win32_set_file_pos(struct opts_t * op, int which_arg, int64_t pos,
     HANDLE fh;
     const char * cp;
 
-    fh = (DDPT_ARG_IN == which_arg) ? op->ib_fh : op->ob_fh;
+    fh = (DDPT_ARG_IN == which_arg) ? op->idip->fh : op->odip->fh;
     cp = (DDPT_ARG_IN == which_arg) ? "in" : "out";
     if (verbose > 2)
         pr2serr("SetFilePointer( 0x%" PRIx64 ", %s)\n", pos, cp);
@@ -429,7 +429,7 @@ win32_block_read(struct opts_t * op, unsigned char * bp, int num_bytes,
 
     if (verbose > 2)
         pr2serr("ReadFile(num=%d, in)\n", num_bytes);
-    if (ReadFile(op->ib_fh, bp, num, &howMany, NULL) == 0) {
+    if (ReadFile(op->idip->fh, bp, num, &howMany, NULL) == 0) {
         err = GetLastError();
         if (verbose) {
             if (win32_errmsg(err, b, sizeof(b)) < 0)
@@ -457,7 +457,7 @@ win32_block_read_from_of(struct opts_t * op, unsigned char * bp,
 
     if (verbose > 2)
         pr2serr("ReadFile(num=%d, out)\n", num_bytes);
-    if (ReadFile(op->ob_fh, bp, num, &howMany, NULL) == 0) {
+    if (ReadFile(op->odip->fh, bp, num, &howMany, NULL) == 0) {
         err = GetLastError();
         if (verbose) {
             if (win32_errmsg(err, b, sizeof(b)) < 0)
@@ -485,7 +485,7 @@ win32_block_write(struct opts_t * op, const unsigned char * bp,
 
     if (verbose > 2)
         pr2serr("WriteFile(num=%d, out)\n", num_bytes);
-    if (WriteFile(op->ob_fh, bp, num, &howMany, NULL) == 0) {
+    if (WriteFile(op->odip->fh, bp, num, &howMany, NULL) == 0) {
         err = GetLastError();
         if (verbose) {
             if (win32_errmsg(err, b, sizeof(b)) < 0)
@@ -520,8 +520,8 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
     int fname_len;
     char dirName[64];
 
-    fh = (DDPT_ARG_IN == which_arg) ? op->ib_fh : op->ob_fh;
-    fname = (DDPT_ARG_IN == which_arg) ? op->inf : op->outf;
+    fh = (DDPT_ARG_IN == which_arg) ? op->idip->fh : op->odip->fh;
+    fname = (DDPT_ARG_IN == which_arg) ? op->idip->fn : op->odip->fn;
     if (op->verbose > 2)
         pr2serr("get_blkdev_capacity: for %s\n", fname);
     if (0 == DeviceIoControl(fh, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0, &g,
