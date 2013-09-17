@@ -199,7 +199,8 @@ pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_sect,
     if (protect || ((0xff == rcBuff[0]) && (0xff == rcBuff[1]) &&
                     (0xff == rcBuff[2]) && (0xff == rcBuff[3]))) {
         int64_t ls;
-        int prot_typ, p_i_exp;
+        int prot_typ = 0;
+        int p_i_exp = 0;
 
         if (verb && ! protect)
             pr2serr("    READ CAPACITY (10) response cannot represent this "
@@ -215,18 +216,16 @@ pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_sect,
         *num_sect = ls + 1;
         *sect_sz = (rcBuff[8] << 24) | (rcBuff[9] << 16) |
                    (rcBuff[10] << 8) | rcBuff[11];
-        if (protect) {
-            if (rcBuff[12] & 0x1) {     /* PROT_EN */
-                prot_typ = ((rcBuff[12] >> 1) & 0x7) + 1;
-                p_i_exp = ((rcBuff[13] >> 4) & 0xf);
-                if (in0_out1) {
-                    op->wrprot_typ = prot_typ;
-                    op->wrp_i_exp = p_i_exp;
-                } else {
-                    op->rdprot_typ = prot_typ;
-                    op->rdp_i_exp = p_i_exp;
-                }
-            }
+        if (rcBuff[12] & 0x1) {         /* PROT_EN */
+            prot_typ = ((rcBuff[12] >> 1) & 0x7) + 1;
+            p_i_exp = ((rcBuff[13] >> 4) & 0xf);
+        }
+        if (in0_out1) {
+            op->odip->prot_type = prot_typ;
+            op->odip->p_i_exp = p_i_exp;
+        } else {
+            op->idip->prot_type = prot_typ;
+            op->idip->p_i_exp = p_i_exp;
         }
     } else {
         ui = ((rcBuff[0] << 24) | (rcBuff[1] << 16) | (rcBuff[2] << 8) |

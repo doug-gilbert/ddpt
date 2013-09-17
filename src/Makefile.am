@@ -3,7 +3,8 @@ bin_PROGRAMS = ddpt
 # for C++/clang testing
 ## CC = g++ -std=c++11
 ## CC = g++
-## CC =clang
+## CC = clang
+CC = clang++
 
 # INCLUDES = -I$(top_srcdir)/include -I$(top_srcdir)/include/scsi
 
