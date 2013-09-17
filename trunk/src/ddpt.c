@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.93 20130828 [svn: r221]";
+static const char * version_str = "0.93 20130917 [svn: r222]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -495,7 +495,7 @@ install_signal_handlers(struct opts_t * op)
     if ((0 == op->interrupt_io) && (num_members > 0))
         sigprocmask(SIG_BLOCK, &op->caught_signals, &op->orig_mask);
 #else
-    op = op;    /* suppress warning */
+    if (op) { ; }    /* suppress warning */
     if (signal(SIGINFO, SIG_IGN) != SIG_IGN) {
         signal(SIGINFO, siginfo_handler);
         siginterrupt(SIGINFO, 1);
@@ -1349,7 +1349,7 @@ dd_filetype(const char * filename, int verbose)
     struct stat st;
     size_t len = strlen(filename);
 
-    verbose = verbose;    /* suppress warning */
+    if (verbose) { ; }    /* suppress warning */
     if ((1 == len) && ('.' == filename[0]))
         return FT_DEV_NULL;
     if (stat(filename, &st) < 0)
@@ -1774,8 +1774,8 @@ calc_duration_throughput(const char * leadin, int contin, struct opts_t * op)
         }
     }
 #else
-    leadin = leadin;    // suppress warning
-    contin = contin;    // suppress warning
+    if (leadin) { ; }    // suppress warning
+    if (contin) { ; }    // suppress warning
 #endif
 }
 
@@ -2041,8 +2041,12 @@ calc_count_in(struct opts_t * op, int64_t * in_num_sectp)
             *in_num_sectp = -1;
             return res;
         } else {
-            if (op->verbose)
+            if (op->verbose) {
                 print_blk_sizes(ifn, "pt", *in_num_sectp, in_sect_sz);
+                if (op->idip->prot_type > 0)
+                    pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
+                            op->idip->prot_type, op->idip->p_i_exp);
+            }
             if ((*in_num_sectp > 0) && (in_sect_sz != op->ibs)) {
                 pr2serr(">> warning: %s block size confusion: ibs=%d, "
                         "device claims=%d\n", ifn, op->ibs, in_sect_sz);
@@ -2137,8 +2141,12 @@ calc_count_out(struct opts_t * op, int64_t * out_num_sectp)
             *out_num_sectp = -1;
             return res;
         } else {
-            if (op->verbose)
+            if (op->verbose) {
                 print_blk_sizes(ofn, "pt", *out_num_sectp, out_sect_sz);
+                if (op->odip->prot_type > 0)
+                    pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
+                            op->odip->prot_type, op->odip->p_i_exp);
+            }
             if ((*out_num_sectp > 0) && (op->obs != out_sect_sz)) {
                 pr2serr(">> warning: %s block size confusion: "
                         "obs=%d, device claims=%d\n", ofn, op->obs,
@@ -3652,7 +3660,7 @@ prepare_pi(struct opts_t * op)
     op->ibs_pi = op->ibs;
     op->obs_pi = op->obs;
     if (op->rdprotect) {
-        if ((0 == op->rdprot_typ) || (! (FT_PT & op->idip->d_type))) {
+        if ((0 == op->idip->prot_type) || (! (FT_PT & op->idip->d_type))) {
             pr2serr("IFILE is not a pt device or doesn't have "
                     "protection information\n");
             return SG_LIB_CAT_OTHER;
@@ -3663,18 +3671,18 @@ prepare_pi(struct opts_t * op)
             return SG_LIB_CAT_OTHER;
         }
         if (op->wrprotect) {
-            if (op->rdp_i_exp != op->wrp_i_exp) {
+            if (op->idip->p_i_exp != op->odip->p_i_exp) {
                 pr2serr("Don't support IFILE and OFILE with "
                         "different P_I_EXP fields\n");
                 return SG_LIB_CAT_OTHER;
             }
         }
-        res = (op->rdp_i_exp ? (1 << op->rdp_i_exp) : 1) * 8;
+        res = (op->idip->p_i_exp ? (1 << op->idip->p_i_exp) : 1) * 8;
         op->ibs_pi += res;
         op->obs_pi += res;
     }
     if (op->wrprotect) {
-        if ((0 == op->wrprot_typ) || (! (FT_PT & op->odip->d_type))) {
+        if ((0 == op->odip->prot_type) || (! (FT_PT & op->odip->d_type))) {
             pr2serr("OFILE is not a pt device or doesn't have "
                     "protection information\n");
             return SG_LIB_CAT_OTHER;
@@ -3684,7 +3692,7 @@ prepare_pi(struct opts_t * op)
                     "with different block sizes\n");
             return SG_LIB_CAT_OTHER;
         }
-        res = (op->wrp_i_exp ? (1 << op->wrp_i_exp) : 1) * 8;
+        res = (op->odip->p_i_exp ? (1 << op->odip->p_i_exp) : 1) * 8;
         op->ibs_pi += res;
         op->obs_pi += res;
     }

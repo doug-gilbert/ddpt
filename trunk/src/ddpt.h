@@ -163,7 +163,7 @@ struct flags_t {
     int nowrite;
     int pad;            /* used for xcopy or tape */
     int prealloc;
-    int pt;     /* use pass-through to inject SCSI commands */
+    int pt;             /* use pass-through to inject SCSI commands */
     int resume;
     int rarc;
     int retries;
@@ -187,6 +187,8 @@ struct dev_info_t {
     HANDLE fh;
 #endif
     int pdt;
+    int prot_type;      /* from RCAP(16) or 0 */
+    int p_i_exp;        /* protection intervals exponent */
     unsigned long xc_min_bytes;
     unsigned long xc_max_bytes;
     char fn[INOUTF_SZ];
@@ -216,16 +218,15 @@ struct opts_t {
     int outf_given;
     int prio;           /* xcopy related */
     int rdprotect;
-    int rdprot_typ;     /* from RCAP(16) */
-    int rdp_i_exp;      /* from RCAP(16) */
     int wrprotect;
-    int wrprot_typ;     /* from RCAP(16) */
-    int wrp_i_exp;      /* from RCAP(16) */
     int cdbsz_given;
     int coe_limit;
     int coe_count;
     int verbose;
     int quiet;
+    int do_help;
+    int do_time;
+    int has_xcopy;      /* --xcopy option, iflag=xcopy or oflag=xcopy */
     struct flags_t * iflagp;
     struct dev_info_t * idip;
     struct flags_t * oflagp;
@@ -251,9 +252,6 @@ struct opts_t {
     int unrecovered_errs;        /* on reads */
     int wr_recovered_errs;
     int wr_unrecovered_errs;
-    int do_help;
-    int do_time;
-    int has_xcopy;
     int xc_cat;
     int xc_dc;
     int status_none;
