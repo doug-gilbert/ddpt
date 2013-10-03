@@ -333,8 +333,8 @@ int pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
                     int blocks, int64_t start_block);
 void pt_sync_cache(int fd);
 
-void put_errblk(uint64_t lba, struct opts_t * op);
-void put_range_errblk(uint64_t lba, int num, struct opts_t * op);
+void errblk_put(uint64_t lba, struct opts_t * op);
+void errblk_put_range(uint64_t lba, int num, struct opts_t * op);
 void zero_coe_limit_count(struct opts_t * op);
 
 int do_xcopy(struct opts_t * op);

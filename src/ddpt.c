@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.93 20130920 [svn: r226]";
+static const char * version_str = "0.93 20131003 [svn: r227]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -168,7 +168,9 @@ static void calc_duration_throughput(const char * leadin, int contin,
 static void print_tape_summary(struct opts_t * op, int res, const char * str);
 static void print_tape_pos(const char * prefix, const char * postfix,
                            struct opts_t * op);
+#ifdef SG_LIB_LINUX
 static void show_tape_pos_error(const char * postfix);
+#endif
 
 
 static void
@@ -267,18 +269,76 @@ primary_help:
     return;
 
 secondary_help:
-    pr2serr("FLAGS:\tappend(o), cat, coe, dc, direct, dpo, errblk(i), excl, "
-            "fdatasync(o)\n"
-            "\tflock, force, fsync(o), fua, fua_nv, ignoreew(o), nocache, "
-            "nofm(o)\n"
-            "\tnopad, norcap, nowrite(o), null, pad, pre-alloc(o), pt, "
-            "rarc(i),\n"
-            "\tresume(o), self, sparing(o), sparse(o), ssync(o), strunc(o), "
-            "sync,\n"
-            "\ttrim(o), trunc(o), unmap(o), xcopy.\n\n"
-            "CONVS:\tfdatasync, fsync, noerror, notrunc, null, resume, "
-            "sparing,\n"
-            "\tsparse, sync, trunc.\n");
+    pr2serr("FLAGS:\n"
+            "  append (o)     append (part of) IFILE to end of OFILE\n"
+            "  cat (xcopy)    set CAT bit in segment descriptor header\n"
+            "  coe            continue on (read) error\n"
+            "  dc (xcopy)     set DC bit in segment descriptor header\n"
+            "  direct         set O_DIRECT flag in open() of IFILE and/or "
+            "OFILE\n"
+            "  dpo            set disable page out (DPO) on pt READs and "
+            "WRITES\n"
+            "  errblk (i,pt)  write errored LBAs to errblk.txt file\n"
+            "  excl           set O_EXCL flag in open() of IFILE and/or "
+            "OFILE\n"
+            "  fdatasync (o)  flushes data to OFILE at the end of copy\n"
+            "  flock          use advisory exclusive lock [flock()] on "
+            "IFILE/OFILE\n"
+            "  force          override inconsistent information that would "
+            "stop copy\n"
+            "  fsync (o)      like fdatasync but flushes meta-data as well\n"
+            "  fua (pt)       force unit access on IFILE or OFILE\n"
+            "  fua_nv (pt)    force unit access, non-volatile (obsolete by "
+            "T10)\n"
+            "  ignoreew (o)   ignore early warning (end of tape)\n"
+            "  nocache        use posix_fadvise(POSIX_FADV_DONTNEED)\n"
+            "  nofm (o)       no File Mark (FM) on close when writing to "
+            "tape\n"
+            "  nopad          inhibits tapes blocks less than OBS being "
+            "padded\n"
+            "  norcap (pt)    do not invoke SCSI READ CAPACITY command\n"
+            "  nowrite (o)    bypass all writes to OFILE\n"
+            "  null           does nothing, place holder\n"
+            "  pad (0)        pad blocks shorter than OBS with zeroes\n"
+            "  pre-alloc (o)  use fallocate() before copy to set OFILE to "
+            "its\n"
+            "                 expected size\n"
+            "  pt             instruct pass-through interface to be used\n"
+            "  rarc (i,pt)    set RARC (rebuild assist) bit in SCSI READs\n"
+            "  resume (o)     attempt to restart an interrupted copy\n"
+            "  self (pt)      used with trim; IFILE=OFILE; trim zero "
+            "segments\n"
+            "  sparing (o)    read OFILE prior to a write; don't write if "
+            "same\n"
+            "  sparse (o)     don't write blocks of zeroes; move file "
+            "pointer\n"
+            "                 or if OFILE is pt assume it contains zeroes "
+            "already\n"
+            "  ssync (o,pt)   at end of copy do SCSI SYNCHRONIZE CACHE\n"
+            "  strunc (o)     sparse copy using ftruncate to extend OFILE "
+            "as needed\n"
+            "  sync           set O_SYNC flag in open() of IFILE and/or "
+            "OFILE\n"
+            "  trim (pt)      use SCSI UNMAP (trim) on zero segments "
+            "instead of\n"
+            "                 writing them to OFILE\n"
+            "  trunc (o)      truncate a regular OFILE prior to copy (def: "
+            "overwrite)\n"
+            "  unmap (pt)     same as trim flag\n"
+            "  xcopy (pt)     invoke SCSI XCOPY; send to IFILE or OFILE.\n\n"
+            "CONVS:\n"
+            "  fdatasync      same as oflag=fdatasync\n"
+            "  fsync          same as oflag=fsync\n"
+            "  noerror        same as iflag=coe\n"
+            "  notrunc        does nothing because this is default action "
+            "of ddpt\n"
+            "  null           does nothing, place holder\n"
+            "  resume         same as oflag=resume\n"
+            "  sparing        same as oflag=sparing\n"
+            "  sparse         same as oflag=sparse\n"
+            "  sync           ignored to allow 'conv=noerror,sync' dd usage "
+            "for coe\n"
+            "  trunc          same as oflag=trunc\n");
 }
 
 /* Want safe, 'n += snprintf(b + n, blen - n, ...)' style sequence of
@@ -302,7 +362,8 @@ my_snprintf(char * cp, int cp_max_len, const char * fmt, ...)
     return (n < cp_max_len) ? n : (cp_max_len - 1);
 }
 
-int
+/* Abbreviation of fprintf(stderr, ...) */
+int     /* Global function */
 pr2serr(const char * fmt, ...)
 {
     va_list args;
@@ -513,7 +574,7 @@ install_signal_handlers(struct opts_t * op)
    should be called periodically.  Ideally there should never be an
    unbounded amount of time when signals are not being processed.  */
 static void
-process_signals(struct opts_t * op)
+signals_process(struct opts_t * op)
 {
     char b[32];
 
@@ -597,7 +658,7 @@ process_signals(struct opts_t * op)
 /* Create errblk file (see iflag=errblk) and if we have gettimeofday
  * puts are start timestampl on the first line. */
 static void
-open_errblk(struct opts_t * op)
+errblk_open(struct opts_t * op)
 {
     op->errblk_fp = fopen(errblk_file, "a");        /* append */
     if (NULL == op->errblk_fp)
@@ -619,19 +680,19 @@ open_errblk(struct opts_t * op)
     }
 }
 
-void
-put_errblk(uint64_t lba, struct opts_t * op)
+void    /* Global function, used by ddpt_pt.c */
+errblk_put(uint64_t lba, struct opts_t * op)
 {
     if (op->errblk_fp)
         fprintf(op->errblk_fp, "0x%" PRIx64 "\n", lba);
 }
 
-void
-put_range_errblk(uint64_t lba, int num, struct opts_t * op)
+void    /* Global function, used by ddpt_pt.c */
+errblk_put_range(uint64_t lba, int num, struct opts_t * op)
 {
     if (op->errblk_fp) {
         if (1 == num)
-            put_errblk(lba, op);
+            errblk_put(lba, op);
         else if (num > 1)
             fprintf(op->errblk_fp, "0x%" PRIx64 "-0x%" PRIx64 "\n", lba,
                     lba + (num - 1));
@@ -639,7 +700,7 @@ put_range_errblk(uint64_t lba, int num, struct opts_t * op)
 }
 
 static void
-close_errblk(struct opts_t * op)
+errblk_close(struct opts_t * op)
 {
     if (op->errblk_fp) {
 #ifdef HAVE_GETTIMEOFDAY
@@ -663,7 +724,7 @@ close_errblk(struct opts_t * op)
 /* Process arguments given to 'conv=" option. Returns 0 on success,
  * 1 on error. */
 static int
-process_conv(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
+conv_process(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
 {
     char buff[256];
     char * cp;
@@ -713,7 +774,7 @@ process_conv(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
 /* Process arguments given to 'iflag=" and 'oflag=" options. Returns 0
  * on success, 1 on error. */
 static int
-process_flags(const char * arg, struct flags_t * fp)
+flags_process(const char * arg, struct flags_t * fp)
 {
     char buff[256];
     char * cp;
@@ -997,7 +1058,7 @@ cl_sanity_defaults(struct opts_t * op)
 /* Process options on the command line. Returns 0 if successful, > 0 for
  * (syntax) error and -1 for early exit (e.g. after '--help') */
 static int
-process_cl(struct opts_t * op, int argc, char * argv[])
+cl_process(struct opts_t * op, int argc, char * argv[])
 {
     char str[STR_SZ];
     char * key;
@@ -1071,7 +1132,7 @@ process_cl(struct opts_t * op, int argc, char * argv[])
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strcmp(key, "conv")) {
-            if (process_conv(buf, op->iflagp, op->oflagp)) {
+            if (conv_process(buf, op->iflagp, op->oflagp)) {
                 pr2serr("bad argument to 'conv='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
@@ -1121,7 +1182,7 @@ process_cl(struct opts_t * op, int argc, char * argv[])
             } else
                 strncpy(op->idip->fn, buf, INOUTF_SZ);
         } else if (0 == strcmp(key, "iflag")) {
-            if (process_flags(buf, op->iflagp)) {
+            if (flags_process(buf, op->iflagp)) {
                 pr2serr("bad argument to 'iflag='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
@@ -1168,7 +1229,7 @@ process_cl(struct opts_t * op, int argc, char * argv[])
             } else
                 strncpy(op->o2dip->fn, buf, INOUTF_SZ);
         } else if (0 == strcmp(key, "oflag")) {
-            if (process_flags(buf, op->oflagp)) {
+            if (flags_process(buf, op->oflagp)) {
                 pr2serr("bad argument to 'oflag='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
@@ -1644,7 +1705,7 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
 }
 
 static void
-init_calc_duration(struct opts_t * op)
+calc_duration_init(struct opts_t * op)
 {
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
     if (op->do_time) {
@@ -2305,7 +2366,7 @@ cp_read_pt(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
 
 /* Helper for case when EIO or EREMOTE errno suggests the equivalent
  * of a medium error. Returns 0 unless coe_limit exceeded. */
-int
+int             /* Global function, used by ddpt_win32.c */
 coe_process_eio(struct opts_t * op, int64_t skip)
 {
     if ((op->coe_limit > 0) && (++op->coe_count > op->coe_limit)) {
@@ -3444,7 +3505,7 @@ do_rw_copy(struct opts_t * op)
         }
 
         /* Start of reading section */
-        process_signals(op);
+        signals_process(op);
         if (FT_PT & id_type) {
             if ((ret = cp_read_pt(op, csp, op->wrkPos)))
                 break;
@@ -3504,7 +3565,7 @@ do_rw_copy(struct opts_t * op)
             }
         }
         /* Start of writing section */
-        process_signals(op);
+        signals_process(op);
         if ((! continual_read) && (csp->icbpt >= op->dd_count))
             could_be_last = 1;
         if (sparing_skip || sparse_skip) {
@@ -3643,12 +3704,14 @@ print_tape_pos(const char * prefix, const char * postfix,
 #endif
 }
 
+#ifdef SG_LIB_LINUX
 static void
 show_tape_pos_error(const char * postfix)
 {
     pr2serr("Could not get tape position%s: %s\n", postfix,
             safe_strerror(errno));
 }
+#endif
 
 static int
 prepare_pi(struct opts_t * op)
@@ -3703,7 +3766,7 @@ prepare_pi(struct opts_t * op)
 }
 
 static void
-init_state(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
+state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
            struct dev_info_t * idip, struct dev_info_t * odip,
            struct dev_info_t * o2dip)
 {
@@ -3908,7 +3971,7 @@ cdb_size_prealloc(struct opts_t * op)
 }
 
 static void
-of_tape_cleanup(struct opts_t * op)
+tape_cleanup_of(struct opts_t * op)
 {
 #ifdef SG_LIB_LINUX
     /* Before closing OFILE, if writing to tape handle suppressing the
@@ -4038,7 +4101,7 @@ do_falloc(struct opts_t * op)
 }
 
 static void
-give_details_pre_copy(struct opts_t * op)
+details_pre_copy_print(struct opts_t * op)
 {
     pr2serr("skip=%" PRId64 " (blocks on input), seek=%" PRId64
             " (blocks on output)\n", op->skip, op->seek);
@@ -4057,7 +4120,7 @@ give_details_pre_copy(struct opts_t * op)
 }
 
 static int
-init_wrk_buffers(struct opts_t * op)
+wrk_buffers_init(struct opts_t * op)
 {
     if (op->has_xcopy)
         return 0;
@@ -4121,7 +4184,7 @@ cleanup_resources(struct opts_t * op)
     }
 
     if (op->iflagp->errblk)
-        close_errblk(op);
+        errblk_close(op);
 
     if (op->wrkBuff)
         free(op->wrkBuff);
@@ -4138,7 +4201,7 @@ cleanup_resources(struct opts_t * op)
     if ((op->odip->fd >= 0) && (STDOUT_FILENO != op->odip->fd) &&
         !(FT_DEV_NULL & op->odip->d_type)) {
         if (FT_TAPE & op->odip->d_type)
-            of_tape_cleanup(op);
+            tape_cleanup_of(op);
         close(op->odip->fd);
     }
     if ((op->o2dip->fd >= 0) && (STDOUT_FILENO != op->o2dip->fd))
@@ -4158,9 +4221,9 @@ main(int argc, char * argv[])
     struct dev_info_t ids, ods, o2ds;
     struct opts_t * op;
 
-    init_state(&ops, &iflag, &oflag, &ids, &ods, &o2ds);
+    state_init(&ops, &iflag, &oflag, &ids, &ods, &o2ds);
     op = &ops;
-    ret = process_cl(op, argc, argv);
+    ret = cl_process(op, argc, argv);
     if (op->do_help > 0) {
         usage(op->do_help);
         return 0;
@@ -4203,11 +4266,11 @@ main(int argc, char * argv[])
 
     cdb_size_prealloc(op);
 
-    if ((ret = init_wrk_buffers(op)))
+    if ((ret = wrk_buffers_init(op)))
         goto cleanup;
 
     if (ops.verbose)
-        give_details_pre_copy(op);
+        details_pre_copy_print(op);
 
     op->read1_or_transfer = !! (FT_DEV_NULL & op->odip->d_type);
     if (op->read1_or_transfer && (! op->outf_given) &&
@@ -4215,10 +4278,10 @@ main(int argc, char * argv[])
         pr2serr("Output file not specified so no copy, just reading input\n");
 
     if (op->do_time)
-        init_calc_duration(op);
+        calc_duration_init(op);
 
     if (op->iflagp->errblk)
-        open_errblk(op);
+        errblk_open(op);
 
     if ((FT_TAPE & op->idip->d_type) || (FT_TAPE & op->odip->d_type))
         print_tape_pos("Initial ", "", op);
@@ -4228,7 +4291,6 @@ main(int argc, char * argv[])
             goto cleanup;
     }
 
-    // <<<<<<<<<<<<<< finally ready to do copy
     ++started_copy;
     if (op->has_xcopy)
         ret = do_xcopy(op);

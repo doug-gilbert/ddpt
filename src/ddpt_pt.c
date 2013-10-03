@@ -606,7 +606,7 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
             may_coe = 1;
             /* No VALID+INFO field but we know the range of lba_s */
             if (0 == retries_tmp)
-                put_range_errblk(lba, blks, op);
+                errblk_put_range(lba, blks, op);
             /* fall through */
         default:
             if (retries_tmp > 0) {
@@ -640,7 +640,7 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
             if ((int64_t)io_addr > op->highest_unrecovered)
                 op->highest_unrecovered = io_addr;
         }
-        put_errblk(io_addr, op);
+        errblk_put(io_addr, op);
         if (fp->coe) {
             ++op->in_partial;
             --op->in_full;
