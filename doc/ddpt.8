@@ -1,4 +1,4 @@
-.TH DDPT "8" "September 2013" "ddpt\-0.93" DDPT
+.TH DDPT "8" "October 2013" "ddpt\-0.93" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -383,7 +383,8 @@ cat [io] [blk,pt,tape]
 set CAT (residual data handling) bit in EXTENDED COPY (LID1) parameter list
 segment descriptor header. May appear in either flag list when xcopy is
 being used. See the XCOPY section below.
-.TP coe [io] [pt], [i] [reg,blk]
+.TP
+coe [io] [pt], [i] [reg,blk]
 continue on error. 'iflag=coe oflag=coe' and 'coe=1' are equivalent.
 Errors occurring on output regular or block files will stop ddpt.
 Error messages are sent to stderr. This flag is similar
@@ -485,9 +486,9 @@ ignoreew [o] [tape]
 ignore the early warning indication (of end of tape) when writing to tape.
 .TP
 nocache [io] [reg,blk]
-use posix_fadvise() to advise corresponding file there is no need to fill
-the file buffer with recently read or written blocks. If used with "iflag="
-it will increase the read ahead on \fIIFILE\fR.
+use posix_fadvise(POSIX_FADV_DONTNEED) to advise corresponding file there is
+no need to fill the file buffer with recently read or written blocks. If
+used with "iflag=" it will increase the read ahead on \fIIFILE\fR.
 .TP
 nofm [o] [tape]
 no File Mark (FM) on close when writing to tape.
@@ -604,8 +605,13 @@ length; when \fISEEK\fR is larger than zero the truncation takes place at
 file byte pointer \fISEEK*OBS\fR.  Ignored if "oflag=append". Conflicts
 with "oflag=sparing".
 .TP
-unmap [io] [pt] [experimental]
+unmap [io] [pt]
 same as the trim flag.
+.TP
+xcopy [io] [pt]
+invoke SCSI XCOPY logic and send the XCOPY command to the either IFILE or
+OFILE depending on which flag this called. If both are given (i.e. an
+invocation including 'iflag=xcopy  oflag=xcopy') then send XCOPY to IFILE.
 .SH SPARSE WRITES
 Bypassing writes of blocks full of zeros can save a lot of IO. However
 with regular files, bypassed writes at the end of the copy can lead
