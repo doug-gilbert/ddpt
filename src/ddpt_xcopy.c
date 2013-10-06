@@ -213,7 +213,7 @@ scsi_extended_copy(struct opts_t * op, unsigned char *src_desc,
     uint64_t dst_lba = op->seek;
 
     fd = (op->iflagp->xcopy) ? op->idip->fd : op->odip->fd;
-    verb = (op->verbose > 1) ? (op->verbose - 2): 0;
+    verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
 
     memset(xcopyBuff, 0, 256);
     xcopyBuff[0] = op->list_id;
@@ -243,7 +243,7 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
     int valid = 0;
     struct dev_info_t * dip;
 
-    verb = (op->verbose ? op->verbose - 1: 0);
+    verb = (op->verbose ? (op->verbose - 1) : 0);
     dip = is_dest ? op->odip : op->idip;
     fd = dip->fd;
     ftype = dip->d_type;
@@ -754,7 +754,7 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
     struct flags_t * flp;
     struct dev_info_t * dip;
 
-    verb = (op->verbose ? op->verbose - 1: 0);
+    verb = (op->verbose ? (op->verbose - 1) : 0);
     dip = is_dest ? op->odip : op->idip;
     fd = dip->fd;
     flp = is_dest ? op->oflagp : op->iflagp;
@@ -963,7 +963,8 @@ do_xcopy(struct opts_t * op)
         }
     }
     if (op->verbose > 1)
-        pr2serr("do_xcopy: xcopy will use ibpt=%d, obpt=%d\n", ibpt, obpt);
+        pr2serr("do_xcopy: xcopy->%s will use ibpt=%d, obpt=%d\n",
+                (ifp->xcopy ? idip->fn : odip->fn),  ibpt, obpt);
     seg_desc_type = seg_desc_from_d_type(simplified_dt(op->idip), 0,
                                          simplified_dt(op->odip), 0);
 
@@ -974,8 +975,34 @@ do_xcopy(struct opts_t * op)
 
         res = scsi_extended_copy(op, src_desc, src_desc_len, dst_desc,
                                  dst_desc_len, seg_desc_type, blocks);
-        if (res != 0)
+        if (res != 0) {
+            if ((op->verbose > 0) && (op->verbose < 3)) {
+                pr2serr("scsi_extended_copy: ");
+                switch (res) {
+                case SG_LIB_CAT_INVALID_OP:
+                    pr2serr("invalid opcode\n");
+                    break;
+                case SG_LIB_CAT_ILLEGAL_REQ:
+                    pr2serr("illegal request\n");
+                    break;
+                case SG_LIB_CAT_UNIT_ATTENTION:
+                    pr2serr("unit attention\n");
+                    break;
+                case SG_LIB_CAT_NOT_READY:
+                    pr2serr("not ready\n");
+                    break;
+                case SG_LIB_CAT_ABORTED_COMMAND:
+                    pr2serr("aborted command\n");
+                    break;
+                default:
+                    pr2serr("unknown result=%d\n", res);
+                    break;
+                }
+                pr2serr("  use 'verbose=3' (or '-vvv') for more "
+                        "information\n");
+            }
             break;
+        }
         op->in_full += blocks;
         op->out_full += oblocks;
         op->skip += blocks;

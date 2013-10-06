@@ -130,6 +130,8 @@
 
 #define REASON_TAPE_SHORT_READ 1024     /* leave_reason indication */
 
+/* Following used for sense_key=aborted_command, asc=0x10, ascq=* which
+ * contains errors associated with protection fields */
 #ifndef SG_LIB_CAT_PROTECTION
 #define SG_LIB_CAT_PROTECTION 0x40
 #define SG_LIB_CAT_PROTECTION_WITH_INFO 0x41
