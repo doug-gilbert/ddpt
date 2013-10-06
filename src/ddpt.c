@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.93 20131003 [svn: r227]";
+static const char * version_str = "0.93 20131005 [svn: r228]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -288,7 +288,7 @@ secondary_help:
             "stop copy\n"
             "  fsync (o)      like fdatasync but flushes meta-data as well\n"
             "  fua (pt)       force unit access on IFILE or OFILE\n"
-            "  fua_nv (pt)    force unit access, non-volatile (obsolete by "
+            "  fua_nv (pt)    force unit access, non-volatile (obsoleted by "
             "T10)\n"
             "  ignoreew (o)   ignore early warning (end of tape)\n"
             "  nocache        use posix_fadvise(POSIX_FADV_DONTNEED)\n"
@@ -430,7 +430,7 @@ print_stats(const char * str, struct opts_t * op)
                 ((1 == op->interrupted_retries) ? "retry" : "retries"));
     if (op->has_xcopy)
         pr2serr("%s%" PRId64 " xcopy command%s done\n", str, op->num_xcopy,
-                ((op->num_xcopy > 1) ? "s" : ""));
+                ((1 == op->num_xcopy) ? "" : "s"));
 }
 
 /* Return signal name for signum if known, else return signum as a string. */
