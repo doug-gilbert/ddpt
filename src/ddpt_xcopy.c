@@ -235,7 +235,7 @@ scsi_extended_copy(struct opts_t * op, unsigned char *src_desc,
 static int
 scsi_operating_parameter(struct opts_t * op, int is_dest)
 {
-    int res, fd, ftype, pdt, verb;
+    int res, fd, ftype, pdt, snlid, verb;
     unsigned char rcBuff[256];
     unsigned int rcBuffLen = 256, len, n, td_list = 0;
     unsigned long num, max_target_num, max_segment_num, max_segment_len;
@@ -278,6 +278,7 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
                 "hex:\n");
         dStrHexErr((const char *)rcBuff, len, 1);
     }
+    snlid = rcBuff[4] & 0x1;
     max_target_num = rcBuff[8] << 8 | rcBuff[9];
     max_segment_num = rcBuff[10] << 8 | rcBuff[11];
     max_desc_len = rcBuff[12] << 24 | rcBuff[13] << 16 | rcBuff[14] << 8 |
@@ -290,6 +291,7 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
     if (op->verbose) {
         pr2serr(" >> Report operating parameters, %sput [%s]:\n",
                 (is_dest ? "out" : "in"), dip->fn);
+        pr2serr("    Support No List IDentifier (SNLID): %d\n", snlid);
         pr2serr("    Maximum target descriptor count: %lu\n", max_target_num);
         pr2serr("    Maximum segment descriptor count: %lu\n",
                 max_segment_num);
@@ -306,8 +308,8 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
             op->id_usage = 0;
     }
     if (op->verbose) {
-        pr2serr("    Held data limit: %lu (usage: %d)\n",
-               held_data_limit, op->id_usage);
+        pr2serr("    Held data limit: %lu (list_id_usage: %d)\n",
+                held_data_limit, op->id_usage);
         num = rcBuff[28] << 24 | rcBuff[29] << 16 | rcBuff[30] << 8 |
               rcBuff[31];
         pr2serr("    Maximum stream device transfer size: %lu\n", num);

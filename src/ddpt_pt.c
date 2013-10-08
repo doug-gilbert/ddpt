@@ -129,9 +129,15 @@ pt_open_if(struct opts_t * op)
         return -2;
     }
     dip->pdt = sir.peripheral_type;
-    if (op->verbose)
-        pr2serr("    %s: %.8s  %.16s  %.4s  [pdt=%d]\n",
-                fn, sir.vendor, sir.product, sir.revision, dip->pdt);
+    if (op->verbose) {
+        if (op->has_xcopy)
+            pr2serr("    %s: %.8s  %.16s  %.4s  [pdt=%d, 3pc=%d]\n",
+                    fn, sir.vendor, sir.product, sir.revision, dip->pdt,
+                    !! (0x8 & sir.byte_5));
+        else
+            pr2serr("    %s: %.8s  %.16s  %.4s  [pdt=%d]\n",
+                    fn, sir.vendor, sir.product, sir.revision, dip->pdt);
+    }
     return fd;
 }
 
@@ -162,9 +168,15 @@ pt_open_of(struct opts_t * op)
         return -2;
     }
     dip->pdt = sir.peripheral_type;
-    if (op->verbose)
-        pr2serr("    %s: %.8s  %.16s  %.4s  [pdt=%d]\n", fn, sir.vendor,
-                sir.product, sir.revision, dip->pdt);
+    if (op->verbose) {
+        if (op->has_xcopy)
+            pr2serr("    %s: %.8s  %.16s  %.4s  [pdt=%d, 3pc=%d]\n",
+                    fn, sir.vendor, sir.product, sir.revision, dip->pdt,
+                    !! (0x8 & sir.byte_5));
+        else
+            pr2serr("    %s: %.8s  %.16s  %.4s  [pdt=%d]\n",
+                    fn, sir.vendor, sir.product, sir.revision, dip->pdt);
+    }
     return fd;
 }
 
