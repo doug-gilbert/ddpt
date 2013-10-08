@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.93 20131005 [svn: r228]";
+static const char * version_str = "0.93 20131008 [svn: r228]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -220,8 +220,10 @@ primary_help:
            "(remaining)\n"
            "                device/file size)\n"
            "    ibs         input block size (default 512 bytes)\n"
-           "    id_usage    xcopy: hold (0), discard (2), disable (3), "
-           "number\n"
+           "    id_usage    xcopy: set list_id_usage to hold (0), discard "
+           "(2),\n"
+           "                disable (3), or the given number (def: 0 or "
+           "2)\n"
            "    if          file or device to read from (for stdin use "
            "'-')\n"
            "    iflag       input flags, comma separated list from FLAGS "
@@ -230,7 +232,7 @@ primary_help:
            "and writes\n"
            "                (def: 0 causes signals to be masked during IO)\n"
            "    iseek       block position to start reading from IFILE\n"
-           "    list_id     xcopy: list_id (def: 1)\n"
+           "    list_id     xcopy: list_id (def: 1 or 0)\n"
            "    obs         output block size (def: 512). When IBS is "
            "not equal to OBS\n"
            "                then (((IBS * BPT) %% OBS) == 0) is required\n"

@@ -65,13 +65,13 @@ So "if=/dev/sdc2 iflag=pt skip=3" will start at logical block address 3
 of '/dev/sdc'. As a protection measure in version 0.92 ddpt will only
 accept that if the force flag is given in addition to pt.
 .PP
-Via the SCSI pass\-through this utility supports the EXTENDED COPY (LID1)
+Using the SCSI pass\-through this utility supports the EXTENDED COPY (LID1)
 command. LID1 stands for List IDentifier length of 1 byte which is found
 in SPC\-4, SPC\-3 and earlier standards. Recent SPC\-4 drafts have added
 the EXTENDED COPY (LID4) command which is not yet supported by this utility.
 EXTENDED COPY is often shortened to XCOPY and the lower case form: xcopy,
 is used below to indicate EXTENDED COPY specific options, flags and related
-information.
+information. See the section on XCOPY below for more information.
 .SH OPTIONS
 .TP
 \fBbpt\fR=\fIBPT[,OBPC]\fR
@@ -142,8 +142,8 @@ both "bs=512 ibs=512" is considered a syntax error).
 .TP
 \fBid_usage\fR=\fILIU\fR
 xcopy: SCSI EXTENDED COPY parameter list LIST ID USAGE field is set to
-\fILIU\fR. The default value is 0 . \fILIU\fR can be a number between 0
-and 3 inclusive or a string. The strings can be either: 'hold' for
+\fILIU\fR. The default value is 0 or 2 . \fILIU\fR can be a number between
+0 and 3 inclusive or a string. The strings can be either: 'hold' for
 0, 'discard' for 2 or 'disable' for 3.
 .TP
 \fBif\fR=\fIIFILE\fR
@@ -169,7 +169,7 @@ synonym for "skip=".
 .TP
 \fBlist_id\fR=\fILID\fR
 xcopy: SCSI EXTENDED COPY parameter list LIST IDENTIFIER field is set to
-\fILID\fR. The default value is 1 .
+\fILID\fR. The default value is 1 or, if id_usage=disable, 0 .
 .TP
 \fBobs\fR=\fIOBS\fR
 where \fIOBS\fR is the \fIOFILE\fR block size in bytes. The default value
@@ -884,6 +884,16 @@ is not supported.
 .PP
 To be continued xxxxxxxxx
 .SH XCOPY
+A device (logical unit (LU)) that supports XCOPY operations should set
+the 3PC field (3PC stands for Third Party Copy) in its standard INQUIRY
+response. That is not checked when this utility does an xcopy operation
+but if it fails, that is one thing that the user may want to check.
+.PP
+If the xcopy starts and fails while underway, then 'sg_copy_results \-s'
+may be useful to view the copy status. It might also be used from
+another I_T nexus (e.g. another machine with access to the "3PC"
+device) to check status during an xcopy operation.
+.PP
 The \fIpad\fR and \fIcat\fR flags control the handling of residual
 data. As the data can be specified either in terms of source or target
 block size and both might have different block sizes residual data is
@@ -1102,4 +1112,5 @@ copy of the data see
 To scan and repair disk partitions see TestDisk (testdisk).
 .PP
 Additional references:
-.B dd(1), ddrescue(GNU), open(2), flock(2), sg_dd,sg_xcopy(sg3_utils)
+.B dd(1), ddrescue(GNU), open(2), flock(2), sg_xcopy,sg_copy_results,
+.B sg_dd(sg3_utils)

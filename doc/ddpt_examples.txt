@@ -247,4 +247,26 @@ oflag=trim,nowrite bpt=1024,1
 $ ddpt if=/dev/sg1 skip=$((0xfff + 1)) count=1
 
 
-# Douglas Gilbert 20130208
+# xcopy is an abbreviation of the SCSI EXTENDED COPY command and facility.
+# There are two variants: "LID1" (List Identifier length of 1 byte)
+# and "LID4". ddpt only supports the LID1 variant. xcopy is a performance
+# win when disks (LUs) are remote or disks have better bandwidth to a
+# storage switch (e.g. a SAS expander) than they do to server machines.
+# Some xcopy implementations use the term "remote copy". This example
+# copies the contents of /dev/sdc to /dev/sdd
+$ ddpt if=/dev/sdc iflag=xcopy bs=512 of=/dev/sdd
+204800+0 records in
+204800+0 records out
+4 xcopy commands done
+time to transfer data: 0.162026 secs at 647.17 MB/sec
+# In this case the EXTENDED COPY command is sent to /dev/sdc . To send that
+# command to the destination (i.e. /dev/sdd) instead then replace
+# "iflag=xcopy" with "oflag=xcopy". If the above fails add "verbose=1" and
+# ramp that up to 5 to see what is happening "in the weeds".
+# Logically the resulting state of the destination should be the same
+# whether or not the xcopy facility is used. The difference should be in the
+# performance, with the xcopy version being faster, possibly much faster,
+# with essentially no load on the machine issuing the xcopy.
+
+
+# Douglas Gilbert 20131007
