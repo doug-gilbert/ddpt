@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.93 20131008 [svn: r230]";
+static const char * version_str = "0.93 20131012 [svn: r231]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -122,7 +122,21 @@ static const char * version_str = "0.93 20131008 [svn: r230]";
 /* cygwin */
 #include <sys/ioctl.h>
 #endif
+
+#ifndef HAVE_SYSCONF
+#include <windows.h>
+
+static size_t
+my_pagesize(void)
+{
+    SYSTEM_INFO sys_info;
+
+    GetSystemInfo(&sys_info);
+    return sys_info.dwPageSize;
+}
 #endif
+
+#endif  /* end SG_LIB_WIN32 */
 
 #include "sg_lib.h"
 
@@ -4124,28 +4138,53 @@ details_pre_copy_print(struct opts_t * op)
 static int
 wrk_buffers_init(struct opts_t * op)
 {
+    int len = op->ibs_pi * op->bpt_i;
+
     if (op->has_xcopy)
         return 0;
-
     if (op->iflagp->direct || op->oflagp->direct) {
         size_t psz;
 
-#ifdef SG_LIB_MINGW
-        psz = getpagesize();    // implicit definition but links okay
+#if defined(HAVE_SYSCONF) && defined(_SC_PAGESIZE)
+        psz = sysconf(_SC_PAGESIZE); /* POSIX.1 (was getpagesize()) */
+#elif defined(SG_LIB_WIN32)
+        psz = my_pagesize();
 #else
-        psz = sysconf(_SC_PAGESIZE); /* was getpagesize() */
+        psz = 4096;     /* give up, pick likely figure */
 #endif
-        op->wrkBuff = (unsigned char*)calloc(op->ibs_pi * op->bpt_i + psz, 1);
+
+#ifdef HAVE_POSIX_MEMALIGN
+        {
+            int err;
+
+            err = posix_memalign((void **)&op->wrkBuff, psz, len);
+            if (err) {
+                pr2serr("posix_memalign: error [%d] out of memory?\n", err);
+                return SG_LIB_CAT_OTHER;
+            }
+            memset(op->wrkBuff, 0, len);
+            op->wrkPos = op->wrkBuff;
+            if (op->oflagp->sparing) {
+                err = posix_memalign((void **)&op->wrkBuff2, psz, len);
+                if (err) {
+                    pr2serr("posix_memalign(2): error [%d] out of memory?\n",
+                             err);
+                    return SG_LIB_CAT_OTHER;
+                }
+                memset(op->wrkBuff2, 0, len);
+                op->wrkPos2 = op->wrkBuff2;
+            }
+        }
+#else
+        op->wrkBuff = (unsigned char*)calloc(len + psz, 1);
         if (0 == op->wrkBuff) {
             pr2serr("Not enough user memory for aligned usage\n");
             return SG_LIB_CAT_OTHER;
         }
-        // posix_memalign() could be a better way to do this
         op->wrkPos = (unsigned char *)(((unsigned long)op->wrkBuff + psz - 1) &
-                                   (~(psz - 1)));
+                                       (~(psz - 1)));
         if (op->oflagp->sparing) {
-            op->wrkBuff2 = (unsigned char*)calloc(op->ibs_pi * op->bpt_i + psz,
-                                              1);
+            op->wrkBuff2 = (unsigned char*)calloc(len + psz, 1);
             if (0 == op->wrkBuff2) {
                 pr2serr("Not enough user memory for aligned usage(2)\n");
                 return SG_LIB_CAT_OTHER;
@@ -4153,6 +4192,7 @@ wrk_buffers_init(struct opts_t * op)
             op->wrkPos2 = (unsigned char *)
                     (((unsigned long)op->wrkBuff2 + psz - 1) & (~(psz - 1)));
         }
+#endif
     } else {
         op->wrkBuff = (unsigned char*)calloc(op->ibs_pi * op->bpt_i, 1);
         if (0 == op->wrkBuff) {

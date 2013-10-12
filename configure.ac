@@ -28,6 +28,8 @@ AC_CHECK_FUNCS(gettimeofday)
 AC_CHECK_FUNCS(siginterrupt)
 AC_CHECK_FUNCS(fallocate)
 AC_CHECK_FUNCS(posix_fallocate)
+AC_CHECK_FUNCS(posix_memalign)
+AC_CHECK_FUNCS(sysconf)
 
 AC_CANONICAL_HOST
 

@@ -364,13 +364,6 @@ int coe_process_eio(struct opts_t * op, int64_t skip);
 
 int sg_do_wscan(char letter, int do_scan, int verb);
 
-#ifdef SG_LIB_MINGW
-/* Without this gives a warning about implicit declaration.
- * This stop the warning but if getpagesize() appears may need to
- * remove this declaration. */
-int getpagesize(void);
-#endif
-
 #endif
 
 #endif
