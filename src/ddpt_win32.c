@@ -331,15 +331,21 @@ win32_open_if(struct opts_t * op, int flags, int verbose)
     if (INVALID_HANDLE_VALUE == op->idip->fh) {
         err = GetLastError();
         if (win32_errmsg(err, b, sizeof(b)) < 0)
-            pr2serr("CreateFile(in) failed, error=%ld [and win32_errmsg() "
-                    "failed]\n", err);
+            pr2serr("CreateFile(in) failed, error=%ld [and win32_errmsg()] "
+                    "failed\n", err);
         else
             pr2serr("CreateFile(in) failed, %s [%ld]\n", b, err);
         return 1;
     }
     if (0 == DeviceIoControl(op->idip->fh, IOCTL_DISK_GET_DRIVE_GEOMETRY,
                              NULL, 0, &g, sizeof(g), &count, NULL)) {
-        pr2serr("DeviceIoControl(in, geometry) error=%ld\n", GetLastError());
+        err = GetLastError();
+        if (win32_errmsg(err, b, sizeof(b)) < 0)
+            pr2serr("DeviceIoControl(in, geometry) failed, error=%ld [and "
+                    "win32_errmsg()] failed\n", err);
+        else
+            pr2serr("DeviceIoControl(in, geometry) failed, %s [%ld]\n", b,
+                    err);
         return 1;
     }
     if ((int)g.BytesPerSector != op->ibs) {
