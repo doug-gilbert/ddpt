@@ -69,7 +69,32 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
+#ifdef HAVE_NANOSLEEP
+#include <time.h>
+#if defined(MSC_VER) || defined(__MINGW32__)
+#define HAVE_MS_SLEEP
+#endif
 
+
+static void
+win32_sleep_ms(int ms)
+{
+    if (ms > 0) {
+#ifdef HAVE_NANOSLEEP
+        struct timespec request;
+
+        request.tv_sec = millisecs / 1000;
+        request.tv_nsec = (millisecs % 1000) * 1000000;
+        if ((nanosleep(&request, NULL) < 0) && (EINTR != errno)) {
+            pr2serr("nanosleep: failed, errno=%d\n", errno);
+#elif defined(HAVE_MS_SLEEP)
+        Sleep(ms);
+#endif
+    }
+}
+
+
+}
 /* Fetches system error message corresponding to errnum,
  * placing string in b not exceeding blen bytes. Returns
  * bytes placed in b (excluding trailing NULL) or -1 for

@@ -2,12 +2,13 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.93 [20131013] [svn: r232]
+Changelog for ddpt-0.93 [20131019] [svn: r233]
   - add xcopy support, new flags: xcopy, cat, dc;
     new options: id_usage=, list_id=, prio=
   - add intio=0|1 ; rework signal handling
   - allow tape device in non-pt mode
   - fix fifo read when bs is large
+  - add delay=MS for bandwidth limiting
   - add oflag=ignoreew,pad,nofm,nopad for tape
   - add iseek= option, synonym for skip=
   - add oseek= option, synonym for seek=
@@ -22,7 +23,7 @@ Changelog for ddpt-0.93 [20131013] [svn: r232]
   - reduce ddpt.c size by adding ddpt_pt.c
   - win32: fixes for cygwin version 1.7.17 headers
     - translate O_EXCL to no sharing
-  - point svn:externals to rev 520 of sg3_utils
+  - point svn:externals to rev 522 of sg3_utils
 
 Changelog for ddpt-0.92 [20110217] [svn: r157]
   - when pt used on block device and discrepancy between size
