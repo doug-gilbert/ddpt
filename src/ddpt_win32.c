@@ -71,15 +71,15 @@
 
 #ifdef HAVE_NANOSLEEP
 #include <time.h>
-#if defined(MSC_VER) || defined(__MINGW32__)
+#elif defined(MSC_VER) || defined(__MINGW32__)
 #define HAVE_MS_SLEEP
 #endif
 
 
-static void
-win32_sleep_ms(int ms)
+void
+win32_sleep_ms(int millisecs)
 {
-    if (ms > 0) {
+    if (millisecs > 0) {
 #ifdef HAVE_NANOSLEEP
         struct timespec request;
 
@@ -88,7 +88,7 @@ win32_sleep_ms(int ms)
         if ((nanosleep(&request, NULL) < 0) && (EINTR != errno)) {
             pr2serr("nanosleep: failed, errno=%d\n", errno);
 #elif defined(HAVE_MS_SLEEP)
-        Sleep(ms);
+        Sleep(millisecs);
 #endif
     }
 }
