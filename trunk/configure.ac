@@ -25,6 +25,7 @@ AC_CHECK_LIB(rt, clock_gettime,
 AC_CHECK_LIB(rt, clock_gettime)
 AC_CHECK_FUNCS(clock_gettime)
 AC_CHECK_FUNCS(gettimeofday)
+AC_CHECK_FUNCS(nanosleep)
 AC_CHECK_FUNCS(siginterrupt)
 AC_CHECK_FUNCS(fallocate)
 AC_CHECK_FUNCS(posix_fallocate)

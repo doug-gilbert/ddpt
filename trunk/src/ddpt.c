@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.93 20131013 [svn: r232]";
+static const char * version_str = "0.93 20131019 [svn: r233]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -74,6 +74,10 @@ static const char * version_str = "0.93 20131013 [svn: r232]";
 /* N.B. config.h must precede anything that depends on HAVE_*  */
 #ifdef HAVE_CONFIG_H
 #include "config.h"
+#endif
+
+#ifdef HAVE_NANOSLEEP
+#include <time.h>
 #endif
 
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
@@ -199,7 +203,7 @@ primary_help:
     pr2serr("Usage: "
            "ddpt  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=6|10|12|16|32] [coe=0|1]\n"
            "             [coe_limit=CL] [conv=CONVS] [count=COUNT] "
-           "[ibs=IBS]\n"
+           "[delay=MS] [ibs=IBS]\n"
            "             [id_usage=LIU] if=IFILE [iflag=FLAGS] [intio=0|1] "
            "[iseek=SKIP]\n"
            "             [list_id=LID] [obs=OBS] [of=OFILE] [of2=OFILE2] "
@@ -233,6 +237,8 @@ primary_help:
            "    count       number of input blocks to copy (def: "
            "(remaining)\n"
            "                device/file size)\n"
+           "    delay       wait MS milliseconds between each copy segment "
+           "(def: 0)\n"
            "    ibs         input block size (default 512 bytes)\n"
            "    id_usage    xcopy: set list_id_usage to hold (0), discard "
            "(2),\n"
@@ -265,8 +271,10 @@ primary_help:
            "(def: 0)\n"
            "    seek        block position to start writing to OFILE\n"
            "    skip        block position to start reading from IFILE\n"
-           "    status      value: 'noxfer' suppresses throughput "
-           "calculation\n"
+           "    status      'noxfer' suppresses throughput calculation; "
+           "'none'\n"
+           "                suppresses all trailing reports (apart from "
+           "errors)\n"
            "    verbose     0->normal(def), 1->some noise, 2->more noise, "
            "etc\n"
            "                -1->quiet (stderr->/dev/null)\n"
@@ -315,7 +323,7 @@ secondary_help:
             "  norcap (pt)    do not invoke SCSI READ CAPACITY command\n"
             "  nowrite (o)    bypass all writes to OFILE\n"
             "  null           does nothing, place holder\n"
-            "  pad (0)        pad blocks shorter than OBS with zeroes\n"
+            "  pad (o)        pad blocks shorter than OBS with zeroes\n"
             "  pre-alloc (o)  use fallocate() before copy to set OFILE to "
             "its\n"
             "                 expected size\n"
@@ -499,7 +507,7 @@ install_signal_handlers(struct opts_t * op)
     const char * sname = "SIGINFO";
 #endif
 
-    if (op->verbose > 1)
+    if (op->verbose > 2)
         pr2serr(" >> %s signal implementation assumed "
                 "[SA_NOCLDSTOP=%d], %smasking during IO\n",
                 (SA_NOCLDSTOP ? "modern" : "old"), SA_NOCLDSTOP,
@@ -586,13 +594,31 @@ install_signal_handlers(struct opts_t * op)
 #endif
 }
 
-/* Process any pending signals.  If signals are caught, this function
-   should be called periodically.  Ideally there should never be an
-   unbounded amount of time when signals are not being processed.  */
 static void
-signals_process(struct opts_t * op)
+sleep_ms(int millisecs)
+{
+#ifdef SG_LIB_WIN32
+    win32_sleep_ms(millisecs);
+#elif defined(HAVE_NANOSLEEP)
+    struct timespec request;
+
+    if (millisecs > 0) {
+        request.tv_sec = millisecs / 1000;
+        request.tv_nsec = (millisecs % 1000) * 1000000;
+        if ((nanosleep(&request, NULL) < 0) && (EINTR != errno))
+            perror("nanosleep");
+    }
+#endif
+}
+
+/* Process any pending signals and perhaps do delay. If signals are caught,
+ * this function should be called periodically.  Ideally there should never
+ * be an unbounded amount of time when signals are not being processed. */
+void    /* Global function, used by ddpt_xcopy.c */
+signals_process(struct opts_t * op, int check_for_delay)
 {
     char b[32];
+    int got_something = 0;
 
 #if SA_NOCLDSTOP
     int found_pending = 0;
@@ -610,8 +636,15 @@ signals_process(struct opts_t * op)
             /* Signal handler for a pending signal run during suspend */
             sigsuspend(&op->orig_mask);
             found_pending = 1;
-        } else
-            return;
+        } else {        /* nothing pending tp perhaps delay */
+            if (check_for_delay && (op->delay > 0)) {
+                sigprocmask(SIG_SETMASK, &op->orig_mask, NULL);
+                sleep_ms(op->delay);
+                sigprocmask(SIG_BLOCK, &op->caught_signals, NULL);
+            }
+            if (! (interrupt_signal || info_signals_pending))
+                return;
+        }
     }
 #endif
 
@@ -619,6 +652,7 @@ signals_process(struct opts_t * op)
         int interrupt;
         int infos;
 
+        got_something = 1;
 #if SA_NOCLDSTOP
         if (! found_pending)
             sigprocmask(SIG_BLOCK, &op->caught_signals, NULL);
@@ -634,7 +668,7 @@ signals_process(struct opts_t * op)
 
 #if SA_NOCLDSTOP
         if (! found_pending)
-            sigprocmask (SIG_SETMASK, &op->orig_mask, NULL);
+            sigprocmask(SIG_SETMASK, &op->orig_mask, NULL);
 #endif
 
         if (interrupt) {
@@ -668,6 +702,9 @@ signals_process(struct opts_t * op)
             raise(interrupt);
         }
     }
+
+    if (check_for_delay && (! got_something) && (op->delay > 0))
+        sleep_ms(op->delay);
 }
 
 
@@ -1041,7 +1078,6 @@ cl_sanity_defaults(struct opts_t * op)
                             "xcopy\n");
             }
         }
-        // xxxxxxxxxxxxxxxxxxxxxxxxx
     }
 
     if (op->verbose) {      /* report flags used but not supported */
@@ -1160,6 +1196,13 @@ cl_process(struct opts_t * op, int argc, char * argv[])
                     return SG_LIB_SYNTAX_ERROR;
                 }
             }   /* 'count=-1' is accepted, means calculate count */
+        } else if (0 == strcmp(key, "delay")) {
+            n = sg_get_num(buf);
+            if (n < 0) {
+                pr2serr("bad argument to 'delay='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            op->delay = n;
         } else if (0 == strcmp(key, "ibs")) {
             n = sg_get_num(buf);
             if (n < 0) {
@@ -1304,10 +1347,11 @@ cl_process(struct opts_t * op, int argc, char * argv[])
                 ;
             else if (0 == strncmp(buf, "noxfer", 6))
                 op->do_time = 0;
-            else if (0 == strncmp(buf, "none", 4))
+            else if (0 == strncmp(buf, "none", 4)) {
                 ++op->status_none;
-            else {
-                pr2serr("'status=' expects 'noxfer' or 'null'\n");
+                op->do_time = 0;
+            } else {
+                pr2serr("'status=' expects 'none', 'noxfer' or 'null'\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strncmp(key, "verb", 4)) {
@@ -3521,7 +3565,7 @@ do_rw_copy(struct opts_t * op)
         }
 
         /* Start of reading section */
-        signals_process(op);
+        signals_process(op, 0);
         if (FT_PT & id_type) {
             if ((ret = cp_read_pt(op, csp, op->wrkPos)))
                 break;
@@ -3581,7 +3625,7 @@ do_rw_copy(struct opts_t * op)
             }
         }
         /* Start of writing section */
-        signals_process(op);
+        signals_process(op, 1 /* do delay here if required */);
         if ((! continual_read) && (csp->icbpt >= op->dd_count))
             could_be_last = 1;
         if (sparing_skip || sparse_skip) {
@@ -4339,10 +4383,12 @@ main(int argc, char * argv[])
     else
         ret = do_rw_copy(op);
 
-    print_stats("", op);
+    if (0 == op->status_none)
+        print_stats("", op);
 
     if ((op->oflagp->ssync) && (FT_PT & op->odip->d_type)) {
-        pr2serr(">> SCSI synchronizing cache on %s\n", op->odip->fn);
+        if (0 == op->status_none)
+            pr2serr(">> SCSI synchronizing cache on %s\n", op->odip->fn);
         pt_sync_cache(op->odip->fd);
     }
     if (op->do_time)

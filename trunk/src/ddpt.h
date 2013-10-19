@@ -22,6 +22,10 @@
 #include "config.h"
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifdef SG_LIB_WIN32
 #include <windows.h>
 #endif
@@ -96,7 +100,7 @@
 
 #define SG_LIB_FLOCK_ERR 90
 
-/* File type categorizations */
+/* File type categories */
 #define FT_OTHER 1              /* unknown (unable to identify) */
 #define FT_PT 2                 /* SCSI commands can be sent via a
                                    pass-through */
@@ -204,6 +208,7 @@ struct opts_t {
     int64_t skip;
     int64_t seek;
     int bs_given;       /* 1 implies bs= option given on command line */
+    int delay;          /* intra copy segment delay in milliseconds */
     int ibs;
     int ibs_pi;    /* if (protect) ibs_pi = ibs+pi_len else ibs_pi=ibs */
     int ibs_given;
@@ -338,6 +343,7 @@ void pt_sync_cache(int fd);
 void errblk_put(uint64_t lba, struct opts_t * op);
 void errblk_put_range(uint64_t lba, int num, struct opts_t * op);
 void zero_coe_limit_count(struct opts_t * op);
+void signals_process(struct opts_t * op, int check_for_delay);
 
 int do_xcopy(struct opts_t * op);
 
@@ -360,10 +366,15 @@ int win32_block_write(struct opts_t * optsp, const unsigned char * bp,
 int win32_cp_read_block(struct opts_t * optsp, struct cp_state_t * csp,
                         unsigned char * wrkPos, int * ifull_extrap,
                         int verbose);
+int win32_sleep_ms(int millisecs);
 int coe_process_eio(struct opts_t * op, int64_t skip);
 
 int sg_do_wscan(char letter, int do_scan, int verb);
 
+#endif
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif
