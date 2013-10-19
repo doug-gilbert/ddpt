@@ -367,7 +367,7 @@ int win32_block_write(struct opts_t * optsp, const unsigned char * bp,
 int win32_cp_read_block(struct opts_t * optsp, struct cp_state_t * csp,
                         unsigned char * wrkPos, int * ifull_extrap,
                         int verbose);
-int win32_sleep_ms(int millisecs);
+void win32_sleep_ms(int millisecs);
 int coe_process_eio(struct opts_t * op, int64_t skip);
 
 int sg_do_wscan(char letter, int do_scan, int verb);
