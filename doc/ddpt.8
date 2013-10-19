@@ -385,6 +385,12 @@ or, if \fISEEK\fR is given, starting at block \fISEEK\fR. Note that
 attempting to 'append' to a device file (e.g. a disk) will usually be
 ignored or may cause an error to be reported.
 .TP
+block [io] [pt]
+pass-through file opens are non-blocking by default and may report the
+pt device is busy. Use this flag to open blocking so utility may wait until
+another process locking (or with an exclusive open) is complete before
+continuing.
+.TP
 cat [io] [blk,pt,tape]
 set CAT (residual data handling) bit in EXTENDED COPY (LID1) parameter list
 segment descriptor header. May appear in either flag list when xcopy is

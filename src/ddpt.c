@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.93 20131019 [svn: r233]";
+static const char * version_str = "0.93 20131019 [svn: r234]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -295,6 +295,7 @@ primary_help:
 secondary_help:
     pr2serr("FLAGS:\n"
             "  append (o)     append (part of) IFILE to end of OFILE\n"
+            "  block (pt)     pt opens are non blocking by default\n"
             "  cat (xcopy)    set CAT bit in segment descriptor header\n"
             "  coe            continue on (read) error\n"
             "  dc (xcopy)     set DC bit in segment descriptor header\n"
@@ -846,6 +847,8 @@ flags_process(const char * arg, struct flags_t * fp)
             *np++ = '\0';
         if (0 == strcmp(cp, "append"))
             ++fp->append;
+        else if (0 == strcmp(cp, "block"))
+            ++fp->block;
         else if (0 == strcmp(cp, "cat"))
             ++fp->cat;
         else if (0 == strcmp(cp, "coe"))

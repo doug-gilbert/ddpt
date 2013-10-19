@@ -108,7 +108,7 @@ pt_open_if(struct opts_t * op)
     const char * fn = op->idip->fn;
 
     verb = (op->verbose ? op->verbose - 1: 0);
-    flags = O_NONBLOCK;
+    flags = fp->block ? 0 : O_NONBLOCK;
     if (fp->direct)
         flags |= O_DIRECT;
     if (fp->excl)
@@ -117,6 +117,11 @@ pt_open_if(struct opts_t * op)
         flags |= O_SYNC;
     fl = O_RDWR;
     if ((fd = scsi_pt_open_flags(fn, (fl | flags), op->verbose)) < 0) {
+        if (-EBUSY == fd) {
+            pr2serr("open %s for pt reading reports BUSY, use iflag=block "
+                    "to wait until ready\n", fn);
+            return -1;
+        }
         fl = O_RDONLY;
         if ((fd = scsi_pt_open_flags(fn, (fl | flags), op->verbose)) < 0) {
             pr2serr("could not open %s for pt reading: %s\n", fn,
@@ -151,7 +156,8 @@ pt_open_of(struct opts_t * op)
     const char * fn = dip->fn;
 
     verb = (op->verbose ? op->verbose - 1: 0);
-    flags = O_RDWR | O_NONBLOCK;
+    flags = fp->block ? 0 : O_NONBLOCK;
+    flags |= O_RDWR;
     if (fp->direct)
         flags |= O_DIRECT;
     if (fp->excl)
@@ -159,6 +165,11 @@ pt_open_of(struct opts_t * op)
     if (fp->sync)
         flags |= O_SYNC;
     if ((fd = scsi_pt_open_flags(fn, flags, op->verbose)) < 0) {
+        if (-EBUSY == fd) {
+            pr2serr("open %s for pt writing reports BUSY, use oflag=block "
+                    "to wait until ready\n", fn);
+            return -1;
+        }
         pr2serr("could not open %s for pt writing: %s\n", fn,
                 safe_strerror(-fd));
         return -1;

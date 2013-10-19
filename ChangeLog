@@ -2,7 +2,7 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.93 [20131019] [svn: r233]
+Changelog for ddpt-0.93 [20131019] [svn: r234]
   - add xcopy support, new flags: xcopy, cat, dc;
     new options: id_usage=, list_id=, prio=
   - add intio=0|1 ; rework signal handling
@@ -15,6 +15,7 @@ Changelog for ddpt-0.93 [20131019] [svn: r233]
   - add protect=RDP,WRP option
   - add cdbsz=32 option for READ(32) and WRITE(32)
   - add rarc flag for scsi read cdbs
+  - add block flag for pt (non blocking by default)
   - fix overflow on OFILE when input fifo
   - ./configure options:
     - change --enable-no-linux-bsg to --disable-linuxbsg
