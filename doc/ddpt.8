@@ -6,13 +6,13 @@ devices that understand the SCSI command set.
 .B ddpt
 [\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fR{6|10|12|16|32}]
 [\fIcoe=\fR{0|1}] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
-[\fIibs=IBS\fR] [\fIid_usage=LIU\fR] \fIif=IFILE\fR [\fIiflag=FLAGS\fR]
-[\fIintio=\fR{0|1}] [\fIiseek=SKIP\fR] [\fIlist_id=LID\fR] [\fIobs=OBS\fR]
-[\fIof=OFILE\fR] [\fIof2=OFILE2\fR] [\fIoflag=FLAGS\fR] [\fIoseek=SEEK\fR]
-[\fIprio=PRIO\fR] [\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR]
-[\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR] [\fIverbose=VERB\fR]
-[\fI\-\-help\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR]
-[\fI\-\-xcopy\fR]
+[\fIdelay=MS\fR] [\fIibs=IBS\fR] [\fIid_usage=LIU\fR] \fIif=IFILE\fR
+[\fIiflag=FLAGS\fR] [\fIintio=\fR{0|1}] [\fIiseek=SKIP\fR]
+[\fIlist_id=LID\fR] [\fIobs=OBS\fR] [\fIof=OFILE\fR] [\fIof2=OFILE2\fR]
+[\fIoflag=FLAGS\fR] [\fIoseek=SEEK\fR] [\fIprio=PRIO\fR]
+[\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR] [\fIseek=SEEK\fR]
+[\fIskip=SKIP\fR] [\fIstatus=STAT\fR] [\fIverbose=VERB\fR] [\fI\-\-help\fR]
+[\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR] [\fI\-\-xcopy\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
 .PP
@@ -134,6 +134,12 @@ see the CONVERSIONS section below.
 copy \fICOUNT\fR input blocks from \fIIFILE\fR to \fIOFILE\fR. If this
 option is not given (or \fICOUNT\fR is '\-1') then the \fICOUNT\fR may be
 deduced from either \fIIFILE\fR or \fIOFILE\fR. See the COUNT section below.
+.TP
+\fBdelay\fR=\fIMS\fR
+after each segment is copied (typically every (\fIIBS\fR * \fIBPT\fR) bytes)
+a delay (sleep) of \fIMS\fR milliseconds is performed. The default value for
+\fIMS\fR is 0 which implies no delay. This can be used for a bandwidth
+limiting.
 .TP
 \fBibs\fR=\fIIBS\fR
 where \fIIBS\fR is the \fIIFILE\fR block size in bytes. The default value

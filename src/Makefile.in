@@ -215,7 +215,6 @@ top_srcdir = @top_srcdir@
 
 # -std=<s> can be c99, c11, gnu11, etc. Default is gnu89 (gnu90 is the same)
 AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W
-# AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W -pedantic -std=c11
 ddpt_SOURCES = ddpt.c ddpt.h ddpt_pt.c ddpt_xcopy.c $(am__append_1) \
 	$(am__append_2) $(am__append_3)
 sglib_SOURCES = ../lib/sg_lib.c \
