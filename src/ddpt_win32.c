@@ -85,7 +85,7 @@ win32_sleep_ms(int millisecs)
 
         request.tv_sec = millisecs / 1000;
         request.tv_nsec = (millisecs % 1000) * 1000000;
-        if ((nanosleep(&request, NULL) < 0) && (EINTR != errno)) {
+        if ((nanosleep(&request, NULL) < 0) && (EINTR != errno))
             pr2serr("nanosleep: failed, errno=%d\n", errno);
 #elif defined(HAVE_MS_SLEEP)
         Sleep(millisecs);
@@ -93,8 +93,6 @@ win32_sleep_ms(int millisecs)
     }
 }
 
-
-}
 /* Fetches system error message corresponding to errnum,
  * placing string in b not exceeding blen bytes. Returns
  * bytes placed in b (excluding trailing NULL) or -1 for
