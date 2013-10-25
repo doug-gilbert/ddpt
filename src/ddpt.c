@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.93 20131019 [svn: r236]";
+static const char * version_str = "0.93 20131024 [svn: r237]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -183,11 +183,10 @@ static struct signum_name_t signum_name_arr[] = {
 
 static void calc_duration_throughput(const char * leadin, int contin,
                                      struct opts_t * op);
+#ifdef SG_LIB_LINUX
 static void print_tape_summary(struct opts_t * op, int res, const char * str);
 static void print_tape_pos(const char * prefix, const char * postfix,
                            struct opts_t * op);
-#ifdef SG_LIB_LINUX
-static void show_tape_pos_error(const char * postfix);
 #endif
 
 
@@ -203,15 +202,16 @@ primary_help:
     pr2serr("Usage: "
            "ddpt  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=6|10|12|16|32] [coe=0|1]\n"
            "             [coe_limit=CL] [conv=CONVS] [count=COUNT] "
-           "[delay=MS] [ibs=IBS]\n"
-           "             [id_usage=LIU] if=IFILE [iflag=FLAGS] [intio=0|1] "
-           "[iseek=SKIP]\n"
-           "             [list_id=LID] [obs=OBS] [of=OFILE] [of2=OFILE2] "
-           "[oflag=FLAGS]\n"
-           "             [oseek=SEEK] [prio=PRIO] [protect=RDP[,WRP]] "
-           "[retries=RETR]\n"
-           "             [seek=SEEK] [skip=SKIP] [status=STAT] "
-           "[verbose=VERB]\n"
+           "[delay=MS[,W_MS]]\n"
+           "             [ibs=IBS] [id_usage=LIU] if=IFILE [iflag=FLAGS] "
+           "[intio=0|1]\n"
+           "             [iseek=SKIP] [list_id=LID] [obs=OBS] [of=OFILE] "
+           "[of2=OFILE2]\n"
+           "             [oflag=FLAGS] [oseek=SEEK] [prio=PRIO] "
+           "[protect=RDP[,WRP]]\n"
+           "             [retries=RETR] [seek=SEEK] [skip=SKIP] "
+           "[status=STAT]\n"
+           "             [verbose=VERB]\n"
 #ifdef SG_LIB_WIN32
            "             [--help] [--verbose] [--version] [--wscan]\n"
 #else
@@ -238,6 +238,8 @@ primary_help:
            "(remaining)\n"
            "                device/file size)\n"
            "    delay       wait MS milliseconds between each copy segment "
+           "(def: 0)\n"
+           "                wait W_MS milliseconds prior to each write "
            "(def: 0)\n"
            "    ibs         input block size (default 512 bytes)\n"
            "    id_usage    xcopy: set list_id_usage to hold (0), discard "
@@ -403,8 +405,10 @@ pr2serr(const char * fmt, ...)
 static void
 print_stats(const char * str, struct opts_t * op)
 {
+#ifdef SG_LIB_LINUX
     /* Print tape read summary if necessary . */
     print_tape_summary(op, 0, str);
+#endif
 
     if ((0 != op->dd_count) && (! op->reading_fifo))
         pr2serr("  remaining block count=%" PRId64 "\n", op->dd_count);
@@ -580,7 +584,7 @@ install_signal_handlers(struct opts_t * op)
 
     if ((0 == op->interrupt_io) && (num_members > 0))
         sigprocmask(SIG_BLOCK, &op->caught_signals, &op->orig_mask);
-#else
+#else   /* not SA_NOCLDSTOP */
     if (op) { ; }    /* suppress warning */
     if (signal(SIGINFO, SIG_IGN) != SIG_IGN) {
         signal(SIGINFO, siginfo_handler);
@@ -592,7 +596,7 @@ install_signal_handlers(struct opts_t * op)
         siginterrupt(SIGINT, 1);
     } else if (op->verbose)
         pr2serr("old SIGINT ignored\n");
-#endif
+#endif  /* SA_NOCLDSTOP */
 }
 
 static void
@@ -616,10 +620,11 @@ sleep_ms(int millisecs)
  * this function should be called periodically.  Ideally there should never
  * be an unbounded amount of time when signals are not being processed. */
 void    /* Global function, used by ddpt_xcopy.c */
-signals_process(struct opts_t * op, int check_for_delay)
+signals_process_delay(struct opts_t * op, int delay_type)
 {
     char b[32];
     int got_something = 0;
+    int delay = 0;
 
 #if SA_NOCLDSTOP
     int found_pending = 0;
@@ -637,10 +642,14 @@ signals_process(struct opts_t * op, int check_for_delay)
             /* Signal handler for a pending signal run during suspend */
             sigsuspend(&op->orig_mask);
             found_pending = 1;
-        } else {        /* nothing pending tp perhaps delay */
-            if (check_for_delay && (op->delay > 0)) {
+        } else {        /* nothing pending so perhaps delay */
+            if ((op->delay > 0) && (DELAY_COPY_SEGMENT == delay_type))
+                delay = op->delay;
+            else if ((op->wdelay > 0) && (DELAY_WRITE == delay_type))
+                delay = op->wdelay;
+            if (delay) {
                 sigprocmask(SIG_SETMASK, &op->orig_mask, NULL);
-                sleep_ms(op->delay);
+                sleep_ms(delay);
                 sigprocmask(SIG_BLOCK, &op->caught_signals, NULL);
             }
             if (! (interrupt_signal || info_signals_pending))
@@ -704,8 +713,14 @@ signals_process(struct opts_t * op, int check_for_delay)
         }
     }
 
-    if (check_for_delay && (! got_something) && (op->delay > 0))
-        sleep_ms(op->delay);
+    if (! got_something) {
+        if ((op->delay > 0) && (DELAY_COPY_SEGMENT == delay_type))
+            delay = op->delay;
+        else if ((op->wdelay > 0) && (DELAY_WRITE == delay_type))
+            delay = op->wdelay;
+        if (delay)
+            sleep_ms(op->delay);
+    }
 }
 
 
@@ -1200,12 +1215,23 @@ cl_process(struct opts_t * op, int argc, char * argv[])
                 }
             }   /* 'count=-1' is accepted, means calculate count */
         } else if (0 == strcmp(key, "delay")) {
+            cp = strchr(buf, ',');
+            if (cp)
+                *cp = '\0';
             n = sg_get_num(buf);
             if (n < 0) {
-                pr2serr("bad argument to 'delay='\n");
+                pr2serr("bad MS argument to 'delay='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
             op->delay = n;
+            if (cp) {
+                n = sg_get_num(cp + 1);
+                if (n < 0) {
+                    pr2serr("bad W_MS argument to 'delay='\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+                op->wdelay = n;
+            }
         } else if (0 == strcmp(key, "ibs")) {
             n = sg_get_num(buf);
             if (n < 0) {
@@ -1608,7 +1634,7 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
  #endif
     }
     return 0;
-#else
+#else   /* not BLKSSZGET */
     blk_fd = blk_fd;
     if (op->verbose)
         pr2serr("      BLKSSZGET+BLKGETSIZE ioctl not available\n");
@@ -1617,7 +1643,7 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
     return -1;
 #endif
 }
-#endif
+#endif  /* BLKSSZGET */
 
 #ifdef SG_LIB_FREEBSD
 static int
@@ -1897,7 +1923,7 @@ calc_duration_throughput(const char * leadin, int contin, struct opts_t * op)
             }
         }
     }
-#else
+#else   /* no clock reading functions available */
     if (leadin) { ; }    // suppress warning
     if (contin) { ; }    // suppress warning
 #endif
@@ -2684,6 +2710,8 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
     return 0;
 }
 
+#ifdef SG_LIB_LINUX
+
 /* Summarise previous consecutive same-length reads. Do that when:
  * - read length (res) differs from the previous read length, and
  * - there were more than one consecutive reads of the same length
@@ -2772,6 +2800,8 @@ cp_read_tape(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
     op->in_full += csp->icbpt;
     return 0;
 }
+
+#endif /* SG_LIB_LINUX */
 
 /* Main copy loop's read (input) for a fifo. Returns 0 on success, else
  * SG_LIB_CAT_OTHER or -1 . */
@@ -3003,6 +3033,8 @@ cp_write_pt(struct opts_t * op, struct cp_state_t * csp, int seek_delta,
     return 0;
 }
 
+#ifdef SG_LIB_LINUX
+
 /* Main copy loop's write (output (of)) for a tape device.
  * Returns 0 on success, else SG_LIB_CAT_OTHER, SG_LIB_CAT_MEDIUM_HARD
  * or -1 . */
@@ -3103,6 +3135,8 @@ ew_retry:
     }
     return 0;
 }
+
+#endif /* SG_LIB_LINUX */
 
 /* Main copy loop's write (output (of)) for block device fifo or regular
  * file. Returns 0 on success, else SG_LIB_FILE_ERROR,
@@ -3523,11 +3557,13 @@ do_rw_copy(struct opts_t * op)
 {
     int ibpt, obpt, res, n, sparse_skip, sparing_skip, continual_read;
     int ret = 0;
+    int first_time = 1;
     int could_be_last = 0;
     int id_type = op->idip->d_type;
     int od_type = op->odip->d_type;
     struct cp_state_t cp_st;
     struct cp_state_t * csp;
+    unsigned char * wPos = op->wrkPos;
 
     continual_read = op->reading_fifo && (op->dd_count < 0);
     if (op->verbose > 3) {
@@ -3548,6 +3584,10 @@ do_rw_copy(struct opts_t * op)
 
     /* <<< main loop that does the copy >>> */
     while ((op->dd_count > 0) || continual_read) {
+        if (first_time)
+            first_time = 0;
+        else
+            signals_process_delay(op, DELAY_COPY_SEGMENT);
         csp->bytes_read = 0;
         csp->bytes_of = 0;
         csp->bytes_of2 = 0;
@@ -3563,35 +3603,41 @@ do_rw_copy(struct opts_t * op)
             csp->ocbpt = n / op->obs;
             if (n % op->obs) {
                 ++csp->ocbpt;
-                memset(op->wrkPos, 0, op->ibs * ibpt);
+                memset(wPos, 0, op->ibs * ibpt);
             }
         }
 
         /* Start of reading section */
-        signals_process(op, 0);
         if (FT_PT & id_type) {
-            if ((ret = cp_read_pt(op, csp, op->wrkPos)))
+            if ((ret = cp_read_pt(op, csp, wPos)))
                 break;
         } else if (FT_FIFO & id_type) {
-             if ((ret = cp_read_fifo(op, csp, op->wrkPos)))
+             if ((ret = cp_read_fifo(op, csp, wPos)))
                 break;
         } else if (FT_TAPE & id_type) {
-             if ((ret = cp_read_tape(op, csp, op->wrkPos)))
+#ifdef SG_LIB_LINUX
+             if ((ret = cp_read_tape(op, csp, wPos)))
                 break;
+#else
+            pr2serr("reading from tape not supported in this OS\n");
+            ret = SG_LIB_CAT_OTHER;
+            break;
+#endif
         } else {
-             if ((ret = cp_read_block_reg(op, csp, op->wrkPos)))
+             if ((ret = cp_read_block_reg(op, csp, wPos)))
                 break;
         }
         if (0 == csp->icbpt)
             break;      /* nothing read so leave loop */
 
         if ((op->o2dip->fd >= 0) &&
-            ((ret = cp_write_of2(op, csp, op->wrkPos))))
+            ((ret = cp_write_of2(op, csp, wPos))))
             break;
 
         if (op->oflagp->sparse) {
             n = (csp->ocbpt * op->obs) + csp->partial_write_bytes;
-            if (0 == memcmp(op->wrkPos, op->zeros_buff, n)) {
+            signals_process_delay(op, DELAY_WRITE);
+            if (0 == memcmp(wPos, op->zeros_buff, n)) {
                 sparse_skip = 1;
                 if (op->oflagp->wsame16 && (FT_PT & od_type)) {
                     res = pt_write_same16(op, op->zeros_buff, op->obs,
@@ -3600,7 +3646,7 @@ do_rw_copy(struct opts_t * op)
                         ++op->trim_errs;
                 }
             } else if (op->obpc) {
-                ret = cp_finer_comp_wr(op, csp, op->wrkPos, op->zeros_buff);
+                ret = cp_finer_comp_wr(op, csp, wPos, op->zeros_buff);
                 if (ret)
                     break;
                 goto bypass_write;
@@ -3608,16 +3654,17 @@ do_rw_copy(struct opts_t * op)
         }
         if (op->oflagp->sparing && (! sparse_skip)) {
             /* In write sparing, we read from the output */
+            signals_process_delay(op, DELAY_WRITE);
             if (FT_PT & od_type)
                 res = cp_read_of_pt(op, csp, op->wrkPos2);
             else
                 res = cp_read_of_block_reg(op, csp, op->wrkPos2);
             if (0 == res) {
                 n = (csp->ocbpt * op->obs) + csp->partial_write_bytes;
-                if (0 == memcmp(op->wrkPos, op->wrkPos2, n))
+                if (0 == memcmp(wPos, op->wrkPos2, n))
                     sparing_skip = 1;
                 else if (op->obpc) {
-                    ret = cp_finer_comp_wr(op, csp, op->wrkPos, op->wrkPos2);
+                    ret = cp_finer_comp_wr(op, csp, wPos, op->wrkPos2);
                     if (ret)
                         break;
                     goto bypass_write;
@@ -3627,8 +3674,8 @@ do_rw_copy(struct opts_t * op)
                 break;
             }
         }
+
         /* Start of writing section */
-        signals_process(op, 1 /* do delay here if required */);
         if ((! continual_read) && (csp->icbpt >= op->dd_count))
             could_be_last = 1;
         if (sparing_skip || sparse_skip) {
@@ -3636,17 +3683,26 @@ do_rw_copy(struct opts_t * op)
             if (csp->partial_write_bytes > 0)
                 ++op->out_sparse_partial;
         } else {
-            if (FT_PT & od_type) {
-                if ((ret = cp_write_pt(op, csp, 0, csp->ocbpt, op->wrkPos)))
-                    break;
-            } else if (FT_DEV_NULL & od_type)
+            if (FT_DEV_NULL & od_type)
                 ;  /* don't bump out_full (earlier revs did) */
-            else if (FT_TAPE & od_type) {
-                if ((ret = cp_write_tape(op, csp, op->wrkPos, could_be_last)))
+            else {
+                signals_process_delay(op, DELAY_WRITE);
+                if (FT_PT & od_type) {
+                    if ((ret = cp_write_pt(op, csp, 0, csp->ocbpt, wPos)))
+                        break;
+                } else if (FT_TAPE & od_type) {
+#ifdef SG_LIB_LINUX
+                    if ((ret = cp_write_tape(op, csp, wPos, could_be_last)))
+                        break;
+#else
+                    pr2serr("writing to tape not supported in this OS\n");
+                    ret = SG_LIB_CAT_OTHER;
                     break;
-            } else if ((ret = cp_write_block_reg(op, csp, 0, csp->ocbpt,
-                                                 op->wrkPos))) /* plus fifo */
-                break;
+#endif
+                } else if ((ret = cp_write_block_reg(op, csp, 0, csp->ocbpt,
+                                                     wPos))) /* plus fifo */
+                    break;
+            }
         }
 bypass_write:
 #ifdef HAVE_POSIX_FADVISE
@@ -3674,9 +3730,6 @@ bypass_write:
         op->oflagp->sparse)
         cp_sparse_cleanup(op, csp);
 
-    if ((FT_PT | FT_DEV_NULL | FT_FIFO | FT_CHAR | FT_TAPE) & od_type) {
-        ;       // negating things makes it less clear ...
-    }
 #ifdef HAVE_FDATASYNC
     else if (op->oflagp->fdatasync) {
         if (fdatasync(op->odip->fd) < 0)
@@ -3706,6 +3759,15 @@ copy_end:
     return ret;
 }
 
+#ifdef SG_LIB_LINUX
+
+static void
+show_tape_pos_error(const char * postfix)
+{
+    pr2serr("Could not get tape position%s: %s\n", postfix,
+            safe_strerror(errno));
+}
+
 /* Print tape position(s) if verbose > 1. If both reading from and writing to
  * tape, make clear in output which is which. Also only print the position if
  * necessary, i.e. not already printed.
@@ -3714,7 +3776,6 @@ static void
 print_tape_pos(const char * prefix, const char * postfix,
                struct opts_t * op)
 {
-#ifdef SG_LIB_LINUX
     static int lastreadpos, lastwritepos;
     static char lastreadposvalid = 0;
     static char lastwriteposvalid = 0;
@@ -3759,22 +3820,9 @@ print_tape_pos(const char * prefix, const char * postfix,
         }
 
     }
-#else
-    /* supress warnings */
-    if (prefix) { ; }
-    if (postfix) { ; }
-    if (op) { ; }
-#endif
 }
 
-#ifdef SG_LIB_LINUX
-static void
-show_tape_pos_error(const char * postfix)
-{
-    pr2serr("Could not get tape position%s: %s\n", postfix,
-            safe_strerror(errno));
-}
-#endif
+#endif  /* SG_LIB_LINUX */
 
 static int
 prepare_pi(struct opts_t * op)
@@ -4033,10 +4081,11 @@ cdb_size_prealloc(struct opts_t * op)
     }
 }
 
+#ifdef SG_LIB_LINUX
+
 static void
 tape_cleanup_of(struct opts_t * op)
 {
-#ifdef SG_LIB_LINUX
     /* Before closing OFILE, if writing to tape handle suppressing the
      * writing of a filemark and/or flushing the drive buffer which the
      * Linux st driver normally does when tape file is closed after writing.
@@ -4070,10 +4119,9 @@ tape_cleanup_of(struct opts_t * op)
             }
         }
     }
-#else
-    if (op) { ; }
-#endif
 }
+
+#endif  /* SG_LIB_LINUX */
 
 static int
 do_falloc(struct opts_t * op)
@@ -4140,7 +4188,7 @@ do_falloc(struct opts_t * op)
                 PRId64 "\n", op->obs*op->dd_count, op->obs*op->seek);
 
 #endif  /* HAVE_FALLOCATE */
-#else   /* SG_LIB_LINUX */
+#else   /* other than SG_LIB_LINUX */
 #ifdef HAVE_POSIX_FALLOCATE
     int res;
 
@@ -4156,7 +4204,7 @@ do_falloc(struct opts_t * op)
     if (op->verbose > 1)
         pr2serr("Pre-allocated %" PRId64 " bytes at offset %" PRId64 "\n",
                 op->obs*op->dd_count, op->obs*op->seek);
-#else   /* HAVE_POSIX_FALLOCATE */
+#else   /* do not HAVE_POSIX_FALLOCATE */
     if (op) { ; }
 #endif  /* HAVE_POSIX_FALLOCATE else */
 #endif  /* SG_LIB_LINUX else */
@@ -4203,26 +4251,31 @@ wrk_buffers_init(struct opts_t * op)
 #ifdef HAVE_POSIX_MEMALIGN
         {
             int err;
+            void * wp;
 
-            err = posix_memalign((void **)&op->wrkBuff, psz, len);
+            wp = op->wrkBuff;
+            err = posix_memalign(&wp, psz, len);
             if (err) {
                 pr2serr("posix_memalign: error [%d] out of memory?\n", err);
                 return SG_LIB_CAT_OTHER;
             }
+            op->wrkBuff = (unsigned char *)wp;
             memset(op->wrkBuff, 0, len);
             op->wrkPos = op->wrkBuff;
             if (op->oflagp->sparing) {
-                err = posix_memalign((void **)&op->wrkBuff2, psz, len);
+                wp = op->wrkBuff2;
+                err = posix_memalign(&wp, psz, len);
                 if (err) {
                     pr2serr("posix_memalign(2): error [%d] out of memory?\n",
                              err);
                     return SG_LIB_CAT_OTHER;
                 }
+                op->wrkBuff2 = (unsigned char *)wp;
                 memset(op->wrkBuff2, 0, len);
                 op->wrkPos2 = op->wrkBuff2;
             }
         }
-#else
+#else   /* do not HAVE_POSIX_MEMALIGN */
         op->wrkBuff = (unsigned char*)calloc(len + psz, 1);
         if (0 == op->wrkBuff) {
             pr2serr("Not enough user memory for aligned usage\n");
@@ -4239,7 +4292,7 @@ wrk_buffers_init(struct opts_t * op)
             op->wrkPos2 = (unsigned char *)
                     (((unsigned long)op->wrkBuff2 + psz - 1) & (~(psz - 1)));
         }
-#endif
+#endif  /* HAVE_POSIX_MEMALIGN */
     } else {
         op->wrkBuff = (unsigned char*)calloc(op->ibs_pi * op->bpt_i, 1);
         if (0 == op->wrkBuff) {
@@ -4262,6 +4315,7 @@ wrk_buffers_init(struct opts_t * op)
 static void
 cleanup_resources(struct opts_t * op)
 {
+#ifdef SG_LIB_LINUX
     if ((FT_TAPE & op->idip->d_type) || (FT_TAPE & op->odip->d_type)) {
         /* For writing, the st driver writes a filemark on closing the file
          * (unless user specified oflag=nofm), so make clear that the
@@ -4271,6 +4325,7 @@ cleanup_resources(struct opts_t * op)
             op->oflagp->nofm)
             pr2serr("(suppressing writing of filemark on close)\n");
     }
+#endif
 
     if (op->iflagp->errblk)
         errblk_close(op);
@@ -4289,8 +4344,10 @@ cleanup_resources(struct opts_t * op)
         pt_close(op->odip->fd);
     if ((op->odip->fd >= 0) && (STDOUT_FILENO != op->odip->fd) &&
         !(FT_DEV_NULL & op->odip->d_type)) {
+#ifdef SG_LIB_LINUX
         if (FT_TAPE & op->odip->d_type)
             tape_cleanup_of(op);
+#endif
         close(op->odip->fd);
     }
     if ((op->o2dip->fd >= 0) && (STDOUT_FILENO != op->o2dip->fd))
@@ -4372,8 +4429,10 @@ main(int argc, char * argv[])
     if (op->iflagp->errblk)
         errblk_open(op);
 
+#ifdef SG_LIB_LINUX
     if ((FT_TAPE & op->idip->d_type) || (FT_TAPE & op->odip->d_type))
         print_tape_pos("Initial ", "", op);
+#endif
 
     if (op->oflagp->prealloc) {
         if ((ret = do_falloc(op)))

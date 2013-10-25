@@ -1011,7 +1011,8 @@ do_xcopy(struct opts_t * op)
         op->seek += oblocks;
         op->num_xcopy++;
         op->dd_count -= blocks;
-        signals_process(op, 1 /* do delay here if required */);
+        if (op->dd_count > 0)
+            signals_process_delay(op, DELAY_COPY_SEGMENT);
     }
     return res;
 }
