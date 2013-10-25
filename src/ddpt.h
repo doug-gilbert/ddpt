@@ -132,6 +132,9 @@ extern "C" {
 #define MAX_UNIT_ATTENTIONS 10
 #define MAX_ABORTED_CMDS 16
 
+#define DELAY_COPY_SEGMENT 0
+#define DELAY_WRITE 1
+
 #define REASON_TAPE_SHORT_READ 1024     /* leave_reason indication */
 
 /* Following used for sense_key=aborted_command, asc=0x10, ascq=* which
@@ -210,6 +213,7 @@ struct opts_t {
     int64_t seek;
     int bs_given;       /* 1 implies bs= option given on command line */
     int delay;          /* intra copy segment delay in milliseconds */
+    int wdelay;         /* delay prior to each write in copy segment */
     int ibs;
     int ibs_pi;    /* if (protect) ibs_pi = ibs+pi_len else ibs_pi=ibs */
     int ibs_given;
@@ -344,7 +348,7 @@ void pt_sync_cache(int fd);
 void errblk_put(uint64_t lba, struct opts_t * op);
 void errblk_put_range(uint64_t lba, int num, struct opts_t * op);
 void zero_coe_limit_count(struct opts_t * op);
-void signals_process(struct opts_t * op, int check_for_delay);
+void signals_process_delay(struct opts_t * op, int delay_type);
 
 int do_xcopy(struct opts_t * op);
 
