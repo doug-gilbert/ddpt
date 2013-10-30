@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.93 20131024 [svn: r237]";
+static const char * version_str = "0.93 20131029 [svn: r238]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -649,6 +649,9 @@ signals_process_delay(struct opts_t * op, int delay_type)
                 delay = op->wdelay;
             if (delay) {
                 sigprocmask(SIG_SETMASK, &op->orig_mask, NULL);
+                if (op->verbose > 3)
+                    pr2serr("delay=%d milliseconds [type=%d]\n", delay,
+                            delay_type);
                 sleep_ms(delay);
                 sigprocmask(SIG_BLOCK, &op->caught_signals, NULL);
             }
@@ -714,6 +717,7 @@ signals_process_delay(struct opts_t * op, int delay_type)
     }
 
     if (! got_something) {
+        delay = 0;
         if ((op->delay > 0) && (DELAY_COPY_SEGMENT == delay_type))
             delay = op->delay;
         else if ((op->wdelay > 0) && (DELAY_WRITE == delay_type))
@@ -1166,7 +1170,7 @@ cl_process(struct opts_t * op, int argc, char * argv[])
                     pr2serr("bad OBPC argument to 'bpt='\n");
                     return SG_LIB_SYNTAX_ERROR;
                 }
-                op->obpc = n;
+                op->obpch = n;
             }
         } else if (0 == strcmp(key, "bs")) {
             n = sg_get_num(buf);
@@ -3307,7 +3311,8 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
     if (offset > csp->of_filepos) {
         if ((0 == op->oflagp->strunc) && (op->oflagp->sparse > 1)) {
             if (op->verbose > 1)
-                pr2serr("asked to bypass writing sparse last block zeros\n");
+                pr2serr("asked to bypass writing sparse last block of "
+                        "zeros\n");
             return;
         }
         if (fstat(op->odip->fd, &a_st) < 0) {
@@ -3337,9 +3342,10 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
             /* N.B. file offset (pointer) not changed by ftruncate */
         } else if (1 == op->oflagp->sparse) {
             if (op->verbose > 1)
-                pr2serr("writing sparse last block zeros\n");
+                pr2serr("writing sparse last block of zeros\n");
+            signals_process_delay(op, DELAY_WRITE);
             if (cp_write_block_reg(op, csp, -1, 1, op->zeros_buff) < 0)
-                pr2serr("writing sparse last block zeros "
+                pr2serr("writing sparse last block of zeros "
                         "error, seek=%" PRId64 "\n", op->seek - 1);
             else
                 --op->out_sparse;
@@ -3347,32 +3353,37 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
     }
 }
 
-/* Main copy loop's finer grain comparison and possible write (to output
- * (of)) for all file types. Returns 0 on success. */
+/* Main copy loop's finer grain comparison and possible write (to OFILE)
+ * for all file types. Returns 0 on success. */
 static int
 cp_finer_comp_wr(struct opts_t * op, struct cp_state_t * csp,
                  const unsigned char * b1p, const unsigned char * b2p)
 {
     int res, k, n, oblks, numbytes, chunk, need_wr, wr_len, wr_k, obs;
     int trim_check, need_tr, tr_len, tr_k, out_type;
+    int done_sigs_delay = 0;
 
     oblks = csp->ocbpt;
     obs = op->obs;
     out_type = op->odip->d_type;
-    if (op->obpc >= oblks) {
+    if (op->obpch >= oblks) {
         if (FT_DEV_NULL & out_type)
             ;
         else if (FT_PT & out_type) {
+            signals_process_delay(op, DELAY_WRITE);
             if ((res = cp_write_pt(op, csp, 0, oblks, b1p)))
                 return res;
-        } else if ((res = cp_write_block_reg(op, csp, 0, oblks, b1p)))
-            return res;
+        } else {
+            signals_process_delay(op, DELAY_WRITE);
+            if ((res = cp_write_block_reg(op, csp, 0, oblks, b1p)))
+                return res;
+        }
         return 0;
     }
     numbytes = oblks * obs;
     if ((FT_REG & out_type) && (csp->partial_write_bytes > 0))
         numbytes += csp->partial_write_bytes;
-    chunk = op->obpc * obs;
+    chunk = op->obpch * obs;
     trim_check = (op->oflagp->sparse && op->oflagp->wsame16 &&
                   (FT_PT & out_type));
     need_tr = 0;
@@ -3385,12 +3396,22 @@ cp_finer_comp_wr(struct opts_t * op, struct cp_state_t * csp,
                 if (FT_DEV_NULL & out_type)
                     ;
                 else if (FT_PT & out_type) {
+                    if (! done_sigs_delay) {
+                        done_sigs_delay = 1;
+                        signals_process_delay(op, DELAY_WRITE);
+                    }
                     if ((res = cp_write_pt(op, csp, wr_k / obs,
                                            wr_len / obs, b1p + wr_k)))
                         return res;
-                } else if ((res = cp_write_block_reg(op, csp,
-                                wr_k / obs, wr_len / obs, b1p + wr_k)))
-                    return res;
+                } else {
+                    if (! done_sigs_delay) {
+                        done_sigs_delay = 1;
+                        signals_process_delay(op, DELAY_WRITE);
+                    }
+                    if ((res = cp_write_block_reg(op, csp, wr_k / obs,
+                                                  wr_len / obs, b1p + wr_k)))
+                        return res;
+                }
                 need_wr = 0;
             }
             if (need_tr)
@@ -3410,6 +3431,10 @@ cp_finer_comp_wr(struct opts_t * op, struct cp_state_t * csp,
                 wr_k = k;
             }
             if (need_tr) {
+                    if (! done_sigs_delay) {
+                        done_sigs_delay = 1;
+                        signals_process_delay(op, DELAY_WRITE);
+                    }
                 res = pt_write_same16(op, b2p, obs, tr_len / obs,
                                       op->seek + (tr_k / obs));
                 if (res)
@@ -3423,14 +3448,26 @@ cp_finer_comp_wr(struct opts_t * op, struct cp_state_t * csp,
         if (FT_DEV_NULL & out_type)
             ;
         else if (FT_PT & out_type) {
+            if (! done_sigs_delay) {
+                done_sigs_delay = 1;
+                signals_process_delay(op, DELAY_WRITE);
+            }
             if ((res = cp_write_pt(op, csp, wr_k / obs, wr_len / obs,
                                    b1p + wr_k)))
                 return res;
-        } else if ((res = cp_write_block_reg(op, csp, wr_k / obs,
-                                             wr_len / obs, b1p + wr_k)))
-            return res;
+        } else {
+            if (! done_sigs_delay) {
+                done_sigs_delay = 1;
+                signals_process_delay(op, DELAY_WRITE);
+            }
+            if ((res = cp_write_block_reg(op, csp, wr_k / obs, wr_len / obs,
+                                          b1p + wr_k)))
+                return res;
+        }
     }
     if (need_tr) {
+        if (! done_sigs_delay)
+            signals_process_delay(op, DELAY_WRITE);
         res = pt_write_same16(op, b2p, obs, tr_len / obs,
                               op->seek + (tr_k / obs));
         if (res)
@@ -3636,16 +3673,16 @@ do_rw_copy(struct opts_t * op)
 
         if (op->oflagp->sparse) {
             n = (csp->ocbpt * op->obs) + csp->partial_write_bytes;
-            signals_process_delay(op, DELAY_WRITE);
             if (0 == memcmp(wPos, op->zeros_buff, n)) {
                 sparse_skip = 1;
                 if (op->oflagp->wsame16 && (FT_PT & od_type)) {
+                    signals_process_delay(op, DELAY_WRITE);
                     res = pt_write_same16(op, op->zeros_buff, op->obs,
                                           csp->ocbpt, op->seek);
                     if (res)
                         ++op->trim_errs;
                 }
-            } else if (op->obpc) {
+            } else if (op->obpch) {
                 ret = cp_finer_comp_wr(op, csp, wPos, op->zeros_buff);
                 if (ret)
                     break;
@@ -3654,7 +3691,6 @@ do_rw_copy(struct opts_t * op)
         }
         if (op->oflagp->sparing && (! sparse_skip)) {
             /* In write sparing, we read from the output */
-            signals_process_delay(op, DELAY_WRITE);
             if (FT_PT & od_type)
                 res = cp_read_of_pt(op, csp, op->wrkPos2);
             else
@@ -3663,7 +3699,7 @@ do_rw_copy(struct opts_t * op)
                 n = (csp->ocbpt * op->obs) + csp->partial_write_bytes;
                 if (0 == memcmp(wPos, op->wrkPos2, n))
                     sparing_skip = 1;
-                else if (op->obpc) {
+                else if (op->obpch) {
                     ret = cp_finer_comp_wr(op, csp, wPos, op->wrkPos2);
                     if (ret)
                         break;
@@ -4218,7 +4254,7 @@ details_pre_copy_print(struct opts_t * op)
             " (blocks on output)\n", op->skip, op->seek);
     if (op->verbose > 1) {
         pr2serr("  ibs=%d bytes, obs=%d bytes, OBPC=%d\n",
-                op->ibs, op->obs, op->obpc);
+                op->ibs, op->obs, op->obpch);
         if (op->ibs != op->ibs_pi)
             pr2serr("  due to protect ibs_pi=%d bytes, "
                     "obs_pi=%d bytes\n", op->ibs_pi, op->obs_pi);
@@ -4228,6 +4264,8 @@ details_pre_copy_print(struct opts_t * op)
     else
         pr2serr("  initial count=%" PRId64 " (blocks of input), "
                 "blocks_per_transfer=%d\n", op->dd_count, op->bpt_i);
+    if ((op->delay > 0) || (op->wdelay > 0))
+        pr2serr("  delay=%d ms, wdelay=%d ms\n", op->delay, op->wdelay);
 }
 
 static int

@@ -222,7 +222,8 @@ struct opts_t {
     int obs_given;
     int bpt_i;          /* blocks (of input) per transfer */
     int bpt_given;
-    int obpc;
+    int obpch;          /* output blocks per check, granularity of sparse,
+                         * sparing and trim checks for zeros */
     int id_usage;       /* xcopy related, init to -1 */
     int interrupt_io;   /* [intio=0|1] if 0, mask SIGINFO++ during IO */
     int list_id;        /* xcopy related */
