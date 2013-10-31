@@ -2,7 +2,7 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.93 [20131029] [svn: r238]
+Changelog for ddpt-0.93 [20131031] [svn: r239]
   - add xcopy support, new flags: xcopy, cat, dc;
     new options: id_usage=, list_id=, prio=
   - add intio=0|1 ; rework signal handling
@@ -25,6 +25,7 @@ Changelog for ddpt-0.93 [20131029] [svn: r238]
   - win32: fixes for cygwin version 1.7.17 headers
     - translate O_EXCL to no sharing
   - point svn:externals to rev 522 of sg3_utils
+  - upgrade automake to version 1.13.3
 
 Changelog for ddpt-0.92 [20110217] [svn: r157]
   - when pt used on block device and discrepancy between size
