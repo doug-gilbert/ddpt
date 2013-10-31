@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.93 20131029 [svn: r238]";
+static const char * version_str = "0.93 20131031 [svn: r239]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
