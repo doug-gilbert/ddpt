@@ -1,4 +1,4 @@
-.TH DDPT "8" "October 2013" "ddpt\-0.93" DDPT
+.TH DDPT "8" "November 2013" "ddpt\-0.93" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -141,7 +141,10 @@ a delay (sleep) of \fIMS\fR milliseconds is performed. The default value for
 \fIMS\fR is 0 which implies no delay. If \fIW_MS\fR is given and greater than
 0 (its default value) then there is an additional delay of \fIW_MS\fR
 milliseconds associated with each actual write operation that is performed.
-These delays can be used for a bandwidth limiting.
+If \fIMS\fR is greater than 0 then there is not a delay before the first copy
+segment (or after the last); if \fIW_MS\fR is greater than 0 then there is
+not a delay before the first write segment. These delays can be used for a
+bandwidth limiting.
 .TP
 \fBibs\fR=\fIIBS\fR
 where \fIIBS\fR is the \fIIFILE\fR block size in bytes. The default value

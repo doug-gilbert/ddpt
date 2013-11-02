@@ -214,6 +214,7 @@ struct opts_t {
     int bs_given;       /* 1 implies bs= option given on command line */
     int delay;          /* intra copy segment delay in milliseconds */
     int wdelay;         /* delay prior to each write in copy segment */
+    int subsequent_wdelay;      /* so no delay before first write */
     int ibs;
     int ibs_pi;    /* if (protect) ibs_pi = ibs+pi_len else ibs_pi=ibs */
     int ibs_given;
