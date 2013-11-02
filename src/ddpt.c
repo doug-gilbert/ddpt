@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.93 20131031 [svn: r239]";
+static const char * version_str = "0.93 20131102 [svn: r240]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -645,13 +645,17 @@ signals_process_delay(struct opts_t * op, int delay_type)
         } else {        /* nothing pending so perhaps delay */
             if ((op->delay > 0) && (DELAY_COPY_SEGMENT == delay_type))
                 delay = op->delay;
-            else if ((op->wdelay > 0) && (DELAY_WRITE == delay_type))
-                delay = op->wdelay;
+            else if ((op->wdelay > 0) && (DELAY_WRITE == delay_type)) {
+                if (op->subsequent_wdelay)
+                    delay = op->wdelay;
+                else
+                    op->subsequent_wdelay = 1;
+            }
             if (delay) {
                 sigprocmask(SIG_SETMASK, &op->orig_mask, NULL);
                 if (op->verbose > 3)
-                    pr2serr("delay=%d milliseconds [type=%d]\n", delay,
-                            delay_type);
+                    pr2serr("delay=%d milliseconds [%s]\n", delay,
+                            ((DELAY_WRITE == delay_type) ? "write" : "copy"));
                 sleep_ms(delay);
                 sigprocmask(SIG_BLOCK, &op->caught_signals, NULL);
             }
@@ -720,8 +724,12 @@ signals_process_delay(struct opts_t * op, int delay_type)
         delay = 0;
         if ((op->delay > 0) && (DELAY_COPY_SEGMENT == delay_type))
             delay = op->delay;
-        else if ((op->wdelay > 0) && (DELAY_WRITE == delay_type))
-            delay = op->wdelay;
+        else if ((op->wdelay > 0) && (DELAY_WRITE == delay_type)) {
+            if (op->subsequent_wdelay)
+                delay = op->wdelay;
+            else
+                op->subsequent_wdelay = 1;
+        }
         if (delay)
             sleep_ms(op->delay);
     }
