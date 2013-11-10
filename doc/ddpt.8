@@ -396,7 +396,7 @@ pt device is busy. Use this flag to open blocking so utility may wait until
 another process locking (or with an exclusive open) is complete before
 continuing.
 .TP
-cat [io] [blk,pt,tape]
+cat [io] [blk,pt]
 set CAT (residual data handling) bit in EXTENDED COPY (LID1) parameter list
 segment descriptor header. May appear in either flag list when xcopy is
 being used. See the XCOPY section below.
@@ -428,7 +428,7 @@ block that yields a EIO or EREMOTEIO error is replaced by zeros. Any
 other error, a short read or an end of file will terminate the copy,
 usually after the data that has been read is written to the output file.
 .TP
-dc [io] [blk,pt,tape]
+dc [io] [blk,pt]
 set DC (destination counter) bit in EXTENDED COPY (LID1) parameter list
 segment descriptor header. May appear in either flag list when xcopy is
 being used.
@@ -501,6 +501,7 @@ FUA_NV bit. The FUA_NV bit was made obsolete in SBC\-3 revision 35d.
 .TP
 ignoreew [o] [tape]
 ignore the early warning indication (of end of tape) when writing to tape.
+See TAPE section.
 .TP
 nocache [io] [reg,blk]
 use posix_fadvise(POSIX_FADV_DONTNEED) to advise corresponding file there is
@@ -508,12 +509,12 @@ no need to fill the file buffer with recently read or written blocks. If
 used with "iflag=" it will increase the read ahead on \fIIFILE\fR.
 .TP
 nofm [o] [tape]
-no File Mark (FM) on close when writing to tape.
+no File Mark (FM) on close when writing to tape. See TAPE section.
 .TP
 nopad [o] [tape]
 when the block to be written to a tape drive contains less than \fIOBS\fR
 bytes, then this option causes the partial block to be written as is. The
-default action for a tape in this case is to pad the block.
+default action for a tape in this case is to pad the block. See TAPE section.
 .TP
 norcap [io] [pt]
 do not perform SCSI READ CAPACITY command on the corresponding pt device.
@@ -894,12 +895,62 @@ System) will potentially wait for a long time (e.g. expecting a network
 problem will soon be fixed) and in this case using "intio=1" may be
 best.
 .SH TAPE
-There is support for copies to and from tape drives in Linux. Only the
-st driver device names can be used (e.g. /dev/st0 and /dev/nst2). Hence
-use of Linux pass\-through device names (e.g. /dev/sg2) for tape drives
-is not supported.
+There is support for copies to and from tape drives in Linux. Only the st
+driver device names can be used (e.g. /dev/st0 and /dev/nst2). Hence use of
+Linux pass\-through device names (e.g. /dev/sg2) for tape drives is not
+supported. On Debian\-based distributions, it is suggested that the mt\-st
+package is installed as it provides a more fully\-featured version of
+the "mt" tape control program.
 .PP
-To be continued xxxxxxxxx
+Tape drives can operate in fixed\- or variable\-length block modes. In
+variable\-block mode, each write to the tape writes a single block of that
+size. In fixed\-block mode, each write to the tape must be a multiple of the
+previously\-selected block size.
+.PP
+The block size/mode can be set with the mt command prior to invoking ddpt.
+For example:
+.br
+  # mt \-f /dev/nst0 setblk 0
+.br
+sets variable\-block mode, and
+.br
+  # mt \-f /dev/nst0 setblk 32768
+.br
+sets fixed\-block mode with block size 32768 bytes.
+.PP
+Note that some tape drives support only fixed\-block mode, and possibly
+even only one block size. (For example, QIC\-150 tapes use a fixed block
+size of 512 bytes.) There may also be restrictions on the block size, e.g.
+it may have to be even.
+.PP
+When using ddpt to write to tape, if the final read from the input is less
+than \fIOBS\fR, it is padded to \fIOBS\fR bytes before writing to tape to
+ensure that all blocks of the tape file are the same length. Having a
+shorter final block would fail if the drive is in fixed\-block mode, and
+could create interchange problems. It is common to expect all blocks in a
+file on tape to be the same length. However, to tell ddpt to not pad the
+final block, use 'oflag=nopad'.
+.PP
+The st tape driver normally writes a filemark when the file (e.g. /dev/nst0)
+is closed. To not have the filemark written, use 'oflag=nofm'. One use case
+for that might be if using ddpt several times in succession to append more
+data to the same file on tape. In that case it is probably desirable to
+write the filemark at the end of the sequence. So either omit 'oflag=nofm'
+on the last ddpt invocation, or manually write a filemark using mt after
+ddpt exits:
+.br
+  # mt \-f /dev/nst0 weof 1
+.PP
+For reading from an unknown tape where the block size(s) is not known, read
+in variable\-block mode specifying a large \fIIBS\fR. The st driver returns
+a smaller amount of data if the size of the block read is smaller. Thus a
+command like:
+.br
+  # ddpt if=/dev/nst0 of=output.bin bs=262144
+.br
+should read the file from tape regardless of the block size used (assuming
+no blocks are larger than 256KB). ddpt's verbose option will display what
+the actual block size(s) is.
 .SH XCOPY
 A device (logical unit (LU)) that supports XCOPY operations should set
 the 3PC field (3PC stands for Third Party Copy) in its standard INQUIRY
