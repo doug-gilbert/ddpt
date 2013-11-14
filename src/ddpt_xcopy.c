@@ -256,7 +256,7 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
     } else if (FT_FIFO & ftype)
         ftype |= FT_REG;
     if (FT_REG & ftype) {
-        pr2serr("%s: not expecting a regular file here: %s\n",  __FUNCTION__,
+        pr2serr("%s: not expecting a regular file here: %s\n",  __func__,
                 dip->fn);
         return -SG_LIB_FILE_ERROR;
     }
