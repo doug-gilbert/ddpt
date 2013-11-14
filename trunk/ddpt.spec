@@ -1,5 +1,5 @@
 %define	name	ddpt
-%define	version	0.93
+%define	version	0.94
 %define	release	1
 
 Summary:	Copy files (like dd) especially SCSI/storage devices

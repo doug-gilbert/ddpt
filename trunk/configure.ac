@@ -1,4 +1,4 @@
-AC_INIT(ddpt, 0.93, dgilbert@interlog.com)
+AC_INIT(ddpt, 0.94, dgilbert@interlog.com)
 
 AM_INIT_AUTOMAKE
 AM_MAINTAINER_MODE
