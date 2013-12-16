@@ -144,6 +144,10 @@ extern "C" {
 #define SG_LIB_CAT_PROTECTION_WITH_INFO 0x41
 #endif
 
+#define XCOPY_TO_SRC "XCOPY_TO_SRC"
+#define XCOPY_TO_DST "XCOPY_TO_DST"
+#define DEF_XCOPY_SRC0_DST1 1
+
 
 /* One instance for arguments to iflag= , another instance for oflag=
  * conv= arguments are mapped to flag arguments.
