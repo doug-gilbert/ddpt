@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.94 20131119 [svn: r244]";
+static const char * version_str = "0.94 20131214 [svn: r245]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -365,7 +365,12 @@ secondary_help:
             "  sparse         same as oflag=sparse\n"
             "  sync           ignored to allow 'conv=noerror,sync' dd usage "
             "for coe\n"
-            "  trunc          same as oflag=trunc\n");
+            "  trunc          same as oflag=trunc\n\n"
+            "ENVIRONMENT VARIABLES:\n"
+            "  XCOPY_TO_DST   send XCOPY command to OFILE (destination) "
+            "if no other\n"
+            "                 indication\n"
+            "  XCOPY_TO_SRC   send XCOPY command to IFILE (source)\n");
 }
 
 /* Want safe, 'n += snprintf(b + n, blen - n, ...)' style sequence of
@@ -1079,17 +1084,49 @@ cl_sanity_defaults(struct opts_t * op)
     if (op->oflagp->strunc && (0 == op->oflagp->sparse))
         ++op->oflagp->sparse;
 
+    if (op->iflagp->xcopy || op->oflagp->xcopy)
+        ++op->has_xcopy;
     if (op->has_xcopy) {
-        if (! (op->iflagp->xcopy || op->oflagp->xcopy))
-            op->iflagp->xcopy = 1;
-    }
-    if (op->iflagp->xcopy || op->oflagp->xcopy) {
-        if (op->iflagp->xcopy && op->oflagp->xcopy) {
-            pr2serr("Since xcopy set in both iflag= and oflags"
-                    "will send xcopy to if=%s\n", op->idip->fn);
-            op->oflagp->xcopy = 0;
+        if ((!! op->iflagp->xcopy) == (!! op->oflagp->xcopy)) {
+            char * csp;
+            char * cdp;
+
+            csp = getenv(XCOPY_TO_SRC);
+            cdp = getenv(XCOPY_TO_DST);
+            if ((!! csp) == (!! cdp)) {
+#if DEF_XCOPY_SRC0_DST1 == 0
+                if (! op->iflagp->xcopy)
+                    op->iflagp->xcopy = 1;
+                op->oflagp->xcopy = 0;
+#else
+                op->iflagp->xcopy = 0;
+                if (! op->oflagp->xcopy)
+                    op->oflagp->xcopy = 1;
+#endif
+                if (op->verbose > 1)
+                    pr2serr("default dictates which device to send xcopy "
+                            "command to\n");
+            } else {
+                if (csp) {
+                    if (! op->iflagp->xcopy)
+                        op->iflagp->xcopy = 1;
+                    op->oflagp->xcopy = 0;
+                } else {
+                    op->iflagp->xcopy = 0;
+                    if (! op->oflagp->xcopy)
+                        op->oflagp->xcopy = 1;
+                }
+                if (op->verbose > 1)
+                    pr2serr("  %s dictates which device to send xcopy "
+                            "command to\n",
+                            (csp ? XCOPY_TO_SRC : XCOPY_TO_DST));
+            }
         }
-        op->has_xcopy = 1;
+        if (op->verbose)
+            pr2serr("Will send xcopy command to %s [%s=%s]\n",
+                    (op->iflagp->xcopy ? "src" : "dst"),
+                    (op->iflagp->xcopy ? "if" : "of"),
+                    (op->iflagp->xcopy ? op->idip->fn : op->odip->fn));
         op->xc_dc = (op->iflagp->dc || op->oflagp->dc);
         op->xc_cat = (op->iflagp->cat || op->oflagp->cat);
         if (op->iflagp->xcopy) {

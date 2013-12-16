@@ -51,6 +51,9 @@ fi
 %{_mandir}/man8/*
 
 %changelog
+* Sat Dec 14 2013 - dgilbert at interlog dot com
+- change the xcopy default to send to destination
+  * ddpt-0.94
 * Wed Nov 13 2013 - dgilbert at interlog dot com
 - allow tape device in non-pt mode; rework signal handling, xcopy
   * ddpt-0.93

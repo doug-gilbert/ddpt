@@ -1,4 +1,4 @@
-.TH DDPT "8" "November 2013" "ddpt\-0.94" DDPT
+.TH DDPT "8" "December 2013" "ddpt\-0.94" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -288,10 +288,9 @@ See EXAMPLES section below and the README.win32 file.
 .TP
 \fB\-x\fR, \fB\-\-xcopy\fR
 this option will attempt to call the SCSI EXTENDED COPY command. In the
-absence of "oflags=xcopy" the xcopy command will be sent to the
-source (i.e. \fIIFILE\fR). If "oflags=xcopy" is given and "iflags=xcopy"
-is not given then the xcopy command will be sent to the
-destination (i.e. \fIOFILE\fR).
+absence of another indication the xcopy command will be sent to the
+destination (i.e. \fIOFILE\fR). See the section on ENVIRONMENT VARIABLES
+below.
 .SH COUNT
 When the \fIcount=COUNT\fR option is not given (or \fICOUNT\fR is '\-1')
 then an attempt is made to deduce \fICOUNT\fR as follows.
@@ -987,6 +986,14 @@ transfer.
 If the \fIpad\fR flag is set for both source and target any residual
 source data will be discarded, and any residual destination data will
 be padded.
+.SH ENVIRONMENT VARIABLES
+If the command line invocation of an xcopy does not explicitly (and
+unambiguously) indicate whether the XCOPY SCSI command should be sent
+to \fIIFILE\fR (i.e.  the source) or \fIOFILE\fR (i.e. the destination)
+then a check is made for the presence of the XCOPY_TO_SRC and
+XCOPY_TO_DST environment variables. If either one exists (but not both)
+then it indicates where the SCSI XCOPY command will be sent. By default
+the XCOPY command is sent to \fIOFILE\fR.
 .SH EXIT STATUS
 To aid scripts that call ddpt, the exit status is set to indicate
 success (0) or failure (1 or more). Note that some of the lower values
