@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.94 20131214 [svn: r245]";
+static const char * version_str = "0.94 20131218 [svn: r247]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -1104,8 +1104,8 @@ cl_sanity_defaults(struct opts_t * op)
                     op->oflagp->xcopy = 1;
 #endif
                 if (op->verbose > 1)
-                    pr2serr("default dictates which device to send xcopy "
-                            "command to\n");
+                    pr2serr("Default dictates which device to send xcopy "
+                            "command to:\n");
             } else {
                 if (csp) {
                     if (! op->iflagp->xcopy)
@@ -1117,31 +1117,34 @@ cl_sanity_defaults(struct opts_t * op)
                         op->oflagp->xcopy = 1;
                 }
                 if (op->verbose > 1)
-                    pr2serr("  %s dictates which device to send xcopy "
-                            "command to\n",
+                    pr2serr("%s dictates which device to send xcopy "
+                            "command to:\n",
                             (csp ? XCOPY_TO_SRC : XCOPY_TO_DST));
             }
         }
-        if (op->verbose)
+        if (op->verbose) {
+            if (op->verbose > 1)
+                pr2serr("  ");
             pr2serr("Will send xcopy command to %s [%s=%s]\n",
                     (op->iflagp->xcopy ? "src" : "dst"),
                     (op->iflagp->xcopy ? "if" : "of"),
                     (op->iflagp->xcopy ? op->idip->fn : op->odip->fn));
+        }
         op->xc_dc = (op->iflagp->dc || op->oflagp->dc);
         op->xc_cat = (op->iflagp->cat || op->oflagp->cat);
         if (op->iflagp->xcopy) {
             if (! op->iflagp->pt) {
                 op->iflagp->pt = 1;
-                if (op->verbose)
-                    pr2serr("setting pt (pass-through) on IFILE for "
+                if (op->verbose > 3)
+                    pr2serr("Setting pt (pass-through) on IFILE for "
                             "xcopy\n");
 
             }
         } else {
             if (! op->oflagp->pt) {
                 op->oflagp->pt = 1;
-                if (op->verbose)
-                    pr2serr("setting pt (pass-through) on OFILE for "
+                if (op->verbose > 3)
+                    pr2serr("Setting pt (pass-through) on OFILE for "
                             "xcopy\n");
             }
         }
