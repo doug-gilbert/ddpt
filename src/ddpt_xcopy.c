@@ -81,6 +81,9 @@
 #define TD_IP_COPY_SERVICE 2048
 #define TD_ROD 4096
 
+static const char * rec_copy_op_params_str = "Receive copy operating "
+                                             "parameters";
+
 
 static int
 simplified_dt(const struct dev_info_t * dip)
@@ -274,8 +277,7 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
                 "truncated\n");
     }
     if (op->verbose > 2) {
-        pr2serr("\nOutput receive copy operating parameters response in "
-                "hex:\n");
+        pr2serr("\nOutput %s response in hex:\n", rec_copy_op_params_str);
         dStrHexErr((const char *)rcBuff, len, 1);
     }
     snlid = rcBuff[4] & 0x1;
@@ -289,7 +291,7 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
     max_inline_data = rcBuff[20] << 24 | rcBuff[21] << 16 | rcBuff[22] << 8 |
                       rcBuff[23];
     if (op->verbose) {
-        pr2serr(" >> Report operating parameters, %sput [%s]:\n",
+        pr2serr(" >> %s, %sput [%s]:\n", rec_copy_op_params_str,
                 (is_dest ? "out" : "in"), dip->fn);
         pr2serr("    Support No List IDentifier (SNLID): %d\n", snlid);
         pr2serr("    Maximum target descriptor count: %lu\n", max_target_num);
@@ -866,19 +868,20 @@ do_xcopy(struct opts_t * op)
     res = scsi_operating_parameter(op, 0);
     if (res < 0) {
         if (SG_LIB_CAT_UNIT_ATTENTION == -res) {
-            pr2serr("Unit attention (oper parm), continuing\n");
+            pr2serr("Unit attention (%s), continuing\n",
+                    rec_copy_op_params_str);
             res = scsi_operating_parameter(op, 0);
         } else {
             if (-res == SG_LIB_CAT_INVALID_OP) {
-                pr2serr("receive copy operating parameters not supported "
-                        "on %s\n", idip->fn);
+                pr2serr("%s command not supported on %s\n",
+                        rec_copy_op_params_str, idip->fn);
                 return EINVAL;
             } else if (-res == SG_LIB_CAT_NOT_READY)
-                pr2serr("receive copy operating parameters failed on %s - "
-                        "not ready\n", idip->fn);
+                pr2serr("%s failed on %s - not ready\n",
+                        rec_copy_op_params_str, idip->fn);
             else {
-                pr2serr("Unable to receive copy operating parameters on "
-                        "%s\n", idip->fn);
+                pr2serr("Unable to %s on %s\n", rec_copy_op_params_str,
+                        idip->fn);
                 return -res;
             }
         }
@@ -899,19 +902,20 @@ do_xcopy(struct opts_t * op)
     res = scsi_operating_parameter(op, 1);
     if (res < 0) {
         if (SG_LIB_CAT_UNIT_ATTENTION == -res) {
-            pr2serr("Unit attention (oper parm), continuing\n");
+            pr2serr("Unit attention (%s), continuing\n",
+                    rec_copy_op_params_str);
             res = scsi_operating_parameter(op, 1);
         } else {
             if (-res == SG_LIB_CAT_INVALID_OP) {
-                pr2serr("receive copy operating parameters not supported "
-                        "on %s\n", odip->fn);
+                pr2serr("%s command not supported on %s\n",
+                        rec_copy_op_params_str, odip->fn);
                 return EINVAL;
             } else if (-res == SG_LIB_CAT_NOT_READY)
-                pr2serr("receive copy operating parameters failed on %s - "
-                        "not ready\n", odip->fn);
+                pr2serr("%s failed on %s - not ready\n",
+                        rec_copy_op_params_str, odip->fn);
             else {
-                pr2serr("Unable to receive copy operating parameters on "
-                        "%s\n", odip->fn);
+                pr2serr("Unable to %s on %s\n", rec_copy_op_params_str,
+                        odip->fn);
                 return -res;
             }
         }
