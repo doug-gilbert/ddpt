@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2013 Douglas Gilbert.
+ * Copyright (c) 2008-2014 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.94 20131218 [svn: r247]";
+static const char * version_str = "0.94 20140101 [svn: r248]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -213,9 +213,10 @@ primary_help:
            "[status=STAT]\n"
            "             [verbose=VERB]\n"
 #ifdef SG_LIB_WIN32
-           "             [--help] [--verbose] [--version] [--wscan]\n"
+           "             [--help] [--verbose] [--version] [--wscan] "
+           "[--xcopy]\n"
 #else
-           "             [--help] [--verbose] [--version]\n"
+           "             [--help] [--verbose] [--version] [--xcopy]\n"
 #endif
            "  where:\n"
            "    bpt         input Blocks Per Transfer (BPT) (def: 128 when "
@@ -1177,6 +1178,18 @@ cl_sanity_defaults(struct opts_t * op)
     return 0;
 }
 
+static int
+num_chs_in_str(const char * s, int slen, int ch)
+{
+    int res = 0;
+
+    while (--slen >= 0) {
+        if (ch == s[slen])
+            ++res;
+    }
+    return res;
+}
+
 /* Process options on the command line. Returns 0 if successful, > 0 for
  * (syntax) error and -1 for early exit (e.g. after '--help') */
 static int
@@ -1186,7 +1199,7 @@ cl_process(struct opts_t * op, int argc, char * argv[])
     char * key;
     char * buf;
     char * cp;
-    int k, n;
+    int k, n, keylen, res;
 
     for (k = 1; k < argc; ++k) {
         if (argv[k]) {
@@ -1199,6 +1212,7 @@ cl_process(struct opts_t * op, int argc, char * argv[])
             ++buf;
         if (*buf)
             *buf++ = '\0';
+        keylen = (int)strlen(key);
         // check for option names, in alphabetical order
         if (0 == strcmp(key, "bpt")) {
             cp = strchr(buf, ',');
@@ -1445,43 +1459,51 @@ cl_process(struct opts_t * op, int argc, char * argv[])
                 ++op->quiet;
                 op->verbose = 0;
             }
-        } else if (0 == strncmp(key, "--verb", 6))
-            ++op->verbose;
-        else if (0 == strncmp(key, "-vvvv", 5))
-            op->verbose += 4;
-        else if (0 == strncmp(key, "-vvv", 4))
-            op->verbose += 3;
-        else if (0 == strncmp(key, "-vv", 3))
-            op->verbose += 2;
-        else if (0 == strncmp(key, "-v", 2))
-            ++op->verbose;
-        else if (0 == strncmp(key, "-hh", 3))
-            op->do_help += 2;
-        else if ((0 == strncmp(key, "--help", 7)) ||
-                 (0 == strncmp(key, "-h", 2)) ||
-                 (0 == strcmp(key, "-?")))
+        }
+        /* look for long options that start with '--' */
+        else if (0 == strncmp(key, "--help", 6))
             ++op->do_help;
-        else if ((0 == strncmp(key, "--vers", 6)) ||
-                 (0 == strncmp(key, "-V", 2))) {
+        else if (0 == strncmp(key, "--verb", 6))
+            ++op->verbose;
+        else if (0 == strncmp(key, "--vers", 6)) {
             pr2serr("%s\n", version_str);
             return -1;
         }
 #ifdef SG_LIB_WIN32
         else if (0 == strncmp(key, "--wscan", 7))
             ++op->wscan;
-        else if (0 == strncmp(key, "-wwww", 5))
-            op->wscan += 4;
-        else if (0 == strncmp(key, "-www", 4))
-            op->wscan += 3;
-        else if (0 == strncmp(key, "-ww", 3))
-            op->wscan += 2;
-        else if (0 == strncmp(key, "-w", 2))
-            ++op->wscan;
 #endif
-        else if ((0 == strncmp(key, "--xcopy", 7)) ||
-                 (0 == strncmp(key, "-x", 2)))
+        else if (0 == strncmp(key, "--xcopy", 7))
             ++op->has_xcopy;
-        else {
+        /* look for short options that start with a single '-', they can be
+         * concaternated (e.g. '-vvvx') */
+        else if ((keylen > 1) && ('-' == key[0]) && ('-' != key[1])) {
+            res = 0;
+            n = num_chs_in_str(key + 1, keylen - 1, 'h');
+            op->do_help += n;
+            res += n;
+            n = num_chs_in_str(key + 1, keylen - 1, 'v');
+            op->verbose += n;
+            res += n;
+            if (num_chs_in_str(key + 1, keylen - 1, 'V')) {
+                pr2serr("%s\n", version_str);
+                return -1;
+            }
+#ifdef SG_LIB_WIN32
+            n = num_chs_in_str(key + 1, keylen - 1, 'w');
+            op->wscan += n;
+            res += n;
+#endif
+            n = num_chs_in_str(key + 1, keylen - 1, 'x');
+            op->has_xcopy += n;
+            res += n;
+            if (res < (keylen - 1)) {
+                pr2serr("Unrecognised short option in '%s', try '--help'\n",
+                        key);
+                if (0 == op->do_help)
+                    return -1;
+            }
+        } else {
             pr2serr("Unrecognized option '%s'\n", key);
             pr2serr("For more information use '--help'\n");
             return SG_LIB_SYNTAX_ERROR;
