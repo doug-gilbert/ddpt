@@ -91,6 +91,8 @@ extern "C" {
 #define DEF_TIMEOUT 60000       /* 60,000 millisecs == 60 seconds */
 #define WRITE_SAME16_TIMEOUT 180000  /* 3 minutes */
 
+#define DEF_GROUP_NUM 0
+
 #ifdef SG_LIB_LINUX
 #ifndef RAW_MAJOR
 #define RAW_MAJOR 255   /*unlikey value */
@@ -111,6 +113,12 @@ extern "C" {
 #define FT_FIFO 64              /* fifo (named or unnamed pipe (stdout)) */
 #define FT_CHAR 128             /* char dev, doesn't fit another category */
 #define FT_ERROR 256            /* couldn't "stat" file */
+
+/* ODX type requested */
+#define ODX_REQ_NONE 0          /* some other type of copy */
+#define ODX_REQ_PT 1            /* POPULATE TOKEN (PT): disk->held */
+#define ODX_REQ_WUT 2           /* WRITE USING TOKEN (WUT): held->disk */
+#define ODX_REQ_COPY 3          /* PT followed by WUT */
 
 /* If O_DIRECT or O_SYNC not supported then define harmlessly */
 #ifndef O_DIRECT
@@ -148,6 +156,18 @@ extern "C" {
 #define XCOPY_TO_DST "XCOPY_TO_DST"
 #define DEF_XCOPY_SRC0_DST1 1
 
+struct scat_gath_elem {
+    uint64_t lba;       /* of first block */
+    uint32_t num;       /* of blocks */
+};
+
+struct block_rod_vpd {
+    uint16_t max_range_desc;
+    uint32_t max_inactivity_to;
+    uint32_t def_inactivity_to;
+    uint32_t max_tok_xfer_size;
+    uint32_t optimal_xfer_count;
+};
 
 /* One instance for arguments to iflag= , another instance for oflag=
  * conv= arguments are mapped to flag arguments.
@@ -155,10 +175,11 @@ extern "C" {
 struct flags_t {
     int append;
     int block;          /* only for pt, non blocking default */
-    int cat;            /* xcopy related */
+    int cat;            /* xcopy(lid1) related */
     int cdbsz;
     int coe;
-    int dc;             /* xcopy related */
+    int dc;             /* xcopy(lid1) related */
+    int del_tkn;        /* xcopy(odx) related */
     int direct;
     int dpo;
     int errblk;
@@ -170,12 +191,15 @@ struct flags_t {
     int fua;
     int fua_nv;
     int ignoreew;       /* tape */
+    int immed;          /* xcopy(odx) related */
     int nocache;
+    int no_del_tkn;     /* xcopy(odx) related */
     int nofm;           /* tape */
     int nopad;
     int norcap;
     int nowrite;
-    int pad;            /* used for xcopy or tape */
+    int odx;            /* xcopy(LID4), sbc-3's POPULATE TOKEN++ */
+    int pad;            /* used for xcopy(lid1) or tape */
     int prealloc;
     int pt;             /* use pass-through to inject SCSI commands */
     int resume;
@@ -244,7 +268,12 @@ struct opts_t {
     int quiet;
     int do_help;
     int do_time;
-    int has_xcopy;      /* --xcopy option, iflag=xcopy or oflag=xcopy */
+    int has_xcopy;      /* --xcopy (LID1): iflag=xcopy or oflag=xcopy */
+    int odx_request;    /* ODX_REQ_NONE==0 for no ODX */
+    uint32_t inactivity_to;     /* ODX: timeout in seconds */
+    uint32_t rod_type;          /* ODX: ROD type */
+    int64_t offset_in_rod;      /* ODX: units are obs */
+    const char * rtf;   /* ODX: ROD token filename */
     struct flags_t * iflagp;
     struct dev_info_t * idip;
     struct flags_t * oflagp;

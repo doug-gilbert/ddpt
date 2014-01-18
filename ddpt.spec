@@ -51,8 +51,8 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Sat Dec 14 2013 - dgilbert at interlog dot com
-- change the xcopy default to send to destination
+* Fri Jan 17 2014 - dgilbert at interlog dot com
+- add ODX (subset xcopy(LID4)) support
   * ddpt-0.94
 * Wed Nov 13 2013 - dgilbert at interlog dot com
 - allow tape device in non-pt mode; rework signal handling, xcopy

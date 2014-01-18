@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.94 20140101 [svn: r248]";
+static const char * version_str = "0.94 20140117 [svn: r249]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -195,8 +195,10 @@ usage(int help)
 {
     if (help < 2)
         goto primary_help;
-    else
+    else if (2 == help)
         goto secondary_help;
+    else
+        goto tertiary_help;
 
 primary_help:
     pr2serr("Usage: "
@@ -205,20 +207,21 @@ primary_help:
            "[delay=MS[,W_MS]]\n"
            "             [ibs=IBS] [id_usage=LIU] if=IFILE [iflag=FLAGS] "
            "[intio=0|1]\n"
-           "             [iseek=SKIP] [list_id=LID] [obs=OBS] [of=OFILE] "
-           "[of2=OFILE2]\n"
-           "             [oflag=FLAGS] [oseek=SEEK] [prio=PRIO] "
-           "[protect=RDP[,WRP]]\n"
-           "             [retries=RETR] [seek=SEEK] [skip=SKIP] "
-           "[status=STAT]\n"
-           "             [verbose=VERB]\n"
+           "             [iseek=SKIP] [it=IT] [list_id=LID] [obs=OBS] "
+           "[of=OFILE]\n"
+           "             [of2=OFILE2] [oflag=FLAGS] [oir=OIR] [oseek=SEEK] "
+           "[prio=PRIO]\n"
+           "             [protect=RDP[,WRP]] [retries=RETR] [rtf=RTF] "
+           "[rtype=RTYPE]\n"
+           "             [seek=SEEK] [skip=SKIP] [status=STAT] "
+           "[verbose=VERB]\n"
 #ifdef SG_LIB_WIN32
            "             [--help] [--verbose] [--version] [--wscan] "
            "[--xcopy]\n"
 #else
            "             [--help] [--verbose] [--version] [--xcopy]\n"
 #endif
-           "  where:\n"
+           "  where the main options are:\n"
            "    bpt         input Blocks Per Transfer (BPT) (def: 128 when "
            "IBS is 512)\n"
            "                Output Blocks Per Check (OBPC) (def: 0 implies "
@@ -226,53 +229,28 @@ primary_help:
            "    bs          block size for input and output (overrides "
            "ibs and obs)\n");
     pr2serr(
-           "    cdbsz       size of SCSI READ or WRITE cdb (default is "
-           "10)\n"
            "    coe         0->exit on error (def), 1->continue on "
            "error (zero fill)\n"
-           "    coe_limit   limit consecutive 'bad' blocks on reads to CL "
-           "times\n"
-           "                when coe=1 (default: 0 which is no limit)\n"
            "    conv        conversions, comma separated list of CONVS "
            "(see below)\n"
            "    count       number of input blocks to copy (def: "
            "(remaining)\n"
            "                device/file size)\n"
-           "    delay       wait MS milliseconds between each copy segment "
-           "(def: 0)\n"
-           "                wait W_MS milliseconds prior to each write "
-           "(def: 0)\n"
            "    ibs         input block size (default 512 bytes)\n"
-           "    id_usage    xcopy: set list_id_usage to hold (0), discard "
-           "(2),\n"
-           "                disable (3), or the given number (def: 0 or "
-           "2)\n"
            "    if          file or device to read from (for stdin use "
            "'-')\n"
            "    iflag       input flags, comma separated list from FLAGS "
            "(see below)\n"
-           "    intio       interrupt during IO; allow signals during reads "
-           "and writes\n"
-           "                (def: 0 causes signals to be masked during IO)\n"
-           "    iseek       block position to start reading from IFILE\n"
-           "    list_id     xcopy: list_id (def: 1 or 0)\n"
            "    obs         output block size (def: 512). When IBS is "
            "not equal to OBS\n"
            "                then (((IBS * BPT) %% OBS) == 0) is required\n"
            "    of          file or device to write to (def: /dev/null)\n");
     pr2serr(
-           "    of2         additional output file (def: /dev/null), "
-           "OFILE2 should be\n"
-           "                regular file or pipe\n"
            "    oflag       output flags, comma separated list from FLAGS "
            "(see below)\n"
-           "    oseek       block position to start writing to OFILE\n"
-           "    prio        xcopy: set priority field to PRIO (def: 1)\n"
-           "    protect     set rdprotect and/or wrprotect fields on "
-           "pt commands\n"
            "    retries     retry pass-through errors RETR times "
            "(def: 0)\n"
-           "    seek        block position to start writing to OFILE\n"
+           "    seek        block position to start writing in OFILE\n"
            "    skip        block position to start reading from IFILE\n"
            "    status      'noxfer' suppresses throughput calculation; "
            "'none'\n"
@@ -291,12 +269,46 @@ primary_help:
            "\nCopy all or part of IFILE to OFILE, IBS*BPT bytes at a time. "
            "Similar to\n"
            "dd command. Support for block devices, especially those "
-           "accessed via\na SCSI pass-through. For list of FLAGS and CONVS "
-           "use '-hh' .\n");
+           "accessed via a\nSCSI pass-through. Also supports offloaded "
+           "copies: xcopy(LID1) and ODX.\nFor more information use "
+           "'-h' multiple times (e.g. '-hh' or '-hhh').\n");
     return;
 
 secondary_help:
-    pr2serr("FLAGS:\n"
+    pr2serr("  where the lesser used command line options are:\n"
+           "    cdbsz       size of SCSI READ or WRITE cdb (default is "
+           "10)\n"
+           "    coe_limit   limit consecutive 'bad' blocks on reads to CL "
+           "times\n"
+           "                when coe=1 (default: 0 which is no limit)\n"
+           "    delay       wait MS milliseconds between each copy segment "
+           "(def: 0)\n"
+           "                wait W_MS milliseconds prior to each write "
+           "(def: 0)\n"
+           "    id_usage    xcopy: set list_id_usage to hold (0), discard "
+           "(2),\n"
+           "                disable (3), or the given number (def: 0 or "
+           "2)\n"
+           "    intio       interrupt during IO; allow signals during reads "
+           "and writes\n"
+           "                (def: 0 causes signals to be masked during IO)\n"
+           "    iseek       block position to start reading from IFILE "
+           "(same as skip)\n"
+           "    it          inactivity timeout (def: 0 (from 3PC VPD); "
+           "units: seconds)\n"
+           "    list_id     xcopy: list_id (def: 1 or 0)\n"
+           "    of2         additional output file (def: /dev/null), "
+           "OFILE2 should be\n"
+           "                regular file or pipe\n"
+           "    oir         offset in ROD (odx) (def: 0, units OBS)\n"
+           "    oseek       block position to start writing in OFILE\n"
+           "    prio        xcopy: set priority field to PRIO (def: 1)\n"
+           "    protect     set rdprotect and/or wrprotect fields on "
+           "pt commands\n"
+           "    rtf         ROD Token filename (odx)\n"
+           "    rtype       ROD type (odx) (def: 0 -> cm decides)\n\n");
+    pr2serr("FLAGS: (arguments to oflag= and oflag=; may be comma "
+            "separated\n"
             "  append (o)     append (part of) IFILE to end of OFILE\n"
             "  block (pt)     pt opens are non blocking by default\n"
             "  cat (xcopy)    set CAT bit in segment descriptor header\n"
@@ -304,6 +316,8 @@ secondary_help:
             "  dc (xcopy)     set DC bit in segment descriptor header\n"
             "  direct         set O_DIRECT flag in open() of IFILE and/or "
             "OFILE\n"
+            "  del_tkn (odx)  delete ROD token after WRITE USING TOKEN "
+            "complete\n"
             "  dpo            set disable page out (DPO) on pt READs and "
             "WRITES\n"
             "  errblk (i,pt)  write errored LBAs to errblk.txt file\n"
@@ -319,7 +333,15 @@ secondary_help:
             "  fua_nv (pt)    force unit access, non-volatile (obsoleted by "
             "T10)\n"
             "  ignoreew (o)   ignore early warning (end of tape)\n"
+            "  immed (odx)    commands poll until complete, report "
+            "progress\n"
+            "... continued on next page (use '-hhh')\n");
+    return;
+tertiary_help:
+    pr2serr("FLAGS: (continued)\n"
             "  nocache        use posix_fadvise(POSIX_FADV_DONTNEED)\n"
+            "  no_del_tkn (odx)  don not delete ROD token after WRITE USING "
+            "TOKEN\n"
             "  nofm (o)       no File Mark (FM) on close when writing to "
             "tape\n"
             "  nopad          inhibits tapes blocks less than OBS being "
@@ -327,6 +349,10 @@ secondary_help:
             "  norcap (pt)    do not invoke SCSI READ CAPACITY command\n"
             "  nowrite (o)    bypass all writes to OFILE\n"
             "  null           does nothing, place holder\n"
+            "  odx            request xcopy(LID4) based on POPULATE TOKEN "
+            "(disk->held)\n"
+            "                 and/or WRITE USING TOKEN (held->disk) "
+            "commands\n"
             "  pad (o)        pad blocks shorter than OBS with zeroes\n"
             "  pre-alloc (o)  use fallocate() before copy to set OFILE to "
             "its\n"
@@ -888,6 +914,8 @@ flags_process(const char * arg, struct flags_t * fp)
             ++fp->coe;
         else if (0 == strcmp(cp, "dc"))
             ++fp->dc;
+        else if (0 == strcmp(cp, "del_tkn"))
+            ++fp->del_tkn;
         else if (0 == strcmp(cp, "direct"))
             ++fp->direct;
         else if (0 == strcmp(cp, "dpo"))
@@ -910,8 +938,12 @@ flags_process(const char * arg, struct flags_t * fp)
             ++fp->fua;
         else if (0 == strcmp(cp, "ignoreew")) /* tape: ignore early warning */
             ++fp->ignoreew;
+        else if (0 == strcmp(cp, "immed"))
+            ++fp->immed;
         else if (0 == strcmp(cp, "nocache"))
             ++fp->nocache;
+        else if (0 == strcmp(cp, "no_del_tkn"))
+            ++fp->no_del_tkn;
         else if (0 == strcmp(cp, "nofm"))     /* No filemark on tape close */
             ++fp->nofm;
         else if (0 == strcmp(cp, "nopad"))
@@ -922,6 +954,8 @@ flags_process(const char * arg, struct flags_t * fp)
             ++fp->nowrite;
         else if (0 == strcmp(cp, "null"))
             ;
+        else if (0 == strcmp(cp, "odx"))
+            ++fp->odx;
         else if (0 == strcmp(cp, "pad"))
             ++fp->pad;
         else if (0 == strcmp(cp, "pre-alloc") || 0 == strcmp(cp, "prealloc"))
@@ -986,6 +1020,8 @@ default_bpt_i(int ibs)
 static int
 cl_sanity_defaults(struct opts_t * op)
 {
+    const char * cp;
+
     if ((0 == op->ibs) && (0 == op->obs)) {
         op->ibs = DEF_BLOCK_SIZE;
         op->obs = DEF_BLOCK_SIZE;
@@ -1150,7 +1186,32 @@ cl_sanity_defaults(struct opts_t * op)
             }
         }
     }
-
+    if (op->iflagp->odx || op->iflagp->odx) {
+        if (op->has_xcopy) {
+            pr2serr("Can either request xcopy(LID1) or ODX but not "
+                    "both\n");
+            return SG_LIB_SYNTAX_ERROR;
+        }
+        cp = "";
+        if (op->idip->fn[0] && op->odip->fn[0]) {
+            op->odx_request = ODX_REQ_COPY;
+            cp = "copy; POPULATE TOKEN followed by WRITE USING TOKEN";
+        } else if (op->idip->fn[0]) {
+            op->odx_request = ODX_REQ_PT;
+            cp = "disk-->held; POPULATE TOKEN";
+        } else if (op->odip->fn[0]) {
+            op->odx_request = ODX_REQ_WUT;
+            cp = "held-->disk; WRITE USING TOKEN";
+        } else {
+            pr2serr("For ODX want IFILE and/or OFILE\n");
+            return SG_LIB_SYNTAX_ERROR;
+        }
+        if (op->verbose) {
+            pr2serr("ODX: prepare for %s\n", cp);
+            if ((op->verbose > 1) && (0 != op->rod_type))
+                pr2serr("ODX: ROD type: 0x%" PRIx32 "\n", op->rod_type);
+        }
+    }
     if (op->verbose) {      /* report flags used but not supported */
 #ifndef SG_LIB_LINUX
         if (op->iflagp->flock || op->oflagp->flock)
@@ -1348,13 +1409,20 @@ cl_process(struct opts_t * op, int argc, char * argv[])
                 pr2serr("bad argument to 'iseek='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-        } else if (0 == strcmp(key, "list_id")) {
+        } else if (0 == strcmp(key, "it")) {
             n = sg_get_num(buf);
-            if (-1 == n || n > 0xff) {
+            if (-1 == n) {
                 pr2serr("bad argument to 'list_id='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-            op->list_id = (n & 0xff);
+            op->inactivity_to = n;
+        } else if (0 == strcmp(key, "list_id")) {
+            n = sg_get_num(buf);
+            if (-1 == n) {
+                pr2serr("bad argument to 'list_id='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            op->list_id = n;
             op->list_id_given = 1;
         } else if (0 == strcmp(key, "obs")) {
             n = sg_get_num(buf);
@@ -1385,6 +1453,12 @@ cl_process(struct opts_t * op, int argc, char * argv[])
         } else if (0 == strcmp(key, "oflag")) {
             if (flags_process(buf, op->oflagp)) {
                 pr2serr("bad argument to 'oflag='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (0 == strcmp(key, "oir")) {
+            op->offset_in_rod = sg_get_llnum(buf);
+            if (-1LL == op->offset_in_rod) {
+                pr2serr("bad argument to 'oir='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strcmp(key, "oseek")) {
@@ -1424,6 +1498,33 @@ cl_process(struct opts_t * op, int argc, char * argv[])
             if (-1 == op->iflagp->retries) {
                 pr2serr("bad argument to 'retries='\n");
                 return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (0 == strcmp(key, "rtf")) {
+            if (op->rtf) {
+                pr2serr("Can only use rtf=RTF once for ROD Token filename\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            op->rtf = buf;
+        } else if (0 == strcmp(key, "rtype")) {
+            if (0 == strncmp("pot-def", buf, 7))
+                op->rod_type = 0x800000;
+            else if (0 == strncmp("pot-vuln", buf, 8))
+                op->rod_type = 0x800001;
+            else if (0 == strncmp("pot-pers", buf, 8))
+                op->rod_type = 0x800002;
+            else if (0 == strncmp("pot-any", buf, 7))
+                op->rod_type = 0x80ffff;
+            else if (0 == strcmp("zero", buf))
+                op->rod_type = 0xffff0001;
+            else {
+                n = sg_get_num(buf);
+                if (-1 == n) {
+                    pr2serr("bad argument to 'rtype='; can give (hex) "
+                            "number, 'pot-def', 'pot-vuln',\n");
+                    pr2serr("'pot-pers', 'pot-any' or 'zero'\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+                op->rod_type = (uint32_t)n;
             }
         } else if (0 == strcmp(key, "seek")) {
             op->seek = sg_get_llnum(buf);
@@ -4496,6 +4597,11 @@ main(int argc, char * argv[])
 #endif
 
     install_signal_handlers(op);
+
+    if (ODX_REQ_NONE != op->odx_request) {
+        pr2serr("call ODX logic here ....\n");
+        goto cleanup;
+    }
 
     if ((ret = open_files_devices(op)))
         return ret;

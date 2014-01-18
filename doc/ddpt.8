@@ -7,12 +7,13 @@ devices that understand the SCSI command set.
 [\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fR{6|10|12|16|32}]
 [\fIcoe=\fR{0|1}] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
 [\fIdelay=MS[,W_MS]\fR] [\fIibs=IBS\fR] [\fIid_usage=LIU\fR] \fIif=IFILE\fR
-[\fIiflag=FLAGS\fR] [\fIintio=\fR{0|1}] [\fIiseek=SKIP\fR]
+[\fIiflag=FLAGS\fR] [\fIintio=\fR{0|1}] [\fIiseek=SKIP\fR] [\fIit=IT\fR]
 [\fIlist_id=LID\fR] [\fIobs=OBS\fR] [\fIof=OFILE\fR] [\fIof2=OFILE2\fR]
-[\fIoflag=FLAGS\fR] [\fIoseek=SEEK\fR] [\fIprio=PRIO\fR]
-[\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR] [\fIseek=SEEK\fR]
-[\fIskip=SKIP\fR] [\fIstatus=STAT\fR] [\fIverbose=VERB\fR] [\fI\-\-help\fR]
-[\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR] [\fI\-\-xcopy\fR]
+[\fIoflag=FLAGS\fR] [\fIoir=OIR\fR] [\fIoseek=SEEK\fR] [\fIprio=PRIO\fR]
+[\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR] [\fIrtf=RTF\fR]
+[\fIrtype=RTYPE\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR]
+[\fIverbose=VERB\fR] [\fI\-\-help\fR] [\fI\-\-verbose\fR]
+[\fI\-\-version\fR] [\fI\-\-wscan\fR] [\fI\-\-xcopy\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
 .PP
@@ -178,6 +179,9 @@ start reading \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of
 \fIIFILE\fR. Default is block 0 (i.e. start of file). This option is a
 synonym for "skip=".
 .TP
+\fBit\fR=\fIIT\fR
+xxxxxxxxxx odx
+.TP
 \fBlist_id\fR=\fILID\fR
 xcopy: SCSI EXTENDED COPY parameter list LIST IDENTIFIER field is set to
 \fILID\fR. The default value is 1 or, if id_usage=disable, 0 .
@@ -214,6 +218,9 @@ where \fIFLAGS\fR is a comma separated list of one or more flags outlined
 in the FLAGS section. These flags are associated with \fIOFILE\fR and are
 ignored when \fIOFILE\fR is /dev/null, '.' (period), or stdout.
 .TP
+\fBoir\fR=\fIOIR\fR
+xxxxxxxxxx odx
+.TP
 \fBoseek\fR=\fISEEK\fR
 start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
 \fIOFILE\fR. Default is block 0 (i.e. start of file). This option is a
@@ -236,6 +243,12 @@ sometimes retries at the host are useful, for example when there is a
 transport error. When \fIRETR\fR is greater than zero then SCSI READs and
 WRITEs are retried on error, \fIRETR\fR times. Default value is zero.
 Only applies to errors on pt devices.
+.TP
+\fBrtf\fR=\fIRTF\fR
+xxxxxxxxxx odx
+.TP
+\fBrtype\fR=\fIRTYPE\fR
+xxxxxxxxxx odx
 .TP
 \fBseek\fR=\fISEEK\fR
 start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
