@@ -135,7 +135,7 @@ pt_open_if(struct opts_t * op)
     }
     dip->pdt = sir.peripheral_type;
     if (op->verbose) {
-        if (op->has_xcopy)
+        if (op->has_xcopy || (ODX_REQ_NONE != op->odx_request))
             pr2serr("    %s: %.8s  %.16s  %.4s  [pdt=%d, 3pc=%d]\n",
                     fn, sir.vendor, sir.product, sir.revision, dip->pdt,
                     !! (0x8 & sir.byte_5));
