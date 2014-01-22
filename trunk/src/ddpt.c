@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.94 20140117 [svn: r249]";
+static const char * version_str = "0.94 20140121 [svn: r250]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -207,7 +207,7 @@ primary_help:
            "[delay=MS[,W_MS]]\n"
            "             [ibs=IBS] [id_usage=LIU] if=IFILE [iflag=FLAGS] "
            "[intio=0|1]\n"
-           "             [iseek=SKIP] [it=IT] [list_id=LID] [obs=OBS] "
+           "             [iseek=SKIP] [ito=ITO] [list_id=LID] [obs=OBS] "
            "[of=OFILE]\n"
            "             [of2=OFILE2] [oflag=FLAGS] [oir=OIR] [oseek=SEEK] "
            "[prio=PRIO]\n"
@@ -294,7 +294,7 @@ secondary_help:
            "                (def: 0 causes signals to be masked during IO)\n"
            "    iseek       block position to start reading from IFILE "
            "(same as skip)\n"
-           "    it          inactivity timeout (def: 0 (from 3PC VPD); "
+           "    ito         inactivity timeout (def: 0 (from 3PC VPD); "
            "units: seconds)\n"
            "    list_id     xcopy: list_id (def: 1 or 0)\n"
            "    of2         additional output file (def: /dev/null), "
@@ -1186,7 +1186,8 @@ cl_sanity_defaults(struct opts_t * op)
             }
         }
     }
-    if (op->iflagp->odx || op->iflagp->odx) {
+    if (op->iflagp->odx || op->iflagp->odx || op->rtf[0] ||
+        op->rod_type_given) {
         if (op->has_xcopy) {
             pr2serr("Can either request xcopy(LID1) or ODX but not "
                     "both\n");
@@ -1202,13 +1203,16 @@ cl_sanity_defaults(struct opts_t * op)
         } else if (op->odip->fn[0]) {
             op->odx_request = ODX_REQ_WUT;
             cp = "held-->disk; WRITE USING TOKEN";
+        } else if (op->rtf[0]) {
+            op->odx_request = ODX_REQ_RT_INFO;
+            cp = "decode information in given ROD Token";
         } else {
-            pr2serr("For ODX want IFILE and/or OFILE\n");
+            pr2serr("Not enough options given to do ODX (xcopy(LID4))\n");
             return SG_LIB_SYNTAX_ERROR;
         }
         if (op->verbose) {
             pr2serr("ODX: prepare for %s\n", cp);
-            if ((op->verbose > 1) && (0 != op->rod_type))
+            if ((op->verbose > 1) && op->rod_type_given)
                 pr2serr("ODX: ROD type: 0x%" PRIx32 "\n", op->rod_type);
         }
     }
@@ -1261,6 +1265,7 @@ cl_process(struct opts_t * op, int argc, char * argv[])
     char * buf;
     char * cp;
     int k, n, keylen, res;
+    int64_t i64;
 
     for (k = 1; k < argc; ++k) {
         if (argv[k]) {
@@ -1387,7 +1392,7 @@ cl_process(struct opts_t * op, int argc, char * argv[])
             else if (! strncmp(buf, "disable", 7))
                 op->id_usage = 3;
             else {
-                pr2serr("bad argument to 'list_id='\n");
+                pr2serr("bad argument to 'id_usage='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (strcmp(key, "if") == 0) {
@@ -1395,7 +1400,7 @@ cl_process(struct opts_t * op, int argc, char * argv[])
                 pr2serr("Second IFILE argument??\n");
                 return SG_LIB_SYNTAX_ERROR;
             } else
-                strncpy(op->idip->fn, buf, INOUTF_SZ);
+                strncpy(op->idip->fn, buf, INOUTF_SZ - 1);
         } else if (0 == strcmp(key, "iflag")) {
             if (flags_process(buf, op->iflagp)) {
                 pr2serr("bad argument to 'iflag='\n");
@@ -1409,20 +1414,24 @@ cl_process(struct opts_t * op, int argc, char * argv[])
                 pr2serr("bad argument to 'iseek='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-        } else if (0 == strcmp(key, "it")) {
+        } else if (0 == strcmp(key, "ito")) {
             n = sg_get_num(buf);
             if (-1 == n) {
-                pr2serr("bad argument to 'list_id='\n");
+                pr2serr("bad argument to 'ito='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
             op->inactivity_to = n;
         } else if (0 == strcmp(key, "list_id")) {
-            n = sg_get_num(buf);
-            if (-1 == n) {
+            i64 = sg_get_llnum(buf);
+            if (-1 == i64) {
                 pr2serr("bad argument to 'list_id='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-            op->list_id = n;
+            if (i64 > UINT_MAX) {
+                pr2serr("argument to 'list_id=' too big for 32 bits\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            op->list_id = (uint32_t)i64;
             op->list_id_given = 1;
         } else if (0 == strcmp(key, "obs")) {
             n = sg_get_num(buf);
@@ -1442,14 +1451,14 @@ cl_process(struct opts_t * op, int argc, char * argv[])
                 pr2serr("Second OFILE argument??\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-            strncpy(op->odip->fn, buf, INOUTF_SZ);
+            strncpy(op->odip->fn, buf, INOUTF_SZ - 1);
             ++op->outf_given;
         } else if (strcmp(key, "of2") == 0) {
             if ('\0' != op->o2dip->fn[0]) {
                 pr2serr("Second OFILE2 argument??\n");
                 return SG_LIB_SYNTAX_ERROR;
             } else
-                strncpy(op->o2dip->fn, buf, INOUTF_SZ);
+                strncpy(op->o2dip->fn, buf, INOUTF_SZ - 1);
         } else if (0 == strcmp(key, "oflag")) {
             if (flags_process(buf, op->oflagp)) {
                 pr2serr("bad argument to 'oflag='\n");
@@ -1500,11 +1509,11 @@ cl_process(struct opts_t * op, int argc, char * argv[])
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strcmp(key, "rtf")) {
-            if (op->rtf) {
+            if (op->rtf[0]) {
                 pr2serr("Can only use rtf=RTF once for ROD Token filename\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-            op->rtf = buf;
+            strncpy(op->rtf, buf, INOUTF_SZ - 1);
         } else if (0 == strcmp(key, "rtype")) {
             if (0 == strncmp("pot-def", buf, 7))
                 op->rod_type = 0x800000;
@@ -1526,6 +1535,7 @@ cl_process(struct opts_t * op, int argc, char * argv[])
                 }
                 op->rod_type = (uint32_t)n;
             }
+            ++op->rod_type_given;
         } else if (0 == strcmp(key, "seek")) {
             op->seek = sg_get_llnum(buf);
             if (-1LL == op->seek) {
@@ -4599,7 +4609,7 @@ main(int argc, char * argv[])
     install_signal_handlers(op);
 
     if (ODX_REQ_NONE != op->odx_request) {
-        pr2serr("call ODX logic here ....\n");
+        ret = do_odx_copy(op);
         goto cleanup;
     }
 
