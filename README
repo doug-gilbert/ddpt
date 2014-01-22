@@ -71,11 +71,14 @@ the main directory. Amongst other things debian builds are sensitive to the
 value in the debian/compat file. If it contains "7" then it works on lenny and
 gives warning on squeeze (but fails on the earlier etch).
 
-The ./configure script contains two extra options: '--disable-linuxbsg' and
-'--disable-scsistrings'. The former drops Linux bsg driver support which
-should no longer be necessary. The latter option drops asc/ascq and command
-name strings (defined by SCSI) in an attempt to reduce the size of the
-executable.
+The ./configure script supports these extra options:
+  - '--disable-libsgutils' stops the build using the libsgutils library
+    if it is found. Instead the copy of those files found under the
+    include and lib directories is used.
+  - '--disable-linuxbsg' drops Linux bsg driver support. This is only
+    for testing and should no longer be necessary.
+  - '--disable-scsistrings' excludes the asc/ascq and command name strings
+    (defined by SCSI/T10) in an attempt to reduce the size of executables.
 
 License
 -------
@@ -116,4 +119,4 @@ See README.win32
 
 
 Douglas Gilbert
-17th January 2014
+22nd January 2014

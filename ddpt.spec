@@ -14,13 +14,12 @@ BuildRoot:	%{_tmppath}/%{name}-%{version}-root
 Packager:	Douglas Gilbert <dgilbert at interlog dot com>
 
 %description
-ddpt is yet another variant of the Unix dd command used to copy
-files. This variant is specialized for moving data to, from or
-between storage devices. If requested SCSI commands can be
-sent to read or write data. Such commands are sent via a pass-through
-interface. Note that recent (S)ATA disks can often be driven
-by SCSI commands due to SCSI to ATA translation (SAT) implemented
-in the kernel.
+ddpt is yet another variant of the Unix dd command used to copy files.
+This variant is specialized for moving data to, from or between storage
+devices. If requested, SCSI commands can be sent to read or write data.
+SCSI commands are sent via a pass-through interface. Also supports
+two variants of SCSI copy offload: xcopy(LID1) and the disk->disk
+subset of xcopy(LID4) known as ODX.
 
 %prep
 
@@ -51,7 +50,7 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Fri Jan 17 2014 - dgilbert at interlog dot com
+* Wed Jan 22 2014 - dgilbert at interlog dot com
 - add ODX (subset xcopy(LID4)) support
   * ddpt-0.94
 * Wed Nov 13 2013 - dgilbert at interlog dot com
