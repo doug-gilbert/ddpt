@@ -7,7 +7,7 @@ devices that understand the SCSI command set.
 [\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fR{6|10|12|16|32}]
 [\fIcoe=\fR{0|1}] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
 [\fIdelay=MS[,W_MS]\fR] [\fIibs=IBS\fR] [\fIid_usage=LIU\fR] \fIif=IFILE\fR
-[\fIiflag=FLAGS\fR] [\fIintio=\fR{0|1}] [\fIiseek=SKIP\fR] [\fIit=IT\fR]
+[\fIiflag=FLAGS\fR] [\fIintio=\fR{0|1}] [\fIiseek=SKIP\fR] [\fIito=ITO\fR]
 [\fIlist_id=LID\fR] [\fIobs=OBS\fR] [\fIof=OFILE\fR] [\fIof2=OFILE2\fR]
 [\fIoflag=FLAGS\fR] [\fIoir=OIR\fR] [\fIoseek=SEEK\fR] [\fIprio=PRIO\fR]
 [\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR] [\fIrtf=RTF\fR]
@@ -179,12 +179,24 @@ start reading \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of
 \fIIFILE\fR. Default is block 0 (i.e. start of file). This option is a
 synonym for "skip=".
 .TP
-\fBit\fR=\fIIT\fR
-xxxxxxxxxx odx
+\fBito\fR=\fIITO\fR
+odx: \fIITO\fR is the inactivity timeout whose units are seconds. The default
+value is 0 which means the copy manager will take the default inactivity
+timeout value from the Block Device ROD Token Limits descriptor in the
+Third Party Copy VPD page. \fIITO\fR should not exceed the maximum inactivity
+timeout value in the same descriptor.
 .TP
 \fBlist_id\fR=\fILID\fR
-xcopy: SCSI EXTENDED COPY parameter list LIST IDENTIFIER field is set to
-\fILID\fR. The default value is 1 or, if id_usage=disable, 0 .
+\fILID\fR is the xcopy LIST IDENTIFIER field whose size varies between
+xcopy(LID1) and xcopy(LID4)/odx. The user chooses this value and it should
+not clash with any other xcopy being done on this I_T nexus.
+.br
+xcopy(LID1): \fILID\fR is a 1 byte (8 bit) value whose default value is 1 or,
+if id_usage=disable, 0 . \fILID\fR must not exceed 255.
+.br
+odx (and xcopy(LID4): \fILID\fR is a 4 byte (32 bit) value whose default
+value is 257 (i.e.  0x101) and if a second default is needed that will be
+258 (0x102).
 .TP
 \fBobs\fR=\fIOBS\fR
 where \fIOBS\fR is the \fIOFILE\fR block size in bytes. The default value
@@ -445,6 +457,14 @@ set DC (destination counter) bit in EXTENDED COPY (LID1) parameter list
 segment descriptor header. May appear in either flag list when xcopy is
 being used.
 .TP
+del_tkn [o] [odx]
+will set the DEL_TKN bit in the WRITE USING TOKEN command. This will
+cause the token to be deleted (as far as the copy manager is concerned)
+after the write operation. The default for a partial ODX held(ROD)-->disk
+copy is to clear the DEL_TKN bit. Note that if a full ODX disk-->disk copy
+is being done then setting DEL_TKN is the default (override with the
+no_del_tkn flag).
+.TP
 direct [io] [reg,blk]
 causes the O_DIRECT flag to be added to the open of \fIIFILE\fR and/or
 \fIOFILE\fR. This flag requires some memory alignment on IO. Hence user
@@ -515,10 +535,20 @@ ignoreew [o] [tape]
 ignore the early warning indication (of end of tape) when writing to tape.
 See TAPE section.
 .TP
+immed [io] [odx]
+sets the IMMED bit in POPULATE TOKEN (when [i]) or WRITE USING TOKEN (when
+[o]) command. If set ddpt will poll for completion with the RECEIVE ROD
+TOKEN INFORMATION command.
+.TP
 nocache [io] [reg,blk]
 use posix_fadvise(POSIX_FADV_DONTNEED) to advise corresponding file there is
 no need to fill the file buffer with recently read or written blocks. If
 used with "iflag=" it will increase the read ahead on \fIIFILE\fR.
+.TP
+no_del_tkn [o] [odx]
+will clear the DEL_TKN bit in the WRITE USING TOKEN command associated with
+a full disk-->disk ODX copy. The default action with a full ODX copy is to
+set the DEL_TKN bit. Also see the del_tkn flag.
 .TP
 nofm [o] [tape]
 no File Mark (FM) on close when writing to tape. See TAPE section.
@@ -542,6 +572,11 @@ bypassed). Commands such as trim and SCSI SYNCHRONIZE CACHE are still sent.
 .TP
 null [io]
 has no affect, just a placeholder.
+.TP
+odx [io] [odx]
+indicates to this utility that a ODX partial or full copy is requested.
+Using the \fIrtf=RTF\fR or \fIrtype=RTYPE\fR option also indicates that ODX
+is requested. ODX is a disk based subset of xcopy(LID4).
 .TP
 pad [o] [reg,blk,pt]
 when the block to be written (typically the last block) contains less than

@@ -67,6 +67,25 @@
 #include "sg_cmds_extra.h"
 
 
+/* Third party copy IN (opcode 0x84) and OUT (opcode 0x83) command service
+ * actions */
+#define SA_XCOPY_LID1           0x0     /* OUT, originate */
+#define SA_XCOPY_LID4           0x1     /* OUT, originate */
+#define SA_POP_TOK              0x10    /* OUT, originate */
+#define SA_WR_USING_TOK         0x11    /* OUT, originate */
+#define SA_COPY_ABORT           0x1C    /* OUT, abort */
+#define SA_COPY_STATUS_LID1     0x0     /* IN, retrieve */
+#define SA_COPY_DATA_LID1       0x1     /* IN, retrieve */
+#define SA_COPY_OP_PARAMS       0x3     /* IN, retrieve */
+#define SA_COPY_FAIL_DETAILS    0x4     /* IN, retrieve */
+#define SA_COPY_STATUS_LID4     0x5     /* IN, retrieve */
+#define SA_COPY_DATA_LID4       0x6     /* IN, retrieve */
+#define SA_ROD_TOK_INFO         0x7     /* IN, retrieve */
+#define SA_ALL_ROD_TOKS         0x8     /* IN, retrieve */
+
+#define DEF_3PC_OUT_TIMEOUT (10 * 60)   /* is 10 minutes enough? */
+
+/* Target descriptor variety */
 #define TD_FC_WWPN 1
 #define TD_FC_PORT 2
 #define TD_FC_WWPN_AND_PORT 4
@@ -232,9 +251,14 @@ scsi_extended_copy(struct opts_t * op, unsigned char *src_desc,
                                         src_lba, dst_lba);
     xcopyBuff[11] = seg_desc_len; /* One segment descriptor */
     desc_offset += seg_desc_len;
-    return sg_ll_extended_copy(fd, xcopyBuff, desc_offset, 1, verb);
+    return sg_ll_3party_copy_out(fd, SA_XCOPY_LID1, op->list_id,
+                                 DEF_GROUP_NUM, DEF_3PC_OUT_TIMEOUT,
+                                 xcopyBuff, desc_offset, 1, verb);
 }
 
+/* Returns target descriptor variety encoded into an int. There may be
+ * more than one, OR-ed together. A return value of zero or less is
+ * considered as an error. */
 static int
 scsi_operating_parameter(struct opts_t * op, int is_dest)
 {
@@ -264,9 +288,9 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
         return -SG_LIB_FILE_ERROR;
     }
 
-    /* In SPC-4 opcode 0x84, service action 0x3 is called RECEIVE COPY
-     * OPERATING PARAMETERS */
-    res = sg_ll_receive_copy_results(fd, 0x3, 0, rcBuff, rcBuffLen, 1, verb);
+    /* Third Party Copy IN command; sa: RECEIVE COPY OPERATING PARAMETERS */
+    res = sg_ll_receive_copy_results(fd, SA_COPY_OP_PARAMS, 0, rcBuff,
+                                     rcBuffLen, 1, verb);
     if (0 != res)
         return -res;
 
@@ -764,25 +788,29 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
     flp = is_dest ? op->oflagp : op->iflagp;
     block_size = is_dest ? op->obs : op->ibs;
     memset(rcBuff, 0xff, len);
-    res = sg_ll_inquiry(fd, 0, 1, 0x83, rcBuff, 4, 1, verb);
+    res = sg_ll_inquiry(fd, 0, 1, VPD_DEVICE_ID, rcBuff, 4, 1, verb);
     if (0 != res) {
-        pr2serr("VPD inquiry failed with %d\n", res);
+        if (SG_LIB_CAT_ILLEGAL_REQ == res)
+            pr2serr("Device identification VPD page not found\n");
+        else
+            pr2serr("VPD inquiry failed with %d, try again with '-vv'\n",
+                    res);
         return res;
-    } else if (rcBuff[1] != 0x83) {
+    } else if (rcBuff[1] != VPD_DEVICE_ID) {
         pr2serr("invalid VPD response\n");
         return SG_LIB_CAT_MALFORMED;
     }
     len = ((rcBuff[2] << 8) + rcBuff[3]) + 4;
-    res = sg_ll_inquiry(fd, 0, 1, 0x83, rcBuff, len, 1, verb);
+    res = sg_ll_inquiry(fd, 0, 1, VPD_DEVICE_ID, rcBuff, len, 1, verb);
     if (0 != res) {
         pr2serr("VPD inquiry failed with %d\n", res);
         return res;
-    } else if (rcBuff[1] != 0x83) {
+    } else if (rcBuff[1] != VPD_DEVICE_ID) {
         pr2serr("invalid VPD response\n");
         return SG_LIB_CAT_MALFORMED;
     }
     if (op->verbose > 2) {
-        pr2serr("Output inquiry VPD page 0x83 (di) response in hex:\n");
+        pr2serr("Output VPD_DEVICE_ID (0x83) page in hex:\n");
         dStrHexErr((const char *)rcBuff, len, 1);
     }
 
@@ -852,7 +880,8 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
     return 0;
 }
 
-/* Called from main() in ddpt.c */
+/* Called from main() in ddpt.c . Returns 0 on success or a positive
+ * errno value if problems. This is for a xcopy(LID1) disk->disk copy. */
 int
 do_xcopy(struct opts_t * op)
 {
@@ -865,25 +894,32 @@ do_xcopy(struct opts_t * op)
     const struct dev_info_t * idip = op->idip;
     const struct dev_info_t * odip = op->odip;
 
+    if (op->list_id_given && (op->list_id > UCHAR_MAX)) {
+        pr2serr("list_id for xcopy(LID1) cannot exceed 255\n");
+        return SG_LIB_SYNTAX_ERROR;
+    }
+    if (op->id_usage == 3) { /* list_id usage disabled */
+        if (op->list_id_given && (0 != op->list_id)) {
+            pr2serr("list_id disabled by id_usage flag\n");
+            return SG_LIB_SYNTAX_ERROR;
+        } else
+            op->list_id = 0;
+    }
     res = scsi_operating_parameter(op, 0);
+    if (SG_LIB_CAT_UNIT_ATTENTION == -res)
+        res = scsi_operating_parameter(op, 0);
     if (res < 0) {
-        if (SG_LIB_CAT_UNIT_ATTENTION == -res) {
-            pr2serr("Unit attention (%s), continuing\n",
-                    rec_copy_op_params_str);
-            res = scsi_operating_parameter(op, 0);
-        } else {
-            if (-res == SG_LIB_CAT_INVALID_OP) {
-                pr2serr("%s command not supported on %s\n",
-                        rec_copy_op_params_str, idip->fn);
-                return EINVAL;
-            } else if (-res == SG_LIB_CAT_NOT_READY)
-                pr2serr("%s failed on %s - not ready\n",
-                        rec_copy_op_params_str, idip->fn);
-            else {
-                pr2serr("Unable to %s on %s\n", rec_copy_op_params_str,
-                        idip->fn);
-                return -res;
-            }
+        if (-res == SG_LIB_CAT_INVALID_OP) {
+            pr2serr("%s command not supported on %s\n",
+                    rec_copy_op_params_str, idip->fn);
+            return EINVAL;
+        } else if (-res == SG_LIB_CAT_NOT_READY)
+            pr2serr("%s failed on %s - not ready\n",
+                    rec_copy_op_params_str, idip->fn);
+        else {
+            pr2serr("Unable to %s on %s\n", rec_copy_op_params_str,
+                    idip->fn);
+            return -res;
         }
     } else if (res == 0)
         return SG_LIB_CAT_INVALID_OP;
@@ -1019,4 +1055,373 @@ do_xcopy(struct opts_t * op)
             signals_process_delay(op, DELAY_COPY_SEGMENT);
     }
     return res;
+}
+
+/* vvvvvvvvv  ODX [SBC-3's POPULATE TOKEN + WRITE USING TOKEN vvvvvvv */
+
+static int
+fetch_rt_after_poptok(struct opts_t * op)
+{
+    unsigned char rsp[2048];
+
+}
+
+
+
+static const char *
+rod_type_str(uint32_t rt, char * b, int blen)
+{
+    const char * pitc = "Point in time copy -";
+
+    switch (rt) {
+    case 0x0:
+        snprintf(b, blen, "Copy Manager internal");
+        break;
+    case 0x10000:
+        snprintf(b, blen, "Access upon reference");
+        break;
+    case 0x800000:
+        snprintf(b, blen, "%s default", pitc);
+        break;
+    case 0x800001:
+        snprintf(b, blen, "%s change vulnerable", pitc);
+        break;
+    case 0x800002:
+        snprintf(b, blen, "%s persistent", pitc);
+        break;
+    case 0x80ffff:
+        snprintf(b, blen, "%s any", pitc);
+        break;
+    case 0xffff0001:
+        snprintf(b, blen, "Block device zero ROD");
+        break;
+    default:
+        if (rt < 0xff000000)
+            snprintf(b, blen, "Reserved (any device type)");
+        else if (rt < 0xfffffff0)
+            snprintf(b, blen, "Reserved (device type specific)");
+        else
+            snprintf(b, blen, "Vendor specific");
+    }
+    return b;
+}
+
+static int
+odx_rt_info(const struct opts_t * op)
+{
+    int res, fd, err, m, prot_en, p_type, lbppbe;
+    uint64_t ui64;
+    uint32_t ui32, bs;
+    uint16_t rtl;
+    unsigned char rth[128];
+    char b[128];
+
+    if ('\0' == op->rtf[0]) {
+        pr2serr("odx_rt_info: expected ROD Token filename (rtf=RTF)\n");
+        return SG_LIB_FILE_ERROR;
+    }
+    if ((fd = open(op->rtf, O_RDONLY)) < 0) {
+        err = errno;
+        pr2serr("could not open '%s' for reading: %s\n", op->rtf,
+                safe_strerror(err));
+        return SG_LIB_FILE_ERROR;
+    }
+    res = read(fd, rth, sizeof(rth));
+    if (res < 0) {
+        err = errno;
+        pr2serr("could not read '%s': %s\n", op->rtf,
+                safe_strerror(err));
+        close(fd);
+        return SG_LIB_FILE_ERROR;
+    }
+    if (res < (int)sizeof(rth)) {
+        pr2serr("unable to read %d bytes from '%s', only got %d bytes\n",
+                 (int)sizeof(rth), op->rtf, res);
+        pr2serr("... it is unlikey file '%s' contains a ROD Token\n",
+                 op->rtf);
+        close(fd);
+        return SG_LIB_FILE_ERROR;
+    }
+
+    if (op->verbose > 3) {
+        pr2serr("Hex dump of first %d bytes of ROD Token:\n",
+                (int)sizeof(rth));
+        dStrHexErr((const char *)rth, (int)sizeof(rth), 1);
+    }
+
+    printf("Decoding information from ROD Token header:\n");
+    ui32 = (rth[0] << 24) + (rth[1] << 16) + (rth[2] << 8) + rth[3];
+    printf("  ROD type: %s [0x%" PRIx32 "]\n",
+           rod_type_str(ui32, b, sizeof(b)), ui32);
+    rtl = (rth[6] << 8) + rth[7];
+    if (rtl < 0x1f8) {
+        pr2serr(">>> ROD Token length field is too short, should be at "
+                "least\n    504 bytes (0x1f8), got 0x%" PRIx16 "\n", rtl);
+        close(fd);
+        return SG_LIB_FILE_ERROR;
+    }
+    printf("  Copy manager ROD Token identifier=0x");
+    for (m = 0; m < 8; ++m)
+        printf("%02x", (unsigned int)rth[8 + m]);
+    printf("\n");
+    printf("  Creator Logical Unit descriptor:\n");
+    /* should make smaller version of following that outputs to stdout */
+    decode_designation_descriptor(rth + 16, 32, op->verbose);
+    ui64 = 0;
+    for (m = 0; m < 8; m++) {
+        if (m > 0)
+            ui64 <<= 8;
+        ui64 |= rth[48 + m];
+    }
+    printf("  Number of bytes represented: %" PRIu64 " [0x%" PRIx64 "]\n",
+           ui64, ui64);
+
+    printf("  Assume pdt=0 (e.g. disk) and decode device type specific "
+           "data:\n");
+    bs = ((rth[96] << 24) + (rth[97] << 16) + (rth[98] << 8) + rth[99]);
+    printf("    block size: %" PRIu32 " [0x%" PRIx32 "] bytes\n", bs, bs);
+    prot_en = !!(rth[100] & 0x1);
+    p_type = ((rth[100] >> 1) & 0x7);
+    printf("    Protection: prot_en=%d, p_type=%d, p_i_exponent=%d",
+           prot_en, p_type, ((rth[101] >> 4) & 0xf));
+    if (prot_en)
+        printf(" [type %d protection]\n", p_type + 1);
+    else
+        printf("\n");
+    printf("    Logical block provisioning: lbpme=%d, lbprz=%d\n",
+                   !!(rth[102] & 0x80), !!(rth[102] & 0x40));
+    lbppbe = rth[102] & 0xf;
+    printf("    Logical blocks per physical block exponent=%d", lbppbe);
+    if (lbppbe > 0)
+        printf(" [so physical block length=%u bytes]\n", bs * (1 << lbppbe));
+    else
+        printf("\n");
+    printf("    Lowest aligned logical block address=%d\n",
+           ((rth[102] & 0x3f) << 8) + rth[103]);
+
+    close(fd);
+    return 0;
+}
+
+static int
+fetch_3pc_vpd(struct opts_t * op, struct dev_info_t * dip)
+{
+    unsigned char rBuff[256];
+    unsigned char * rp;
+    unsigned char * ucp;
+    int res, verb, n, len, bump, desc_type, desc_len, k, j, is_src;
+    int found = 0;
+    uint32_t max_ito = 0;
+    uint64_t ull;
+
+    verb = (op->verbose ? (op->verbose - 1) : 0);
+    is_src = (op->idip == dip);
+    rp = rBuff;
+    n = (int)sizeof(rBuff);
+    res = sg_ll_inquiry(dip->fd, 0, 1, VPD_3PARTY_COPY, rp, n, 1, verb);
+    if (res) {
+        if (SG_LIB_CAT_ILLEGAL_REQ == res)
+            pr2serr("Third Party Copy VPD page not found\n");
+        else
+            pr2serr("3PARTY_COPY VPD inquiry failed with %d, try again "
+                    "with '-vv'\n", res);
+        return res;
+    } else if (rp[1] != VPD_3PARTY_COPY) {
+        pr2serr("invalid 3PARTY_COPY VPD response\n");
+        return SG_LIB_CAT_MALFORMED;
+    }
+    len = ((rp[2] << 8) + rp[3]) + 4;
+    if (len > n) {
+        rp = (unsigned char *)malloc(len);
+        if (NULL == rp) {
+            pr2serr("Not enough user memory for fetch_3pc_vpd\n");
+            return SG_LIB_CAT_OTHER;
+        }
+        res = sg_ll_inquiry(dip->fd, 0, 1, VPD_3PARTY_COPY, rp, len, 1,
+                            verb);
+        if (res) {
+            pr2serr("3PARTY_COPY VPD inquiry failed with %d\n", res);
+            if (rBuff != rp)
+                free(rp);
+            return res;
+        }
+    }
+    len -= 4;
+    ucp = rp + 4;
+    for (k = 0; k < len; k += bump, ucp += bump) {
+        desc_type = (ucp[0] << 8) + ucp[1];
+        desc_len = (ucp[2] << 8) + ucp[3];
+        if (op->verbose > 4)
+            printf("Descriptor type=%d, len %d\n", desc_type, desc_len);
+        bump = 4 + desc_len;
+        if ((k + bump) > len) {
+            pr2serr("3PARTY_COPY Copy VPD page, short descriptor length=%d, "
+                    "left=%d\n", bump, (len - k));
+            if (rBuff != rp)
+                free(rp);
+            return SG_LIB_CAT_OTHER;
+        }
+        if (0 == desc_len)
+            continue;
+        switch (desc_type) {
+        case 0x0000:    /* Block Device ROD Token Limits */
+            ++found;
+            if (op->verbose > 3) {
+                pr2serr("3PARTY_COPY Copy VPD, Block Device ROD Token "
+                        "Limits descriptor:\n");
+                dStrHexErr((const char *)ucp, desc_len, 1);
+            }
+            if (desc_len < 32) {
+                pr2serr("3PARTY_COPY Copy VPD, Block Device ROD Token "
+                        "Limits descriptor, too short, want 32 got %d\n",
+                        desc_len);
+                break;
+            }
+            dip->odxp->brt_vpd.max_range_desc = (ucp[10] << 8) + ucp[11];
+            max_ito = (ucp[12] << 24) | (ucp[13] << 16) | (ucp[14] << 8) |
+                      ucp[15];
+            dip->odxp->brt_vpd.max_inactivity_to = max_ito;
+            dip->odxp->brt_vpd.def_inactivity_to = (ucp[16] << 24) |
+                         (ucp[17] << 16) | (ucp[18] << 8) | ucp[19];
+            ull = 0;
+            for (j = 0; j < 8; j++) {
+                if (j > 0)
+                    ull <<= 8;
+                ull |= ucp[20 + j];
+            }
+            dip->odxp->brt_vpd.max_tok_xfer_size = ull;
+            ull = 0;
+            for (j = 0; j < 8; j++) {
+                if (j > 0)
+                    ull <<= 8;
+                ull |= ucp[28 + j];
+            }
+            dip->odxp->brt_vpd.optimal_xfer_count = ull;
+            break;
+        default:
+            break;
+        }
+    }
+    if (rBuff != rp)
+        free(rp);
+    if (! found) {
+        pr2serr("Did not find Block Device ROD Token Limits descriptor in "
+                "3PARTY_COPY Copy VPD page\n");
+        return SG_LIB_CAT_OTHER;
+    }
+    if ((max_ito > 0) && (op->inactivity_to > max_ito)) {
+        pr2serr("Block Device ROD Token Limits: maximum inactivity timeout "
+                "(%" PRIu32 ") exceeded\n", max_ito);
+        if (is_src && op->iflagp->force)
+            ;
+        else if ((! is_src) && op->oflagp->force)
+            ;
+        else {
+            pr2serr("... exiting; can override with 'force' flag\n");
+            return SG_LIB_CAT_OTHER;
+        }
+    }
+    return 0;
+}
+
+static int
+do_pop_tok(struct opts_t * op)
+{
+    int verb, len, fd;
+    unsigned char pl[32];
+
+    verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
+    fd = op->idip->fd;
+    memset(pl, 0, sizeof(pl));
+    len = sizeof(pl) - 2;
+    pl[0] = (unsigned char)((len >> 8) & 0xff);
+    pl[1] = (unsigned char)(len & 0xff);
+    if (op->rod_type_given) {
+        pl[2] = 0x2;            /* RTV bit */
+        pl[8] = (unsigned char)((op->rod_type >> 24) & 0xff);
+        pl[9] = (unsigned char)((op->rod_type >> 16) & 0xff);
+        pl[10] = (unsigned char)((op->rod_type >> 8) & 0xff);
+        pl[11] = (unsigned char)(op->rod_type & 0xff);
+    }
+    if (op->iflagp->immed)
+        pl[2] |= 0x1;           /* IMMED bit */
+    pl[4] = (unsigned char)((op->inactivity_to >> 24) & 0xff);
+    pl[5] = (unsigned char)((op->inactivity_to >> 16) & 0xff);
+    pl[6] = (unsigned char)((op->inactivity_to >> 8) & 0xff);
+    pl[7] = (unsigned char)(op->inactivity_to & 0xff);
+    len = sizeof(pl) - 16;
+    pl[14] = (unsigned char)((len >> 8) & 0xff);
+    pl[15] = (unsigned char)(len & 0xff);
+    pl[16] = (unsigned char)((op->skip >> 56) & 0xff);
+    pl[17] = (unsigned char)((op->skip >> 48) & 0xff);
+    pl[18] = (unsigned char)((op->skip >> 40) & 0xff);
+    pl[19] = (unsigned char)((op->skip >> 32) & 0xff);
+    pl[20] = (unsigned char)((op->skip >> 24) & 0xff);
+    pl[21] = (unsigned char)((op->skip >> 16) & 0xff);
+    pl[22] = (unsigned char)((op->skip >> 8) & 0xff);
+    pl[23] = (unsigned char)(op->skip & 0xff);
+    pl[24] = (unsigned char)((op->dd_count >> 24) & 0xff);
+    pl[25] = (unsigned char)((op->dd_count >> 16) & 0xff);
+    pl[26] = (unsigned char)((op->dd_count >> 8) & 0xff);
+    pl[27] = (unsigned char)(op->dd_count & 0xff);
+    len = sizeof(pl);
+
+    return sg_ll_3party_copy_out(fd, SA_POP_TOK, op->list_id, DEF_GROUP_NUM,
+                                 DEF_3PC_OUT_TIMEOUT, pl, len, 1, verb);
+}
+
+/* Called from main() in ddpt.c . Returns 0 on success or a positive
+ * errno value if problems. This is for ODX which is a subset of
+ * xcopy(LID4) for disk->disk, disk->held and held-> disk copies. */
+int
+do_odx_copy(struct opts_t * op)
+{
+    int fd, res;
+    struct dev_info_t * dip;
+
+    if (ODX_REQ_RT_INFO == op->odx_request)
+        return odx_rt_info(op);
+    if (! op->list_id_given)
+        op->list_id = (ODX_REQ_WUT == op->odx_request) ? 0x102 : 0x101;
+    if ((ODX_REQ_PT == op->odx_request) ||
+        (ODX_REQ_COPY == op->odx_request)) {
+        fd = pt_open_if(op);
+        if (-1 == fd)
+            return SG_LIB_FILE_ERROR;
+        else if (fd < -1)
+            return -fd;
+        dip = op->idip;
+        dip->fd = fd;
+        dip->odxp = (struct odx_info_t *)malloc(sizeof(struct odx_info_t));
+        if (NULL == dip->odxp) {
+            pr2serr("Not enough user memory for do_odx_copy\n");
+            return SG_LIB_CAT_OTHER;
+        }
+        memset(dip->odxp, 0, sizeof(struct odx_info_t));
+        res = fetch_3pc_vpd(op, dip);
+        if (res)
+            return res;
+        res = do_pop_tok(op);
+        if (res)
+            return res;
+    }
+    if ((ODX_REQ_WUT == op->odx_request) ||
+        (ODX_REQ_COPY == op->odx_request)) {
+        fd = pt_open_of(op);
+        if (-1 == fd)
+            return SG_LIB_FILE_ERROR;
+        else if (fd < -1)
+            return -fd;
+        dip = op->odip;
+        dip->fd = fd;
+        dip->odxp = (struct odx_info_t *)malloc(sizeof(struct odx_info_t));
+        if (NULL == dip->odxp) {
+            pr2serr("Not enough user memory for do_odx_copy\n");
+            return SG_LIB_CAT_OTHER;
+        }
+        res = fetch_3pc_vpd(op, dip);
+        if (res)
+            return res;
+    }
+    return 0;
 }

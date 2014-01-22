@@ -79,10 +79,13 @@ extern "C" {
 #define DEF_BPT_LT8192 16    /* BPT when IBS < 8192 */
 #define DEF_BPT_LT32768 4    /* BPT when IBS < 32768 */
 #define DEF_BPT_GE32768 1    /* BPT when IBS >= 32768 */
-#define MAX_XC_BPT 65535     /* BPT maximum for xcopy */
+#define MAX_XC_BPT 65535     /* BPT maximum for xcopy(LID1) */
 #define MAX_XC_BPT_POW2 32768  /* BPT maximum that is power of 2 */
 #define DEF_SCSI_CDBSZ 10
 #define MAX_SCSI_CDBSZ 32
+
+#define VPD_DEVICE_ID 0x83
+#define VPD_3PARTY_COPY 0x8f
 
 #define SENSE_BUFF_LEN 32       /* Arbitrary, could be larger */
 #define READ_CAP_REPLY_LEN 8
@@ -119,6 +122,7 @@ extern "C" {
 #define ODX_REQ_PT 1            /* POPULATE TOKEN (PT): disk->held */
 #define ODX_REQ_WUT 2           /* WRITE USING TOKEN (WUT): held->disk */
 #define ODX_REQ_COPY 3          /* PT followed by WUT */
+#define ODX_REQ_RT_INFO 8       /* decode ROD Token given in RTF (file) */
 
 /* If O_DIRECT or O_SYNC not supported then define harmlessly */
 #ifndef O_DIRECT
@@ -161,7 +165,7 @@ struct scat_gath_elem {
     uint32_t num;       /* of blocks */
 };
 
-struct block_rod_vpd {
+struct block_rodtok_vpd {
     uint16_t max_range_desc;
     uint32_t max_inactivity_to;
     uint32_t def_inactivity_to;
@@ -213,7 +217,11 @@ struct flags_t {
     int sync;
     int trunc;
     int wsame16;
-    int xcopy;
+    int xcopy;          /* xcopy(LID1) */
+};
+
+struct odx_info_t {
+    struct block_rodtok_vpd brt_vpd;
 };
 
 /* one instance per file/device: if, of and of2 */
@@ -230,6 +238,7 @@ struct dev_info_t {
     unsigned long xc_min_bytes;
     unsigned long xc_max_bytes;
     char fn[INOUTF_SZ];
+    struct odx_info_t * odxp;
     struct sg_pt_base * ptvp;
 };
 
@@ -253,12 +262,12 @@ struct opts_t {
     int bpt_given;
     int obpch;          /* output blocks per check, granularity of sparse,
                          * sparing and trim checks for zeros */
-    int id_usage;       /* xcopy related, init to -1 */
+    int id_usage;       /* xcopy(LID1) List identifier usage, init to -1 */
     int interrupt_io;   /* [intio=0|1] if 0, mask SIGINFO++ during IO */
-    int list_id;        /* xcopy related */
-    int list_id_given;  /* xcopy related */
+    uint32_t list_id;   /* xcopy(LID1) and odx related */
+    int list_id_given;
     int outf_given;
-    int prio;           /* xcopy related */
+    int prio;           /* xcopy(LID1) related */
     int rdprotect;
     int wrprotect;
     int cdbsz_given;
@@ -272,8 +281,9 @@ struct opts_t {
     int odx_request;    /* ODX_REQ_NONE==0 for no ODX */
     uint32_t inactivity_to;     /* ODX: timeout in seconds */
     uint32_t rod_type;          /* ODX: ROD type */
+    int rod_type_given;
     int64_t offset_in_rod;      /* ODX: units are obs */
-    const char * rtf;   /* ODX: ROD token filename */
+    char rtf[INOUTF_SZ];        /* ODX: ROD token filename */
     struct flags_t * iflagp;
     struct dev_info_t * idip;
     struct flags_t * oflagp;
@@ -286,7 +296,7 @@ struct opts_t {
     int64_t out_sparse;  /* used for sparse, sparing + trim */
     int64_t lowest_unrecovered;         /* on reads */
     int64_t highest_unrecovered;        /* on reads */
-    int64_t num_xcopy;
+    int64_t num_xcopy;                  /* xcopy(LID1) */
     int in_partial;
     int max_aborted;
     int max_uas;
@@ -385,7 +395,8 @@ void errblk_put_range(uint64_t lba, int num, struct opts_t * op);
 void zero_coe_limit_count(struct opts_t * op);
 void signals_process_delay(struct opts_t * op, int delay_type);
 
-int do_xcopy(struct opts_t * op);
+int do_xcopy(struct opts_t * op);       /* xcopy(LID1) */
+int do_odx_copy(struct opts_t * op);
 
 
 #ifdef SG_LIB_WIN32
