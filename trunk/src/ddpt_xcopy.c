@@ -67,6 +67,10 @@
 #include "sg_cmds_extra.h"
 
 
+/* In SPC-4 the cdb opcodes have more generic names */
+#define THIRD_PARTY_COPY_OUT_CMD 0x83
+#define THIRD_PARTY_COPY_IN_CMD 0x84
+
 /* Third party copy IN (opcode 0x84) and OUT (opcode 0x83) command service
  * actions */
 #define SA_XCOPY_LID1           0x0     /* OUT, originate */
@@ -294,8 +298,8 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
     if (0 != res)
         return -res;
 
-    len = (rcBuff[0] << 24) | (rcBuff[1] << 16) | (rcBuff[2] << 8) |
-          rcBuff[3];
+    len = ((rcBuff[0] << 24) | (rcBuff[1] << 16) | (rcBuff[2] << 8) |
+           rcBuff[3]) + 4;
     if (len > rcBuffLen) {
         pr2serr("  <<report too long for internal buffer, output "
                 "truncated\n");
@@ -1059,13 +1063,6 @@ do_xcopy(struct opts_t * op)
 
 /* vvvvvvvvv  ODX [SBC-3's POPULATE TOKEN + WRITE USING TOKEN vvvvvvv */
 
-static int
-fetch_rt_after_poptok(struct opts_t * op)
-{
-    unsigned char rsp[2048];
-
-}
-
 
 
 static const char *
@@ -1166,7 +1163,16 @@ odx_rt_info(const struct opts_t * op)
     printf("\n");
     printf("  Creator Logical Unit descriptor:\n");
     /* should make smaller version of following that outputs to stdout */
-    decode_designation_descriptor(rth + 16, 32, op->verbose);
+    if (0xe4 != rth[16]) {
+        pr2serr(">>> Expected Identification descriptor (0xe4) got 0x%x\n",
+                rth[16]);
+        close(fd);
+        return SG_LIB_FILE_ERROR;
+    }
+    printf("    Peripheral Device type: 0x%x\n", rth[17] & 0x1f);
+    printf("    Relative initiator port identifier: 0x%x\n",
+           (rth[18] << 8) + rth[19]);
+    decode_designation_descriptor(rth + 20, 28, op->verbose);
     ui64 = 0;
     for (m = 0; m < 8; m++) {
         if (m > 0)
@@ -1370,6 +1376,99 @@ do_pop_tok(struct opts_t * op)
                                  DEF_3PC_OUT_TIMEOUT, pl, len, 1, verb);
 }
 
+static int
+fetch_rt_after_poptok(struct opts_t * op)
+{
+    int res, fd, verb, for_sa, cstat, lsdf, off, err;
+    unsigned int len, rtdl;
+    unsigned char rsp[2048];
+    char b[80];
+
+    verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
+    fd = op->idip->fd;
+    res = sg_ll_receive_copy_results(fd, SA_ROD_TOK_INFO, (int)op->list_id,
+                                     rsp, sizeof(rsp), 1, verb);
+    if (res)
+        return res;
+
+    len = ((rsp[0] << 24) | (rsp[1] << 16) | (rsp[2] << 8) | rsp[3]) + 4;
+    if (len > sizeof(rsp)) {
+        pr2serr("  ROD Token info too long for internal buffer, output "
+                "truncated\n");
+        len = sizeof(rsp);
+    }
+    if (op->verbose > 2) {
+        pr2serr("\nOutput response in hex:\n");
+        dStrHexErr((const char *)rsp, len, 1);
+    }
+    for_sa = 0x1f & rsp[4];
+    if (SA_POP_TOK != for_sa) {
+        sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, for_sa, 0, sizeof(b),
+                              b);
+        pr2serr("Receive ROD Token info expected response for Populate "
+                "Token\n  but got response for %s\n", b);
+    }
+    cstat = 0x7f & rsp[5];
+    pr2serr("Copy operation status=%d\n", cstat);
+    lsdf = rsp[13];
+    off = 32 + lsdf;
+    rtdl = (rsp[off] << 24) | (rsp[off + 1] << 16) | (rsp[off + 2] << 8) |
+           rsp[off + 3];
+    if ((rtdl > 2) && op->rtf[0]) {     /* write ROD Token to RTF */
+        fd = open(op->rtf, O_WRONLY | O_CREAT, 0644);
+        if (fd < 0) {
+            err = errno;
+            pr2serr("%s: unable to create file: %s [%s]\n", __func__,
+                    op->rtf, safe_strerror(err));
+            return SG_LIB_FILE_ERROR;
+        }
+        res = write(fd, rsp + off + 6, rtdl - 2);
+        if (res < 0) {
+            err = errno;
+            pr2serr("%s: unable to write to file: %s [%s]\n", __func__,
+                    op->rtf, safe_strerror(err));
+            close(fd);
+            return SG_LIB_FILE_ERROR;
+        }
+        close(fd);
+        if (res < (int)(rtdl - 2)) {
+            pr2serr("%s: short write to file: %s, wanted %d, got %d\n",
+                    __func__, op->rtf, (rtdl - 2), res);
+            return SG_LIB_CAT_OTHER;
+        }
+    }
+    return 0;
+}
+
+static int
+report_all_toks(struct opts_t * op, struct dev_info_t * dip)
+{
+    int res, fd, verb;
+    unsigned int len;
+    unsigned char rsp[2048];
+
+    verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
+    fd = dip->fd;
+    res = sg_ll_receive_copy_results(fd, SA_ALL_ROD_TOKS, (int)op->list_id,
+                                     rsp, sizeof(rsp), 1, verb);
+    if (res)
+        return res;
+
+    len = ((rsp[0] << 24) | (rsp[1] << 16) | (rsp[2] << 8) | rsp[3]) + 4;
+    if (len > sizeof(rsp)) {
+        pr2serr("  ROD Tokens too long for internal buffer, output "
+                "truncated\n");
+        len = sizeof(rsp);
+    }
+    if (op->verbose > 2) {
+        pr2serr("\nReport all ROD tokens response in hex:\n");
+        dStrHexErr((const char *)rsp, len, 1);
+    }
+    // Hmmm, not supported on HP 3 PAR (and not required for ODX)
+    return 0;
+}
+
+
 /* Called from main() in ddpt.c . Returns 0 on success or a positive
  * errno value if problems. This is for ODX which is a subset of
  * xcopy(LID4) for disk->disk, disk->held and held-> disk copies. */
@@ -1381,6 +1480,26 @@ do_odx_copy(struct opts_t * op)
 
     if (ODX_REQ_RT_INFO == op->odx_request)
         return odx_rt_info(op);
+    else if (ODX_REQ_ALL_TOKS == op->odx_request) {
+        if (op->idip->fn[0]) {
+            fd = pt_open_if(op);
+            if (-1 == fd)
+                return SG_LIB_FILE_ERROR;
+            else if (fd < -1)
+                return -fd;
+            dip = op->idip;
+            dip->fd = fd;
+        } else {
+            fd = pt_open_of(op);
+            if (-1 == fd)
+                return SG_LIB_FILE_ERROR;
+            else if (fd < -1)
+                return -fd;
+            dip = op->odip;
+            dip->fd = fd;
+        }
+        return report_all_toks(op, dip);
+    }
     if (! op->list_id_given)
         op->list_id = (ODX_REQ_WUT == op->odx_request) ? 0x102 : 0x101;
     if ((ODX_REQ_PT == op->odx_request) ||
@@ -1402,6 +1521,9 @@ do_odx_copy(struct opts_t * op)
         if (res)
             return res;
         res = do_pop_tok(op);
+        if (res)
+            return res;
+        res = fetch_rt_after_poptok(op);
         if (res)
             return res;
     }
