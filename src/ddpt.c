@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.94 20140122 [svn: r251]";
+static const char * version_str = "0.94 20140123 [svn: r252]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -309,6 +309,7 @@ secondary_help:
            "    rtype       ROD type (odx) (def: 0 -> cm decides)\n\n");
     pr2serr("FLAGS: (arguments to oflag= and oflag=; may be comma "
             "separated\n"
+            "  all_toks (odx)   report all ROD Tokens then exit\n"
             "  append (o)     append (part of) IFILE to end of OFILE\n"
             "  block (pt)     pt opens are non blocking by default\n"
             "  cat (xcopy)    set CAT bit in segment descriptor header\n"
@@ -904,7 +905,9 @@ flags_process(const char * arg, struct flags_t * fp)
         np = strchr(cp, ',');
         if (np)
             *np++ = '\0';
-        if (0 == strcmp(cp, "append"))
+        if (0 == strcmp(cp, "all_toks"))
+            ++fp->all_toks;
+        else if (0 == strcmp(cp, "append"))
             ++fp->append;
         else if (0 == strcmp(cp, "block"))
             ++fp->block;
@@ -1187,14 +1190,33 @@ cl_sanity_defaults(struct opts_t * op)
         }
     }
     if (op->iflagp->odx || op->iflagp->odx || op->rtf[0] ||
-        op->rod_type_given) {
+        op->rod_type_given || op->iflagp->all_toks || op->oflagp->all_toks) {
         if (op->has_xcopy) {
             pr2serr("Can either request xcopy(LID1) or ODX but not "
                     "both\n");
             return SG_LIB_SYNTAX_ERROR;
         }
         cp = "";
-        if (op->idip->fn[0] && op->odip->fn[0]) {
+        if (op->iflagp->all_toks) {
+            if (op->oflagp->all_toks) {
+                pr2serr("Don't allow both iflag=all_toks and "
+                        "oflag=all_toks\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            if ((! op->idip->fn[0]) || (op->odip->fn[0])) {
+                pr2serr("want if=IFILE with iflag=all_toks\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            op->odx_request = ODX_REQ_ALL_TOKS;
+            cp = "report all ROD token on IFILE";
+        } else if (op->oflagp->all_toks) {
+            if (! op->odip->fn[0]) {
+                pr2serr("want of=OFILE with oflag=all_toks\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            op->odx_request = ODX_REQ_ALL_TOKS;
+            cp = "report all ROD token on OFILE";
+        } else if (op->idip->fn[0] && op->odip->fn[0]) {
             op->odx_request = ODX_REQ_COPY;
             cp = "copy; POPULATE TOKEN followed by WRITE USING TOKEN";
         } else if (op->idip->fn[0]) {

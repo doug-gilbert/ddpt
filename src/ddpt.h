@@ -123,6 +123,7 @@ extern "C" {
 #define ODX_REQ_WUT 2           /* WRITE USING TOKEN (WUT): held->disk */
 #define ODX_REQ_COPY 3          /* PT followed by WUT */
 #define ODX_REQ_RT_INFO 8       /* decode ROD Token given in RTF (file) */
+#define ODX_REQ_ALL_TOKS 16     /* REPORT ALL ROD TOKENS */
 
 /* If O_DIRECT or O_SYNC not supported then define harmlessly */
 #ifndef O_DIRECT
@@ -177,6 +178,7 @@ struct block_rodtok_vpd {
  * conv= arguments are mapped to flag arguments.
  * General or for disk unless otherwise marked. */
 struct flags_t {
+    int all_toks;       /* xcopy(odx) related */
     int append;
     int block;          /* only for pt, non blocking default */
     int cat;            /* xcopy(lid1) related */
