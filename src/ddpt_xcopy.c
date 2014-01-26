@@ -104,8 +104,25 @@
 #define TD_IP_COPY_SERVICE 2048
 #define TD_ROD 4096
 
+
+#define LOCAL_ROD_TOKEN_SIZE 2048
+static unsigned char local_rod_token[LOCAL_ROD_TOKEN_SIZE];
+
 static const char * rec_copy_op_params_str = "Receive copy operating "
                                              "parameters";
+
+static struct val_str_t xcopy4_cpy_op_status[] = {
+    {0x1, "Operation completed without errors"},
+    {0x2, "Operation completed with errors"},
+    {0x3, "Operation completed without errors but with partial ROD token "
+     "usage"},
+    {0x4, "Operation completed without errors but with residual data"},
+    {0x10, "Operation in progress, foreground or background unknown"},
+    {0x11, "Operation in progress in foreground"},
+    {0x12, "Operation in progress in background"},
+    {0x60, "Operation terminated"},
+    {0x0, NULL},
+};
 
 
 static int
@@ -234,7 +251,7 @@ scsi_extended_copy(struct opts_t * op, unsigned char *src_desc,
 {
     unsigned char xcopyBuff[256];
     int desc_offset = 16;
-    int seg_desc_len, verb, fd;
+    int seg_desc_len, verb, fd, tmout;
     uint64_t src_lba = op->skip;
     uint64_t dst_lba = op->seek;
 
@@ -255,9 +272,10 @@ scsi_extended_copy(struct opts_t * op, unsigned char *src_desc,
                                         src_lba, dst_lba);
     xcopyBuff[11] = seg_desc_len; /* One segment descriptor */
     desc_offset += seg_desc_len;
+    tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
     return sg_ll_3party_copy_out(fd, SA_XCOPY_LID1, op->list_id,
-                                 DEF_GROUP_NUM, DEF_3PC_OUT_TIMEOUT,
-                                 xcopyBuff, desc_offset, 1, verb);
+                                 DEF_GROUP_NUM, tmout, xcopyBuff, desc_offset,
+                                 1, verb);
 }
 
 /* Returns target descriptor variety encoded into an int. There may be
@@ -1064,7 +1082,6 @@ do_xcopy(struct opts_t * op)
 /* vvvvvvvvv  ODX [SBC-3's POPULATE TOKEN + WRITE USING TOKEN vvvvvvv */
 
 
-
 static const char *
 rod_type_str(uint32_t rt, char * b, int blen)
 {
@@ -1102,6 +1119,26 @@ rod_type_str(uint32_t rt, char * b, int blen)
     }
     return b;
 }
+
+static const char *
+cpy_op_status_str(int cos, char * b, int blen)
+{
+    const struct val_str_t * vsp;
+    const char * p = NULL;
+
+    for (vsp = xcopy4_cpy_op_status; vsp->name; ++vsp) {
+        if (cos == vsp->num) {
+            p = vsp->name;
+            break;
+        }
+    }
+    if (p)
+        snprintf(b, blen, "%s", p);
+    else
+        snprintf(b, blen, "copy operation status 0x%x not found\n", cos);
+    return b;
+}
+
 
 static int
 odx_rt_info(const struct opts_t * op)
@@ -1333,7 +1370,7 @@ fetch_3pc_vpd(struct opts_t * op, struct dev_info_t * dip)
 static int
 do_pop_tok(struct opts_t * op)
 {
-    int verb, len, fd;
+    int verb, len, fd, tmout;
     unsigned char pl[32];
 
     verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
@@ -1372,17 +1409,19 @@ do_pop_tok(struct opts_t * op)
     pl[27] = (unsigned char)(op->dd_count & 0xff);
     len = sizeof(pl);
 
+    tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
     return sg_ll_3party_copy_out(fd, SA_POP_TOK, op->list_id, DEF_GROUP_NUM,
-                                 DEF_3PC_OUT_TIMEOUT, pl, len, 1, verb);
+                                 tmout, pl, len, 1, verb);
 }
 
 static int
 fetch_rt_after_poptok(struct opts_t * op)
 {
-    int res, fd, verb, for_sa, cstat, lsdf, off, err;
+    int j, res, fd, verb, for_sa, cstat, lsdf, off, err;
     unsigned int len, rtdl;
+    uint64_t ull;
     unsigned char rsp[2048];
-    char b[80];
+    char b[400];
 
     verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
     fd = op->idip->fd;
@@ -1397,7 +1436,7 @@ fetch_rt_after_poptok(struct opts_t * op)
                 "truncated\n");
         len = sizeof(rsp);
     }
-    if (op->verbose > 2) {
+    if (verb > 1) {
         pr2serr("\nOutput response in hex:\n");
         dStrHexErr((const char *)rsp, len, 1);
     }
@@ -1409,33 +1448,203 @@ fetch_rt_after_poptok(struct opts_t * op)
                 "Token\n  but got response for %s\n", b);
     }
     cstat = 0x7f & rsp[5];
-    pr2serr("Copy operation status=%d\n", cstat);
+    if ((! ((0x1 == cstat) || (0x3 == cstat))) || verb)
+        pr2serr("PT: %s\n", cpy_op_status_str(cstat, b, sizeof(b)));
+    ull = 0;
+    for (j = 0; j < 8; j++) {
+        if (j > 0)
+            ull <<= 8;
+        ull |= rsp[16 + j];
+    }
+    op->in_full += ull;
+    if (verb > 1)
+        pr2serr("PT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n", ull, ull);
     lsdf = rsp[13];
+    if (lsdf > 0)
+        sg_get_sense_str("PT related sense:", rsp + 32, rsp[14], verb,
+                         sizeof(b), b);
     off = 32 + lsdf;
     rtdl = (rsp[off] << 24) | (rsp[off + 1] << 16) | (rsp[off + 2] << 8) |
            rsp[off + 3];
-    if ((rtdl > 2) && op->rtf[0]) {     /* write ROD Token to RTF */
-        fd = open(op->rtf, O_WRONLY | O_CREAT, 0644);
-        if (fd < 0) {
+    if (rtdl > 2) {
+        if (op->rtf[0]) {     /* write ROD Token to RTF */
+            fd = open(op->rtf, O_WRONLY | O_CREAT, 0644);
+            if (fd < 0) {
+                err = errno;
+                pr2serr("%s: unable to create file: %s [%s]\n", __func__,
+                        op->rtf, safe_strerror(err));
+                return SG_LIB_FILE_ERROR;
+            }
+            res = write(fd, rsp + off + 6, rtdl - 2);
+            if (res < 0) {
+                err = errno;
+                pr2serr("%s: unable to write to file: %s [%s]\n", __func__,
+                        op->rtf, safe_strerror(err));
+                close(fd);
+                return SG_LIB_FILE_ERROR;
+            }
+            close(fd);
+            if (res < (int)(rtdl - 2)) {
+                pr2serr("%s: short write to file: %s, wanted %d, got %d\n",
+                        __func__, op->rtf, (rtdl - 2), res);
+                return SG_LIB_CAT_OTHER;
+            }
+        } else {        /* write ROD Token to static */
+            if ((rtdl - 2) > LOCAL_ROD_TOKEN_SIZE) {
+                pr2serr("%s: ROD token too large for static storage, try "
+                        "'rtf=RTF'\n", __func__);
+                return SG_LIB_CAT_OTHER;
+            }
+            memcpy(local_rod_token, rsp + off + 6, rtdl - 2);
+        }
+    }
+    return 0;
+}
+
+static int
+do_wut(struct opts_t * op)
+{
+    int verb, len, n, fd, err, res, tmout;
+    int sz_1_bdrd = 16;
+    struct flags_t * flp;
+    unsigned char pl[1024];
+    unsigned char rt[512];
+
+    verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
+    flp = op->oflagp;
+    memset(pl, 0, sizeof(pl));
+    if (ODX_REQ_WUT == op->odx_request) {
+        if (flp->del_tkn)
+            pl[2] = 0x2;        /* DEL_TKN bit */
+    } else {
+        if (! flp->no_del_tkn)
+            pl[2] = 0x2;        /* data->data default DEL_TKN unless */
+    }
+    if (flp->immed)
+        pl[2] |= 0x1;           /* IMMED bit */
+    if (op->offset_in_rod) {
+        pl[8] = (unsigned char)((op->offset_in_rod >> 56) & 0xff);
+        pl[9] = (unsigned char)((op->offset_in_rod >> 48) & 0xff);
+        pl[10] = (unsigned char)((op->offset_in_rod >> 40) & 0xff);
+        pl[11] = (unsigned char)((op->offset_in_rod >> 32) & 0xff);
+        pl[12] = (unsigned char)((op->offset_in_rod >> 24) & 0xff);
+        pl[13] = (unsigned char)((op->offset_in_rod >> 16) & 0xff);
+        pl[14] = (unsigned char)((op->offset_in_rod >> 8) & 0xff);
+        pl[15] = (unsigned char)(op->offset_in_rod & 0xff);
+    }
+    if (RODT_BLK_ZERO == op->rod_type) {
+        local_rod_token[0] = (unsigned char)((RODT_BLK_ZERO >> 24) & 0xff);
+        local_rod_token[1] = (unsigned char)((RODT_BLK_ZERO >> 16) & 0xff);
+        local_rod_token[2] = (unsigned char)((RODT_BLK_ZERO >> 8) & 0xff);
+        local_rod_token[3] = (unsigned char)(RODT_BLK_ZERO & 0xff);
+        local_rod_token[6] = (unsigned char)(0x1);
+        local_rod_token[7] = (unsigned char)(0xf8);
+        memcpy(pl + 16, local_rod_token, 512);
+    } else if (op->rtf[0]) {
+        if ((fd = open(op->rtf, O_RDONLY)) < 0) {
             err = errno;
-            pr2serr("%s: unable to create file: %s [%s]\n", __func__,
-                    op->rtf, safe_strerror(err));
+            pr2serr("could not open '%s' for reading: %s\n", op->rtf,
+                    safe_strerror(err));
             return SG_LIB_FILE_ERROR;
         }
-        res = write(fd, rsp + off + 6, rtdl - 2);
+        res = read(fd, rt, sizeof(rt));
         if (res < 0) {
             err = errno;
-            pr2serr("%s: unable to write to file: %s [%s]\n", __func__,
-                    op->rtf, safe_strerror(err));
+            pr2serr("could not read '%s': %s\n", op->rtf,
+                    safe_strerror(err));
             close(fd);
             return SG_LIB_FILE_ERROR;
         }
+        if (res < (int)sizeof(rt))
+            pr2serr("unable to read %d bytes from '%s', only got %d bytes\n",
+                     (int)sizeof(rt), op->rtf, res);
+        memcpy(pl + 16, rt, res);
         close(fd);
-        if (res < (int)(rtdl - 2)) {
-            pr2serr("%s: short write to file: %s, wanted %d, got %d\n",
-                    __func__, op->rtf, (rtdl - 2), res);
-            return SG_LIB_CAT_OTHER;
-        }
+    } else
+        memcpy(pl + 16, local_rod_token, 512);
+
+    pl[534] = (unsigned char)((sz_1_bdrd >> 8) & 0xff);
+    pl[535] = (unsigned char)(sz_1_bdrd & 0xff);
+    pl[536] = (unsigned char)((op->skip >> 56) & 0xff);
+    pl[537] = (unsigned char)((op->skip >> 48) & 0xff);
+    pl[538] = (unsigned char)((op->skip >> 40) & 0xff);
+    pl[539] = (unsigned char)((op->skip >> 32) & 0xff);
+    pl[540] = (unsigned char)((op->skip >> 24) & 0xff);
+    pl[541] = (unsigned char)((op->skip >> 16) & 0xff);
+    pl[542] = (unsigned char)((op->skip >> 8) & 0xff);
+    pl[543] = (unsigned char)(op->skip & 0xff);
+    pl[544] = (unsigned char)((op->dd_count >> 24) & 0xff);
+    pl[545] = (unsigned char)((op->dd_count >> 16) & 0xff);
+    pl[546] = (unsigned char)((op->dd_count >> 8) & 0xff);
+    pl[547] = (unsigned char)(op->dd_count & 0xff);
+
+    len = 536 + (1 * sz_1_bdrd);
+    n = len - 2;
+    pl[0] = (unsigned char)((n >> 8) & 0xff);
+    pl[1] = (unsigned char)(n & 0xff);
+    fd = op->odip->fd;
+
+    tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
+    return sg_ll_3party_copy_out(fd, SA_WR_USING_TOK, op->list_id,
+                                 DEF_GROUP_NUM, tmout, pl, len, 1, verb);
+}
+
+static int
+fetch_rt_after_wut(struct opts_t * op)
+{
+    int j, res, fd, verb, for_sa, cstat, lsdf, off;
+    unsigned int len, rtdl;
+    uint64_t ull;
+    unsigned char rsp[2048];
+    char b[80];
+
+    verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
+    fd = op->odip->fd;
+    res = sg_ll_receive_copy_results(fd, SA_ROD_TOK_INFO, (int)op->list_id,
+                                     rsp, sizeof(rsp), 1, verb);
+    if (res)
+        return res;
+
+    len = ((rsp[0] << 24) | (rsp[1] << 16) | (rsp[2] << 8) | rsp[3]) + 4;
+    if (len > sizeof(rsp)) {
+        pr2serr("  %s: response is too long for internal buffer, output "
+                "truncated\n", __func__);
+        len = sizeof(rsp);
+    }
+    if (verb > 1) {
+        pr2serr("\nOutput response in hex:\n");
+        dStrHexErr((const char *)rsp, len, 1);
+    }
+    for_sa = 0x1f & rsp[4];
+    if (SA_WR_USING_TOK != for_sa) {
+        sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, for_sa, 0, sizeof(b),
+                              b);
+        pr2serr("Receive ROD Token info expected response for Write "
+                "Using Token\n  but got response for %s\n", b);
+    }
+    cstat = 0x7f & rsp[5];
+    if ((! ((0x1 == cstat) || (0x3 == cstat))) || verb)
+        pr2serr("WUT: %s\n", cpy_op_status_str(cstat, b, sizeof(b)));
+    ull = 0;
+    for (j = 0; j < 8; j++) {
+        if (j > 0)
+            ull <<= 8;
+        ull |= rsp[16 + j];
+    }
+    op->out_full += ull;
+    if (verb)
+        pr2serr("WUT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n", ull,
+                ull);
+    lsdf = rsp[13];
+    if (lsdf > 0)
+        sg_get_sense_str("WUT related sense:", rsp + 32, rsp[14], verb,
+                         sizeof(b), b);
+    if (len > 38) {
+        off = 32 + lsdf;
+        rtdl = (rsp[off] << 24) | (rsp[off + 1] << 16) | (rsp[off + 2] << 8) |
+               rsp[off + 3];
+        if (rtdl > 2)
+            pr2serr("%s: Hmmm, got ROD Token returned\n", __func__);
     }
     return 0;
 }
@@ -1526,6 +1735,8 @@ do_odx_copy(struct opts_t * op)
         res = fetch_rt_after_poptok(op);
         if (res)
             return res;
+        if (ODX_REQ_PT == op->odx_request)
+            op->dd_count -= op->in_full;
     }
     if ((ODX_REQ_WUT == op->odx_request) ||
         (ODX_REQ_COPY == op->odx_request)) {
@@ -1544,6 +1755,14 @@ do_odx_copy(struct opts_t * op)
         res = fetch_3pc_vpd(op, dip);
         if (res)
             return res;
+        res = do_wut(op);
+        if (res)
+            return res;
+        res = fetch_rt_after_wut(op);
+        if (res)
+            return res;
+        // careful, following assumes ibs=obs, needs rethink
+        op->dd_count -= op->out_full;
     }
     return 0;
 }

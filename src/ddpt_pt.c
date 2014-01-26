@@ -180,7 +180,7 @@ pt_open_of(struct opts_t * op)
     }
     dip->pdt = sir.peripheral_type;
     if (op->verbose) {
-        if (op->has_xcopy)
+        if (op->has_xcopy || (ODX_REQ_NONE != op->odx_request))
             pr2serr("    %s: %.8s  %.16s  %.4s  [pdt=%d, 3pc=%d]\n",
                     fn, sir.vendor, sir.product, sir.revision, dip->pdt,
                     !! (0x8 & sir.byte_5));
@@ -442,7 +442,7 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
     set_scsi_pt_flags(ptvp, SCSI_PT_FLAGS_QUEUE_AT_TAIL);
 #endif
     vt = (op->verbose ? (op->verbose - 1) : 0);
-    while (((res = do_scsi_pt(ptvp, dip->fd, DEF_TIMEOUT, vt)) < 0) &&
+    while (((res = do_scsi_pt(ptvp, dip->fd, DEF_RW_TIMEOUT, vt)) < 0) &&
            (-EINTR == res))
         ++op->interrupted_retries; /* resubmit if interrupted system call */
 
@@ -801,7 +801,7 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_out(ptvp, buff, bs * blocks);
     vt = (op->verbose ? (op->verbose - 1) : 0);
-    while (((res = do_scsi_pt(ptvp, sg_fd, DEF_TIMEOUT, vt)) < 0) &&
+    while (((res = do_scsi_pt(ptvp, sg_fd, DEF_RW_TIMEOUT, vt)) < 0) &&
            (-EINTR == res))
         ++op->interrupted_retries; /* resubmit if interrupted system call */
 
