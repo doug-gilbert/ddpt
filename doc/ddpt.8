@@ -12,7 +12,7 @@ devices that understand the SCSI command set.
 [\fIoflag=FLAGS\fR] [\fIoir=OIR\fR] [\fIoseek=SEEK\fR] [\fIprio=PRIO\fR]
 [\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR] [\fIrtf=RTF\fR]
 [\fIrtype=RTYPE\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR]
-[\fIverbose=VERB\fR] [\fI\-\-help\fR] [\fI\-\-verbose\fR]
+[\fIto=TO\fR] [\fIverbose=VERB\fR] [\fI\-\-help\fR] [\fI\-\-verbose\fR]
 [\fI\-\-version\fR] [\fI\-\-wscan\fR] [\fI\-\-xcopy\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
@@ -231,7 +231,12 @@ in the FLAGS section. These flags are associated with \fIOFILE\fR and are
 ignored when \fIOFILE\fR is /dev/null, '.' (period), or stdout.
 .TP
 \fBoir\fR=\fIOIR\fR
-xxxxxxxxxx odx
+odx: \fIOIR\fR is the Offset In ROD and its units are \fIOBS\fR bytes. The
+default value is 0. Numbers are assumed to be in decimal unless preceded
+by "0x" or have a trailing "h" in which case they are decoded as hex. The
+\fIOIR\fR is passed to the WRITE USING TOKEN command. The ROD can be
+considered as a linear representation of data gathered by the POPULATE
+TOKEN command.
 .TP
 \fBoseek\fR=\fISEEK\fR
 start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
@@ -257,10 +262,23 @@ WRITEs are retried on error, \fIRETR\fR times. Default value is zero.
 Only applies to errors on pt devices.
 .TP
 \fBrtf\fR=\fIRTF\fR
-xxxxxxxxxx odx
+odx: where \fIRTF\fR is a filename. The ROD token will be written to
+\fIRTF\fR during a disk->held operation. In a held->disk operation the ROD
+token is read from the \fIRTF\fR filename. With a odx disk->disk copy this
+option does not need to be given but if it is the ROD Token is written
+to the \fIRTF\fR filename.
 .TP
 \fBrtype\fR=\fIRTYPE\fR
-xxxxxxxxxx odx
+odx: where \fIRTYPE\fR is the ROD type. The default value (0) indicates that
+the copy manager (in the target) decides. \fIRTYPE\fR can be a decimal number,
+a hex number (prefixed by 0x or with a "h" appended) or one
+of "pit-def", "pit-vuln", "pit-pers", "pit-any" or "zero". The final
+truncated word can be spelt out (e.g. "pit-vulnerable"). The "pit-" part
+stands for "point in time" copy. The first four names can be used with
+disk->held or disk->disk copy and apply to the \fIIFILE\fR. The "zero" causes
+a special Block device zero Token to be created. It applies to the
+\fIOFILE\fR (replacing the \fIIFILE\fR side) and implies zero->disk and so
+is equivalent to a WRITE SAME(zero) command.
 .TP
 \fBseek\fR=\fISEEK\fR
 start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
@@ -280,6 +298,13 @@ recently introduced to GNU's dd command. The default action of ddpt is to
 show the throughput (in megabytes per second) and the time taken to do the
 copy after the "records in" and "records out" lines at the end of the copy.
 As a convenience the value 'null' is accepted for \fISTAT\fR and does nothing.
+.TP
+\fBto\fR=\fITO\fR
+odx, xcopy: where \fITO\fR is a xcopy/odx related command timeout in seconds.
+The default value is 0 which is converted internally to 600 seconds (10
+minutes). Best to set this timeout value well above the expected copy time.
+In a odx disk->disk copy this timeout is applied to both the POPULATE TOKEN
+and WRITE USING TOKEN commands.
 .TP
 \fBverbose\fR=\fIVERB\fR
 as \fIVERB\fR increases so does the amount of debug reporting sent to stderr.

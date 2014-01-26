@@ -2,11 +2,11 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.94 [20140123] [svn: r252]
+Changelog for ddpt-0.94 [20140125] [svn: r253]
   - xcopy: change default to send xcopy command to dst
     - add XCOPY_TO_SRC and XCOPY_TO_DST environment
       variables to guide where to send xcopy command
- - xcopy/odx: start++ ODX support (subset xcopy(LID4))
+ - odx: first cut ODX support (subset xcopy(LID4))
   - improve CL handling of short options (e.g. '-vv')
   - point svn:externals to rev 547 of sg3_utils
   - configure: add --disable-libsgutils so build

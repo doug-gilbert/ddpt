@@ -44,7 +44,7 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-static const char * version_str = "0.94 20140123 [svn: r252]";
+static const char * version_str = "0.94 20140125 [svn: r253]";
 
 /* Was needed for posix_fadvise() */
 /* #define _XOPEN_SOURCE 600 */
@@ -166,7 +166,7 @@ static sig_atomic_t volatile info_signals_pending;
 
 static const char * errblk_file = "errblk.txt";
 
-static struct signum_name_t signum_name_arr[] = {
+static struct val_str_t signum_name_arr[] = {
     {SIGINT, "SIGINT"},
     {SIGQUIT, "SIGQUIT"},
     {SIGPIPE, "SIGPIPE"},
@@ -213,7 +213,7 @@ primary_help:
            "[prio=PRIO]\n"
            "             [protect=RDP[,WRP]] [retries=RETR] [rtf=RTF] "
            "[rtype=RTYPE]\n"
-           "             [seek=SEEK] [skip=SKIP] [status=STAT] "
+           "             [seek=SEEK] [skip=SKIP] [status=STAT] [it=TO] "
            "[verbose=VERB]\n"
 #ifdef SG_LIB_WIN32
            "             [--help] [--verbose] [--version] [--wscan] "
@@ -296,17 +296,20 @@ secondary_help:
            "(same as skip)\n"
            "    ito         inactivity timeout (def: 0 (from 3PC VPD); "
            "units: seconds)\n"
-           "    list_id     xcopy: list_id (def: 1 or 0)\n"
+           "    list_id     xcopy: list_id (def: 1 or 0) [1 byte]\n"
+           "                odx: list_id (def: 257 or 258) [4 bytes]\n"
            "    of2         additional output file (def: /dev/null), "
            "OFILE2 should be\n"
            "                regular file or pipe\n"
-           "    oir         offset in ROD (odx) (def: 0, units OBS)\n"
+           "    oir         Offset In ROD (odx) (def: 0, units OBS)\n"
            "    oseek       block position to start writing in OFILE\n"
            "    prio        xcopy: set priority field to PRIO (def: 1)\n"
            "    protect     set rdprotect and/or wrprotect fields on "
            "pt commands\n"
            "    rtf         ROD Token filename (odx)\n"
-           "    rtype       ROD type (odx) (def: 0 -> cm decides)\n\n");
+           "    rtype       ROD type (odx) (def: 0 -> cm decides)\n"
+           "    to          xcopy, odx: timeout in seconds (def: 600 "
+           "(10 mins))\n\n");
     pr2serr("FLAGS: (arguments to oflag= and oflag=; may be comma "
             "separated\n"
             "  all_toks (odx)   report all ROD Tokens then exit\n"
@@ -499,7 +502,7 @@ print_stats(const char * str, struct opts_t * op)
 static const char *
 get_signal_name(int signum, char * b, int blen)
 {
-    const struct signum_name_t * sp;
+    const struct val_str_t * sp;
 
     for (sp = signum_name_arr; sp->num; ++sp) {
         if (signum == sp->num)
@@ -1226,6 +1229,8 @@ cl_sanity_defaults(struct opts_t * op)
             op->odx_request = ODX_REQ_WUT;
             cp = "held-->disk; WRITE USING TOKEN";
         } else if (op->rtf[0]) {
+            op->do_time = 0;
+            ++op->status_none;
             op->odx_request = ODX_REQ_RT_INFO;
             cp = "decode information in given ROD Token";
         } else {
@@ -1537,22 +1542,22 @@ cl_process(struct opts_t * op, int argc, char * argv[])
             }
             strncpy(op->rtf, buf, INOUTF_SZ - 1);
         } else if (0 == strcmp(key, "rtype")) {
-            if (0 == strncmp("pot-def", buf, 7))
-                op->rod_type = 0x800000;
-            else if (0 == strncmp("pot-vuln", buf, 8))
-                op->rod_type = 0x800001;
-            else if (0 == strncmp("pot-pers", buf, 8))
-                op->rod_type = 0x800002;
-            else if (0 == strncmp("pot-any", buf, 7))
-                op->rod_type = 0x80ffff;
+            if (0 == strncmp("pit-def", buf, 7))
+                op->rod_type = RODT_PIT_DEF;
+            else if (0 == strncmp("pit-vuln", buf, 8))
+                op->rod_type = RODT_PIT_VULN;
+            else if (0 == strncmp("pit-pers", buf, 8))
+                op->rod_type = RODT_PIT_PERS;
+            else if (0 == strncmp("pit-any", buf, 7))
+                op->rod_type = RODT_PIT_ANY;
             else if (0 == strcmp("zero", buf))
-                op->rod_type = 0xffff0001;
+                op->rod_type = RODT_BLK_ZERO;
             else {
                 n = sg_get_num(buf);
                 if (-1 == n) {
                     pr2serr("bad argument to 'rtype='; can give (hex) "
-                            "number, 'pot-def', 'pot-vuln',\n");
-                    pr2serr("'pot-pers', 'pot-any' or 'zero'\n");
+                            "number, 'pit-def', 'pit-vuln',\n");
+                    pr2serr("'pit-pers', 'pit-any' or 'zero'\n");
                     return SG_LIB_SYNTAX_ERROR;
                 }
                 op->rod_type = (uint32_t)n;
@@ -1580,6 +1585,12 @@ cl_process(struct opts_t * op, int argc, char * argv[])
                 op->do_time = 0;
             } else {
                 pr2serr("'status=' expects 'none', 'noxfer' or 'null'\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (0 == strcmp(key, "to")) {
+            op->timeout_xcopy = sg_get_num(buf);
+            if (-1 == op->timeout_xcopy) {
+                pr2serr("bad argument to 'to='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strncmp(key, "verb", 4)) {
@@ -4631,7 +4642,13 @@ main(int argc, char * argv[])
     install_signal_handlers(op);
 
     if (ODX_REQ_NONE != op->odx_request) {
+        if (op->do_time)
+            calc_duration_init(op);
         ret = do_odx_copy(op);
+        if (0 == op->status_none)
+            print_stats("", op);
+        if (op->do_time)
+            calc_duration_throughput("", 0, op);
         goto cleanup;
     }
 

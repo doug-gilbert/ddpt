@@ -91,8 +91,8 @@ extern "C" {
 #define READ_CAP_REPLY_LEN 8
 #define RCAP16_REPLY_LEN 32
 
-#define DEF_TIMEOUT 60000       /* 60,000 millisecs == 60 seconds */
-#define WRITE_SAME16_TIMEOUT 180000  /* 3 minutes */
+#define DEF_RW_TIMEOUT 60       /* 60 seconds for READ and WRITE */
+#define WRITE_SAME16_TIMEOUT 180  /* 3 minutes */
 
 #define DEF_GROUP_NUM 0
 
@@ -124,6 +124,13 @@ extern "C" {
 #define ODX_REQ_COPY 3          /* PT followed by WUT */
 #define ODX_REQ_RT_INFO 8       /* decode ROD Token given in RTF (file) */
 #define ODX_REQ_ALL_TOKS 16     /* REPORT ALL ROD TOKENS */
+
+/* ROD Types used by ODX */
+#define RODT_PIT_DEF 0x800000
+#define RODT_PIT_VULN 0x800001
+#define RODT_PIT_PERS 0x800002
+#define RODT_PIT_ANY 0x80ffff
+#define RODT_BLK_ZERO 0xffff0001
 
 /* If O_DIRECT or O_SYNC not supported then define harmlessly */
 #ifndef O_DIRECT
@@ -284,7 +291,8 @@ struct opts_t {
     uint32_t inactivity_to;     /* ODX: timeout in seconds */
     uint32_t rod_type;          /* ODX: ROD type */
     int rod_type_given;
-    int64_t offset_in_rod;      /* ODX: units are obs */
+    int64_t offset_in_rod;      /* ODX: units are obs bytes */
+    int timeout_xcopy;          /* xcopy(LID1) and ODX */
     char rtf[INOUTF_SZ];        /* ODX: ROD token filename */
     struct flags_t * iflagp;
     struct dev_info_t * idip;
@@ -364,7 +372,7 @@ struct cp_state_t {
     int partial_write_bytes;
 };
 
-struct signum_name_t {
+struct val_str_t {
     int num;
     const char * name;
 };
