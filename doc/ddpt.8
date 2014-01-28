@@ -284,12 +284,18 @@ is equivalent to a WRITE SAME(zero) command.
 start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
 \fIOFILE\fR. Default is block 0 (i.e. start of file). The \fISEEK\fR value
 may exceed the number of \fIOBS\fR\-sized blocks in \fIOFILE\fR.
+odx: \fISEEK\fR can be a scatter list: comma separated, in the form
+seek=A1,N1,A2,N2... . \fISEEK\fR may alternatively be "\-" to read from
+stdin of a file containing a scatter list with the form "@<filename>".
 .TP
 \fBskip\fR=\fISKIP\fR
 start reading \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of
 \fIIFILE\fR. Default is block 0 (i.e. start of file). The \fISKIP\fR value
 must be less than or equal to the number of \fIIBS\fR\-sized blocks in
 \fIIFILE\fR.
+odx: \fISKIP\fR can be a gather list: comma separated, in the form
+skip=A1,N1,A2,N2... . \fISKIP\fR may alternatively be "\-" to read from
+stdin of a file containing a gather list with the form "@<filename>".
 .TP
 \fBstatus\fR=\fISTAT\fR
 the \fISTAT\fR value of 'noxfer' suppresses the throughput speed and the
