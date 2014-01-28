@@ -44,11 +44,6 @@
  * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
 
-const char * ddpt_version_str = "0.94 20140127 [svn: r254]";
-
-/* Was needed for posix_fadvise() */
-/* #define _XOPEN_SOURCE 600 */
-
 /* Need _GNU_SOURCE for O_DIRECT */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -88,6 +83,8 @@ const char * ddpt_version_str = "0.94 20140127 [svn: r254]";
 #endif
 
 #include "ddpt.h"
+
+const char * ddpt_version_str = "0.94 20140127 [svn: r255]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
