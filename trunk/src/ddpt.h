@@ -293,7 +293,13 @@ struct opts_t {
     int rod_type_given;
     int64_t offset_in_rod;      /* ODX: units are obs bytes */
     int timeout_xcopy;          /* xcopy(LID1) and ODX */
+    int in_sgl_elems;		/* xcopy, odx */
+    int out_sgl_elems;		/* xcopy, odx */
     char rtf[INOUTF_SZ];        /* ODX: ROD token filename */
+    struct scat_gath_elem * in_sgl;     /* xcopy, odx: alternative to skip=
+                                         * and count= */
+    struct scat_gath_elem * out_sgl;    /* xcopy, odx: alternative to seek=
+                                         * and count= */
     struct flags_t * iflagp;
     struct dev_info_t * idip;
     struct flags_t * oflagp;
@@ -377,6 +383,8 @@ struct val_str_t {
     const char * name;
 };
 
+extern const char * ddpt_version_str;
+
 
 /* Declared below are functions shared by different compilation units */
 #ifdef __GNUC__
@@ -407,6 +415,9 @@ void signals_process_delay(struct opts_t * op, int delay_type);
 
 int do_xcopy(struct opts_t * op);       /* xcopy(LID1) */
 int do_odx_copy(struct opts_t * op);
+
+int cl_process(struct opts_t * op, int argc, char * argv[]);
+void ddpt_usage(int help);
 
 
 #ifdef SG_LIB_WIN32

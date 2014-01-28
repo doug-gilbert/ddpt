@@ -17,6 +17,7 @@ AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
 
 ddpt_SOURCES =		ddpt.c	\
 			ddpt.h	\
+			ddpt_cl.c \
 			ddpt_pt.c \
 			ddpt_xcopy.c
 

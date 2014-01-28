@@ -50,7 +50,7 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Wed Jan 22 2014 - dgilbert at interlog dot com
+* Mon Jan 27 2014 - dgilbert at interlog dot com
 - add ODX (subset xcopy(LID4)) support
   * ddpt-0.94
 * Wed Nov 13 2013 - dgilbert at interlog dot com
