@@ -1144,8 +1144,8 @@ static int
 odx_rt_info(const struct opts_t * op)
 {
     int res, fd, err, m, prot_en, p_type, lbppbe;
-    uint64_t ui64;
-    uint32_t ui32, bs;
+    uint64_t bc;
+    uint32_t rod_t, bs;
     uint16_t rtl;
     unsigned char rth[128];
     char b[128];
@@ -1171,7 +1171,7 @@ odx_rt_info(const struct opts_t * op)
     if (res < (int)sizeof(rth)) {
         pr2serr("unable to read %d bytes from '%s', only got %d bytes\n",
                  (int)sizeof(rth), op->rtf, res);
-        pr2serr("... it is unlikey file '%s' contains a ROD Token\n",
+        pr2serr("... it is unlikely file '%s' contains a ROD Token\n",
                  op->rtf);
         close(fd);
         return SG_LIB_FILE_ERROR;
@@ -1184,9 +1184,12 @@ odx_rt_info(const struct opts_t * op)
     }
 
     printf("Decoding information from ROD Token header:\n");
-    ui32 = (rth[0] << 24) + (rth[1] << 16) + (rth[2] << 8) + rth[3];
+    rod_t = (rth[0] << 24) + (rth[1] << 16) + (rth[2] << 8) + rth[3];
     printf("  ROD type: %s [0x%" PRIx32 "]\n",
-           rod_type_str(ui32, b, sizeof(b)), ui32);
+           rod_type_str(rod_t, b, sizeof(b)), rod_t);
+    if (rod_t >= 0xfffffff0)
+        printf("    Since ROD type is vendor specific, the following may "
+               "not be relevant\n");
     rtl = (rth[6] << 8) + rth[7];
     if (rtl < 0x1f8) {
         pr2serr(">>> ROD Token length field is too short, should be at "
@@ -1210,14 +1213,14 @@ odx_rt_info(const struct opts_t * op)
     printf("    Relative initiator port identifier: 0x%x\n",
            (rth[18] << 8) + rth[19]);
     decode_designation_descriptor(rth + 20, 28, op->verbose);
-    ui64 = 0;
+    bc = 0;
     for (m = 0; m < 8; m++) {
         if (m > 0)
-            ui64 <<= 8;
-        ui64 |= rth[48 + m];
+            bc <<= 8;
+        bc |= rth[48 + m];
     }
     printf("  Number of bytes represented: %" PRIu64 " [0x%" PRIx64 "]\n",
-           ui64, ui64);
+           bc, bc);
 
     printf("  Assume pdt=0 (e.g. disk) and decode device type specific "
            "data:\n");
@@ -1370,15 +1373,34 @@ fetch_3pc_vpd(struct opts_t * op, struct dev_info_t * dip)
 static int
 do_pop_tok(struct opts_t * op)
 {
-    int verb, len, fd, tmout;
-    unsigned char pl[32];
+    int k, n, verb, len, fd, tmout, allowed_descs;
+    uint64_t lba, sgl_total;
+    uint32_t num;
+    unsigned char pl[512 + 32]; /* large enough for biggest sgl */
 
     verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
     fd = op->idip->fd;
+    if (op->in_sgl) {
+        for (k = 0, sgl_total = 0; k < op->in_sgl_elems; ++k)
+            sgl_total += op->in_sgl[k].num;
+        if ((op->dd_count >= 0) && ((uint64_t)op->dd_count != sgl_total)) {
+            pr2serr("%s: count= value not equal to the sum of gather "
+                    "nums\n", __func__);
+            return SG_LIB_SYNTAX_ERROR;
+        }
+        op->dd_count = (int64_t)sgl_total;
+        if ((! op->iflagp->force ) && op->idip->odxp) {
+            allowed_descs = op->idip->odxp->brt_vpd.max_range_desc;
+            if ((allowed_descs > 0) && (op->in_sgl_elems > allowed_descs)) {
+                pr2serr("%s: number of gather list elements exceeds what the "
+                        "Block Device ROD\nToken Limits descriptor in the 3PC "
+                        "VPD page permits (%d).\nCan try 'iflag=force'\n",
+                        __func__, allowed_descs);
+                return SG_LIB_CAT_OTHER;
+            }
+        }
+    }
     memset(pl, 0, sizeof(pl));
-    len = sizeof(pl) - 2;
-    pl[0] = (unsigned char)((len >> 8) & 0xff);
-    pl[1] = (unsigned char)(len & 0xff);
     if (op->rod_type_given) {
         pl[2] = 0x2;            /* RTV bit */
         pl[8] = (unsigned char)((op->rod_type >> 24) & 0xff);
@@ -1392,22 +1414,50 @@ do_pop_tok(struct opts_t * op)
     pl[5] = (unsigned char)((op->inactivity_to >> 16) & 0xff);
     pl[6] = (unsigned char)((op->inactivity_to >> 8) & 0xff);
     pl[7] = (unsigned char)(op->inactivity_to & 0xff);
-    len = sizeof(pl) - 16;
-    pl[14] = (unsigned char)((len >> 8) & 0xff);
-    pl[15] = (unsigned char)(len & 0xff);
-    pl[16] = (unsigned char)((op->skip >> 56) & 0xff);
-    pl[17] = (unsigned char)((op->skip >> 48) & 0xff);
-    pl[18] = (unsigned char)((op->skip >> 40) & 0xff);
-    pl[19] = (unsigned char)((op->skip >> 32) & 0xff);
-    pl[20] = (unsigned char)((op->skip >> 24) & 0xff);
-    pl[21] = (unsigned char)((op->skip >> 16) & 0xff);
-    pl[22] = (unsigned char)((op->skip >> 8) & 0xff);
-    pl[23] = (unsigned char)(op->skip & 0xff);
-    pl[24] = (unsigned char)((op->dd_count >> 24) & 0xff);
-    pl[25] = (unsigned char)((op->dd_count >> 16) & 0xff);
-    pl[26] = (unsigned char)((op->dd_count >> 8) & 0xff);
-    pl[27] = (unsigned char)(op->dd_count & 0xff);
-    len = sizeof(pl);
+
+    if (op->in_sgl) {
+        len = op->in_sgl_elems * 16;
+        pl[14] = (unsigned char)((len >> 8) & 0xff);
+        pl[15] = (unsigned char)(len & 0xff);
+        for (k = 0, n = 15; k < op->in_sgl_elems; ++k) {
+            lba = op->in_sgl[k].lba;
+            pl[++n] = (unsigned char)((lba >> 56) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 48) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 40) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 32) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 24) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 16) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 8) & 0xff);
+            pl[++n] = (unsigned char)(lba & 0xff);
+            num = op->in_sgl[k].num;
+            pl[++n] = (unsigned char)((num >> 24) & 0xff);
+            pl[++n] = (unsigned char)((num >> 16) & 0xff);
+            pl[++n] = (unsigned char)((num >> 8) & 0xff);
+            pl[++n] = (unsigned char)(num & 0xff);
+            n += 4;
+        }
+        len = n + 1;
+    } else {    /* assume count= and possibly skip= given */
+        len = 16;       /* single element */
+        pl[14] = (unsigned char)((len >> 8) & 0xff);
+        pl[15] = (unsigned char)(len & 0xff);
+        pl[16] = (unsigned char)((op->skip >> 56) & 0xff);
+        pl[17] = (unsigned char)((op->skip >> 48) & 0xff);
+        pl[18] = (unsigned char)((op->skip >> 40) & 0xff);
+        pl[19] = (unsigned char)((op->skip >> 32) & 0xff);
+        pl[20] = (unsigned char)((op->skip >> 24) & 0xff);
+        pl[21] = (unsigned char)((op->skip >> 16) & 0xff);
+        pl[22] = (unsigned char)((op->skip >> 8) & 0xff);
+        pl[23] = (unsigned char)(op->skip & 0xff);
+        pl[24] = (unsigned char)((op->dd_count >> 24) & 0xff);
+        pl[25] = (unsigned char)((op->dd_count >> 16) & 0xff);
+        pl[26] = (unsigned char)((op->dd_count >> 8) & 0xff);
+        pl[27] = (unsigned char)(op->dd_count & 0xff);
+        len = 32;
+    }
+    n = len - 2;
+    pl[0] = (unsigned char)((n >> 8) & 0xff);
+    pl[1] = (unsigned char)(n & 0xff);
 
     tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
     return sg_ll_3party_copy_out(fd, SA_POP_TOK, op->list_id, DEF_GROUP_NUM,
@@ -1504,15 +1554,36 @@ fetch_rt_after_poptok(struct opts_t * op)
 static int
 do_wut(struct opts_t * op)
 {
-    int verb, len, n, fd, err, res, tmout;
-    int sz_1_bdrd = 16;
+    int verb, len, k, n, fd, err, res, tmout, sz_bdrd, allowed_descs;
     struct flags_t * flp;
-    unsigned char pl[1024];
+    uint64_t lba, sgl_total;
+    uint32_t num;
+    unsigned char pl[1024 + 32]; /* large enough for biggest sgl + ROD tok */
     unsigned char rt[512];
 
     verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
     flp = op->oflagp;
     memset(pl, 0, sizeof(pl));
+    if (op->out_sgl) {
+        if (op->dd_count >= 0) {
+            pr2serr("%s: count= value and scatter list is confusing\n",
+                    __func__);
+            return SG_LIB_SYNTAX_ERROR;
+        }
+        for (k = 0, sgl_total = 0; k < op->out_sgl_elems; ++k)
+            sgl_total += op->out_sgl[k].num;
+        op->dd_count = (int64_t)sgl_total;      /* >>> wrong is ibs != obs */
+        if ((! op->oflagp->force ) && op->odip->odxp) {
+            allowed_descs = op->odip->odxp->brt_vpd.max_range_desc;
+            if ((allowed_descs > 0) && (op->out_sgl_elems > allowed_descs)) {
+                pr2serr("%s: number of scatter list elements exceeds what "
+                        "the Block Device ROD\nToken Limits descriptor in "
+                        "the 3PC VPD page permits (%d).\nCan try "
+                        "'oflag=force'\n", __func__, allowed_descs);
+                return SG_LIB_CAT_OTHER;
+            }
+        }
+    }
     if (ODX_REQ_WUT == op->odx_request) {
         if (flp->del_tkn)
             pl[2] = 0x2;        /* DEL_TKN bit */
@@ -1563,22 +1634,45 @@ do_wut(struct opts_t * op)
     } else
         memcpy(pl + 16, local_rod_token, 512);
 
-    pl[534] = (unsigned char)((sz_1_bdrd >> 8) & 0xff);
-    pl[535] = (unsigned char)(sz_1_bdrd & 0xff);
-    pl[536] = (unsigned char)((op->skip >> 56) & 0xff);
-    pl[537] = (unsigned char)((op->skip >> 48) & 0xff);
-    pl[538] = (unsigned char)((op->skip >> 40) & 0xff);
-    pl[539] = (unsigned char)((op->skip >> 32) & 0xff);
-    pl[540] = (unsigned char)((op->skip >> 24) & 0xff);
-    pl[541] = (unsigned char)((op->skip >> 16) & 0xff);
-    pl[542] = (unsigned char)((op->skip >> 8) & 0xff);
-    pl[543] = (unsigned char)(op->skip & 0xff);
-    pl[544] = (unsigned char)((op->dd_count >> 24) & 0xff);
-    pl[545] = (unsigned char)((op->dd_count >> 16) & 0xff);
-    pl[546] = (unsigned char)((op->dd_count >> 8) & 0xff);
-    pl[547] = (unsigned char)(op->dd_count & 0xff);
-
-    len = 536 + (1 * sz_1_bdrd);
+    if (op->out_sgl) {
+        sz_bdrd = 16 * op->out_sgl_elems;
+        pl[534] = (unsigned char)((sz_bdrd >> 8) & 0xff);
+        pl[535] = (unsigned char)(sz_bdrd & 0xff);
+        for (k = 0, n = 535; k < op->out_sgl_elems; ++k) {
+            lba = op->out_sgl[k].lba;
+            pl[++n] = (unsigned char)((lba >> 56) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 48) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 40) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 32) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 24) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 16) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 8) & 0xff);
+            pl[++n] = (unsigned char)(lba & 0xff);
+            num = op->out_sgl[k].num;
+            pl[++n] = (unsigned char)((num >> 24) & 0xff);
+            pl[++n] = (unsigned char)((num >> 16) & 0xff);
+            pl[++n] = (unsigned char)((num >> 8) & 0xff);
+            pl[++n] = (unsigned char)(num & 0xff);
+            n += 4;
+        }
+    } else {    /* assume count= and possibly seek= given */
+        sz_bdrd = 16;   /* single element */
+        pl[534] = (unsigned char)((sz_bdrd >> 8) & 0xff);
+        pl[535] = (unsigned char)(sz_bdrd & 0xff);
+        pl[536] = (unsigned char)((op->skip >> 56) & 0xff);
+        pl[537] = (unsigned char)((op->skip >> 48) & 0xff);
+        pl[538] = (unsigned char)((op->skip >> 40) & 0xff);
+        pl[539] = (unsigned char)((op->skip >> 32) & 0xff);
+        pl[540] = (unsigned char)((op->skip >> 24) & 0xff);
+        pl[541] = (unsigned char)((op->skip >> 16) & 0xff);
+        pl[542] = (unsigned char)((op->skip >> 8) & 0xff);
+        pl[543] = (unsigned char)(op->skip & 0xff);
+        pl[544] = (unsigned char)((op->dd_count >> 24) & 0xff);
+        pl[545] = (unsigned char)((op->dd_count >> 16) & 0xff);
+        pl[546] = (unsigned char)((op->dd_count >> 8) & 0xff);
+        pl[547] = (unsigned char)(op->dd_count & 0xff);
+    }
+    len = 536 +  sz_bdrd;
     n = len - 2;
     pl[0] = (unsigned char)((n >> 8) & 0xff);
     pl[1] = (unsigned char)(n & 0xff);
@@ -1707,7 +1801,9 @@ do_odx_copy(struct opts_t * op)
             dip = op->odip;
             dip->fd = fd;
         }
-        return report_all_toks(op, dip);
+        res = report_all_toks(op, dip);
+        if (res)
+                return res;
     }
     if (! op->list_id_given)
         op->list_id = (ODX_REQ_WUT == op->odx_request) ? 0x102 : 0x101;
