@@ -69,6 +69,10 @@
 
 #define MAX_FIXED_SGL_ELEMS 32
 
+#ifndef UINT32_MAX
+#define UINT32_MAX ((uint32_t)-1)
+#endif
+
 static struct scat_gath_elem in_fixed_sgl[MAX_FIXED_SGL_ELEMS];
 static struct scat_gath_elem out_fixed_sgl[MAX_FIXED_SGL_ELEMS];
 
