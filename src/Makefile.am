@@ -1,7 +1,7 @@
 bin_PROGRAMS = ddpt
 
 # for C++/clang testing
-## CC = g++ -std=c++11
+## CC = g++
 ## CC = g++
 ## CC = clang
 ## CC = clang++
@@ -18,6 +18,7 @@ AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
 ddpt_SOURCES =		ddpt.c	\
 			ddpt.h	\
 			ddpt_cl.c \
+			ddpt_com.c \
 			ddpt_pt.c \
 			ddpt_xcopy.c
 

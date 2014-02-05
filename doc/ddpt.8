@@ -1,4 +1,4 @@
-.TH DDPT "8" "January 2014" "ddpt\-0.94" DDPT
+.TH DDPT "8" "February 2014" "ddpt\-0.94" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -12,8 +12,8 @@ devices that understand the SCSI command set.
 [\fIoflag=FLAGS\fR] [\fIoir=OIR\fR] [\fIoseek=SEEK\fR] [\fIprio=PRIO\fR]
 [\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR] [\fIrtf=RTF\fR]
 [\fIrtype=RTYPE\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR]
-[\fIto=TO\fR] [\fIverbose=VERB\fR] [\fI\-\-help\fR] [\fI\-\-verbose\fR]
-[\fI\-\-version\fR] [\fI\-\-wscan\fR] [\fI\-\-xcopy\fR]
+[\fIto=TO\fR] [\fIverbose=VERB\fR] [\fI\-\-help\fR] [\fI\-\-odx\fR]
+[\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR] [\fI\-\-xcopy\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
 .PP
@@ -40,39 +40,47 @@ command line options. Broadly speaking ddpt can be considered a super\-set
 of dd. See the section on DD DIFFERENCES for significant differences
 between ddpt and dd.
 .PP
-ddpt does a segmented copy, first reading in \fIBPT*IBS\fR bytes from
-\fIIFILE\fR (or less if near the end of the copy) into a copy buffer. In the
-absence of the various options and conditions that bypass the write
-operation, the copy buffer is then written out to \fIOFILE\fR. The copy
-process continues working its way along \fIIFILE\fR and \fIOFILE\fR until
-either \fICOUNT\fR is exhausted, an end of file is detected, or an error
-occurs. If \fIIBS\fR and \fIOBS\fR are different, ddpt restricts the value
-of \fIOBS\fR such that the copy buffer is an integral number of output
+This utility either does direct copies, based on read\-write sequences,
+or offload copies.
+.PP
+When doing a direct copy, this utility breaks the copy into segments since
+computer RAM is typically a scarce resource. First it reads in \fIBPT*IBS\fR
+bytes from \fIIFILE\fR (or less if near the end of the copy) into a copy
+buffer. In the absence of the various options and conditions that bypass
+the write operation, the copy buffer is then written out to \fIOFILE\fR.
+The copy process continues working its way along \fIIFILE\fR and \fIOFILE\fR
+until either \fICOUNT\fR is exhausted, an end of file is detected, or an
+error occurs. If \fIIBS\fR and \fIOBS\fR are different, ddpt restricts the
+value of \fIOBS\fR such that the copy buffer is an integral number of output
 blocks (i.e. (((\fIIBS*BPT\fR) % \fIOBS\fR) == 0) ). In the following
 descriptions, "segment" refers to all or part of a copy buffer.
 .PP
 The term "pt device" is used for a pass\-through device to which SCSI
-commands like READ(10) and WRITE(10) may be sent. A pt device may only be
-able to process SCSI commands in which case the "pt" flag is assumed. The
-ability to recognize such a pt only device may vary depending on the
-operating system (e.g. in Linux '/dev/sg2' and /dev/bsg/3:0:1:0 are
+commands like READ(10), WRITE(10) or POPULATE TOKEN may be sent. A pt device
+may only be able to process SCSI commands in which case the "pt" flag is
+assumed. The ability to recognize such a pt only device may vary depending
+on the operating system (e.g. in Linux '/dev/sg2' and /dev/bsg/3:0:1:0 are
 recognized). However if a device can process either normal UNIX read()/
-rite() calls or pass\-through SCSI commands then the default is to use
+write() calls or pass\-through SCSI commands then the default is to use
 UNIX read()/write() calls. That default can be overridden by using the "pt"
 flag (e.g. "if=/dev/sdc iflag=pt"). When pt access is specified any
 partition information is
 .B ignored.
 So "if=/dev/sdc2 iflag=pt skip=3" will start at logical block address 3
-of '/dev/sdc'. As a protection measure in version 0.92 ddpt will only
-accept that if the force flag is given in addition to pt.
+of '/dev/sdc'. As a protection measure ddpt will only accept that if the
+force flag is also given (i.e. 'iflag=pt,force').
 .PP
-Using the SCSI pass\-through this utility supports the EXTENDED COPY (LID1)
-command. LID1 stands for List IDentifier length of 1 byte which is found
-in SPC\-4, SPC\-3 and earlier standards. Recent SPC\-4 drafts have added
-the EXTENDED COPY (LID4) command which is not yet supported by this utility.
-EXTENDED COPY is often shortened to XCOPY and the lower case form: xcopy,
-is used below to indicate EXTENDED COPY specific options, flags and related
-information. See the section on XCOPY below for more information.
+This utility supports two types of offload copies via a SCSI pass\-through.
+Both are based on the EXTENDED COPY (XCOPY or xcopy) family of commands. The
+first uses the XCOPY(LID1) command to do a disk to disk copy. LID1 stands for
+List IDentifier length of 1 byte and the command is described in the SPC\-4
+drafts and the SPC\-3 and SPC\-2 standards. Recent SPC\-4 drafts have added
+the XCOPY(LID4) sub\-family of commands. The second offload copy supported
+by this utilty is called "ODX", a market name, which is a disk to disk subset
+of XCOPY(LID4) based on the POPULATE TOKEN and WRITE USING TOKEN SBC\-3
+commands. In the descriptions below "xcopy" refers to copies based on
+XCOPY(LID1) while "odx" refers to either full or partial ODX copies. See the
+section on XCOPY below for more information.
 .SH OPTIONS
 .TP
 \fBbpt\fR=\fIBPT[,OBPC]\fR
@@ -326,6 +334,10 @@ to /dev/null .
 \fB\-h\fR, \fB\-\-help\fR
 reports usage message then exits.
 .TP
+\fB\-o\fR, \fB\-\-odx\fR
+indicates to this utility that a ODX partial or full copy is requested.
+ODX is a disk based subset of xcopy(LID4).
+.TP
 \fB\-v\fR, \fB\-\-verbose\fR
 equivalent of \fIverbose=1\fR. If \fI\-\-verbose\fR appears twice then
 that is equivalent to \fIverbose=2\fR. Also \fI\-vv\fR is equivalent to
@@ -343,8 +355,8 @@ is added. When used four times only a SCSI adapter scan is shown.
 See EXAMPLES section below and the README.win32 file.
 .TP
 \fB\-x\fR, \fB\-\-xcopy\fR
-this option will attempt to call the SCSI EXTENDED COPY command. In the
-absence of another indication the xcopy command will be sent to the
+this option will attempt to call the SCSI EXTENDED COPY(LID1) command. In
+the absence of another indication the xcopy command will be sent to the
 destination (i.e. \fIOFILE\fR). See the section on ENVIRONMENT VARIABLES
 below.
 .SH COUNT
@@ -539,13 +551,16 @@ cause the lock to be taken if available else a "temporarily unavailable"
 error is generated. An exit status of 90 is produced in the latter case
 and no copy is done. See flock(2) man page.
 .TP
-force [io] [pt]
+force [io] [pt] [xcopy,odx]
 override difference between given block size and the block size found
 by the SCSI READ CAPACITY command. Use the given block size. Without
 this flag the copy would not be performed. pt access to what appears
 to be a block partition is aborted in version 0.92; that can be overridden
 by the force flag. For related reasons the 'norcap' flag requires this
-flag when applied to a block device accessed via pt.
+flag when applied to a block device accessed via pt. For xcopy and odx
+various limits imposed by associated VPD pages can be overridden (i.e.
+exceeded) if this flag is given. Note that the copy manager will probably
+object.
 .TP
 fsync [o] [reg,blk]
 Flushes data and metadata (describing the file) associated with the
@@ -606,8 +621,9 @@ has no affect, just a placeholder.
 .TP
 odx [io] [odx]
 indicates to this utility that a ODX partial or full copy is requested.
-Using the \fIrtf=RTF\fR or \fIrtype=RTYPE\fR option also indicates that ODX
-is requested. ODX is a disk based subset of xcopy(LID4).
+Using any of the \fI\-\-odx\fR, \fIrtf=RTF\fR or \fIrtype=RTYPE\fR options
+also indicates that ODX is requested. ODX is a disk based subset of
+xcopy(LID4).
 .TP
 pad [o] [reg,blk,pt]
 when the block to be written (typically the last block) contains less than
