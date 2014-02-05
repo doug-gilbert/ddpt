@@ -103,10 +103,10 @@ primary_help:
            "             [seek=SEEK] [skip=SKIP] [status=STAT] [it=TO] "
            "[verbose=VERB]\n"
 #ifdef SG_LIB_WIN32
-           "             [--help] [--verbose] [--version] [--wscan] "
+           "             [--help] [--odx] [--verbose] [--version] [--wscan] "
            "[--xcopy]\n"
 #else
-           "             [--help] [--verbose] [--version] [--xcopy]\n"
+           "             [--help] [--odx] [--verbose] [--version] [--xcopy]\n"
 #endif
            "  where the main options are:\n"
            "    bpt         input Blocks Per Transfer (BPT) (def: 128 when "
@@ -147,12 +147,13 @@ primary_help:
            "etc\n"
            "                -1->quiet (stderr->/dev/null)\n"
            "    --help      print out this usage message then exit\n"
+           "    --odx       do ODX copy rather than normal rw copy\n"
            "    --verbose   equivalent to verbose=1\n"
            "    --version   print version information then exit\n"
 #ifdef SG_LIB_WIN32
            "    --wscan     windows scan for device names and volumes\n"
 #endif
-           "    --xcopy     do xcopy rather than normal rw copy\n"
+           "    --xcopy     do xcopy(LID1) rather than normal rw copy\n"
            "\nCopy all or part of IFILE to OFILE, IBS*BPT bytes at a time. "
            "Similar to\n"
            "dd command. Support for block devices, especially those "
@@ -937,7 +938,9 @@ cl_sanity_defaults(struct opts_t * op)
         }
     }
     if (op->iflagp->odx || op->iflagp->odx || op->rtf[0] ||
-        op->rod_type_given || op->iflagp->all_toks || op->oflagp->all_toks) {
+        op->rod_type_given || op->iflagp->all_toks || op->oflagp->all_toks)
+        op->has_odx = op->has_odx ? op->has_odx : 1;
+    if (op->has_odx) {
         if (op->has_xcopy) {
             pr2serr("Can either request xcopy(LID1) or ODX but not "
                     "both\n");
@@ -1331,6 +1334,8 @@ cl_process(struct opts_t * op, int argc, char * argv[])
         /* look for long options that start with '--' */
         else if (0 == strncmp(key, "--help", 6))
             ++op->do_help;
+        else if (0 == strncmp(key, "--odx", 5))
+            ++op->has_odx;
         else if (0 == strncmp(key, "--verb", 6))
             ++op->verbose;
         else if (0 == strncmp(key, "--vers", 6)) {
@@ -1349,6 +1354,9 @@ cl_process(struct opts_t * op, int argc, char * argv[])
             res = 0;
             n = num_chs_in_str(key + 1, keylen - 1, 'h');
             op->do_help += n;
+            res += n;
+            n = num_chs_in_str(key + 1, keylen - 1, 'o');
+            op->has_odx += n;
             res += n;
             n = num_chs_in_str(key + 1, keylen - 1, 'v');
             op->verbose += n;

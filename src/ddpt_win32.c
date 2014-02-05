@@ -76,6 +76,17 @@
 #endif
 
 
+#ifndef HAVE_SYSCONF
+size_t
+win32_pagesize(void)
+{
+    SYSTEM_INFO sys_info;
+
+    GetSystemInfo(&sys_info);
+    return sys_info.dwPageSize;
+}
+#endif
+
 void
 win32_sleep_ms(int millisecs)
 {

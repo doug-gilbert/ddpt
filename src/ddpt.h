@@ -288,13 +288,14 @@ struct opts_t {
     int do_time;
     int has_xcopy;      /* --xcopy (LID1): iflag=xcopy or oflag=xcopy */
     int odx_request;    /* ODX_REQ_NONE==0 for no ODX */
+    int has_odx;        /* --odx: equivalent to iflag=odx or oflag=odx */
     uint32_t inactivity_to;     /* ODX: timeout in seconds */
     uint32_t rod_type;          /* ODX: ROD type */
     int rod_type_given;
     int64_t offset_in_rod;      /* ODX: units are obs bytes */
     int timeout_xcopy;          /* xcopy(LID1) and ODX */
-    int in_sgl_elems;		/* xcopy, odx */
-    int out_sgl_elems;		/* xcopy, odx */
+    int in_sgl_elems;           /* xcopy, odx */
+    int out_sgl_elems;          /* xcopy, odx */
     char rtf[INOUTF_SZ];        /* ODX: ROD token filename */
     struct scat_gath_elem * in_sgl;     /* xcopy, odx: alternative to skip=
                                          * and count= */
@@ -386,13 +387,14 @@ struct val_str_t {
 extern const char * ddpt_version_str;
 
 
-/* Declared below are functions shared by different compilation units */
-#ifdef __GNUC__
-int pr2serr(const char * fmt, ...) __attribute__ ((format (printf, 1, 2)));
-#else
-int pr2serr(const char * fmt, ...);
-#endif
+/* Functions declared below are shared by different compilation units */
 
+/* defined in ddpt.c */
+void errblk_put(uint64_t lba, struct opts_t * op);
+void errblk_put_range(uint64_t lba, int num, struct opts_t * op);
+void signals_process_delay(struct opts_t * op, int delay_type);
+
+/* defined in ddpt_pt.c */
 void * pt_construct_obj(void);
 void pt_destruct_obj(void * vp);
 int pt_open_if(struct opts_t * op);
@@ -408,19 +410,46 @@ int pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
                     int blocks, int64_t start_block);
 void pt_sync_cache(int fd);
 
+/* defined in ddpt_com.c */
+#ifdef __GNUC__
+int pr2serr(const char * fmt, ...) __attribute__ ((format (printf, 1, 2)));
+#else
+int pr2serr(const char * fmt, ...);
+#endif
+void sleep_ms(int millisecs);
+void print_stats(const char * str, struct opts_t * op);
+int dd_filetype(const char * filename, int verbose);
+char * dd_filetype_str(int ft, char * buff, int max_bufflen,
+                       const char * fname);
+void calc_duration_init(struct opts_t * op);
+void calc_duration_throughput(const char * leadin, int contin,
+                              struct opts_t * op);
+void print_blk_sizes(const char * fname, const char * access_typ,
+                     int64_t num_sect, int sect_sz);
+void zero_coe_limit_count(struct opts_t * op);
+int get_blkdev_capacity(struct opts_t * op, int which_arg,
+                        int64_t * num_sect, int * sect_sz);
+void errblk_open(struct opts_t * op);
 void errblk_put(uint64_t lba, struct opts_t * op);
 void errblk_put_range(uint64_t lba, int num, struct opts_t * op);
-void zero_coe_limit_count(struct opts_t * op);
-void signals_process_delay(struct opts_t * op, int delay_type);
+void errblk_close(struct opts_t * op);
+#ifdef SG_LIB_LINUX
+void print_tape_summary(struct opts_t * op, int res, const char * str);
+void print_tape_pos(const char * prefix, const char * postfix,
+                    struct opts_t * op);
+#endif
 
+/* defined in ddpt_xcopy.c */
 int do_xcopy(struct opts_t * op);       /* xcopy(LID1) */
 int do_odx_copy(struct opts_t * op);
 
+/* defined in ddpt_cl.c */
 int cl_process(struct opts_t * op, int argc, char * argv[]);
 void ddpt_usage(int help);
 
 
 #ifdef SG_LIB_WIN32
+/* defined in ddpt_win32.c */
 int dd_filetype(const char * fn, int verbose);
 int get_blkdev_capacity(struct opts_t * optsp, int which_arg,
                         int64_t * num_sect, int * sect_sz);
@@ -442,8 +471,10 @@ void win32_sleep_ms(int millisecs);
 int coe_process_eio(struct opts_t * op, int64_t skip);
 
 int sg_do_wscan(char letter, int do_scan, int verb);
-
+#ifndef HAVE_SYSCONF
+size_t win32_pagesize(void);
 #endif
+#endif          /* SG_LIB_WIN32 */
 
 #ifdef __cplusplus
 }

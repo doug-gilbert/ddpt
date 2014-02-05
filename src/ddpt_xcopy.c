@@ -1143,7 +1143,7 @@ cpy_op_status_str(int cos, char * b, int blen)
 static int
 odx_rt_info(const struct opts_t * op)
 {
-    int res, fd, err, m, prot_en, p_type, lbppbe;
+    int res, fd, err, m, prot_en, p_type, lbppbe, vendor;
     uint64_t bc;
     uint32_t rod_t, bs;
     uint16_t rtl;
@@ -1187,15 +1187,20 @@ odx_rt_info(const struct opts_t * op)
     rod_t = (rth[0] << 24) + (rth[1] << 16) + (rth[2] << 8) + rth[3];
     printf("  ROD type: %s [0x%" PRIx32 "]\n",
            rod_type_str(rod_t, b, sizeof(b)), rod_t);
-    if (rod_t >= 0xfffffff0)
+    if (rod_t >= 0xfffffff0) {
         printf("    Since ROD type is vendor specific, the following may "
                "not be relevant\n");
+        vendor = 1;
+    } else
+        vendor = 0;
     rtl = (rth[6] << 8) + rth[7];
     if (rtl < 0x1f8) {
         pr2serr(">>> ROD Token length field is too short, should be at "
                 "least\n    504 bytes (0x1f8), got 0x%" PRIx16 "\n", rtl);
-        close(fd);
-        return SG_LIB_FILE_ERROR;
+        if (! vendor) {
+            close(fd);
+            return SG_LIB_FILE_ERROR;
+        }
     }
     printf("  Copy manager ROD Token identifier=0x");
     for (m = 0; m < 8; ++m)
@@ -1206,8 +1211,10 @@ odx_rt_info(const struct opts_t * op)
     if (0xe4 != rth[16]) {
         pr2serr(">>> Expected Identification descriptor (0xe4) got 0x%x\n",
                 rth[16]);
-        close(fd);
-        return SG_LIB_FILE_ERROR;
+        if (! vendor) {
+            close(fd);
+            return SG_LIB_FILE_ERROR;
+        }
     }
     printf("    Peripheral Device type: 0x%x\n", rth[17] & 0x1f);
     printf("    Relative initiator port identifier: 0x%x\n",
@@ -1771,12 +1778,8 @@ report_all_toks(struct opts_t * op, struct dev_info_t * dip)
     return 0;
 }
 
-
-/* Called from main() in ddpt.c . Returns 0 on success or a positive
- * errno value if problems. This is for ODX which is a subset of
- * xcopy(LID4) for disk->disk, disk->held and held-> disk copies. */
-int
-do_odx_copy(struct opts_t * op)
+static int
+odx_copy_work(struct opts_t * op)
 {
     int fd, res;
     struct dev_info_t * dip;
@@ -1861,4 +1864,23 @@ do_odx_copy(struct opts_t * op)
         op->dd_count -= op->out_full;
     }
     return 0;
+}
+
+
+/* Called from main() in ddpt.c . Returns 0 on success or a positive
+ * errno value if problems. This is for ODX which is a subset of
+ * xcopy(LID4) for disk->disk, disk->held and held-> disk copies. */
+int
+do_odx_copy(struct opts_t * op)
+{
+    int ret;
+
+    if (op->do_time)
+        calc_duration_init(op);
+    ret = odx_copy_work(op);
+    if (0 == op->status_none)
+        print_stats("", op);
+    if (op->do_time)
+        calc_duration_throughput("", 0, op);
+    return ret;
 }
