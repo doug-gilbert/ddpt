@@ -1020,7 +1020,8 @@ cl_sanity_defaults(struct opts_t * op)
 /* Process options on the command line. Returns 0 if successful, > 0 for
  * (syntax) error and -1 for early exit (e.g. after '--help') */
 int
-cl_process(struct opts_t * op, int argc, char * argv[])
+cl_process(struct opts_t * op, int argc, char * argv[],
+	   const char * version_str)
 {
     char str[STR_SZ];
     char * key;
@@ -1339,7 +1340,7 @@ cl_process(struct opts_t * op, int argc, char * argv[])
         else if (0 == strncmp(key, "--verb", 6))
             ++op->verbose;
         else if (0 == strncmp(key, "--vers", 6)) {
-            pr2serr("%s\n", ddpt_version_str);
+            pr2serr("%s\n", version_str);
             return -1;
         }
 #ifdef SG_LIB_WIN32
@@ -1362,7 +1363,7 @@ cl_process(struct opts_t * op, int argc, char * argv[])
             op->verbose += n;
             res += n;
             if (num_chs_in_str(key + 1, keylen - 1, 'V')) {
-                pr2serr("%s\n", ddpt_version_str);
+                pr2serr("%s\n", version_str);
                 return -1;
             }
 #ifdef SG_LIB_WIN32

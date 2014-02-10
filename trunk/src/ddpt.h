@@ -384,15 +384,11 @@ struct val_str_t {
     const char * name;
 };
 
-extern const char * ddpt_version_str;
-
 
 /* Functions declared below are shared by different compilation units */
 
 /* defined in ddpt.c */
-void errblk_put(uint64_t lba, struct opts_t * op);
-void errblk_put_range(uint64_t lba, int num, struct opts_t * op);
-void signals_process_delay(struct opts_t * op, int delay_type);
+/* No global function defined in ddpt.c apart from main() */
 
 /* defined in ddpt_pt.c */
 void * pt_construct_obj(void);
@@ -438,13 +434,16 @@ void print_tape_summary(struct opts_t * op, int res, const char * str);
 void print_tape_pos(const char * prefix, const char * postfix,
                     struct opts_t * op);
 #endif
+void install_signal_handlers(struct opts_t * op);
+void signals_process_delay(struct opts_t * op, int delay_type);
 
 /* defined in ddpt_xcopy.c */
 int do_xcopy(struct opts_t * op);       /* xcopy(LID1) */
 int do_odx_copy(struct opts_t * op);
 
 /* defined in ddpt_cl.c */
-int cl_process(struct opts_t * op, int argc, char * argv[]);
+int cl_process(struct opts_t * op, int argc, char * argv[],
+               const char * version_str);
 void ddpt_usage(int help);
 
 

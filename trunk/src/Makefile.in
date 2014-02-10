@@ -78,7 +78,7 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-bin_PROGRAMS = ddpt$(EXEEXT)
+bin_PROGRAMS = ddpt$(EXEEXT) ddptctl$(EXEEXT)
 @OS_WIN32_MINGW_TRUE@am__append_1 = ddpt_win32.c \
 @OS_WIN32_MINGW_TRUE@			ddpt_wscan.c
 
@@ -87,6 +87,8 @@ bin_PROGRAMS = ddpt$(EXEEXT)
 
 @HAVE_SGUTILS_FALSE@am__append_3 = $(sglib_SOURCES)
 @HAVE_SGUTILS_TRUE@ddpt_DEPENDENCIES =
+@HAVE_SGUTILS_FALSE@am__append_4 = $(sglib_SOURCES)
+@HAVE_SGUTILS_TRUE@ddptctl_DEPENDENCIES =
 subdir = src
 DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
 	$(top_srcdir)/depcomp
@@ -119,6 +121,17 @@ am_ddpt_OBJECTS = ddpt.$(OBJEXT) ddpt_cl.$(OBJEXT) ddpt_com.$(OBJEXT) \
 	ddpt_pt.$(OBJEXT) ddpt_xcopy.$(OBJEXT) $(am__objects_1) \
 	$(am__objects_2) $(am__objects_4)
 ddpt_OBJECTS = $(am_ddpt_OBJECTS)
+am__ddptctl_SOURCES_DIST = ddptctl.c ddpt.h ddpt_cl.c ddpt_com.c \
+	ddpt_pt.c ddpt_xcopy.c ../lib/sg_lib.c ../include/sg_lib.h \
+	../lib/sg_lib_data.c ../include/sg_lib_data.h \
+	../lib/sg_cmds_basic.c ../lib/sg_cmds_basic2.c \
+	../include/sg_cmds_basic.h ../lib/sg_cmds_extra.c \
+	../include/sg_cmds_extra.h ../include/sg_pt.h \
+	../lib/sg_pt_common.c
+am_ddptctl_OBJECTS = ddptctl.$(OBJEXT) ddpt_cl.$(OBJEXT) \
+	ddpt_com.$(OBJEXT) ddpt_pt.$(OBJEXT) ddpt_xcopy.$(OBJEXT) \
+	$(am__objects_4)
+ddptctl_OBJECTS = $(am_ddptctl_OBJECTS)
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
 am__v_P_0 = false
@@ -151,8 +164,10 @@ AM_V_CCLD = $(am__v_CCLD_@AM_V@)
 am__v_CCLD_ = $(am__v_CCLD_@AM_DEFAULT_V@)
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
-SOURCES = $(ddpt_SOURCES) $(EXTRA_ddpt_SOURCES)
-DIST_SOURCES = $(am__ddpt_SOURCES_DIST) $(EXTRA_ddpt_SOURCES)
+SOURCES = $(ddpt_SOURCES) $(EXTRA_ddpt_SOURCES) $(ddptctl_SOURCES) \
+	$(EXTRA_ddptctl_SOURCES)
+DIST_SOURCES = $(am__ddpt_SOURCES_DIST) $(EXTRA_ddpt_SOURCES) \
+	$(am__ddptctl_SOURCES_DIST) $(EXTRA_ddptctl_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -287,6 +302,8 @@ top_srcdir = @top_srcdir@
 AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W
 ddpt_SOURCES = ddpt.c ddpt.h ddpt_cl.c ddpt_com.c ddpt_pt.c \
 	ddpt_xcopy.c $(am__append_1) $(am__append_2) $(am__append_3)
+ddptctl_SOURCES = ddptctl.c ddpt.h ddpt_cl.c ddpt_com.c ddpt_pt.c \
+	ddpt_xcopy.c $(am__append_4)
 sglib_SOURCES = ../lib/sg_lib.c \
                         ../include/sg_lib.h     \
                         ../lib/sg_lib_data.c    \
@@ -305,6 +322,17 @@ sglib_SOURCES = ../lib/sg_lib.c \
 @HAVE_SGUTILS_TRUE@ddpt_LDADD = @os_libs@ @rt_libs@ @SGUTILS_LIBS@
 @HAVE_SGUTILS_FALSE@ddpt_DEPENDENCIES = @os_deps@
 EXTRA_ddpt_SOURCES = ../lib/sg_pt_linux.c	\
+			../include/sg_linux_inc.h	\
+			../lib/sg_pt_freebsd.c	\
+			../lib/sg_pt_osf1.c	\
+			../lib/sg_pt_solaris.c	\
+			../lib/sg_pt_win32.c	\
+			../include/sg_pt_win32.h
+
+@HAVE_SGUTILS_FALSE@ddptctl_LDADD = @os_deps@ @os_libs@ @rt_libs@ @SGUTILS_LIBS@
+@HAVE_SGUTILS_TRUE@ddptctl_LDADD = @os_libs@ @rt_libs@ @SGUTILS_LIBS@
+@HAVE_SGUTILS_FALSE@ddptctl_DEPENDENCIES = @os_deps@
+EXTRA_ddptctl_SOURCES = ../lib/sg_pt_linux.c	\
 			../include/sg_linux_inc.h	\
 			../lib/sg_pt_freebsd.c	\
 			../lib/sg_pt_osf1.c	\
@@ -393,6 +421,10 @@ ddpt$(EXEEXT): $(ddpt_OBJECTS) $(ddpt_DEPENDENCIES) $(EXTRA_ddpt_DEPENDENCIES)
 	@rm -f ddpt$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(ddpt_OBJECTS) $(ddpt_LDADD) $(LIBS)
 
+ddptctl$(EXEEXT): $(ddptctl_OBJECTS) $(ddptctl_DEPENDENCIES) $(EXTRA_ddptctl_DEPENDENCIES) 
+	@rm -f ddptctl$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(ddptctl_OBJECTS) $(ddptctl_LDADD) $(LIBS)
+
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
 
@@ -406,6 +438,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt_win32.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt_wscan.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt_xcopy.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddptctl.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sg_cmds_basic.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sg_cmds_basic2.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sg_cmds_extra.Po@am__quote@
