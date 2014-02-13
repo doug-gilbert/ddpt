@@ -24,7 +24,6 @@ ddpt_SOURCES =		ddpt.c	\
 
 ddptctl_SOURCES =	ddptctl.c \
 			ddpt.h	\
-			ddpt_cl.c \
 			ddpt_com.c \
 			ddpt_pt.c \
 			ddpt_xcopy.c
