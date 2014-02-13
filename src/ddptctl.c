@@ -64,7 +64,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140212 [svn: r257]";
+const char * ddptctl_version_str = "0.94 20140212 [svn: r259]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -402,7 +402,7 @@ main(int argc, char * argv[])
     int c;
     int64_t i64;
     int do_abort = 0;
-    int do_all_toks = 0; 
+    int do_all_toks = 0;
     int do_block = 0;
     int do_info = 0;
     int do_poll = 0;

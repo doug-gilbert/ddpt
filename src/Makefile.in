@@ -121,16 +121,15 @@ am_ddpt_OBJECTS = ddpt.$(OBJEXT) ddpt_cl.$(OBJEXT) ddpt_com.$(OBJEXT) \
 	ddpt_pt.$(OBJEXT) ddpt_xcopy.$(OBJEXT) $(am__objects_1) \
 	$(am__objects_2) $(am__objects_4)
 ddpt_OBJECTS = $(am_ddpt_OBJECTS)
-am__ddptctl_SOURCES_DIST = ddptctl.c ddpt.h ddpt_cl.c ddpt_com.c \
-	ddpt_pt.c ddpt_xcopy.c ../lib/sg_lib.c ../include/sg_lib.h \
+am__ddptctl_SOURCES_DIST = ddptctl.c ddpt.h ddpt_com.c ddpt_pt.c \
+	ddpt_xcopy.c ../lib/sg_lib.c ../include/sg_lib.h \
 	../lib/sg_lib_data.c ../include/sg_lib_data.h \
 	../lib/sg_cmds_basic.c ../lib/sg_cmds_basic2.c \
 	../include/sg_cmds_basic.h ../lib/sg_cmds_extra.c \
 	../include/sg_cmds_extra.h ../include/sg_pt.h \
 	../lib/sg_pt_common.c
-am_ddptctl_OBJECTS = ddptctl.$(OBJEXT) ddpt_cl.$(OBJEXT) \
-	ddpt_com.$(OBJEXT) ddpt_pt.$(OBJEXT) ddpt_xcopy.$(OBJEXT) \
-	$(am__objects_4)
+am_ddptctl_OBJECTS = ddptctl.$(OBJEXT) ddpt_com.$(OBJEXT) \
+	ddpt_pt.$(OBJEXT) ddpt_xcopy.$(OBJEXT) $(am__objects_4)
 ddptctl_OBJECTS = $(am_ddptctl_OBJECTS)
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -302,8 +301,8 @@ top_srcdir = @top_srcdir@
 AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W
 ddpt_SOURCES = ddpt.c ddpt.h ddpt_cl.c ddpt_com.c ddpt_pt.c \
 	ddpt_xcopy.c $(am__append_1) $(am__append_2) $(am__append_3)
-ddptctl_SOURCES = ddptctl.c ddpt.h ddpt_cl.c ddpt_com.c ddpt_pt.c \
-	ddpt_xcopy.c $(am__append_4)
+ddptctl_SOURCES = ddptctl.c ddpt.h ddpt_com.c ddpt_pt.c ddpt_xcopy.c \
+	$(am__append_4)
 sglib_SOURCES = ../lib/sg_lib.c \
                         ../include/sg_lib.h     \
                         ../lib/sg_lib_data.c    \

@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.94 20140210 [svn: r258]";
+static const char * ddpt_version_str = "0.94 20140212 [svn: r259]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -384,7 +384,7 @@ calc_count_in(struct opts_t * op, int64_t * in_num_sectp)
             return res;
         } else {
             if (op->verbose) {
-                print_blk_sizes(ifn, "pt", *in_num_sectp, in_sect_sz);
+                print_blk_sizes(ifn, "pt", *in_num_sectp, in_sect_sz, 1);
                 if (op->idip->prot_type > 0)
                     pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
                             op->idip->prot_type, op->idip->p_i_exp);
@@ -419,7 +419,7 @@ calc_count_in(struct opts_t * op, int64_t * in_num_sectp)
             *in_num_sectp = -1;
         }
         if (op->verbose)
-            print_blk_sizes(ifn, "blk", *in_num_sectp, in_sect_sz);
+            print_blk_sizes(ifn, "blk", *in_num_sectp, in_sect_sz, 1);
         if ((*in_num_sectp > 0) && (op->ibs != in_sect_sz)) {
             pr2serr(">> warning: %s block size confusion: bs=%d, "
                     "device claims=%d\n", ifn, op->ibs, in_sect_sz);
@@ -433,7 +433,7 @@ calc_count_in(struct opts_t * op, int64_t * in_num_sectp)
             *in_num_sectp = st.st_size / op->ibs;
             res = st.st_size % op->ibs;
             if (op->verbose) {
-                print_blk_sizes(ifn, "reg", *in_num_sectp, op->ibs);
+                print_blk_sizes(ifn, "reg", *in_num_sectp, op->ibs, 1);
                 if (res)
                     pr2serr("    residual_bytes=%d\n", res);
             }
@@ -484,7 +484,7 @@ calc_count_out(struct opts_t * op, int64_t * out_num_sectp)
             return res;
         } else {
             if (op->verbose) {
-                print_blk_sizes(ofn, "pt", *out_num_sectp, out_sect_sz);
+                print_blk_sizes(ofn, "pt", *out_num_sectp, out_sect_sz, 1);
                 if (op->odip->prot_type > 0)
                     pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
                             op->odip->prot_type, op->odip->p_i_exp);
@@ -520,7 +520,7 @@ calc_count_out(struct opts_t * op, int64_t * out_num_sectp)
             *out_num_sectp = -1;
         } else {
             if (op->verbose)
-                print_blk_sizes(ofn, "blk", *out_num_sectp, out_sect_sz);
+                print_blk_sizes(ofn, "blk", *out_num_sectp, out_sect_sz, 1);
             if ((*out_num_sectp > 0) && (op->obs != out_sect_sz)) {
                 pr2serr(">> warning: %s block size confusion: obs=%d, "
                         "device claims=%d\n", ofn, op->obs, out_sect_sz);
@@ -535,7 +535,7 @@ calc_count_out(struct opts_t * op, int64_t * out_num_sectp)
             *out_num_sectp = st.st_size / op->obs;
             res = st.st_size % op->obs;
             if (op->verbose) {
-                print_blk_sizes(ofn, "reg", *out_num_sectp, op->obs);
+                print_blk_sizes(ofn, "reg", *out_num_sectp, op->obs, 1);
                 if (res)
                     pr2serr("    residual_bytes=%d\n", res);
             }

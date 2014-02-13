@@ -438,7 +438,7 @@ void calc_duration_init(struct opts_t * op);
 void calc_duration_throughput(const char * leadin, int contin,
                               struct opts_t * op);
 void print_blk_sizes(const char * fname, const char * access_typ,
-                     int64_t num_sect, int sect_sz);
+                     int64_t num_sect, int sect_sz, int to_stderr);
 void zero_coe_limit_count(struct opts_t * op);
 int get_blkdev_capacity(struct opts_t * op, int which_arg,
                         int64_t * num_sect, int * sect_sz);
@@ -455,6 +455,7 @@ void install_signal_handlers(struct opts_t * op);
 void signals_process_delay(struct opts_t * op, int delay_type);
 void decode_designation_descriptor(const unsigned char * ucp, int i_len,
                                    int verb);
+void print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr);
 
 /* defined in ddpt_xcopy.c */
 int do_xcopy(struct opts_t * op);       /* xcopy(LID1) */

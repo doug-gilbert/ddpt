@@ -71,7 +71,7 @@
 #include <sys/time.h>
 #endif
 
-#include "ddpt.h"	/* includes <signal.h> */
+#include "ddpt.h"       /* includes <signal.h> */
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -512,16 +512,18 @@ zero_coe_limit_count(struct opts_t * op)
  * (10**6 bytes), GB (10**9 bytes) or TB (10**12 bytes) to stderr. */
 void
 print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
-                int sect_sz)
+                int sect_sz, int to_stderr)
 {
     int mb, gb, tb;
     size_t len;
     int64_t n = 0;
     char b[32];
     char dec[4];
+    int (*print_p)(const char *, ...);
 
+    print_p = to_stderr ? pr2serr : printf;
     if (num_sect <= 0) {
-        pr2serr("  %s [%s]: blocks=%" PRId64 ", _bs=%d\n", fname, access_typ,
+        print_p("  %s [%s]: blocks=%" PRId64 ", _bs=%d\n", fname, access_typ,
                 num_sect, sect_sz);
         return;
     }
@@ -538,12 +540,12 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
         dec[1] = b[len - 2];
         dec[2] = '\0';
         b[len - 3] = '\0';
-        pr2serr("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
+        print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
                 "_bs=%d, %s.%s PB\n", fname, access_typ, num_sect,
                 num_sect, sect_sz, b, dec);
     } else if (gb > 99999) {
         tb = gb / 1000;
-        pr2serr("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
+        print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
                 "_bs=%d, %d TB\n", fname, access_typ, num_sect,
                 num_sect, sect_sz, tb);
     } else {
@@ -556,12 +558,12 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
             dec[1] = b[len - 2];
             dec[2] = '\0';
             b[len - 3] = '\0';
-            pr2serr("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
+            print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
                     "_bs=%d, %s.%s TB\n", fname, access_typ, num_sect,
                     num_sect, sect_sz, b, dec);
         } else if (mb > 99999) {
             gb = mb / 1000;
-            pr2serr("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
+            print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
                     "_bs=%d, %d GB\n", fname, access_typ, num_sect,
                     num_sect, sect_sz, gb);
         } else if (mb > 999) {
@@ -571,15 +573,15 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
             dec[1] = b[len - 2];
             dec[2] = '\0';
             b[len - 3] = '\0';
-            pr2serr("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
+            print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
                     "_bs=%d, %s.%s GB\n", fname, access_typ, num_sect,
                     num_sect, sect_sz, b, dec);
         } else if (mb > 0) {
-            pr2serr("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
+            print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
                     "_bs=%d, %d MB%s\n", fname, access_typ, num_sect,
                     num_sect, sect_sz, mb, ((mb < 10) ? " approx" : ""));
         } else
-            pr2serr("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
+            print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
                     "_bs=%d\n", fname, access_typ, num_sect, num_sect,
                     sect_sz);
     }
@@ -1354,6 +1356,69 @@ decode_designation_descriptor(const unsigned char * ucp, int i_len, int verb)
     default: /* reserved */
         pr2serr("      reserved designator=0x%x\n", desig_type);
         dStrHexErr((const char *)ip, i_len, 0);
+        break;
+    }
+}
+
+void
+print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr)
+{
+    int (*print_p)(const char *, ...);
+    char b[80];
+
+    print_p = to_stderr ? pr2serr : printf;
+    if (prefix && exit_stat)
+        snprintf(b, sizeof(b), "%s: ", prefix);
+    else
+        b[0] = '\0';
+    switch(exit_stat) {
+    case SG_LIB_CAT_CLEAN:      /* 0 */
+        break;
+    case SG_LIB_SYNTAX_ERROR:   /* 1 */
+        print_p("%ssyntax error\n", b);
+        break;
+    case SG_LIB_CAT_NOT_READY:   /* 2 */
+        print_p("%sdevice not ready\n", b);
+        break;
+    case SG_LIB_CAT_MEDIUM_HARD:   /* 3 */
+        print_p("%smedium or hardware error\n", b);
+        break;
+    case SG_LIB_CAT_ILLEGAL_REQ:   /* 5 */
+        print_p("%sillegal request\n", b);
+        break;
+    case SG_LIB_CAT_UNIT_ATTENTION:   /* 6 */
+        print_p("%sunit attention\n", b);
+        break;
+    case SG_LIB_CAT_INVALID_OP:   /* 9 */
+        print_p("%sinvalid opcode\n", b);
+        break;
+    case SG_LIB_CAT_ABORTED_COMMAND:   /* 11 */
+        print_p("%saborted command\n", b);
+        break;
+    case SG_LIB_CAT_MISCOMPARE:   /* 14 */
+        print_p("%smiscompare\n", b);
+        break;
+    case SG_LIB_FILE_ERROR:   /* 15 */
+        print_p("%sfile error\n", b);
+        break;
+    case SG_LIB_CAT_NO_SENSE:   /* 20 */
+        print_p("%sno sense (but possible warning/error)\n", b);
+        break;
+    case SG_LIB_CAT_RECOVERED:   /* 21 */
+        print_p("%srecovered error (possible future errors)\n", b);
+        break;
+    case SG_LIB_CAT_MALFORMED:   /* 97 */
+        print_p("%sresponse to SCSI command malformed\n", b);
+        break;
+    case SG_LIB_CAT_SENSE:   /* 98 */
+        print_p("%ssome other error/warning is sense buffer\n", b);
+        break;
+    case SG_LIB_CAT_OTHER:   /* 99 */
+        print_p("%ssome other error/warning, not sense buffer related\n", b);
+        break;
+    default:
+        print_p("%sunexpected exit status value: %d [0x%x]", b, exit_stat,
+                exit_stat);
         break;
     }
 }
