@@ -67,9 +67,8 @@
 #include "config.h"
 #endif
 
-#include "ddpt.h"
 
-static const char * ddpt_version_str = "0.94 20140209 [svn: r257]";
+static const char * ddpt_version_str = "0.94 20140210 [svn: r258]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -110,6 +109,7 @@ static const char * ddpt_version_str = "0.94 20140209 [svn: r257]";
 #endif
 #endif
 
+#include "ddpt.h"
 #include "sg_lib.h"
 
 #ifndef EREMOTEIO
@@ -2563,7 +2563,9 @@ main(int argc, char * argv[])
         return sg_do_wscan('\0', op->wscan, op->verbose);
 #endif
 
+#if 1
     install_signal_handlers(op);
+#endif
 
     if (op->has_odx) {
         started_copy = 1;
