@@ -43,7 +43,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <signal.h>
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
@@ -60,7 +59,7 @@
 #include "config.h"
 #endif
 
-#include "ddpt.h"
+#include "ddpt.h"       /* includes <signal.h> */
 
 #include "sg_lib.h"
 #include "sg_cmds_basic.h"
@@ -200,7 +199,6 @@ secondary_help:
            "(10 mins))\n\n");
     pr2serr("FLAGS: (arguments to oflag= and oflag=; may be comma "
             "separated\n"
-            "  all_toks (odx)   report all ROD Tokens then exit\n"
             "  append (o)     append (part of) IFILE to end of OFILE\n"
             "  block (pt)     pt opens are non blocking by default\n"
             "  cat (xcopy)    set CAT bit in segment descriptor header\n"
@@ -653,9 +651,7 @@ flags_process(const char * arg, struct flags_t * fp)
         np = strchr(cp, ',');
         if (np)
             *np++ = '\0';
-        if (0 == strcmp(cp, "all_toks"))
-            ++fp->all_toks;
-        else if (0 == strcmp(cp, "append"))
+        if (0 == strcmp(cp, "append"))
             ++fp->append;
         else if (0 == strcmp(cp, "block"))
             ++fp->block;
@@ -938,7 +934,7 @@ cl_sanity_defaults(struct opts_t * op)
         }
     }
     if (op->iflagp->odx || op->iflagp->odx || op->rtf[0] ||
-        op->rod_type_given || op->iflagp->all_toks || op->oflagp->all_toks)
+        op->rod_type_given)
         op->has_odx = op->has_odx ? op->has_odx : 1;
     if (op->has_odx) {
         if (op->has_xcopy) {
@@ -947,26 +943,7 @@ cl_sanity_defaults(struct opts_t * op)
             return SG_LIB_SYNTAX_ERROR;
         }
         cp = "";
-        if (op->iflagp->all_toks) {
-            if (op->oflagp->all_toks) {
-                pr2serr("Don't allow both iflag=all_toks and "
-                        "oflag=all_toks\n");
-                return SG_LIB_SYNTAX_ERROR;
-            }
-            if ((! op->idip->fn[0]) || (op->odip->fn[0])) {
-                pr2serr("want if=IFILE with iflag=all_toks\n");
-                return SG_LIB_SYNTAX_ERROR;
-            }
-            op->odx_request = ODX_REQ_ALL_TOKS;
-            cp = "report all ROD token on IFILE";
-        } else if (op->oflagp->all_toks) {
-            if (! op->odip->fn[0]) {
-                pr2serr("want of=OFILE with oflag=all_toks\n");
-                return SG_LIB_SYNTAX_ERROR;
-            }
-            op->odx_request = ODX_REQ_ALL_TOKS;
-            cp = "report all ROD token on OFILE";
-        } else if (op->idip->fn[0] && op->odip->fn[0]) {
+        if (op->idip->fn[0] && op->odip->fn[0]) {
             op->odx_request = ODX_REQ_COPY;
             cp = "copy; POPULATE TOKEN followed by WRITE USING TOKEN";
         } else if (op->idip->fn[0]) {
@@ -975,11 +952,6 @@ cl_sanity_defaults(struct opts_t * op)
         } else if (op->odip->fn[0]) {
             op->odx_request = ODX_REQ_WUT;
             cp = "held-->disk; WRITE USING TOKEN";
-        } else if (op->rtf[0]) {
-            op->do_time = 0;
-            ++op->status_none;
-            op->odx_request = ODX_REQ_RT_INFO;
-            cp = "decode information in given ROD Token";
         } else {
             pr2serr("Not enough options given to do ODX (xcopy(LID4))\n");
             return SG_LIB_SYNTAX_ERROR;
@@ -1021,7 +993,7 @@ cl_sanity_defaults(struct opts_t * op)
  * (syntax) error and -1 for early exit (e.g. after '--help') */
 int
 cl_process(struct opts_t * op, int argc, char * argv[],
-	   const char * version_str)
+           const char * version_str)
 {
     char str[STR_SZ];
     char * key;

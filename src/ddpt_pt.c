@@ -43,7 +43,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <signal.h>
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
@@ -60,7 +59,7 @@
 #include "config.h"
 #endif
 
-#include "ddpt.h"
+#include "ddpt.h"	/* includes <signal.h> */
 
 #include "sg_lib.h"
 #include "sg_cmds_basic.h"
@@ -78,8 +77,38 @@
 #define DDPT_VARIABLE_LEN_OC 0x7f
 #define DDPT_READ32_SA 0x9
 #define DDPT_WRITE32_SA 0xb
+#define DDPT_TPC_OUT_CMD 0x83
+#define DDPT_TPC_OUT_CMDLEN 16
+#define DDPT_TPC_IN_CMD 0x84
+#define DDPT_TPC_IN_CMDLEN 16
+
+#define ASC_GENERAL_0 0x0
+#define ASQ_OP_IN_PROGRESS 0x16
+
+#define ASC_3PC_GEN 0xd
+#define ASQ_TARGET_UNDERRUN 0x4
+#define ASQ_TARGET_OVERRUN 0x5
 
 #define ASC_PROTECTION_INFO_BAD 0x10
+
+#define ASC_PARAM_LST_LEN_ERR 0x1a      /* only asq=00 defined */
+
+#define ASC_INVALID_TOKOP 0x23
+#define ASQ_TOKOP_UNK 0x0
+/* There are 11 of these ASQs, just add asq to DDPT_CAT base */
+
+#define ASC_INVALID_PARAM 0x26
+#define ASQ_INVALID_FLD_IN_PARAM 0x0
+#define ASQ_TOO_MANY_SEGS_IN_PARAM 0x8
+
+#define ASC_CMDS_CLEARED 0x2f
+#define ASQ_CMDS_CLEARED_BY_DEV_SVR 0x2
+
+#define ASC_INSUFF_RES 0x55
+#define ASQ_INSUFF_RES_CREATE_ROD 0xc
+#define ASQ_INSUFF_RES_CREATE_RODTOK 0xd
+
+#define DEF_PT_TIMEOUT 60       /* 60 seconds */
 
 
 void *
@@ -1015,4 +1044,226 @@ pt_sync_cache(int fd)
     }
     if (0 != res)
         pr2serr("Unable to do SCSI synchronize cache\n");
+}
+
+static int
+pt_tpc_process_res(int cp_ret, int sense_cat, const unsigned char * sense_b,
+                   int sense_len)
+{
+    int ret, sb_ok;
+
+    if (-1 == cp_ret)
+        ret = -1;
+    else if (-2 == cp_ret) {
+        struct sg_scsi_sense_hdr ssh;
+
+        sb_ok = sg_scsi_normalize_sense(sense_b, sense_len, &ssh);
+        switch (sense_cat) {
+        case SG_LIB_CAT_NOT_READY:
+        case SG_LIB_CAT_INVALID_OP:
+        case SG_LIB_CAT_UNIT_ATTENTION:
+        case SG_LIB_CAT_ABORTED_COMMAND:
+            ret = sense_cat;
+            break;
+        case SG_LIB_CAT_ILLEGAL_REQ:
+            if (sb_ok) {
+                if ((ASC_GENERAL_0 == ssh.asc) &&
+                    (ASQ_OP_IN_PROGRESS == ssh.ascq))
+                    ret = DDPT_CAT_OP_IN_PROGRESS;
+                else if (ASC_3PC_GEN == ssh.asc) {
+                    if (ASQ_TARGET_UNDERRUN == ssh.ascq)
+                        ret = DDPT_CAT_TARGET_UNDERRUN;
+                    else if (ASQ_TARGET_OVERRUN == ssh.ascq)
+                        ret = DDPT_CAT_TARGET_OVERRUN;
+                    else
+                        ret = sense_cat;
+                } else if (ASC_PARAM_LST_LEN_ERR == ssh.asc)
+                    ret = DDPT_CAT_PARAM_LST_LEN_ERR;
+                else if (ASC_INVALID_PARAM == ssh.asc) {
+                    if (ASQ_INVALID_FLD_IN_PARAM == ssh.ascq)
+                        ret = DDPT_CAT_INVALID_FLD_IN_PARAM;
+                    else if (ASQ_TOO_MANY_SEGS_IN_PARAM == ssh.ascq)
+                        ret = DDPT_CAT_TOO_MANY_SEGS_IN_PARAM;
+                    else
+                        ret = sense_cat;
+                } else if (ASC_INSUFF_RES == ssh.asc) {
+                    if (ASQ_INSUFF_RES_CREATE_ROD == ssh.ascq)
+                        ret = DDPT_CAT_INSUFF_RES_CREATE_ROD;
+                    else if (ASQ_INSUFF_RES_CREATE_RODTOK == ssh.ascq)
+                        ret = DDPT_CAT_INSUFF_RES_CREATE_RODTOK;
+                    else
+                        ret = sense_cat;
+                } else if (ASC_INVALID_TOKOP == ssh.asc)
+                    ret = DDPT_CAT_TOKOP_BASE + ssh.ascq;
+                else
+                    ret = sense_cat;
+            } else
+                ret = sense_cat;
+            break;
+        case SG_LIB_CAT_SENSE:
+            if (sb_ok) {
+                if (SPC_SK_DATA_PROTECT == ssh.sense_key)
+                    ret = DDPT_CAT_SK_DATA_PROTECT;
+                else if (SPC_SK_COPY_ABORTED == ssh.sense_key)
+                    ret = DDPT_CAT_SK_COPY_ABORTED;
+                else
+                    ret = sense_cat;
+            } else
+                ret = -1;
+            break;
+        case SG_LIB_CAT_RECOVERED:
+        case SG_LIB_CAT_NO_SENSE:
+            ret = 0;
+            break;
+        default:
+            ret = -1;
+            break;
+        }
+    } else
+        ret = 0;
+    return ret;
+}
+
+/* Handles various service actions associated with opcode 0x83 which is
+ * called THIRD PARTY COPY OUT. These include the EXTENDED COPY(LID1 and
+ * LID4), POPULATE TOKEN and WRITE USING TOKEN commands.
+ * Return of 0 -> success,
+ * SG_LIB_CAT_INVALID_OP -> opcode 0x83 not supported,
+ * SG_LIB_CAT_ILLEGAL_REQ -> bad field in cdb, SG_LIB_CAT_UNIT_ATTENTION,
+ * SG_LIB_CAT_NOT_READY -> device not ready, SG_LIB_CAT_ABORTED_COMMAND,
+ * -1 -> other failure */
+int
+pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
+                   int timeout_secs, void * paramp, int param_len,
+                   int noisy, int verbose)
+{
+    int k, res, ret, sense_cat, tmout;
+    unsigned char xcopyCmdBlk[DDPT_TPC_OUT_CMDLEN] =
+      {DDPT_TPC_OUT_CMD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    unsigned char sense_b[SENSE_BUFF_LEN];
+    struct sg_pt_base * ptvp;
+    char cname[80];
+
+    sg_get_opcode_sa_name(DDPT_TPC_OUT_CMD, sa, 0, sizeof(cname),
+                          cname);
+    xcopyCmdBlk[1] = (unsigned char)(sa & 0x1f);
+    switch (sa) {
+    case 0x0:   /* XCOPY(LID1) */
+    case 0x1:   /* XCOPY(LID4) */
+        xcopyCmdBlk[10] = (unsigned char)((param_len >> 24) & 0xff);
+        xcopyCmdBlk[11] = (unsigned char)((param_len >> 16) & 0xff);
+        xcopyCmdBlk[12] = (unsigned char)((param_len >> 8) & 0xff);
+        xcopyCmdBlk[13] = (unsigned char)(param_len & 0xff);
+        break;
+    case 0x10:  /* POPULATE TOKEN (SBC-3) */
+    case 0x11:  /* WRITE USING TOKEN (SBC-3) */
+        xcopyCmdBlk[6] = (unsigned char)((list_id >> 24) & 0xff);
+        xcopyCmdBlk[7] = (unsigned char)((list_id >> 16) & 0xff);
+        xcopyCmdBlk[8] = (unsigned char)((list_id >> 8) & 0xff);
+        xcopyCmdBlk[9] = (unsigned char)(list_id & 0xff);
+        xcopyCmdBlk[10] = (unsigned char)((param_len >> 24) & 0xff);
+        xcopyCmdBlk[11] = (unsigned char)((param_len >> 16) & 0xff);
+        xcopyCmdBlk[12] = (unsigned char)((param_len >> 8) & 0xff);
+        xcopyCmdBlk[13] = (unsigned char)(param_len & 0xff);
+        xcopyCmdBlk[14] = (unsigned char)(group_num & 0x1f);
+        break;
+    case 0x1c:  /* COPY OPERATION ABORT */
+        xcopyCmdBlk[2] = (unsigned char)((list_id >> 24) & 0xff);
+        xcopyCmdBlk[3] = (unsigned char)((list_id >> 16) & 0xff);
+        xcopyCmdBlk[4] = (unsigned char)((list_id >> 8) & 0xff);
+        xcopyCmdBlk[5] = (unsigned char)(list_id & 0xff);
+        break;
+    default:
+        pr2serr("pt_3party_copy_out: unknown service action 0x%x\n", sa);
+        return -1;
+    }
+    tmout = (timeout_secs > 0) ? timeout_secs : DEF_PT_TIMEOUT;
+
+    if (verbose) {
+        pr2serr("    %s cmd: ", cname);
+        for (k = 0; k < DDPT_TPC_OUT_CMDLEN; ++k)
+            pr2serr("%02x ", xcopyCmdBlk[k]);
+        pr2serr("\n");
+        if ((verbose > 1) && paramp && param_len) {
+            pr2serr("    %s parameter list:\n", cname);
+            dStrHexErr((const char *)paramp, param_len, -1);
+        }
+    }
+
+    ptvp = construct_scsi_pt_obj();
+    if (NULL == ptvp) {
+        pr2serr("%s: out of memory\n", cname);
+        return -1;
+    }
+    set_scsi_pt_cdb(ptvp, xcopyCmdBlk, sizeof(xcopyCmdBlk));
+    set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
+    set_scsi_pt_data_out(ptvp, (unsigned char *)paramp, param_len);
+    res = do_scsi_pt(ptvp, sg_fd, tmout, verbose);
+    ret = sg_cmds_process_resp(ptvp, cname, res, 0, sense_b, noisy, verbose,
+                               &sense_cat);
+    if ((-1 == ret) &&
+        (SCSI_PT_RESULT_STATUS == get_scsi_pt_result_category(ptvp)) &&
+        (SAM_STAT_RESERVATION_CONFLICT == get_scsi_pt_status_response(ptvp)))
+        ret = DDPT_CAT_RESERVATION_CONFLICT;
+    else
+        ret = pt_tpc_process_res(ret, sense_cat, sense_b,
+                                 get_scsi_pt_sense_len(ptvp));
+    destruct_scsi_pt_obj(ptvp);
+    return ret;
+}
+
+int
+pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
+                  void * resp, int mx_resp_len, int noisy, int verbose)
+{
+    int k, res, ret, sense_cat, tmout;
+    unsigned char rcvcopyresCmdBlk[DDPT_TPC_IN_CMDLEN] =
+      {DDPT_TPC_IN_CMD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    unsigned char sense_b[SENSE_BUFF_LEN];
+    struct sg_pt_base * ptvp;
+    char b[64];
+
+    sg_get_opcode_sa_name(DDPT_TPC_IN_CMD, sa, 0, (int)sizeof(b), b);
+    rcvcopyresCmdBlk[1] = (unsigned char)(sa & 0x1f);
+    if (sa <= 4)        /* LID1 variants */
+        rcvcopyresCmdBlk[2] = (unsigned char)(list_id);
+    else if ((sa >= 5) && (sa <= 7)) {  /* LID4 variants */
+        rcvcopyresCmdBlk[2] = (unsigned char)((list_id >> 24) & 0xff);
+        rcvcopyresCmdBlk[3] = (unsigned char)((list_id >> 16) & 0xff);
+        rcvcopyresCmdBlk[4] = (unsigned char)((list_id >> 8) & 0xff);
+        rcvcopyresCmdBlk[5] = (unsigned char)(list_id & 0xff);
+    }
+    rcvcopyresCmdBlk[10] = (unsigned char)((mx_resp_len >> 24) & 0xff);
+    rcvcopyresCmdBlk[11] = (unsigned char)((mx_resp_len >> 16) & 0xff);
+    rcvcopyresCmdBlk[12] = (unsigned char)((mx_resp_len >> 8) & 0xff);
+    rcvcopyresCmdBlk[13] = (unsigned char)(mx_resp_len & 0xff);
+    tmout = (timeout_secs > 0) ? timeout_secs : DEF_PT_TIMEOUT;
+
+    if (verbose) {
+        pr2serr("    %s cmd: ", b);
+        for (k = 0; k < DDPT_TPC_IN_CMDLEN; ++k)
+            pr2serr("%02x ", rcvcopyresCmdBlk[k]);
+        pr2serr("\n");
+    }
+
+    ptvp = construct_scsi_pt_obj();
+    if (NULL == ptvp) {
+        pr2serr("%s: out of memory\n", b);
+        return -1;
+    }
+    set_scsi_pt_cdb(ptvp, rcvcopyresCmdBlk, sizeof(rcvcopyresCmdBlk));
+    set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
+    set_scsi_pt_data_in(ptvp, (unsigned char *)resp, mx_resp_len);
+    res = do_scsi_pt(ptvp, sg_fd, tmout, verbose);
+    ret = sg_cmds_process_resp(ptvp, b, res, mx_resp_len, sense_b, noisy,
+                               verbose, &sense_cat);
+    if ((-1 == ret) &&
+        (SCSI_PT_RESULT_STATUS == get_scsi_pt_result_category(ptvp)) &&
+        (SAM_STAT_RESERVATION_CONFLICT == get_scsi_pt_status_response(ptvp)))
+        ret = DDPT_CAT_RESERVATION_CONFLICT;
+    else
+        ret = pt_tpc_process_res(ret, sense_cat, sense_b,
+                                 get_scsi_pt_sense_len(ptvp));
+    destruct_scsi_pt_obj(ptvp);
+    return ret;
 }
