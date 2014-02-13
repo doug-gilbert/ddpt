@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 #include <sys/time.h>
 
 #ifdef HAVE_CONFIG_H
@@ -122,8 +123,6 @@ extern "C" {
 #define ODX_REQ_PT 1            /* POPULATE TOKEN (PT): disk->held */
 #define ODX_REQ_WUT 2           /* WRITE USING TOKEN (WUT): held->disk */
 #define ODX_REQ_COPY 3          /* PT followed by WUT */
-#define ODX_REQ_RT_INFO 8       /* decode ROD Token given in RTF (file) */
-#define ODX_REQ_ALL_TOKS 16     /* REPORT ALL ROD TOKENS */
 
 /* ROD Types used by ODX */
 #define RODT_PIT_DEF 0x800000
@@ -164,6 +163,20 @@ extern "C" {
 #define SG_LIB_CAT_PROTECTION_WITH_INFO 0x41
 #endif
 
+#define DDPT_CAT_RESERVATION_CONFLICT 0x40
+#define DDPT_CAT_PARAM_LST_LEN_ERR 0x50
+#define DDPT_CAT_INVALID_FLD_IN_PARAM 0x51
+#define DDPT_CAT_TOO_MANY_SEGS_IN_PARAM 0x52
+#define DDPT_CAT_TARGET_UNDERRUN 0x53
+#define DDPT_CAT_TARGET_OVERRUN 0x54
+#define DDPT_CAT_OP_IN_PROGRESS 0x55
+#define DDPT_CAT_INSUFF_RES_CREATE_ROD 0x56
+#define DDPT_CAT_INSUFF_RES_CREATE_RODTOK 0x57
+#define DDPT_CAT_CMDS_CLEARED_BY_DEV_SVR 0x58
+#define DDPT_CAT_TOKOP_BASE 0x70        /* assume less than 20 */
+#define DDPT_CAT_SK_DATA_PROTECT (0x100 + 0x7)
+#define DDPT_CAT_SK_COPY_ABORTED (0x100 + 0xa)
+
 #define XCOPY_TO_SRC "XCOPY_TO_SRC"
 #define XCOPY_TO_DST "XCOPY_TO_DST"
 #define DEF_XCOPY_SRC0_DST1 1
@@ -185,7 +198,6 @@ struct block_rodtok_vpd {
  * conv= arguments are mapped to flag arguments.
  * General or for disk unless otherwise marked. */
 struct flags_t {
-    int all_toks;       /* xcopy(odx) related */
     int append;
     int block;          /* only for pt, non blocking default */
     int cat;            /* xcopy(lid1) related */
@@ -405,6 +417,11 @@ int pt_write(struct opts_t * op, const unsigned char * buff, int blocks,
 int pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
                     int blocks, int64_t start_block);
 void pt_sync_cache(int fd);
+int pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
+                       int timeout_secs, void * paramp, int param_len,
+                       int noisy, int verbose);
+int pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
+                      void * resp, int mx_resp_len, int noisy, int verbose);
 
 /* defined in ddpt_com.c */
 #ifdef __GNUC__
@@ -436,6 +453,8 @@ void print_tape_pos(const char * prefix, const char * postfix,
 #endif
 void install_signal_handlers(struct opts_t * op);
 void signals_process_delay(struct opts_t * op, int delay_type);
+void decode_designation_descriptor(const unsigned char * ucp, int i_len,
+                                   int verb);
 
 /* defined in ddpt_xcopy.c */
 int do_xcopy(struct opts_t * op);       /* xcopy(LID1) */

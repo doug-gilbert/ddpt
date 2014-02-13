@@ -64,7 +64,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140209 [svn: r257]";
+const char * ddptctl_version_str = "0.94 20140212 [svn: r257]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -108,10 +108,32 @@ const char * ddptctl_version_str = "0.94 20140209 [svn: r257]";
 #include "sg_lib.h"
 
 
+#define THIRD_PARTY_COPY_IN_CMD 0x84
+
+#define SA_COPY_STATUS_LID1     0x0     /* IN, retrieve */
+#define SA_COPY_DATA_LID1       0x1     /* IN, retrieve */
+#define SA_COPY_OP_PARAMS       0x3     /* IN, retrieve */
+#define SA_COPY_FAIL_DETAILS    0x4     /* IN, retrieve */
+#define SA_COPY_STATUS_LID4     0x5     /* IN, retrieve */
+#define SA_COPY_DATA_LID4       0x6     /* IN, retrieve */
+#define SA_ROD_TOK_INFO         0x7     /* IN, retrieve */
+#define SA_ALL_ROD_TOKS         0x8     /* IN, retrieve */
+
+#define DEF_3PC_IN_TIMEOUT 60           /* these should be fast */
+
+
 
 static struct option long_options[] = {
+        {"abort", required_argument, 0, 'A'},
+        {"all_toks", no_argument, 0, 'a'},
+        {"block", no_argument, 0, 'b'},
         {"help", no_argument, 0, 'h'},
-        // {"lba", required_argument, 0, 'l'},
+        {"info", no_argument, 0, 'i'},
+        {"list_id", required_argument, 0, 'l'},
+        {"poll", no_argument, 0, 'p'},
+        {"receive", no_argument, 0, 'R'},
+        {"rtf", required_argument, 0, 'r'},
+        {"size", no_argument, 0, 's'},
         {"verbose", no_argument, 0, 'v'},
         {"version", no_argument, 0, 'V'},
         {0, 0, 0, 0},
@@ -123,34 +145,215 @@ static void
 usage()
 {
     pr2serr("Usage: "
-          "sg_unmap [--anchor] [--grpnum=GN] [--help] [--in=FILE]\n"
-          "                [--lba=LBA,LBA...] [--num=NUM,NUM...] "
-          "[--timeout=TO]\n"
-          "                [--verbose] [--version] DEVICE\n"
-          "  where:\n"
-          "    --anchor|-a          set anchor field in cdb\n"
-          "    --grpnum=GN|-g GN    GN is group number field (def: 0)\n"
-          "    --help|-h            print out usage message\n"
-          "    --in=FILE|-I FILE    read LBA, NUM pairs from FILE (if "
-          "FILE is '-'\n"
-          "                         then stdin is read)\n"
-          "    --lba=LBA,LBA...|-l LBA,LBA...    LBA is the logical block "
-          "address\n"
-          "                                      to start NUM unmaps\n"
-          "    --num=NUM,NUM...|-n NUM,NUM...    NUM is number of logical "
-          "blocks to\n"
-          "                                      unmap starting at "
-          "corresponding LBA\n"
-          "    --timeout=TO|-t TO    command timeout (unit: seconds) "
-          "(def: 60)\n"
-          "    --verbose|-v         increase verbosity\n"
-          "    --version|-V         print version string and exit\n\n"
-          "Perform a SCSI UNMAP command. LBA, NUM and the values in FILE "
-          "are assumed\n"
-          "to be decimal. Use '0x' prefix or 'h' suffix for hex values.\n"
-          "Example to unmap LBA 0x12345:\n"
-          "    sg_unmap --lba=0x12345 --num=1 /dev/sdb\n"
-          );
+            "ddptctl [--abort=LID] [--all_toks] [--block] [--help] [--info] "
+            "[--list_id=LID]\n"
+            "               [--poll] [--receive] [--rtf=RTF] [--size] "
+            "[--verbose]\n"
+            "               [--version] [DEVICE]\n"
+            "  where:\n"
+            "    --abort=LID|-A LID    call COPY OPERATION ABORT on LID\n"
+            "    --all_toks|-a         call REPORT ALL ROD TOKENS\n"
+            "    --block|-B            treat DEVICE as block device (def: "
+            "treat as pt)\n"
+            "    --help|-h             print out usage message\n"
+            "    --info|-i             provide information on DEVICE or "
+            "RTF\n"
+            "    --list_id=LID|-l LID    LID is list identifier for --poll "
+            "or --receive\n"
+            "    --poll|-p             keep calling RRTI until complete\n"
+            "    --receive|-R          call RRTI once\n"
+            "    --rtf=RTF|-r RTF      ROD Token file for analyse (--info) "
+            "or write to\n"
+            "                          (with --poll or --receive)\n"
+            "    --size|-s             get size of DEVICE (def: pt)\n"
+            "    --verbose|-v          increase verbosity\n"
+            "    --version|-V          print version string and exit\n\n"
+            "ddptctl is a ddpt helper utility, mainly with xcopy(LID1) and "
+            "ODX. RRTI\nrefers to the RECEIVE ROD TOKEN INFORMATION "
+            "command.\n"
+            );
+}
+
+static const char *
+rod_type_str(uint32_t rt, char * b, int blen)
+{
+    const char * pitc = "Point in time copy -";
+
+    switch (rt) {
+    case 0x0:
+        snprintf(b, blen, "Copy Manager internal");
+        break;
+    case 0x10000:
+        snprintf(b, blen, "Access upon reference");
+        break;
+    case 0x800000:
+        snprintf(b, blen, "%s default", pitc);
+        break;
+    case 0x800001:
+        snprintf(b, blen, "%s change vulnerable", pitc);
+        break;
+    case 0x800002:
+        snprintf(b, blen, "%s persistent", pitc);
+        break;
+    case 0x80ffff:
+        snprintf(b, blen, "%s any", pitc);
+        break;
+    case 0xffff0001:
+        snprintf(b, blen, "Block device zero ROD");
+        break;
+    default:
+        if (rt < 0xff000000)
+            snprintf(b, blen, "Reserved (any device type)");
+        else if (rt < 0xfffffff0)
+            snprintf(b, blen, "Reserved (device type specific)");
+        else
+            snprintf(b, blen, "Vendor specific");
+    }
+    return b;
+}
+
+static int
+odx_rt_info(const struct opts_t * op)
+{
+    int res, fd, err, m, prot_en, p_type, lbppbe, vendor;
+    uint64_t bc;
+    uint32_t rod_t, bs;
+    uint16_t rtl;
+    unsigned char rth[128];
+    char b[128];
+
+    if ('\0' == op->rtf[0]) {
+        pr2serr("odx_rt_info: expected ROD Token filename (rtf=RTF)\n");
+        return SG_LIB_FILE_ERROR;
+    }
+    if ((fd = open(op->rtf, O_RDONLY)) < 0) {
+        err = errno;
+        pr2serr("could not open '%s' for reading: %s\n", op->rtf,
+                safe_strerror(err));
+        return SG_LIB_FILE_ERROR;
+    }
+    res = read(fd, rth, sizeof(rth));
+    if (res < 0) {
+        err = errno;
+        pr2serr("could not read '%s': %s\n", op->rtf,
+                safe_strerror(err));
+        close(fd);
+        return SG_LIB_FILE_ERROR;
+    }
+    if (res < (int)sizeof(rth)) {
+        pr2serr("unable to read %d bytes from '%s', only got %d bytes\n",
+                 (int)sizeof(rth), op->rtf, res);
+        pr2serr("... it is unlikely file '%s' contains a ROD Token\n",
+                 op->rtf);
+        close(fd);
+        return SG_LIB_FILE_ERROR;
+    }
+
+    if (op->verbose > 3) {
+        pr2serr("Hex dump of first %d bytes of ROD Token:\n",
+                (int)sizeof(rth));
+        dStrHexErr((const char *)rth, (int)sizeof(rth), 1);
+    }
+
+    printf("Decoding information from ROD Token header:\n");
+    rod_t = (rth[0] << 24) + (rth[1] << 16) + (rth[2] << 8) + rth[3];
+    printf("  ROD type: %s [0x%" PRIx32 "]\n",
+           rod_type_str(rod_t, b, sizeof(b)), rod_t);
+    if (rod_t >= 0xfffffff0) {
+        printf("    Since ROD type is vendor specific, the following may "
+               "not be relevant\n");
+        vendor = 1;
+    } else
+        vendor = 0;
+    rtl = (rth[6] << 8) + rth[7];
+    if (rtl < 0x1f8) {
+        pr2serr(">>> ROD Token length field is too short, should be at "
+                "least\n    504 bytes (0x1f8), got 0x%" PRIx16 "\n", rtl);
+        if (! vendor) {
+            close(fd);
+            return SG_LIB_FILE_ERROR;
+        }
+    }
+    printf("  Copy manager ROD Token identifier=0x");
+    for (m = 0; m < 8; ++m)
+        printf("%02x", (unsigned int)rth[8 + m]);
+    printf("\n");
+    printf("  Creator Logical Unit descriptor:\n");
+    /* should make smaller version of following that outputs to stdout */
+    if (0xe4 != rth[16]) {
+        pr2serr(">>> Expected Identification descriptor (0xe4) got 0x%x\n",
+                rth[16]);
+        if (! vendor) {
+            close(fd);
+            return SG_LIB_FILE_ERROR;
+        }
+    }
+    printf("    Peripheral Device type: 0x%x\n", rth[17] & 0x1f);
+    printf("    Relative initiator port identifier: 0x%x\n",
+           (rth[18] << 8) + rth[19]);
+    decode_designation_descriptor(rth + 20, 28, op->verbose);
+    bc = 0;
+    for (m = 0; m < 8; m++) {
+        if (m > 0)
+            bc <<= 8;
+        bc |= rth[48 + m];
+    }
+    printf("  Number of bytes represented: %" PRIu64 " [0x%" PRIx64 "]\n",
+           bc, bc);
+
+    printf("  Assume pdt=0 (e.g. disk) and decode device type specific "
+           "data:\n");
+    bs = ((rth[96] << 24) + (rth[97] << 16) + (rth[98] << 8) + rth[99]);
+    printf("    block size: %" PRIu32 " [0x%" PRIx32 "] bytes\n", bs, bs);
+    prot_en = !!(rth[100] & 0x1);
+    p_type = ((rth[100] >> 1) & 0x7);
+    printf("    Protection: prot_en=%d, p_type=%d, p_i_exponent=%d",
+           prot_en, p_type, ((rth[101] >> 4) & 0xf));
+    if (prot_en)
+        printf(" [type %d protection]\n", p_type + 1);
+    else
+        printf("\n");
+    printf("    Logical block provisioning: lbpme=%d, lbprz=%d\n",
+                   !!(rth[102] & 0x80), !!(rth[102] & 0x40));
+    lbppbe = rth[102] & 0xf;
+    printf("    Logical blocks per physical block exponent=%d", lbppbe);
+    if (lbppbe > 0)
+        printf(" [so physical block length=%u bytes]\n", bs * (1 << lbppbe));
+    else
+        printf("\n");
+    printf("    Lowest aligned logical block address=%d\n",
+           ((rth[102] & 0x3f) << 8) + rth[103]);
+
+    close(fd);
+    return 0;
+}
+
+static int
+report_all_toks(struct opts_t * op, struct dev_info_t * dip)
+{
+    int res, fd, verb;
+    unsigned int len;
+    unsigned char rsp[2048];
+
+    verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
+    fd = dip->fd;
+    res = pt_3party_copy_in(fd, SA_ALL_ROD_TOKS, op->list_id,
+                            DEF_3PC_IN_TIMEOUT, rsp, sizeof(rsp), 1, verb);
+    if (res)
+        return res;
+
+    len = ((rsp[0] << 24) | (rsp[1] << 16) | (rsp[2] << 8) | rsp[3]) + 4;
+    if (len > sizeof(rsp)) {
+        pr2serr("  ROD Tokens too long for internal buffer, output "
+                "truncated\n");
+        len = sizeof(rsp);
+    }
+    if (op->verbose > 2) {
+        pr2serr("\nReport all ROD tokens response in hex:\n");
+        dStrHexErr((const char *)rsp, len, 1);
+    }
+    // Hmmm, not supported on HP 3 PAR (and not required for ODX)
+    return 0;
 }
 
 static void
@@ -196,8 +399,15 @@ state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
 int
 main(int argc, char * argv[])
 {
-    int res, c, num, k, j;
-    const char * device_name = NULL;
+    int c;
+    int64_t i64;
+    int do_abort = 0;
+    int do_all_toks = 0; 
+    int do_block = 0;
+    int do_info = 0;
+    int do_poll = 0;
+    int do_receive = 0;
+    int do_size = 0;
     int ret = 0;
     struct opts_t ops;
     struct flags_t iflag, oflag;
@@ -210,16 +420,68 @@ main(int argc, char * argv[])
     while (1) {
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "hvV", long_options,
+        c = getopt_long(argc, argv, "A:aBhil:pr:RsvV", long_options,
                         &option_index);
         if (c == -1)
             break;
 
         switch (c) {
+        case 'A':
+            ++do_abort;
+            i64 = sg_get_llnum(optarg);
+            if (-1 == i64) {
+                pr2serr("bad argument to 'abort='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            if (i64 > UINT_MAX) {
+                pr2serr("argument to 'abort=' too big for 32 bits\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            op->list_id = (uint32_t)i64;
+            op->list_id_given = 1;
+            break;
+        case 'a':
+            ++do_all_toks;
+            break;
+        case 'B':
+            ++do_block;
+            break;
         case 'h':
         case '?':
             usage();
             return 0;
+        case 'i':
+            ++do_info;
+            break;
+        case 'l':
+            i64 = sg_get_llnum(optarg);
+            if (-1 == i64) {
+                pr2serr("bad argument to 'list_id='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            if (i64 > UINT_MAX) {
+                pr2serr("argument to 'list_id=' too big for 32 bits\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            op->list_id = (uint32_t)i64;
+            op->list_id_given = 1;
+            break;
+        case 'p':
+            ++do_poll;
+            break;
+        case 'r':
+            if (op->rtf[0]) {
+                pr2serr("Can only use --rtf=RTF once for ROD Token "
+                        "filename\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            strncpy(op->rtf, optarg, INOUTF_SZ - 1);
+        case 'R':
+            ++do_receive;
+            break;
+        case 's':
+            ++do_size;
+            break;
         case 'v':
             ++op->verbose;
             break;
@@ -233,8 +495,8 @@ main(int argc, char * argv[])
         }
     }
     if (optind < argc) {
-        if (NULL == device_name) {
-            device_name = argv[optind];
+        if ('\0' == op->idip->fn[0]) {
+            strncpy(op->idip->fn, argv[optind], INOUTF_SZ - 1);
             ++optind;
         }
         if (optind < argc) {
@@ -244,11 +506,19 @@ main(int argc, char * argv[])
             return SG_LIB_SYNTAX_ERROR;
         }
     }
-    if (NULL == device_name) {
+    if ('\0' == op->idip->fn[0]) {
+        if (op->rtf[0])
+            return odx_rt_info(op);
         pr2serr("missing device name!\n");
         usage();
         return SG_LIB_SYNTAX_ERROR;
     }
+    if (do_info && op->rtf[0]) {
+        pr2serr("Ignore device name [%s] and decode RTF\n", op->idip->fn);
+        return odx_rt_info(op);
+    }
+
+    op->idip->d_type = do_block ? FT_BLOCK : FT_PT;
 
     return ret;
 }

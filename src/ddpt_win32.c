@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Douglas Gilbert.
+ * Copyright (c) 2010-2014 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,7 +41,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <signal.h>
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
@@ -54,7 +53,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
-#include "ddpt.h"
+#include "ddpt.h"	/* includes <signal.h> */
 
 #include <windows.h>
 #include <winioctl.h>
