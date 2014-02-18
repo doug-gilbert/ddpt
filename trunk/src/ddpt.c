@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.94 20140212 [svn: r259]";
+static const char * ddpt_version_str = "0.94 20140217 [svn: r260]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -153,7 +153,7 @@ open_if(struct opts_t * op)
         goto file_err;
     }
     if (FT_PT & idip->d_type) {
-        fd = pt_open_if(op);
+        fd = pt_open_if(op, NULL);
         if (-1 == fd)
             goto file_err;
         else if (fd < -1)
@@ -248,7 +248,7 @@ open_of(struct opts_t * op)
         goto file_err;
     }
     if (FT_PT & odip->d_type) {
-        fd = pt_open_of(op);
+        fd = pt_open_of(op, NULL);
         if (-1 == fd)
             goto file_err;
         else if (fd < -1)
@@ -365,13 +365,15 @@ calc_count_in(struct opts_t * op, int64_t * in_num_sectp)
             }
             return 0;
         }
-        res = pt_read_capacity(op, 0, in_num_sectp, &in_sect_sz);
+        res = pt_read_capacity(op, DDPT_ARG_IN, in_num_sectp, &in_sect_sz);
         if (SG_LIB_CAT_UNIT_ATTENTION == res) {
             pr2serr("Unit attention (readcap in), continuing\n");
-            res = pt_read_capacity(op, 0, in_num_sectp, &in_sect_sz);
+            res = pt_read_capacity(op, DDPT_ARG_IN, in_num_sectp,
+                                   &in_sect_sz);
         } else if (SG_LIB_CAT_ABORTED_COMMAND == res) {
             pr2serr("Aborted command (readcap in), continuing\n");
-            res = pt_read_capacity(op, 0, in_num_sectp, &in_sect_sz);
+            res = pt_read_capacity(op, DDPT_ARG_IN, in_num_sectp,
+                                   &in_sect_sz);
         }
         if (0 != res) {
             if (res == SG_LIB_CAT_INVALID_OP)
@@ -467,13 +469,15 @@ calc_count_out(struct opts_t * op, int64_t * out_num_sectp)
             }
             return 0;
         }
-        res = pt_read_capacity(op, 1, out_num_sectp, &out_sect_sz);
+        res = pt_read_capacity(op, DDPT_ARG_OUT, out_num_sectp, &out_sect_sz);
         if (SG_LIB_CAT_UNIT_ATTENTION == res) {
             pr2serr("Unit attention (readcap out), continuing\n");
-            res = pt_read_capacity(op, 1, out_num_sectp, &out_sect_sz);
+            res = pt_read_capacity(op, DDPT_ARG_OUT, out_num_sectp,
+                                   &out_sect_sz);
         } else if (SG_LIB_CAT_ABORTED_COMMAND == res) {
             pr2serr("Aborted command (readcap out), continuing\n");
-            res = pt_read_capacity(op, 1, out_num_sectp, &out_sect_sz);
+            res = pt_read_capacity(op, DDPT_ARG_OUT, out_num_sectp,
+                                   &out_sect_sz);
         }
         if (0 != res) {
             if (res == SG_LIB_CAT_INVALID_OP)
@@ -2634,7 +2638,7 @@ main(int argc, char * argv[])
         ret = do_rw_copy(op);
 
     if (0 == op->status_none)
-        print_stats("", op);
+        print_stats("", op, 0);
 
     if ((op->oflagp->ssync) && (FT_PT & op->odip->d_type)) {
         if (0 == op->status_none)
@@ -2654,14 +2658,8 @@ cleanup:
     if (started_copy && (0 != op->dd_count) && (! op->reading_fifo)) {
         if (0 == ret)
             pr2serr("Early termination, EOF on input?\n");
-        else if (SG_LIB_CAT_MEDIUM_HARD == ret)
-            pr2serr("Early termination, medium error occurred\n");
-        else if ((SG_LIB_CAT_PROTECTION == ret) ||
-                 (SG_LIB_CAT_PROTECTION_WITH_INFO == ret))
-            pr2serr("Early termination, protection information "
-                    "error occurred\n");
         else
-            pr2serr("Early termination, some error occurred\n");
+            print_exit_status_msg("Early termination", ret, 1);
     }
     return (ret >= 0) ? ret : SG_LIB_CAT_OTHER;
 }

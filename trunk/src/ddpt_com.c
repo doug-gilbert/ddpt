@@ -171,7 +171,7 @@ sleep_ms(int millisecs)
 }
 
 void
-print_stats(const char * str, struct opts_t * op)
+print_stats(const char * str, struct opts_t * op, int first_half)
 {
 #ifdef SG_LIB_LINUX
     /* Print tape read summary if necessary . */
@@ -182,6 +182,8 @@ print_stats(const char * str, struct opts_t * op)
         pr2serr("  remaining block count=%" PRId64 "\n", op->dd_count);
     pr2serr("%s%" PRId64 "+%d records in\n", str, op->in_full,
             op->in_partial);
+    if (first_half)
+        return;
     pr2serr("%s%" PRId64 "+%d records out\n", str, op->out_full,
             op->out_partial);
     if (op->out_sparse_active || op->out_sparing_active) {
@@ -1113,7 +1115,7 @@ signals_process_delay(struct opts_t * op, int delay_type)
         if (interrupt) {
             pr2serr("Interrupted by signal %s\n",
                     get_signal_name(interrupt, b, sizeof(b)));
-            print_stats("", op);
+            print_stats("", op, 0);
             /* Don't show next message if using oflag=pre-alloc and we didn't
              * use FALLOC_FL_KEEP_SIZE */
             if ((0 == op->reading_fifo) && (FT_REG & op->odip->d_type_hold)
@@ -1123,7 +1125,7 @@ signals_process_delay(struct opts_t * op, int delay_type)
             ; // >>>>>>>>>>>>> cleanup ();
         } else {
             pr2serr("Progress report:\n");
-            print_stats("  ", op);
+            print_stats("  ", op, 0);
             if (op->do_time)
                 calc_duration_throughput("  ", 1, op);
             pr2serr("  continuing ...\n");
@@ -1389,8 +1391,14 @@ print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr)
     case SG_LIB_CAT_UNIT_ATTENTION:   /* 6 */
         print_p("%sunit attention\n", b);
         break;
+    case DDPT_CAT_SK_DATA_PROTECT:   /* 7 */
+        print_p("%sdata protect\n", b);
+        break;
     case SG_LIB_CAT_INVALID_OP:   /* 9 */
         print_p("%sinvalid opcode\n", b);
+        break;
+    case DDPT_CAT_SK_COPY_ABORTED:   /* 10 */
+        print_p("%scopy aborted\n", b);
         break;
     case SG_LIB_CAT_ABORTED_COMMAND:   /* 11 */
         print_p("%saborted command\n", b);
@@ -1407,6 +1415,45 @@ print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr)
     case SG_LIB_CAT_RECOVERED:   /* 21 */
         print_p("%srecovered error (possible future errors)\n", b);
         break;
+    case DDPT_CAT_RESERVATION_CONFLICT:   /* 30 */
+        print_p("%sSCSI command timeout\n", b);
+        break;
+    case SG_LIB_CAT_TIMEOUT:   /* 33 */
+        print_p("%sSCSI status: reservation conflict\n", b);
+        break;
+    case SG_LIB_CAT_PROTECTION:   /* 40 */
+        print_p("%sprotection error\n", b);
+        break;
+    case SG_LIB_CAT_PROTECTION_WITH_INFO:   /* 41 */
+        print_p("%sprotection error with info\n", b);
+        break;
+    case DDPT_CAT_PARAM_LST_LEN_ERR:   /* 50 */
+        print_p("%sparameter list length error\n", b);
+        break;
+    case DDPT_CAT_INVALID_FLD_IN_PARAM:   /* 51 */
+        print_p("%sinvalid field in parameter list\n", b);
+        break;
+    case DDPT_CAT_TOO_MANY_SEGS_IN_PARAM:   /* 52 */
+        print_p("%stoo many segments in parameter list\n", b);
+        break;
+    case DDPT_CAT_TARGET_UNDERRUN:   /* 53 */
+        print_p("%starget underrun\n", b);
+        break;
+    case DDPT_CAT_TARGET_OVERRUN:   /* 54 */
+        print_p("%starget overrun\n", b);
+        break;
+    case DDPT_CAT_OP_IN_PROGRESS:   /* 55 */
+        print_p("%soperation in progress\n", b);
+        break;
+    case DDPT_CAT_INSUFF_RES_CREATE_ROD:   /* 56 */
+        print_p("%sinsufficient resources to create ROD\n", b);
+        break;
+    case DDPT_CAT_INSUFF_RES_CREATE_RODTOK:   /* 57 */
+        print_p("%sinsufficient resources to create ROD Token\n", b);
+        break;
+    case DDPT_CAT_CMDS_CLEARED_BY_DEV_SVR:   /* 58 */
+        print_p("%scommands cleared by device servers\n", b);
+        break;
     case SG_LIB_CAT_MALFORMED:   /* 97 */
         print_p("%sresponse to SCSI command malformed\n", b);
         break;
@@ -1417,8 +1464,51 @@ print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr)
         print_p("%ssome other error/warning, not sense buffer related\n", b);
         break;
     default:
-        print_p("%sunexpected exit status value: %d [0x%x]", b, exit_stat,
-                exit_stat);
+        if ((exit_stat >= DDPT_CAT_TOKOP_BASE) &&
+            (exit_stat < (DDPT_CAT_TOKOP_BASE + 20))) {
+            print_p("%sinvalid token operation, ", b);
+            switch (exit_stat - DDPT_CAT_TOKOP_BASE) {  /* asc=0x23 */
+            case 0:     /* asc=0x23, asq=0x0 */
+                print_p("cause not reportable\n");
+                break;
+            case 1:     /* asc=0x23, asq=0x1 */
+                print_p("unsupported token type\n");
+                break;
+            case 2:
+                print_p("remote token usage not supported\n");
+                break;
+            case 3:
+                print_p("remote ROD token creation not supported\n");
+                break;
+            case 4:
+                print_p("token unknown\n");
+                break;
+            case 5:
+                print_p("token corrupt\n");
+                break;
+            case 6:
+                print_p("token revoked\n");
+                break;
+            case 7:
+                print_p("token expired\n");
+                break;
+            case 8:
+                print_p("token cancelled\n");
+                break;
+            case 9:
+                print_p("token deleted\n");
+                break;
+            case 0xa:
+                print_p("invalid token length\n");
+                break;
+            default:
+                print_p("asc=0x23, asq=0x%x\n",
+                        exit_stat - DDPT_CAT_TOKOP_BASE);
+                break;
+            }
+        } else
+            print_p("%sunexpected exit status value: %d [0x%x]\n", b,
+                    exit_stat, exit_stat);
         break;
     }
 }
