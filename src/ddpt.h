@@ -159,23 +159,23 @@ extern "C" {
 /* Following used for sense_key=aborted_command, asc=0x10, ascq=* which
  * contains errors associated with protection fields */
 #ifndef SG_LIB_CAT_PROTECTION
-#define SG_LIB_CAT_PROTECTION 0x40
-#define SG_LIB_CAT_PROTECTION_WITH_INFO 0x41
+#define SG_LIB_CAT_PROTECTION 40
+#define SG_LIB_CAT_PROTECTION_WITH_INFO 41
 #endif
 
-#define DDPT_CAT_RESERVATION_CONFLICT 0x40
-#define DDPT_CAT_PARAM_LST_LEN_ERR 0x50
-#define DDPT_CAT_INVALID_FLD_IN_PARAM 0x51
-#define DDPT_CAT_TOO_MANY_SEGS_IN_PARAM 0x52
-#define DDPT_CAT_TARGET_UNDERRUN 0x53
-#define DDPT_CAT_TARGET_OVERRUN 0x54
-#define DDPT_CAT_OP_IN_PROGRESS 0x55
-#define DDPT_CAT_INSUFF_RES_CREATE_ROD 0x56
-#define DDPT_CAT_INSUFF_RES_CREATE_RODTOK 0x57
-#define DDPT_CAT_CMDS_CLEARED_BY_DEV_SVR 0x58
-#define DDPT_CAT_TOKOP_BASE 0x70        /* assume less than 20 */
-#define DDPT_CAT_SK_DATA_PROTECT (0x100 + 0x7)
-#define DDPT_CAT_SK_COPY_ABORTED (0x100 + 0xa)
+#define DDPT_CAT_RESERVATION_CONFLICT 30
+#define DDPT_CAT_PARAM_LST_LEN_ERR 50
+#define DDPT_CAT_INVALID_FLD_IN_PARAM 51
+#define DDPT_CAT_TOO_MANY_SEGS_IN_PARAM 52
+#define DDPT_CAT_TARGET_UNDERRUN 53
+#define DDPT_CAT_TARGET_OVERRUN 54
+#define DDPT_CAT_OP_IN_PROGRESS 55
+#define DDPT_CAT_INSUFF_RES_CREATE_ROD 56
+#define DDPT_CAT_INSUFF_RES_CREATE_RODTOK 57
+#define DDPT_CAT_CMDS_CLEARED_BY_DEV_SVR 58
+#define DDPT_CAT_TOKOP_BASE 70        /* assume less than 20 above this */
+#define DDPT_CAT_SK_DATA_PROTECT 7    /* same as sense key code */
+#define DDPT_CAT_SK_COPY_ABORTED 10   /* same as sense key code */
 
 #define XCOPY_TO_SRC "XCOPY_TO_SRC"
 #define XCOPY_TO_DST "XCOPY_TO_DST"
@@ -396,32 +396,13 @@ struct val_str_t {
     const char * name;
 };
 
+struct sg_simple_inquiry_resp;
+
 
 /* Functions declared below are shared by different compilation units */
 
 /* defined in ddpt.c */
 /* No global function defined in ddpt.c apart from main() */
-
-/* defined in ddpt_pt.c */
-void * pt_construct_obj(void);
-void pt_destruct_obj(void * vp);
-int pt_open_if(struct opts_t * op);
-int pt_open_of(struct opts_t * op);
-void pt_close(int fd);
-int pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_sect,
-                     int * sect_sz);
-int pt_read(struct opts_t * op, int in0_out1, unsigned char * buff,
-            int blocks, int * blks_readp);
-int pt_write(struct opts_t * op, const unsigned char * buff, int blocks,
-             int64_t to_block);
-int pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
-                    int blocks, int64_t start_block);
-void pt_sync_cache(int fd);
-int pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
-                       int timeout_secs, void * paramp, int param_len,
-                       int noisy, int verbose);
-int pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
-                      void * resp, int mx_resp_len, int noisy, int verbose);
 
 /* defined in ddpt_com.c */
 #ifdef __GNUC__
@@ -430,7 +411,7 @@ int pr2serr(const char * fmt, ...) __attribute__ ((format (printf, 1, 2)));
 int pr2serr(const char * fmt, ...);
 #endif
 void sleep_ms(int millisecs);
-void print_stats(const char * str, struct opts_t * op);
+void print_stats(const char * str, struct opts_t * op, int first_half);
 int dd_filetype(const char * filename, int verbose);
 char * dd_filetype_str(int ft, char * buff, int max_bufflen,
                        const char * fname);
@@ -457,7 +438,33 @@ void decode_designation_descriptor(const unsigned char * ucp, int i_len,
                                    int verb);
 void print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr);
 
+/* defined in ddpt_pt.c */
+void * pt_construct_obj(void);
+void pt_destruct_obj(void * vp);
+int pt_open_if(struct opts_t * op, struct sg_simple_inquiry_resp * sirp);
+int pt_open_of(struct opts_t * op, struct sg_simple_inquiry_resp * sirp);
+void pt_close(int fd);
+int pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_sect,
+                     int * sect_sz);
+int pt_read(struct opts_t * op, int in0_out1, unsigned char * buff,
+            int blocks, int * blks_readp);
+int pt_write(struct opts_t * op, const unsigned char * buff, int blocks,
+             int64_t to_block);
+int pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
+                    int blocks, int64_t start_block);
+void pt_sync_cache(int fd);
+int pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
+                       int timeout_secs, void * paramp, int param_len,
+                       int noisy, int verbose);
+int pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
+                      void * resp, int mx_resp_len, int noisy, int verbose);
+
 /* defined in ddpt_xcopy.c */
+const char * cpy_op_status_str(int cos, char * b, int blen);
+int print_3pc_vpd(struct opts_t * op);
+int fetch_rrti_after_odx(struct opts_t * op, int * for_sap, int * cstatp,
+                         uint64_t * tc_p, unsigned char * rtp, int max_rt_sz,
+                         int * rt_lenp, int verb);
 int do_xcopy(struct opts_t * op);       /* xcopy(LID1) */
 int do_odx_copy(struct opts_t * op);
 
