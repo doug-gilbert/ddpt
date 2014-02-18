@@ -64,7 +64,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140212 [svn: r259]";
+const char * ddptctl_version_str = "0.94 20140217 [svn: r260]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -106,9 +106,11 @@ const char * ddptctl_version_str = "0.94 20140212 [svn: r259]";
 #endif
 
 #include "sg_lib.h"
+#include "sg_cmds_basic.h"
 
 
-#define THIRD_PARTY_COPY_IN_CMD 0x84
+#define DDPT_TPC_OUT_CMD 0x83
+#define DDPT_TPC_IN_CMD 0x84
 
 #define SA_COPY_STATUS_LID1     0x0     /* IN, retrieve */
 #define SA_COPY_DATA_LID1       0x1     /* IN, retrieve */
@@ -399,8 +401,8 @@ state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
 int
 main(int argc, char * argv[])
 {
-    int c;
-    int64_t i64;
+    int c, fd, flags, sect_sz, rt_len, cstat, for_sa, sz, cont;
+    int64_t i64, num_sect;
     int do_abort = 0;
     int do_all_toks = 0;
     int do_block = 0;
@@ -412,10 +414,17 @@ main(int argc, char * argv[])
     struct opts_t ops;
     struct flags_t iflag, oflag;
     struct dev_info_t ids, ods, o2ds;
+    struct sg_simple_inquiry_resp sir;
     struct opts_t * op;
+    unsigned char rt_buf[600];
+    char b[80];
+    char bb[80];
+    uint64_t tc;
 
     state_init(&ops, &iflag, &oflag, &ids, &ods, &o2ds);
     op = &ops;
+    memset(&sir, 0, sizeof(sir));
+    sz = (int)sizeof(rt_buf);
 
     while (1) {
         int option_index = 0;
@@ -519,6 +528,95 @@ main(int argc, char * argv[])
     }
 
     op->idip->d_type = do_block ? FT_BLOCK : FT_PT;
+    if (op->idip->d_type & FT_PT) {
+        fd = pt_open_if(op, &sir);
+        if (-1 == fd) {
+            ret = SG_LIB_FILE_ERROR;
+            goto clean_up;
+        } else if (fd < -1) {
+            ret = SG_LIB_CAT_OTHER;
+            goto clean_up;
+        }
+        op->idip->fd = fd;
+    } else if (op->idip->d_type & FT_BLOCK) {
+        flags = O_RDONLY;
+        fd = open(op->idip->fn, flags);
+        if (fd < 0) {
+            pr2serr("could not open %s for reading: %s\n", op->idip->fn,
+                    safe_strerror(errno));
+            ret = SG_LIB_FILE_ERROR;
+            goto clean_up;
+        }
+        op->idip->fd = fd;
+    } else {
+        pr2serr("expecting to open a file but nothing found\n");
+        ret = SG_LIB_CAT_OTHER;
+        goto clean_up;
+    }
 
+    if (do_all_toks)
+        ret = report_all_toks(op, op->idip);
+    else if (do_info) {
+        if (op->idip->d_type & FT_PT) {
+            ret = pt_read_capacity(op, DDPT_ARG_IN, &num_sect, &sect_sz);
+            if (ret)
+                goto clean_up;
+            print_blk_sizes(op->idip->fn, "pt", num_sect, sect_sz, 0);
+            if (0x8 & sir.byte_5) {
+                printf("3PC (third party copy) bit set in standard INQUIRY "
+                       "response\n");
+                printf("  Print Third Party Copy VPD page:\n");
+                print_3pc_vpd(op);
+            } else {
+                printf("3PC (third party copy) bit clear in standard INQUIRY "
+                       "response\n");
+                printf("  so %s [pdt=0x%x] does not seem to support XCOPY\n",
+                       op->idip->fn, sir.peripheral_type);
+            }
+        } else if (op->idip->d_type & FT_BLOCK) {
+            ret = get_blkdev_capacity(op, DDPT_ARG_IN, &num_sect, &sect_sz);
+            if (ret)
+                goto clean_up;
+            print_blk_sizes(op->idip->fn, "block", num_sect, sect_sz, 0);
+        } else {
+            num_sect = 0;
+            sect_sz = 0;
+            printf("unable to print capacity information about device\n");
+        }
+    } else if (do_receive) {
+        if (! op->list_id_given)
+            op->list_id = 0x101;
+        ret = fetch_rrti_after_odx(op, &for_sa, &cstat, &tc, rt_buf, sz,
+                                   &rt_len, op->verbose);
+        if (ret)
+            goto clean_up;
+        sg_get_opcode_sa_name(DDPT_TPC_OUT_CMD, for_sa, 0, (int)sizeof(b), b);
+        printf("RRTI for %s: %s\n", b,
+               cpy_op_status_str(cstat, bb, sizeof(bb)));
+    } else if (do_poll) {
+        do {
+            ret = fetch_rrti_after_odx(op, &for_sa, &cstat, &tc, rt_buf, sz,
+                                       &rt_len, op->verbose);
+            if (ret)
+                goto clean_up;
+            cont = ((cstat >= 0x10) && (cstat <= 0x12));
+            sleep(1);
+        } while (cont);
+        sg_get_opcode_sa_name(DDPT_TPC_OUT_CMD, for_sa, 0, (int)sizeof(b), b);
+        printf("RRTI for %s: %s\n", b,
+               cpy_op_status_str(cstat, bb, sizeof(bb)));
+    } else {
+        pr2serr("to be done\n");
+    }
+
+clean_up:
+    if (op->idip->fd >= 0) {
+        if (op->idip->d_type & FT_PT)
+            pt_close(op->idip->fd);
+        else if (op->idip->d_type & FT_BLOCK)
+            close(op->idip->fd);
+    }
+    if (ret)
+        print_exit_status_msg("Exit status", ret, 0);
     return ret;
 }

@@ -63,7 +63,6 @@
 
 #include "sg_lib.h"
 #include "sg_cmds_basic.h"
-#include "sg_cmds_extra.h"
 
 
 /* In SPC-4 the cdb opcodes have more generic names */
@@ -878,7 +877,7 @@ do_xcopy(struct opts_t * op)
 /* vvvvvvvvv  ODX [SBC-3's POPULATE TOKEN + WRITE USING TOKEN vvvvvvv */
 
 
-static const char *
+const char *
 cpy_op_status_str(int cos, char * b, int blen)
 {
     const struct val_str_t * vsp;
@@ -897,9 +896,314 @@ cpy_op_status_str(int cos, char * b, int blen)
     return b;
 }
 
+/* This is xcopy(LID4) related: "ROD" == Representation Of Data
+ * Used by VPD_3PARTY_COPY */
+static void
+decode_rod_descriptor(const unsigned char * buff, int len)
+{
+    const unsigned char * ucp = buff;
+    int k, bump, j;
+    uint64_t ull;
+
+    for (k = 0; k < len; k += bump, ucp += bump) {
+        bump = (ucp[2] << 8) + ucp[3];
+        switch (ucp[0]) {
+            case 0:
+                /* Block ROD device type specific descriptor */
+                printf("   Optimal block ROD length granularity: %d\n",
+                       (ucp[6] << 8) + ucp[7]);
+                ull = 0;
+                for (j = 0; j < 8; j++) {
+                    if (j > 0)
+                        ull <<= 8;
+                    ull |= ucp[8 + j];
+                }
+                printf("  Maximum Bytes in block ROD: %" PRIu64 "\n", ull);
+                ull = 0;
+                for (j = 0; j < 8; j++) {
+                    if (j > 0)
+                        ull <<= 8;
+                    ull |= ucp[16 + j];
+                }
+                printf("  Optimal Bytes in block ROD transfer: %" PRIu64 "\n",
+                       ull);
+                ull = 0;
+                for (j = 0; j < 8; j++) {
+                    if (j > 0)
+                        ull <<= 8;
+                    ull |= ucp[24 + j];
+                }
+                printf("  Optimal Bytes to token per segment: %" PRIu64 "\n",
+                       ull);
+                ull = 0;
+                for (j = 0; j < 8; j++) {
+                    if (j > 0)
+                        ull <<= 8;
+                    ull |= ucp[32 + j];
+                }
+                printf("  Optimal Bytes from token per segment:"
+                       " %" PRIu64 "\n", ull);
+                break;
+            case 1:
+                /* Stream ROD device type specific descriptor */
+                ull = 0;
+                for (j = 0; j < 8; j++) {
+                    if (j > 0)
+                        ull <<= 8;
+                    ull |= ucp[8 + j];
+                }
+                printf("  Maximum Bytes in stream ROD: %" PRIu64 "\n", ull);
+                ull = 0;
+                for (j = 0; j < 8; j++) {
+                    if (j > 0)
+                        ull <<= 8;
+                    ull |= ucp[16 + j];
+                }
+                printf("  Optimal Bytes in stream ROD transfer:"
+                       " %" PRIu64 "\n", ull);
+                break;
+            case 3:
+                /* Copy manager ROD device type specific descriptor */
+                ull = 0;
+                for (j = 0; j < 8; j++) {
+                    if (j > 0)
+                        ull <<= 8;
+                    ull |= ucp[8 + j];
+                }
+                printf("  Maximum Bytes in processor ROD:"
+                       " %" PRIu64 "\n", ull);
+                ull = 0;
+                for (j = 0; j < 8; j++) {
+                    if (j > 0)
+                        ull <<= 8;
+                    ull |= ucp[16 + j];
+                }
+                printf("  Optimal Bytes in processor ROD transfer:"
+                       " %" PRIu64 "\n", ull);
+                break;
+            default:
+                printf("  Unhandled descriptor (format %d, device type %d)\n",
+                       ucp[0] >> 5, ucp[0] & 0x1F);
+                break;
+        }
+    }
+}
+
+/* VPD_3PARTY_COPY [3PC, third party copy] */
+static void
+decode_3party_copy_vpd(unsigned char * buff, int len, int do_hex, int verbose)
+{
+    int j, k, bump, desc_type, desc_len, sa_len;
+    unsigned int u;
+    const unsigned char * ucp;
+    uint64_t ull;
+    char b[80];
+
+    if (len < 4) {
+        pr2serr("Third-party Copy VPD page length too short=%d\n", len);
+        return;
+    }
+    len -= 4;
+    ucp = buff + 4;
+    for (k = 0; k < len; k += bump, ucp += bump) {
+        desc_type = (ucp[0] << 8) + ucp[1];
+        desc_len = (ucp[2] << 8) + ucp[3];
+        if (verbose)
+            printf("Descriptor type=%d, len %d\n", desc_type, desc_len);
+        bump = 4 + desc_len;
+        if ((k + bump) > len) {
+            pr2serr("Third-party Copy VPD page, short descriptor length=%d, "
+                    "left=%d\n", bump, (len - k));
+            return;
+        }
+        if (0 == desc_len)
+            continue;
+        if (2 == do_hex)
+            dStrHex((const char *)ucp + 4, desc_len, 1);
+        else if (do_hex > 2)
+            dStrHex((const char *)ucp, bump, 1);
+        else {
+            switch (desc_type) {
+            case 0x0000:    /* Required if POPULATE TOKEN (or friend) used */
+                printf(" Block Device ROD Token Limits:\n");
+                printf("  Maximum Range Descriptors: %d\n",
+                       (ucp[10] << 8) + ucp[11]);
+                u = (ucp[12] << 24) | (ucp[13] << 16) | (ucp[14] << 8) |
+                    ucp[15];
+                printf("  Maximum Inactivity Timeout: %u seconds\n", u);
+                u = (ucp[16] << 24) | (ucp[17] << 16) | (ucp[18] << 8) |
+                    ucp[19];
+                printf("  Default Inactivity Timeout: %u seconds\n", u);
+                ull = 0;
+                for (j = 0; j < 8; j++) {
+                    if (j > 0)
+                        ull <<= 8;
+                    ull |= ucp[20 + j];
+                }
+                printf("  Maximum Token Transfer Size: %" PRIu64 "\n", ull);
+                ull = 0;
+                for (j = 0; j < 8; j++) {
+                    if (j > 0)
+                        ull <<= 8;
+                    ull |= ucp[28 + j];
+                }
+                printf("  Optimal Transfer Count: %" PRIu64 "\n", ull);
+                break;
+            case 0x0001:    /* Mandatory (SPC-4) */
+                printf(" Supported Commands:\n");
+                j = 0;
+                while (j < ucp[4]) {
+                    sa_len = ucp[6 + j];
+                    for (k = 0; k < sa_len; k++) {
+                        sg_get_opcode_sa_name(ucp[5 + j], ucp[7 + j + k],
+                                              0, sizeof(b), b);
+                        printf("   %s\n", b);
+                    }
+                    j += sa_len;
+                }
+                break;
+            case 0x0004:
+                printf(" Parameter Data:\n");
+                printf("  Maximum CSCD Descriptor Count: %d\n",
+                       (ucp[8] << 8) + ucp[9]);
+                printf("  Maximum Segment Descriptor Count: %d\n",
+                       (ucp[10] << 8) + ucp[11]);
+                u = (ucp[12] << 24) | (ucp[13] << 16) | (ucp[14] << 8) |
+                    ucp[15];
+                printf("  Maximum Descriptor List Length: %u\n", u);
+                u = (ucp[16] << 24) | (ucp[17] << 16) | (ucp[18] << 8) |
+                    ucp[19];
+                printf("  Maximum Inline Data Length: %u\n", u);
+                break;
+            case 0x0008:
+                printf(" Supported Descriptors:\n");
+                for (j = 0; j < ucp[4]; j++) {
+                    printf("  0x%x\n", ucp[5 + j]);
+                }
+                break;
+            case 0x000C:
+                printf(" Supported CSCD IDs:\n");
+                for (j = 0; j < (ucp[4] << 8) + ucp[5]; j += 2) {
+                    u = (ucp[6 + j] << 8) | ucp[7 + j];
+                    printf("  0x%04x\n", u);
+                }
+                break;
+            case 0x0106:
+                printf(" ROD Token Features:\n");
+                printf("  Remote Tokens: %d\n", ucp[4] & 0x0f);
+                u = (ucp[16] << 24) | (ucp[17] << 16) | (ucp[18] << 8) |
+                    ucp[19];
+                printf("  Minimum Token Lifetime: %u seconds\n", u);
+                u = (ucp[20] << 24) | (ucp[21] << 16) | (ucp[22] << 8) |
+                    ucp[23];
+                printf("  Maximum Token Lifetime: %u seconds\n", u);
+                u = (ucp[24] << 24) | (ucp[25] << 16) | (ucp[26] << 8) |
+                    ucp[27];
+                printf("  Maximum Token inactivity timeout: %d\n", u);
+                decode_rod_descriptor(&ucp[48], (ucp[46] << 8) + ucp[47]);
+                break;
+            case 0x0108:
+                printf(" Supported ROD Token and ROD Types:\n");
+                for (j = 0; j < (ucp[6] << 8) + ucp[7]; j+= 64) {
+                    u = (ucp[8 + j] << 24) | (ucp[8 + j + 1] << 16) |
+                        (ucp[8 + j + 2] << 8) | ucp[8 + j + 3];
+                    printf("  ROD Type %u:\n", u);
+                    printf("    Internal: %s\n",
+                           ucp[8 + j + 4] & 0x80 ? "yes" : "no");
+                    printf("    Token In: %s\n",
+                           ucp[8 + j + 4] & 0x02 ? "yes" : "no");
+                    printf("    Token Out: %s\n",
+                           ucp[8 + j + 4] & 0x01 ? "yes" : "no");
+                    printf("    Preference: %d\n",
+                           (ucp[8 + j + 6] << 8) + ucp[8 + j + 7]);
+                }
+                break;
+            case 0x8001:    /* Mandatory (SPC-4) */
+                printf(" General Copy Operations:\n");
+                u = (ucp[4] << 24) | (ucp[5] << 16) | (ucp[6] << 8) |
+                    ucp[7];
+                printf("  Total Concurrent Copies: %u\n", u);
+                u = (ucp[8] << 24) | (ucp[9] << 16) | (ucp[10] << 8) |
+                    ucp[11];
+                printf("  Maximum Identified Concurrent Copies: %u\n", u);
+                u = (ucp[12] << 24) | (ucp[13] << 16) | (ucp[14] << 8) |
+                    ucp[15];
+                printf("  Maximum Segment Length: %u\n", u);
+                ull = (1 << ucp[16]);
+                printf("  Data Segment Granularity: %" PRIu64 "\n", ull);
+                ull = (1 << ucp[17]);
+                printf("  Inline Data Granularity: %" PRIu64 "\n", ull);
+                break;
+            case 0x9101:
+                printf(" Stream Copy Operations:\n");
+                u = (ucp[4] << 24) | (ucp[5] << 16) | (ucp[6] << 8) |
+                    ucp[7];
+                printf("  Maximum Stream Device Transfer Size: %u\n", u);
+                break;
+            case 0xC001:
+                printf(" Held Data:\n");
+                u = (ucp[4] << 24) | (ucp[5] << 16) | (ucp[6] << 8) |
+                    ucp[7];
+                printf("  Held Data Limit: %u\n", u);
+                ull = (1 << ucp[8]);
+                printf("  Held Data Granularity: %" PRIu64 "\n", ull);
+                break;
+            default:
+                pr2serr("Unexpected type=%d\n", desc_type);
+                dStrHexErr((const char *)ucp, bump, 1);
+                break;
+            }
+        }
+    }
+}
+
+
+/* Note this function passes back a malloc-ed buffer if it returns 0 and
+ * fixed_b != *alloc_bp which caller should free. Returns 0 on success. */
+static int
+fetch_3pc_vpd(int fd, unsigned char * fixed_b, int fixed_blen,
+              unsigned char ** alloc_bp, int verb)
+{
+    int res, len;
+    unsigned char * rp;
+
+    rp = fixed_b;
+    if (alloc_bp)
+        *alloc_bp = fixed_b;
+    res = sg_ll_inquiry(fd, 0, 1, VPD_3PARTY_COPY, rp, fixed_blen, 1, verb);
+    if (res) {
+        if (SG_LIB_CAT_ILLEGAL_REQ == res)
+            pr2serr("Third Party Copy VPD page not found\n");
+        else
+            pr2serr("3PARTY_COPY VPD inquiry failed with %d, try again "
+                    "with '-vv'\n", res);
+        return res;
+    } else if (rp[1] != VPD_3PARTY_COPY) {
+        pr2serr("invalid 3PARTY_COPY VPD response\n");
+        return SG_LIB_CAT_MALFORMED;
+    }
+    len = ((rp[2] << 8) + rp[3]) + 4;
+    if (len > fixed_blen) {
+        rp = (unsigned char *)malloc(len);
+        if (NULL == rp) {
+            pr2serr("Not enough user memory for fetch_3pc_vpd\n");
+            return SG_LIB_CAT_OTHER;
+        }
+        if (alloc_bp)
+            *alloc_bp = rp;
+        res = sg_ll_inquiry(fd, 0, 1, VPD_3PARTY_COPY, rp, len, 1, verb);
+        if (res) {
+            pr2serr("3PARTY_COPY VPD inquiry failed with %d\n", res);
+            if (fixed_b != rp)
+                free(rp);
+            return res;
+        }
+    }
+    return 0;
+}
 
 static int
-fetch_3pc_vpd(struct opts_t * op, struct dev_info_t * dip)
+check_3pc_vpd(struct opts_t * op, struct dev_info_t * dip)
 {
     unsigned char rBuff[256];
     unsigned char * rp;
@@ -913,34 +1217,10 @@ fetch_3pc_vpd(struct opts_t * op, struct dev_info_t * dip)
     is_src = (op->idip == dip);
     rp = rBuff;
     n = (int)sizeof(rBuff);
-    res = sg_ll_inquiry(dip->fd, 0, 1, VPD_3PARTY_COPY, rp, n, 1, verb);
-    if (res) {
-        if (SG_LIB_CAT_ILLEGAL_REQ == res)
-            pr2serr("Third Party Copy VPD page not found\n");
-        else
-            pr2serr("3PARTY_COPY VPD inquiry failed with %d, try again "
-                    "with '-vv'\n", res);
+    res = fetch_3pc_vpd(dip->fd, rBuff, n, &rp, verb);
+    if (res)
         return res;
-    } else if (rp[1] != VPD_3PARTY_COPY) {
-        pr2serr("invalid 3PARTY_COPY VPD response\n");
-        return SG_LIB_CAT_MALFORMED;
-    }
     len = ((rp[2] << 8) + rp[3]) + 4;
-    if (len > n) {
-        rp = (unsigned char *)malloc(len);
-        if (NULL == rp) {
-            pr2serr("Not enough user memory for fetch_3pc_vpd\n");
-            return SG_LIB_CAT_OTHER;
-        }
-        res = sg_ll_inquiry(dip->fd, 0, 1, VPD_3PARTY_COPY, rp, len, 1,
-                            verb);
-        if (res) {
-            pr2serr("3PARTY_COPY VPD inquiry failed with %d\n", res);
-            if (rBuff != rp)
-                free(rp);
-            return res;
-        }
-    }
     len -= 4;
     ucp = rp + 4;
     for (k = 0; k < len; k += bump, ucp += bump) {
@@ -1017,6 +1297,26 @@ fetch_3pc_vpd(struct opts_t * op, struct dev_info_t * dip)
         }
     }
     return 0;
+}
+
+int
+print_3pc_vpd(struct opts_t * op)
+{
+    unsigned char rBuff[256];
+    unsigned char * rp;
+    int res, verb, n, len;
+
+    verb = (op->verbose ? (op->verbose - 1) : 0);
+    rp = rBuff;
+    n = (int)sizeof(rBuff);
+    res = fetch_3pc_vpd(op->idip->fd, rBuff, n, &rp, verb);
+    if (res)
+        return res;
+    len = ((rp[2] << 8) + rp[3]) + 4;
+    decode_3party_copy_vpd(rp, len, 0, verb);
+    if (rBuff != rp)
+        free(rp);
+    return res;
 }
 
 static int
@@ -1113,16 +1413,17 @@ do_pop_tok(struct opts_t * op)
                               tmout, pl, len, 1, verb);
 }
 
-static int
-fetch_rt_after_poptok(struct opts_t * op)
+int
+fetch_rrti_after_odx(struct opts_t * op, int * for_sap, int * cstatp,
+                     uint64_t * tc_p, unsigned char * rtp, int max_rt_sz,
+                     int * rt_lenp, int verb)
 {
-    int j, res, fd, verb, for_sa, cstat, lsdf, off, err;
+    int j, res, fd, for_sa, cstat, lsdf, off, rt_len;
     unsigned int len, rtdl;
     uint64_t ull;
     unsigned char rsp[2048];
     char b[400];
 
-    verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
     fd = op->idip->fd;
     res = pt_3party_copy_in(fd, SA_ROD_TOK_INFO, op->list_id,
                             DEF_3PC_IN_TIMEOUT, rsp, sizeof(rsp), 1, verb);
@@ -1131,50 +1432,82 @@ fetch_rt_after_poptok(struct opts_t * op)
 
     len = ((rsp[0] << 24) | (rsp[1] << 16) | (rsp[2] << 8) | rsp[3]) + 4;
     if (len > sizeof(rsp)) {
-        pr2serr("  ROD Token info too long for internal buffer, output "
+        pr2serr("RRTI: ROD Token info too long for internal buffer, output "
                 "truncated\n");
         len = sizeof(rsp);
     }
-    if (verb > 1) {
+    if (verb > 3) {
         pr2serr("\nOutput response in hex:\n");
         dStrHexErr((const char *)rsp, len, 1);
     }
     for_sa = 0x1f & rsp[4];
-    if (SA_POP_TOK != for_sa) {
-        sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, for_sa, 0, sizeof(b),
-                              b);
-        pr2serr("Receive ROD Token info expected response for Populate "
-                "Token\n  but got response for %s\n", b);
-    }
+    if (for_sap)
+        *for_sap = for_sa;
     cstat = 0x7f & rsp[5];
-    if ((! ((0x1 == cstat) || (0x3 == cstat))) || verb)
-        pr2serr("PT: %s\n", cpy_op_status_str(cstat, b, sizeof(b)));
+    if (cstatp)
+        *cstatp = cstat;
     ull = 0;
     for (j = 0; j < 8; j++) {
         if (j > 0)
             ull <<= 8;
         ull |= rsp[16 + j];
     }
-    op->in_full += ull;
-    if (verb > 1)
-        pr2serr("PT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n", ull, ull);
+    if (tc_p)
+        *tc_p = ull;
     lsdf = rsp[13];
     if (lsdf > 0)
-        sg_get_sense_str("PT related sense:", rsp + 32, rsp[14], verb,
+        sg_get_sense_str("RRTI data-in sense:", rsp + 32, rsp[14], verb,
                          sizeof(b), b);
     off = 32 + lsdf;
     rtdl = (rsp[off] << 24) | (rsp[off + 1] << 16) | (rsp[off + 2] << 8) |
            rsp[off + 3];
-    if (rtdl > 2) {
+    if ((rtdl > 2) && rtp && rt_lenp) {
+        rt_len = rtdl - 2;
+        memcpy(rtp, rsp + off + 6, (rt_len > max_rt_sz) ? max_rt_sz : rt_len);
+        *rt_lenp = rt_len;
+    } else if (rt_lenp)
+        *rt_lenp = 0;
+
+    return 0;
+}
+
+static int
+fetch_rt_after_poptok(struct opts_t * op)
+{
+    int res, fd, rt_len, verb, for_sa, cstat, err, sz;
+    uint64_t tc;
+    unsigned char rt_buf[600];
+    char b[400];
+
+    verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
+    sz = (int)sizeof(rt_buf);
+    res = fetch_rrti_after_odx(op, &for_sa, &cstat, &tc, rt_buf, sz, &rt_len,
+                               verb);
+    if (res)
+        return res;
+    if (SA_POP_TOK != for_sa) {
+        sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, for_sa, 0, sizeof(b),
+                              b);
+        pr2serr("Receive ROD Token info expected response for Populate "
+                "Token\n  but got response for %s\n", b);
+    }
+    if ((! ((0x1 == cstat) || (0x3 == cstat))) || verb)
+        pr2serr("PT: %s\n", cpy_op_status_str(cstat, b, sizeof(b)));
+    op->in_full += tc;
+    if (verb > 1)
+        pr2serr("PT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n", tc, tc);
+    if (rt_len > sz)
+        rt_len = sz;
+    if (rt_len > 0) {
         if (op->rtf[0]) {     /* write ROD Token to RTF */
-            fd = open(op->rtf, O_WRONLY | O_CREAT, 0644);
+            fd = open(op->rtf, O_WRONLY | O_CREAT | O_TRUNC, 0644);
             if (fd < 0) {
                 err = errno;
                 pr2serr("%s: unable to create file: %s [%s]\n", __func__,
                         op->rtf, safe_strerror(err));
                 return SG_LIB_FILE_ERROR;
             }
-            res = write(fd, rsp + off + 6, rtdl - 2);
+            res = write(fd, rt_buf, rt_len);
             if (res < 0) {
                 err = errno;
                 pr2serr("%s: unable to write to file: %s [%s]\n", __func__,
@@ -1183,18 +1516,18 @@ fetch_rt_after_poptok(struct opts_t * op)
                 return SG_LIB_FILE_ERROR;
             }
             close(fd);
-            if (res < (int)(rtdl - 2)) {
+            if (res < rt_len) {
                 pr2serr("%s: short write to file: %s, wanted %d, got %d\n",
-                        __func__, op->rtf, (rtdl - 2), res);
+                        __func__, op->rtf, rt_len, res);
                 return SG_LIB_CAT_OTHER;
             }
         } else {        /* write ROD Token to static */
-            if ((rtdl - 2) > LOCAL_ROD_TOKEN_SIZE) {
+            if (rt_len > LOCAL_ROD_TOKEN_SIZE) {
                 pr2serr("%s: ROD token too large for static storage, try "
                         "'rtf=RTF'\n", __func__);
                 return SG_LIB_CAT_OTHER;
             }
-            memcpy(local_rod_token, rsp + off + 6, rtdl - 2);
+            memcpy(local_rod_token, rt_buf, rt_len);
         }
     }
     return 0;
@@ -1333,62 +1666,28 @@ do_wut(struct opts_t * op)
 }
 
 static int
-fetch_rt_after_wut(struct opts_t * op)
+fetch_rrti_after_wut(struct opts_t * op)
 {
-    int j, res, fd, verb, for_sa, cstat, lsdf, off;
-    unsigned int len, rtdl;
-    uint64_t ull;
-    unsigned char rsp[2048];
+    int res, verb, for_sa, cstat;
+    uint64_t tc;
     char b[80];
 
     verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
-    fd = op->odip->fd;
-    res = pt_3party_copy_in(fd, SA_ROD_TOK_INFO, op->list_id,
-                            DEF_3PC_IN_TIMEOUT, rsp, sizeof(rsp), 1, verb);
+    res = fetch_rrti_after_odx(op, &for_sa, &cstat, &tc, NULL, 0, NULL,
+                               verb);
     if (res)
         return res;
-
-    len = ((rsp[0] << 24) | (rsp[1] << 16) | (rsp[2] << 8) | rsp[3]) + 4;
-    if (len > sizeof(rsp)) {
-        pr2serr("  %s: response is too long for internal buffer, output "
-                "truncated\n", __func__);
-        len = sizeof(rsp);
-    }
-    if (verb > 1) {
-        pr2serr("\nOutput response in hex:\n");
-        dStrHexErr((const char *)rsp, len, 1);
-    }
-    for_sa = 0x1f & rsp[4];
     if (SA_WR_USING_TOK != for_sa) {
         sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, for_sa, 0, sizeof(b),
                               b);
         pr2serr("Receive ROD Token info expected response for Write "
                 "Using Token\n  but got response for %s\n", b);
     }
-    cstat = 0x7f & rsp[5];
     if ((! ((0x1 == cstat) || (0x3 == cstat))) || verb)
         pr2serr("WUT: %s\n", cpy_op_status_str(cstat, b, sizeof(b)));
-    ull = 0;
-    for (j = 0; j < 8; j++) {
-        if (j > 0)
-            ull <<= 8;
-        ull |= rsp[16 + j];
-    }
-    op->out_full += ull;
+    op->out_full += tc;
     if (verb)
-        pr2serr("WUT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n", ull,
-                ull);
-    lsdf = rsp[13];
-    if (lsdf > 0)
-        sg_get_sense_str("WUT related sense:", rsp + 32, rsp[14], verb,
-                         sizeof(b), b);
-    if (len > 38) {
-        off = 32 + lsdf;
-        rtdl = (rsp[off] << 24) | (rsp[off + 1] << 16) | (rsp[off + 2] << 8) |
-               rsp[off + 3];
-        if (rtdl > 2)
-            pr2serr("%s: Hmmm, got ROD Token returned\n", __func__);
-    }
+        pr2serr("WUT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n", tc, tc);
     return 0;
 }
 
@@ -1402,7 +1701,7 @@ odx_copy_work(struct opts_t * op)
         op->list_id = (ODX_REQ_WUT == op->odx_request) ? 0x102 : 0x101;
     if ((ODX_REQ_PT == op->odx_request) ||
         (ODX_REQ_COPY == op->odx_request)) {
-        fd = pt_open_if(op);
+        fd = pt_open_if(op, NULL);
         if (-1 == fd)
             return SG_LIB_FILE_ERROR;
         else if (fd < -1)
@@ -1415,12 +1714,14 @@ odx_copy_work(struct opts_t * op)
             return SG_LIB_CAT_OTHER;
         }
         memset(dip->odxp, 0, sizeof(struct odx_info_t));
-        res = fetch_3pc_vpd(op, dip);
+        res = check_3pc_vpd(op, dip);
         if (res)
             return res;
         res = do_pop_tok(op);
         if (res)
             return res;
+        else if (op->iflagp->immed)
+            return 0;
         res = fetch_rt_after_poptok(op);
         if (res)
             return res;
@@ -1429,7 +1730,7 @@ odx_copy_work(struct opts_t * op)
     }
     if ((ODX_REQ_WUT == op->odx_request) ||
         (ODX_REQ_COPY == op->odx_request)) {
-        fd = pt_open_of(op);
+        fd = pt_open_of(op, NULL);
         if (-1 == fd)
             return SG_LIB_FILE_ERROR;
         else if (fd < -1)
@@ -1441,13 +1742,15 @@ odx_copy_work(struct opts_t * op)
             pr2serr("Not enough user memory for do_odx_copy\n");
             return SG_LIB_CAT_OTHER;
         }
-        res = fetch_3pc_vpd(op, dip);
+        res = check_3pc_vpd(op, dip);
         if (res)
             return res;
         res = do_wut(op);
         if (res)
             return res;
-        res = fetch_rt_after_wut(op);
+        else if (op->oflagp->immed)
+            return 0;
+        res = fetch_rrti_after_wut(op);
         if (res)
             return res;
         // careful, following assumes ibs=obs, needs rethink
@@ -1463,14 +1766,39 @@ odx_copy_work(struct opts_t * op)
 int
 do_odx_copy(struct opts_t * op)
 {
-    int ret;
+    int ret, in_immed, out_immed, time_useful, full_cp;
 
-    if (op->do_time)
+    full_cp = (ODX_REQ_COPY == op->odx_request);
+    in_immed = (ODX_REQ_PT == op->odx_request) && op->iflagp->immed;
+    out_immed = ((ODX_REQ_WUT == op->odx_request) || full_cp) &&
+                 op->oflagp->immed;
+    if (in_immed && out_immed) {
+        pr2serr("Can't do iflag=immed -and_ oflag=immed\n");
+        return SG_LIB_SYNTAX_ERROR;
+    }
+    if (in_immed)
+        time_useful = 0;
+    else if (out_immed && (! full_cp))
+        time_useful = 0;
+    else
+        time_useful = 1;
+    if (op->do_time && time_useful)
         calc_duration_init(op);
     ret = odx_copy_work(op);
-    if (0 == op->status_none)
-        print_stats("", op);
-    if (op->do_time)
+    if (time_useful && (0 == op->status_none))
+        print_stats("", op, (out_immed && full_cp));
+    if (op->do_time && time_useful)
         calc_duration_throughput("", 0, op);
+    if (in_immed) {
+        op->dd_count = 0;       /* mute early termination report */
+        pr2serr("Started ODX read (populate token) in immediate "
+                "mode.\nUser may need list_id=%d for completion\n",
+                op->list_id);
+    } else if (out_immed) {
+        op->dd_count = 0;       /* mute early termination report */
+        pr2serr("Started ODX write (write using token) in immediate "
+                "mode.\nUser may need list_id=%d for completion\n",
+                op->list_id);
+    }
     return ret;
 }

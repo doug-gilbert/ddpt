@@ -128,7 +128,7 @@ pt_destruct_obj(void * vp)
 }
 
 int
-pt_open_if(struct opts_t * op)
+pt_open_if(struct opts_t * op, struct sg_simple_inquiry_resp * sirp)
 {
     int verb, flags, fl, fd;
     struct sg_simple_inquiry_resp sir;
@@ -172,11 +172,13 @@ pt_open_if(struct opts_t * op)
             pr2serr("    %s: %.8s  %.16s  %.4s  [pdt=%d]\n",
                     fn, sir.vendor, sir.product, sir.revision, dip->pdt);
     }
+    if (sirp)
+	*sirp = sir;
     return fd;
 }
 
 int
-pt_open_of(struct opts_t * op)
+pt_open_of(struct opts_t * op, struct sg_simple_inquiry_resp * sirp)
 {
     int verb, flags, fd;
     struct sg_simple_inquiry_resp sir;
@@ -217,6 +219,8 @@ pt_open_of(struct opts_t * op)
             pr2serr("    %s: %.8s  %.16s  %.4s  [pdt=%d]\n",
                     fn, sir.vendor, sir.product, sir.revision, dip->pdt);
     }
+    if (sirp)
+	*sirp = sir;
     return fd;
 }
 
