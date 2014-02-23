@@ -381,14 +381,14 @@ dd_filetype_str(int ft, char * buff, int max_bufflen, const char * fname)
 
 /* get_blkdev_capacity() returns 0 -> success or -1 -> failure.
  * which_arg should either be DDPT_ARG_IN, DDPT_ARG_OUT or DDPT_ARG_OUT2.
- * If successful writes back sector size (logical block
- * size) using the sect_sz * pointer. Also writes back the number of
- * sectors (logical blocks) on the block device using num_sect pointer. */
+ * If successful writes back logical block size using the blk_sz pointer.
+ * Also writes back the number of logical blocks) on the block device using
+ * num_blks pointer. */
 
 #ifdef SG_LIB_LINUX
 int
-get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
-                    int * sect_sz)
+get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
+                    int * blk_sz)
 {
     int blk_fd;
     const char * fname;
@@ -400,7 +400,7 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
     /* BLKGETSIZE64, BLKGETSIZE and BLKSSZGET macros problematic (from
      *  <linux/fs.h> or <sys/mount.h>). */
 #ifdef BLKSSZGET
-    if ((ioctl(blk_fd, BLKSSZGET, sect_sz) < 0) && (*sect_sz > 0)) {
+    if ((ioctl(blk_fd, BLKSSZGET, blk_sz) < 0) && (*blk_sz > 0)) {
         perror("BLKSSZGET ioctl error");
         return -1;
     } else {
@@ -412,7 +412,7 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
             perror("BLKGETSIZE64 ioctl error");
             return -1;
         }
-        *num_sect = ((int64_t)ull / (int64_t)*sect_sz);
+        *num_blks = ((int64_t)ull / (int64_t)*blk_sz);
         if (op->verbose > 5)
             pr2serr("Used Linux BLKGETSIZE64 ioctl\n");
  #else
@@ -422,7 +422,7 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
             perror("BLKGETSIZE ioctl error");
             return -1;
         }
-        *num_sect = (int64_t)ul;
+        *num_blks = (int64_t)ul;
         if (op->verbose > 5)
             pr2serr("Used Linux BLKGETSIZE ioctl\n");
  #endif
@@ -432,8 +432,8 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
     blk_fd = blk_fd;
     if (op->verbose)
         pr2serr("      BLKSSZGET+BLKGETSIZE ioctl not available\n");
-    *num_sect = 0;
-    *sect_sz = 0;
+    *num_blks = 0;
+    *blk_sz = 0;
     return -1;
 #endif
 }
@@ -441,8 +441,8 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
 
 #ifdef SG_LIB_FREEBSD
 int
-get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
-                    int * sect_sz)
+get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
+                    int * blk_sz)
 {
 // Why do kernels invent their own typedefs and not use C standards?
 #define u_int unsigned int
@@ -463,23 +463,23 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
         perror("DIOCGSECTORSIZE ioctl error");
         return -1;
     }
-    *sect_sz = sectorsize;
+    *blk_sz = sectorsize;
     if (ioctl(blk_fd, DIOCGMEDIASIZE, &mediasize) < 0) {
         perror("DIOCGMEDIASIZE ioctl error");
         return -1;
     }
     if (sectorsize)
-        *num_sect = mediasize / sectorsize;
+        *num_blks = mediasize / sectorsize;
     else
-        *num_sect = 0;
+        *num_blks = 0;
     return 0;
 }
 #endif
 
 #ifdef SG_LIB_SOLARIS
 int
-get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
-                    int * sect_sz)
+get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
+                    int * blk_sz)
 {
     struct dk_minfo info;
     int blk_fd;
@@ -493,12 +493,12 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
     /* this works on "char" block devs (e.g. in /dev/rdsk) but not /dev/dsk */
     if (ioctl(blk_fd, DKIOCGMEDIAINFO , &info) < 0) {
         perror("DKIOCGMEDIAINFO ioctl error");
-        *num_sect = 0;
-        *sect_sz = 0;
+        *num_blks = 0;
+        *blk_sz = 0;
         return -1;
     }
-    *num_sect = info.dki_capacity;
-    *sect_sz = info.dki_lbsize;
+    *num_blks = info.dki_capacity;
+    *blk_sz = info.dki_lbsize;
     return 0;
 }
 #endif
@@ -513,8 +513,8 @@ zero_coe_limit_count(struct opts_t * op)
 /* Print number of blocks, block size. If over 1 MB print size in MB
  * (10**6 bytes), GB (10**9 bytes) or TB (10**12 bytes) to stderr. */
 void
-print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
-                int sect_sz, int to_stderr)
+print_blk_sizes(const char * fname, const char * access_typ, int64_t num_blks,
+                int blk_sz, int to_stderr)
 {
     int mb, gb, tb;
     size_t len;
@@ -524,14 +524,14 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
     int (*print_p)(const char *, ...);
 
     print_p = to_stderr ? pr2serr : printf;
-    if (num_sect <= 0) {
+    if (num_blks <= 0) {
         print_p("  %s [%s]: blocks=%" PRId64 ", _bs=%d\n", fname, access_typ,
-                num_sect, sect_sz);
+                num_blks, blk_sz);
         return;
     }
     gb = 0;
-    if ((num_sect > 0) && (sect_sz > 0)) {
-        n = num_sect * sect_sz;
+    if ((num_blks > 0) && (blk_sz > 0)) {
+        n = num_blks * blk_sz;
         gb = n / 1000000000;
     }
     if (gb > 999999) {
@@ -543,13 +543,13 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
         dec[2] = '\0';
         b[len - 3] = '\0';
         print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
-                "_bs=%d, %s.%s PB\n", fname, access_typ, num_sect,
-                num_sect, sect_sz, b, dec);
+                "_bs=%d, %s.%s PB\n", fname, access_typ, num_blks,
+                num_blks, blk_sz, b, dec);
     } else if (gb > 99999) {
         tb = gb / 1000;
         print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
-                "_bs=%d, %d TB\n", fname, access_typ, num_sect,
-                num_sect, sect_sz, tb);
+                "_bs=%d, %d TB\n", fname, access_typ, num_blks,
+                num_blks, blk_sz, tb);
     } else {
         mb = n / 1000000;
         if (mb > 999999) {
@@ -561,13 +561,13 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
             dec[2] = '\0';
             b[len - 3] = '\0';
             print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
-                    "_bs=%d, %s.%s TB\n", fname, access_typ, num_sect,
-                    num_sect, sect_sz, b, dec);
+                    "_bs=%d, %s.%s TB\n", fname, access_typ, num_blks,
+                    num_blks, blk_sz, b, dec);
         } else if (mb > 99999) {
             gb = mb / 1000;
             print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
-                    "_bs=%d, %d GB\n", fname, access_typ, num_sect,
-                    num_sect, sect_sz, gb);
+                    "_bs=%d, %d GB\n", fname, access_typ, num_blks,
+                    num_blks, blk_sz, gb);
         } else if (mb > 999) {
             snprintf(b, sizeof(b), "%d", mb);
             len = strlen(b); // len must be >= 4
@@ -576,16 +576,16 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
             dec[2] = '\0';
             b[len - 3] = '\0';
             print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
-                    "_bs=%d, %s.%s GB\n", fname, access_typ, num_sect,
-                    num_sect, sect_sz, b, dec);
+                    "_bs=%d, %s.%s GB\n", fname, access_typ, num_blks,
+                    num_blks, blk_sz, b, dec);
         } else if (mb > 0) {
             print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
-                    "_bs=%d, %d MB%s\n", fname, access_typ, num_sect,
-                    num_sect, sect_sz, mb, ((mb < 10) ? " approx" : ""));
+                    "_bs=%d, %d MB%s\n", fname, access_typ, num_blks,
+                    num_blks, blk_sz, mb, ((mb < 10) ? " approx" : ""));
         } else
             print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
-                    "_bs=%d\n", fname, access_typ, num_sect, num_sect,
-                    sect_sz);
+                    "_bs=%d\n", fname, access_typ, num_blks, num_blks,
+                    blk_sz);
     }
 }
 

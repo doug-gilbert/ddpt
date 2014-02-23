@@ -3,25 +3,84 @@
 ddptctl \- helper/auxiliary utility for ddpt
 .SH SYNOPSIS
 .B ddptctl
-[\fI\-\-help\fR] [\fI\-\-hex\fR] [\fI\-\-raw\fR] [\fI\-\-verbose\fR]
-[\fI\-\-version\fR] \fIDEVICE\fR
+[\fI\-\-abort=LID\fR] [\fI\-\-all_toks\fR] [\fI\-\-block\fR] [\fI\-\-help\fR]
+[\fI\-\-info\fR] [\fI\-\-list_id=LID\fR] [\fI\-\-poll\fR] [\fI\-\-receive\fR]
+[\fI\-\-rtf=RTF\fR] [\fI\-\-size\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR]
+[\fIDEVICE\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
-Send a SCSI READ BLOCK LIMITS command to \fIDEVICE\fR and outputs the
-response. This command is defined for tape (drives) and its description
-is found in the SSC documents at http://www.t10.org .
+This utility is a helper/auxiliary for the ddpt utility which copies data
+between or within SCSI devices (logical units). While ddpt's command line
+syntax is modelled on that of the POSIX dd command, this utility has a more
+standard Unix command line syntax with both short and long vaiants of each
+option.
+.PP
+This utility is aimed mainly at offload copy (xcopy) support and several
+options assume ODX (disk->held->disk (partial) copies based on the SBC\-3's
+POPULATE TOKEN and WRITE USING TOKEN commands).
+.PP
+Several forms of xcopy are described in the SPC\-4 and SBC\-3 documents
+found at http://www.t10.org .
 .SH OPTIONS
 Arguments to long options are mandatory for short options as well.
 .TP
+\fB\-A\fR, \fB\-\-abort\fR=\fILID\fR
+\fILID\fR is a list identifier associated with a xcopy command started by this
+I\-T nexus (e.g. this machine). If the xcopy command is still in progress then
+the copy is aborted.
+.TP
+\fB\-a\fR, \fB\-\-all_toks\fR
+send the REPORT ALL ROD TOKENS SCSI command to \fIDEVICE\fR and decode the
+response.
+.TP
+\fB\-B\fR, \fB\-\-block\fR
+treat \fIDEVICE\fR asa block device when checking its \fI\-\-size\fR. The
+default action of this utility is to treat \fIDEVICE\fR as a SCSI
+pass\-through device.
+.TP
 \fB\-h\fR, \fB\-\-help\fR
-output the usage message then exit.
+outputs the usage message summarizing command line options then exits.
 .TP
-\fB\-H\fR, \fB\-\-hex\fR
-output response in hex (rather than decode it).
+\fB\-i\fR, \fB\-\-info\fR
+when the \fIDEVICE\fR argument is given then check its Third Party Copy VPD
+page and print out anything found. Also check if the 3PC bit is set in the
+standard INQUIRY response.
+.br
+when the \fIDEVICE\fR argument is not given and the \fI\-\-rtf=RTF\fR option
+is given then decodes part of the ROD Token held in the \fI\-\-RTF\fR
+file.
 .TP
-\fB\-r\fR, \fB\-\-raw\fR
-output response in binary to stdout.
+\fB\-l\fR, \fB\-\-list_id\fR=\fILID\fR
+\fILID\fR is a list identifier that is used by either the \fI\-\-poll\fR or
+\fI\-\-receive\fR logic.
+.TP
+\fB\-p\fR, \fB\-\-poll\fR
+send the RECEIVE ROD TOKEN INFORMATION SCSI command (RRTI) to the \fIDEVICE\fR
+using the \fILID\fR (i.e. from the \fI\-\-list_id=LID\fR option). If
+a copy status indicating the operation is still in progress, then the
+same SCSI command is sent every second until some other copy status
+is detected. If the \fI\-\-list_id=LID\fR option is not given then a
+\fILID\fR of 257 is assumed.
+.br
+If the originating xcopy command was POPULATE TOKEN and the RRTI command
+indicates that it has completed successfully then the associated
+ROD Token (returned in the RRTI response) is written to the \fIRTF\fR
+file. If the \fI\-\-rtf=RTF\fR option is not given then ...
+.TP
+\fB\-R\fR, \fB\-\-receive\fR
+send the RECEIVE ROD TOKEN INFORMATION SCSI command (RRTI) to the \fIDEVICE\fR
+using the \fILID\fR (i.e. from the \fI\-\-list_id=LID\fR option). If the
+\fI\-\-list_id=LID\fR option is not given then a \fILID\fR of 257 is assumed.
+.br
+If the originating xcopy command was POPULATE TOKEN and the RRTI command
+indicates that it has completed successfully then the associated
+ROD Token (returned in the RRTI response) is written to the \fIRTF\fR
+file. If the \fI\-\-rtf=RTF\fR option is not given then ...
+.TP
+\fB\-r\fR, \fB\-\-rtf\fR=\fIRTF\fR
+when \fIRTF\fR is a file containing an ODX ROD Token (typically 512 bytes
+long) or the name of a file the ROD Token is to be written to.
 .TP
 \fB\-v\fR, \fB\-\-verbose\fR
 increase the level of verbosity, (i.e. debug output).
@@ -29,26 +88,17 @@ increase the level of verbosity, (i.e. debug output).
 \fB\-V\fR, \fB\-\-version\fR
 print the version string and then exit.
 .SH EXIT STATUS
-The exit status of sg_read_block_limits is 0 when it is successful. Otherwise
-see the sg3_utils(8) man page.
+The exit status of ddptctl is 0 when it is successful. Otherwise the exit
+status for the ddpt and ddptctl utilities is the same (and is a super-set)
+of the exit status values found in the sg3_utils(8) man page).
 .SH EXAMPLES
-It is usually okay to use no options. Here is an invocation (on the first
-line following the "#" command prompt) followed by some typical output:
-.PP
-   # sg_read_block_limits /dev/st0
-.br
-Read Block Limits results:
-.br
-        Minimum block size: 1 byte(s)
-.br
-        Maximum block size: 16777215 byte(s), 16383 KB, 15 MB
-.br
+TBD
 .SH AUTHORS
 Written by Douglas Gilbert.
 .SH "REPORTING BUGS"
 Report bugs to <dgilbert at interlog dot com>.
 .SH COPYRIGHT
-Copyright \(co 2013\-2014 Douglas Gilbert
+Copyright \(co 2014 Douglas Gilbert
 .br
 This software is distributed under a FreeBSD license. There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
