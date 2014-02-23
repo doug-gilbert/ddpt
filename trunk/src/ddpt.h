@@ -241,10 +241,6 @@ struct flags_t {
     int xcopy;          /* xcopy(LID1) */
 };
 
-struct odx_info_t {
-    struct block_rodtok_vpd brt_vpd;
-};
-
 /* one instance per file/device: if, of and of2 */
 struct dev_info_t {
     int d_type;         /* one of FT_* values */
@@ -259,7 +255,7 @@ struct dev_info_t {
     unsigned long xc_min_bytes;
     unsigned long xc_max_bytes;
     char fn[INOUTF_SZ];
-    struct odx_info_t * odxp;
+    struct block_rodtok_vpd * odxp;
     struct sg_pt_base * ptvp;
 };
 
@@ -269,6 +265,7 @@ struct opts_t {
     /* command line related variables */
     int64_t skip;
     int64_t seek;
+    int count_given;
     int bs_given;       /* 1 implies bs= option given on command line */
     int delay;          /* intra copy segment delay in milliseconds */
     int wdelay;         /* delay prior to each write in copy segment */
@@ -319,10 +316,10 @@ struct opts_t {
     struct dev_info_t * odip;
     struct dev_info_t * o2dip;
     /* working variables and statistics */
-    int64_t dd_count;
+    int64_t dd_count;   /* -1 for not specified, 0 for no blocks to copy */
     int64_t in_full;
     int64_t out_full;
-    int64_t out_sparse;  /* used for sparse, sparing + trim */
+    int64_t out_sparse; /* used for sparse, sparing + trim */
     int64_t lowest_unrecovered;         /* on reads */
     int64_t highest_unrecovered;        /* on reads */
     int64_t num_xcopy;                  /* xcopy(LID1) */
@@ -419,10 +416,10 @@ void calc_duration_init(struct opts_t * op);
 void calc_duration_throughput(const char * leadin, int contin,
                               struct opts_t * op);
 void print_blk_sizes(const char * fname, const char * access_typ,
-                     int64_t num_sect, int sect_sz, int to_stderr);
+                     int64_t num_blks, int blk_sz, int to_stderr);
 void zero_coe_limit_count(struct opts_t * op);
 int get_blkdev_capacity(struct opts_t * op, int which_arg,
-                        int64_t * num_sect, int * sect_sz);
+                        int64_t * num_blks, int * blk_sz);
 void errblk_open(struct opts_t * op);
 void errblk_put(uint64_t lba, struct opts_t * op);
 void errblk_put_range(uint64_t lba, int num, struct opts_t * op);
@@ -444,8 +441,8 @@ void pt_destruct_obj(void * vp);
 int pt_open_if(struct opts_t * op, struct sg_simple_inquiry_resp * sirp);
 int pt_open_of(struct opts_t * op, struct sg_simple_inquiry_resp * sirp);
 void pt_close(int fd);
-int pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_sect,
-                     int * sect_sz);
+int pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_blks,
+                     int * blk_sz);
 int pt_read(struct opts_t * op, int in0_out1, unsigned char * buff,
             int blocks, int * blks_readp);
 int pt_write(struct opts_t * op, const unsigned char * buff, int blocks,
@@ -466,7 +463,7 @@ int fetch_rrti_after_odx(struct opts_t * op, int * for_sap, int * cstatp,
                          uint64_t * tc_p, unsigned char * rtp, int max_rt_sz,
                          int * rt_lenp, int verb);
 int do_xcopy(struct opts_t * op);       /* xcopy(LID1) */
-int do_odx_copy(struct opts_t * op);
+int do_odx(struct opts_t * op);
 
 /* defined in ddpt_cl.c */
 int cl_process(struct opts_t * op, int argc, char * argv[],
@@ -478,7 +475,7 @@ void ddpt_usage(int help);
 /* defined in ddpt_win32.c */
 int dd_filetype(const char * fn, int verbose);
 int get_blkdev_capacity(struct opts_t * optsp, int which_arg,
-                        int64_t * num_sect, int * sect_sz);
+                        int64_t * num_blks, int * blk_sz);
 void win32_adjust_fns_pt(struct opts_t * optsp);
 int win32_open_if(struct opts_t * optsp, int flags, int verbose);
 int win32_open_of(struct opts_t * optsp, int flags, int verbose);

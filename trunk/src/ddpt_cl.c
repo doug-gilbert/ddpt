@@ -66,7 +66,7 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 
-#define MAX_FIXED_SGL_ELEMS 32
+#define MAX_FIXED_SGL_ELEMS 64
 
 #ifndef UINT32_MAX
 #define UINT32_MAX ((uint32_t)-1)
@@ -407,6 +407,15 @@ cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr,
             return 1;
         }
     }
+#if 0
+    pr2serr("cl_to_sgl: elems=%d\n", k + 1);
+    {
+        int n;
+        for (n = 0; n < k + 1; ++n)
+            pr2serr("   lba=0x%" PRIx64 ", num=%" PRIu32 "\n", sgl_arr[n].lba,
+                    sgl_arr[n].num);
+    }
+#endif
     return 0;
 }
 
@@ -1081,6 +1090,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                     return SG_LIB_SYNTAX_ERROR;
                 }
             }   /* 'count=-1' is accepted, means calculate count */
+            ++op->count_given;
         } else if (0 == strcmp(key, "delay")) {
             cp = strchr(buf, ',');
             if (cp)
