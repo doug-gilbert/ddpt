@@ -64,7 +64,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140217 [svn: r260]";
+const char * ddptctl_version_str = "0.94 20140222 [svn: r261]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -401,8 +401,8 @@ state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
 int
 main(int argc, char * argv[])
 {
-    int c, fd, flags, sect_sz, rt_len, cstat, for_sa, sz, cont;
-    int64_t i64, num_sect;
+    int c, fd, flags, blk_sz, rt_len, cstat, for_sa, sz, cont;
+    int64_t i64, num_blks;
     int do_abort = 0;
     int do_all_toks = 0;
     int do_block = 0;
@@ -558,10 +558,10 @@ main(int argc, char * argv[])
         ret = report_all_toks(op, op->idip);
     else if (do_info) {
         if (op->idip->d_type & FT_PT) {
-            ret = pt_read_capacity(op, DDPT_ARG_IN, &num_sect, &sect_sz);
+            ret = pt_read_capacity(op, DDPT_ARG_IN, &num_blks, &blk_sz);
             if (ret)
                 goto clean_up;
-            print_blk_sizes(op->idip->fn, "pt", num_sect, sect_sz, 0);
+            print_blk_sizes(op->idip->fn, "pt", num_blks, blk_sz, 0);
             if (0x8 & sir.byte_5) {
                 printf("3PC (third party copy) bit set in standard INQUIRY "
                        "response\n");
@@ -574,13 +574,13 @@ main(int argc, char * argv[])
                        op->idip->fn, sir.peripheral_type);
             }
         } else if (op->idip->d_type & FT_BLOCK) {
-            ret = get_blkdev_capacity(op, DDPT_ARG_IN, &num_sect, &sect_sz);
+            ret = get_blkdev_capacity(op, DDPT_ARG_IN, &num_blks, &blk_sz);
             if (ret)
                 goto clean_up;
-            print_blk_sizes(op->idip->fn, "block", num_sect, sect_sz, 0);
+            print_blk_sizes(op->idip->fn, "block", num_blks, blk_sz, 0);
         } else {
-            num_sect = 0;
-            sect_sz = 0;
+            num_blks = 0;
+            blk_sz = 0;
             printf("unable to print capacity information about device\n");
         }
     } else if (do_receive) {
@@ -594,6 +594,8 @@ main(int argc, char * argv[])
         printf("RRTI for %s: %s\n", b,
                cpy_op_status_str(cstat, bb, sizeof(bb)));
     } else if (do_poll) {
+        if (! op->list_id_given)
+            op->list_id = 0x101;
         do {
             ret = fetch_rrti_after_odx(op, &for_sa, &cstat, &tc, rt_buf, sz,
                                        &rt_len, op->verbose);

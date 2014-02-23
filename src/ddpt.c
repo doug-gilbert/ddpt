@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.94 20140217 [svn: r260]";
+static const char * ddpt_version_str = "0.94 20140222 [svn: r261]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -345,15 +345,15 @@ other_err:
 /* Helper for calc_count(). Attempts to size IFILE. Returns 0 if no error
  * detected. */
 static int
-calc_count_in(struct opts_t * op, int64_t * in_num_sectp)
+calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
 {
     int res;
     struct stat st;
-    int64_t num_sect, t;
-    int in_sect_sz, sect_sz, in_type;
+    int64_t num_blks, t;
+    int in_blk_sz, blk_sz, in_type;
     const char * ifn = op->idip->fn;
 
-    *in_num_sectp = -1;
+    *in_num_blksp = -1;
     in_type = op->idip->d_type;
     if (FT_PT & in_type) {
         if (op->iflagp->norcap) {
@@ -365,15 +365,15 @@ calc_count_in(struct opts_t * op, int64_t * in_num_sectp)
             }
             return 0;
         }
-        res = pt_read_capacity(op, DDPT_ARG_IN, in_num_sectp, &in_sect_sz);
+        res = pt_read_capacity(op, DDPT_ARG_IN, in_num_blksp, &in_blk_sz);
         if (SG_LIB_CAT_UNIT_ATTENTION == res) {
             pr2serr("Unit attention (readcap in), continuing\n");
-            res = pt_read_capacity(op, DDPT_ARG_IN, in_num_sectp,
-                                   &in_sect_sz);
+            res = pt_read_capacity(op, DDPT_ARG_IN, in_num_blksp,
+                                   &in_blk_sz);
         } else if (SG_LIB_CAT_ABORTED_COMMAND == res) {
             pr2serr("Aborted command (readcap in), continuing\n");
-            res = pt_read_capacity(op, DDPT_ARG_IN, in_num_sectp,
-                                   &in_sect_sz);
+            res = pt_read_capacity(op, DDPT_ARG_IN, in_num_blksp,
+                                   &in_blk_sz);
         }
         if (0 != res) {
             if (res == SG_LIB_CAT_INVALID_OP)
@@ -382,18 +382,18 @@ calc_count_in(struct opts_t * op, int64_t * in_num_sectp)
                 pr2serr("read capacity failed on %s - not ready\n", ifn);
             else
                 pr2serr("Unable to read capacity on %s\n", ifn);
-            *in_num_sectp = -1;
+            *in_num_blksp = -1;
             return res;
         } else {
             if (op->verbose) {
-                print_blk_sizes(ifn, "pt", *in_num_sectp, in_sect_sz, 1);
+                print_blk_sizes(ifn, "pt", *in_num_blksp, in_blk_sz, 1);
                 if (op->idip->prot_type > 0)
                     pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
                             op->idip->prot_type, op->idip->p_i_exp);
             }
-            if ((*in_num_sectp > 0) && (in_sect_sz != op->ibs)) {
+            if ((*in_num_blksp > 0) && (in_blk_sz != op->ibs)) {
                 pr2serr(">> warning: %s block size confusion: ibs=%d, "
-                        "device claims=%d\n", ifn, op->ibs, in_sect_sz);
+                        "device claims=%d\n", ifn, op->ibs, in_blk_sz);
                 if (0 == op->iflagp->force) {
                     pr2serr(">> abort copy, use iflag=force to override\n");
                     return -1;
@@ -401,10 +401,10 @@ calc_count_in(struct opts_t * op, int64_t * in_num_sectp)
             }
         }
         if ((FT_BLOCK & in_type) && (0 == op->iflagp->force) &&
-            (0 == get_blkdev_capacity(op, DDPT_ARG_IN, &num_sect,
-                                      &sect_sz))) {
-            t = (*in_num_sectp) * in_sect_sz;
-            if (t != (num_sect * sect_sz)) {
+            (0 == get_blkdev_capacity(op, DDPT_ARG_IN, &num_blks,
+                                      &blk_sz))) {
+            t = (*in_num_blksp) * in_blk_sz;
+            if (t != (num_blks * blk_sz)) {
                 pr2serr(">> warning: Size of input block device is "
                         "different from pt size.\n>> Pass-through on block "
                         "partition can give unexpected offsets.\n");
@@ -415,32 +415,32 @@ calc_count_in(struct opts_t * op, int64_t * in_num_sectp)
     } else if ((op->dd_count > 0) && (0 == op->oflagp->resume))
         return 0;
     else if (FT_BLOCK & in_type) {
-        if (0 != get_blkdev_capacity(op, DDPT_ARG_IN, in_num_sectp,
-                                     &in_sect_sz)) {
+        if (0 != get_blkdev_capacity(op, DDPT_ARG_IN, in_num_blksp,
+                                     &in_blk_sz)) {
             pr2serr("Unable to read block capacity on %s\n", ifn);
-            *in_num_sectp = -1;
+            *in_num_blksp = -1;
         }
         if (op->verbose)
-            print_blk_sizes(ifn, "blk", *in_num_sectp, in_sect_sz, 1);
-        if ((*in_num_sectp > 0) && (op->ibs != in_sect_sz)) {
+            print_blk_sizes(ifn, "blk", *in_num_blksp, in_blk_sz, 1);
+        if ((*in_num_blksp > 0) && (op->ibs != in_blk_sz)) {
             pr2serr(">> warning: %s block size confusion: bs=%d, "
-                    "device claims=%d\n", ifn, op->ibs, in_sect_sz);
-            *in_num_sectp = -1;
+                    "device claims=%d\n", ifn, op->ibs, in_blk_sz);
+            *in_num_blksp = -1;
         }
     } else if (FT_REG & in_type) {
         if (fstat(op->idip->fd, &st) < 0) {
             perror("fstat(idip->fd) error");
-            *in_num_sectp = -1;
+            *in_num_blksp = -1;
         } else {
-            *in_num_sectp = st.st_size / op->ibs;
+            *in_num_blksp = st.st_size / op->ibs;
             res = st.st_size % op->ibs;
             if (op->verbose) {
-                print_blk_sizes(ifn, "reg", *in_num_sectp, op->ibs, 1);
+                print_blk_sizes(ifn, "reg", *in_num_blksp, op->ibs, 1);
                 if (res)
                     pr2serr("    residual_bytes=%d\n", res);
             }
             if (res)
-                ++*in_num_sectp;
+                ++*in_num_blksp;
         }
     }
     return 0;
@@ -449,15 +449,15 @@ calc_count_in(struct opts_t * op, int64_t * in_num_sectp)
 /* Helper for calc_count(). Attempts to size OFILE. Returns 0 if no error
  * detected. */
 static int
-calc_count_out(struct opts_t * op, int64_t * out_num_sectp)
+calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
 {
     int res;
     struct stat st;
-    int64_t num_sect, t;
-    int out_sect_sz, sect_sz, out_type;
+    int64_t num_blks, t;
+    int out_blk_sz, blk_sz, out_type;
     const char * ofn = op->odip->fn;
 
-    *out_num_sectp = -1;
+    *out_num_blksp = -1;
     out_type = op->odip->d_type;
     if (FT_PT & out_type) {
         if (op->oflagp->norcap) {
@@ -469,34 +469,34 @@ calc_count_out(struct opts_t * op, int64_t * out_num_sectp)
             }
             return 0;
         }
-        res = pt_read_capacity(op, DDPT_ARG_OUT, out_num_sectp, &out_sect_sz);
+        res = pt_read_capacity(op, DDPT_ARG_OUT, out_num_blksp, &out_blk_sz);
         if (SG_LIB_CAT_UNIT_ATTENTION == res) {
             pr2serr("Unit attention (readcap out), continuing\n");
-            res = pt_read_capacity(op, DDPT_ARG_OUT, out_num_sectp,
-                                   &out_sect_sz);
+            res = pt_read_capacity(op, DDPT_ARG_OUT, out_num_blksp,
+                                   &out_blk_sz);
         } else if (SG_LIB_CAT_ABORTED_COMMAND == res) {
             pr2serr("Aborted command (readcap out), continuing\n");
-            res = pt_read_capacity(op, DDPT_ARG_OUT, out_num_sectp,
-                                   &out_sect_sz);
+            res = pt_read_capacity(op, DDPT_ARG_OUT, out_num_blksp,
+                                   &out_blk_sz);
         }
         if (0 != res) {
             if (res == SG_LIB_CAT_INVALID_OP)
                 pr2serr("read capacity not supported on %s\n", ofn);
             else
                 pr2serr("Unable to read capacity on %s\n", ofn);
-            *out_num_sectp = -1;
+            *out_num_blksp = -1;
             return res;
         } else {
             if (op->verbose) {
-                print_blk_sizes(ofn, "pt", *out_num_sectp, out_sect_sz, 1);
+                print_blk_sizes(ofn, "pt", *out_num_blksp, out_blk_sz, 1);
                 if (op->odip->prot_type > 0)
                     pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
                             op->odip->prot_type, op->odip->p_i_exp);
             }
-            if ((*out_num_sectp > 0) && (op->obs != out_sect_sz)) {
+            if ((*out_num_blksp > 0) && (op->obs != out_blk_sz)) {
                 pr2serr(">> warning: %s block size confusion: "
                         "obs=%d, device claims=%d\n", ofn, op->obs,
-                        out_sect_sz);
+                        out_blk_sz);
                 if (0 == op->oflagp->force) {
                     pr2serr(">> abort copy, use oflag=force to override\n");
                     return -1;
@@ -504,10 +504,10 @@ calc_count_out(struct opts_t * op, int64_t * out_num_sectp)
             }
         }
         if ((FT_BLOCK & out_type) && (0 == op->oflagp->force) &&
-             (0 == get_blkdev_capacity(op, DDPT_ARG_OUT, &num_sect,
-                                       &sect_sz))) {
-            t = (*out_num_sectp) * out_sect_sz;
-            if (t != (num_sect * sect_sz)) {
+             (0 == get_blkdev_capacity(op, DDPT_ARG_OUT, &num_blks,
+                                       &blk_sz))) {
+            t = (*out_num_blksp) * out_blk_sz;
+            if (t != (num_blks * blk_sz)) {
                 pr2serr(">> warning: size of output block device is "
                         "different from pt size.\n>> Pass-through on block "
                         "partition can give unexpected results.\n");
@@ -518,33 +518,33 @@ calc_count_out(struct opts_t * op, int64_t * out_num_sectp)
     } else if ((op->dd_count > 0) && (0 == op->oflagp->resume))
         return 0;
     if (FT_BLOCK & out_type) {
-        if (0 != get_blkdev_capacity(op, DDPT_ARG_OUT, out_num_sectp,
-                                     &out_sect_sz)) {
+        if (0 != get_blkdev_capacity(op, DDPT_ARG_OUT, out_num_blksp,
+                                     &out_blk_sz)) {
             pr2serr("Unable to read block capacity on %s\n", ofn);
-            *out_num_sectp = -1;
+            *out_num_blksp = -1;
         } else {
             if (op->verbose)
-                print_blk_sizes(ofn, "blk", *out_num_sectp, out_sect_sz, 1);
-            if ((*out_num_sectp > 0) && (op->obs != out_sect_sz)) {
+                print_blk_sizes(ofn, "blk", *out_num_blksp, out_blk_sz, 1);
+            if ((*out_num_blksp > 0) && (op->obs != out_blk_sz)) {
                 pr2serr(">> warning: %s block size confusion: obs=%d, "
-                        "device claims=%d\n", ofn, op->obs, out_sect_sz);
-                *out_num_sectp = -1;
+                        "device claims=%d\n", ofn, op->obs, out_blk_sz);
+                *out_num_blksp = -1;
             }
         }
     } else if (FT_REG & out_type) {
         if (fstat(op->odip->fd, &st) < 0) {
             perror("fstat(odip->fd) error");
-            *out_num_sectp = -1;
+            *out_num_blksp = -1;
         } else {
-            *out_num_sectp = st.st_size / op->obs;
+            *out_num_blksp = st.st_size / op->obs;
             res = st.st_size % op->obs;
             if (op->verbose) {
-                print_blk_sizes(ofn, "reg", *out_num_sectp, op->obs, 1);
+                print_blk_sizes(ofn, "reg", *out_num_blksp, op->obs, 1);
                 if (res)
                     pr2serr("    residual_bytes=%d\n", res);
             }
             if (res)
-                ++*out_num_sectp;
+                ++*out_num_blksp;
         }
     }
     return 0;
@@ -553,20 +553,20 @@ calc_count_out(struct opts_t * op, int64_t * out_num_sectp)
 
 /* Calculates the number of blocks associated with the in and out files.
  * May also yield the block size in bytes of devices. For regular files
- * uses ibs or obs as the block (sector) size. Returns 0 for continue,
+ * uses ibs or obs as the logical block size. Returns 0 for continue,
  * otherwise bypass copy and exit. */
 static int
-calc_count(struct opts_t * op, int64_t * in_num_sectp,
-           int64_t * out_num_sectp)
+calc_count(struct opts_t * op, int64_t * in_num_blksp,
+           int64_t * out_num_blksp)
 {
     int res;
 
-    res = calc_count_in(op, in_num_sectp);
+    res = calc_count_in(op, in_num_blksp);
     if (res) {
-        *out_num_sectp = -1;
+        *out_num_blksp = -1;
         return res;
     }
-    return calc_count_out(op, out_num_sectp);
+    return calc_count_out(op, out_num_blksp);
 }
 
 #ifdef HAVE_POSIX_FADVISE
@@ -1681,28 +1681,28 @@ cp_construct_pt_zero_buff(struct opts_t * op, int obpt)
 static int
 count_calculate(struct opts_t * op)
 {
-    int64_t in_num_sect = -1;
-    int64_t out_num_sect = -1;
+    int64_t in_num_blks = -1;
+    int64_t out_num_blks = -1;
     int64_t ibytes, obytes, ibk;
     int valid_resume = 0;
     int res;
 
-    if ((res = calc_count(op, &in_num_sect, &out_num_sect)))
+    if ((res = calc_count(op, &in_num_blks, &out_num_blks)))
         return res;
     if ((0 == op->oflagp->resume) && (op->dd_count > 0))
         return 0;
     if (op->verbose > 1)
-        pr2serr("calc_count: in_num_sect=%" PRId64 ", out_num_sect"
-                "=%" PRId64 "\n", in_num_sect, out_num_sect);
+        pr2serr("calc_count: in_num_blks=%" PRId64 ", out_num_blks"
+                "=%" PRId64 "\n", in_num_blks, out_num_blks);
     if (op->skip && (FT_REG == op->idip->d_type) &&
-        (op->skip > in_num_sect)) {
+        (op->skip > in_num_blks)) {
         pr2serr("cannot skip to specified offset on %s\n", op->idip->fn);
         op->dd_count = 0;
         return -1;
     }
     if (op->oflagp->resume) {
         if (FT_REG == op->odip->d_type) {
-            if (out_num_sect < 0)
+            if (out_num_blks < 0)
                 pr2serr("resume cannot determine size of OFILE, ignore\n");
             else
                 valid_resume = 1;
@@ -1710,37 +1710,37 @@ count_calculate(struct opts_t * op)
             pr2serr("resume expects OFILE to be regular, ignore\n");
     }
     if ((op->dd_count < 0) && (! valid_resume)) {
-        /* Scale back in_num_sect by value of skip */
-        if (op->skip && (in_num_sect > op->skip))
-            in_num_sect -= op->skip;
-        /* Scale back out_num_sect by value of seek */
-        if (op->seek && (out_num_sect > op->seek))
-            out_num_sect -= op->seek;
+        /* Scale back in_num_blks by value of skip */
+        if (op->skip && (in_num_blks > op->skip))
+            in_num_blks -= op->skip;
+        /* Scale back out_num_blks by value of seek */
+        if (op->seek && (out_num_blks > op->seek))
+            out_num_blks -= op->seek;
 
-        if ((out_num_sect < 0) && (in_num_sect > 0))
-            op->dd_count = in_num_sect;
-        else if ((op->reading_fifo) && (out_num_sect < 0))
+        if ((out_num_blks < 0) && (in_num_blks > 0))
+            op->dd_count = in_num_blks;
+        else if ((op->reading_fifo) && (out_num_blks < 0))
             ;
-        else if ((out_num_sect < 0) && (in_num_sect <= 0))
+        else if ((out_num_blks < 0) && (in_num_blks <= 0))
             ;
         else {
-            ibytes = (in_num_sect > 0) ? (op->ibs * in_num_sect) : 0;
-            obytes = op->obs * out_num_sect;
+            ibytes = (in_num_blks > 0) ? (op->ibs * in_num_blks) : 0;
+            obytes = op->obs * out_num_blks;
             if (0 == ibytes)
                 op->dd_count = obytes / op->ibs;
             else if ((ibytes > obytes) && (FT_REG != op->odip->d_type)) {
                 op->dd_count = obytes / op->ibs;
             } else
-                op->dd_count = in_num_sect;
+                op->dd_count = in_num_blks;
         }
     }
     if (valid_resume) {
         if (op->dd_count < 0)
-            op->dd_count = in_num_sect - op->skip;
-        if (out_num_sect <= op->seek)
+            op->dd_count = in_num_blks - op->skip;
+        if (out_num_blks <= op->seek)
             pr2serr("resume finds no previous copy, restarting\n");
         else {
-            obytes = op->obs * (out_num_sect - op->seek);
+            obytes = op->obs * (out_num_blks - op->seek);
             ibk = obytes / op->ibs;
             if (ibk >= op->dd_count) {
                 pr2serr("resume finds copy complete, exiting\n");
@@ -2573,7 +2573,7 @@ main(int argc, char * argv[])
 
     if (op->has_odx) {
         started_copy = 1;
-        ret = do_odx_copy(op);
+        ret = do_odx(op);
         goto cleanup;
     }
 
@@ -2658,8 +2658,11 @@ cleanup:
     if (started_copy && (0 != op->dd_count) && (! op->reading_fifo)) {
         if (0 == ret)
             pr2serr("Early termination, EOF on input?\n");
-        else
+        else if (ret > 0)
             print_exit_status_msg("Early termination", ret, 1);
+        else
+            pr2serr("Early termination: some error occurred; try again with "
+                    "'-vv'\n");
     }
     return (ret >= 0) ? ret : SG_LIB_CAT_OTHER;
 }

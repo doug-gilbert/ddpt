@@ -233,8 +233,8 @@ pt_close(int fd)
 /* Fetch number of blocks and block size of a pt device.
  * Return of 0 -> success, see sg_ll_read_capacity*() otherwise. */
 int
-pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_sect,
-                 int * sect_sz)
+pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_blks,
+                 int * blk_sz)
 {
     int k, res;
     unsigned int ui;
@@ -269,8 +269,8 @@ pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_sect,
             ls <<= 8;
             ls |= rcBuff[k];
         }
-        *num_sect = ls + 1;
-        *sect_sz = (rcBuff[8] << 24) | (rcBuff[9] << 16) |
+        *num_blks = ls + 1;
+        *blk_sz = (rcBuff[8] << 24) | (rcBuff[9] << 16) |
                    (rcBuff[10] << 8) | rcBuff[11];
         if (rcBuff[12] & 0x1) {         /* PROT_EN */
             prot_typ = ((rcBuff[12] >> 1) & 0x7) + 1;
@@ -287,8 +287,8 @@ pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_sect,
         ui = ((rcBuff[0] << 24) | (rcBuff[1] << 16) | (rcBuff[2] << 8) |
               rcBuff[3]);
         /* take care not to sign extend values > 0x7fffffff */
-        *num_sect = (int64_t)ui + 1;
-        *sect_sz = (rcBuff[4] << 24) | (rcBuff[5] << 16) |
+        *num_blks = (int64_t)ui + 1;
+        *blk_sz = (rcBuff[4] << 24) | (rcBuff[5] << 16) |
                    (rcBuff[6] << 8) | rcBuff[7];
     }
     return 0;
