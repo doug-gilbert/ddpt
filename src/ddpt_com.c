@@ -287,8 +287,8 @@ find_bsg_major(int verbose)
  * If not found FT_ERROR returned. The FT_* constants are a bit mask
  * and later logic can combine them (e.g. FT_BLOCK | FT_PT).
  */
-int
-dd_filetype(const char * filename, int verbose)
+static int
+unix_dd_filetype(const char * filename, int verbose)
 {
     struct stat st;
     size_t len = strlen(filename);
@@ -350,6 +350,20 @@ dd_filetype(const char * filename, int verbose)
 }
 #endif          /* if not SG_LIB_WIN32 */
 
+/* Categorize file by using the stat() system call on its filename.
+ * If not found FT_ERROR returned. The FT_* constants are a bit mask
+ * and later logic can combine them (e.g. FT_BLOCK | FT_PT).
+ */
+int
+dd_filetype(const char * filename, int verbose)
+{
+#ifdef SG_LIB_WIN32
+    return win32_dd_filetype(filename, verbose);
+#else
+    return unix_dd_filetype(filename, verbose);
+#endif
+}
+
 char *
 dd_filetype_str(int ft, char * buff, int max_bufflen, const char * fname)
 {
@@ -379,16 +393,10 @@ dd_filetype_str(int ft, char * buff, int max_bufflen, const char * fname)
     return buff;
 }
 
-/* get_blkdev_capacity() returns 0 -> success or -1 -> failure.
- * which_arg should either be DDPT_ARG_IN, DDPT_ARG_OUT or DDPT_ARG_OUT2.
- * If successful writes back logical block size using the blk_sz pointer.
- * Also writes back the number of logical blocks) on the block device using
- * num_blks pointer. */
-
 #ifdef SG_LIB_LINUX
-int
-get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
-                    int * blk_sz)
+static int
+lin_get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
+                        int * blk_sz)
 {
     int blk_fd;
     const char * fname;
@@ -396,7 +404,7 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
     blk_fd = (DDPT_ARG_IN == which_arg) ? op->idip->fd : op->odip->fd;
     fname = (DDPT_ARG_IN == which_arg) ? op->idip->fn : op->odip->fn;
     if (op->verbose > 2)
-        pr2serr("get_blkdev_capacity: for %s\n", fname);
+        pr2serr("lin_get_blkdev_capacity: for %s\n", fname);
     /* BLKGETSIZE64, BLKGETSIZE and BLKSSZGET macros problematic (from
      *  <linux/fs.h> or <sys/mount.h>). */
 #ifdef BLKSSZGET
@@ -440,9 +448,9 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
 #endif  /* BLKSSZGET */
 
 #ifdef SG_LIB_FREEBSD
-int
-get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
-                    int * blk_sz)
+static int
+fbsd_get_blkdev_capacity(struct opts_t * op, int which_arg,
+                         int64_t * num_blks, int * blk_sz)
 {
 // Why do kernels invent their own typedefs and not use C standards?
 #define u_int unsigned int
@@ -454,7 +462,7 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
     blk_fd = (DDPT_ARG_IN == which_arg) ? op->idip->fd : op->odip->fd;
     fname = (DDPT_ARG_IN == which_arg) ? op->idip->fn : op->odip->fn;
     if (op->verbose > 2)
-        pr2serr("get_blkdev_capacity: for %s\n", fname);
+        pr2serr("fbsd_get_blkdev_capacity: for %s\n", fname);
 
     /* For FreeBSD post suggests that /usr/sbin/diskinfo uses
      * ioctl(fd, DIOCGMEDIASIZE, &mediasize), where mediasize is an off_t.
@@ -477,9 +485,9 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
 #endif
 
 #ifdef SG_LIB_SOLARIS
-int
-get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
-                    int * blk_sz)
+static int
+sol_get_blkdev_capacity(struct opts_t * op, int which_arg,
+                        int64_t * num_blks, int * blk_sz)
 {
     struct dk_minfo info;
     int blk_fd;
@@ -488,7 +496,7 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
     blk_fd = (DDPT_ARG_IN == which_arg) ? op->idip->fd : op->odip->fd;
     fname = (DDPT_ARG_IN == which_arg) ? op->idip->fn : op->odip->fn;
     if (op->verbose > 2)
-        pr2serr("get_blkdev_capacity: for %s\n", fname);
+        pr2serr("sol_get_blkdev_capacity: for %s\n", fname);
 
     /* this works on "char" block devs (e.g. in /dev/rdsk) but not /dev/dsk */
     if (ioctl(blk_fd, DKIOCGMEDIAINFO , &info) < 0) {
@@ -502,6 +510,28 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
     return 0;
 }
 #endif
+
+/* get_blkdev_capacity() returns 0 -> success or -1 -> failure.
+ * which_arg should either be DDPT_ARG_IN, DDPT_ARG_OUT or DDPT_ARG_OUT2.
+ * If successful writes back logical block size using the blk_sz pointer.
+ * Also writes back the number of logical blocks) on the block device using
+ * num_blks pointer. */
+int
+get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
+                    int * blk_sz)
+{
+#ifdef SG_LIB_LINUX
+    return lin_get_blkdev_capacity(op, which_arg, num_blks, blk_sz);
+#elif defined(SG_LIB_FREEBSD)
+    return fbsd_get_blkdev_capacity(op, which_arg, num_blks, blk_sz);
+#elif defined(SG_LIB_SOLARIS)
+    return sol_get_blkdev_capacity(op, which_arg, num_blks, blk_sz);
+#elif defined(SG_LIB_WIN32)
+    return win32_get_blkdev_capacity(op, which_arg, num_blks, blk_sz);
+#else
+    return -1;
+#endif
+}
 
 void
 zero_coe_limit_count(struct opts_t * op)
@@ -525,8 +555,8 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_blks,
 
     print_p = to_stderr ? pr2serr : printf;
     if (num_blks <= 0) {
-        print_p("  %s [%s]: blocks=%" PRId64 ", _bs=%d\n", fname, access_typ,
-                num_blks, blk_sz);
+        print_p("  %s [%s]: num_blocks=%" PRId64 ", block_size=%d\n", fname,
+                access_typ, num_blks, blk_sz);
         return;
     }
     gb = 0;
@@ -542,13 +572,13 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_blks,
         dec[1] = b[len - 2];
         dec[2] = '\0';
         b[len - 3] = '\0';
-        print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
-                "_bs=%d, %s.%s PB\n", fname, access_typ, num_blks,
+        print_p("  %s [%s]: num_blocks=%" PRId64 " [0x%" PRIx64 "], "
+                "block_size=%d, %s.%s PB\n", fname, access_typ, num_blks,
                 num_blks, blk_sz, b, dec);
     } else if (gb > 99999) {
         tb = gb / 1000;
-        print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
-                "_bs=%d, %d TB\n", fname, access_typ, num_blks,
+        print_p("  %s [%s]: num_blocks=%" PRId64 " [0x%" PRIx64 "], "
+                "block_size=%d, %d TB\n", fname, access_typ, num_blks,
                 num_blks, blk_sz, tb);
     } else {
         mb = n / 1000000;
@@ -560,13 +590,13 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_blks,
             dec[1] = b[len - 2];
             dec[2] = '\0';
             b[len - 3] = '\0';
-            print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
-                    "_bs=%d, %s.%s TB\n", fname, access_typ, num_blks,
+            print_p("  %s [%s]: num_blocks=%" PRId64 " [0x%" PRIx64 "], "
+                    "block_size=%d, %s.%s TB\n", fname, access_typ, num_blks,
                     num_blks, blk_sz, b, dec);
         } else if (mb > 99999) {
             gb = mb / 1000;
-            print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
-                    "_bs=%d, %d GB\n", fname, access_typ, num_blks,
+            print_p("  %s [%s]: num_blocks=%" PRId64 " [0x%" PRIx64 "], "
+                    "block_size=%d, %d GB\n", fname, access_typ, num_blks,
                     num_blks, blk_sz, gb);
         } else if (mb > 999) {
             snprintf(b, sizeof(b), "%d", mb);
@@ -575,16 +605,16 @@ print_blk_sizes(const char * fname, const char * access_typ, int64_t num_blks,
             dec[1] = b[len - 2];
             dec[2] = '\0';
             b[len - 3] = '\0';
-            print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
-                    "_bs=%d, %s.%s GB\n", fname, access_typ, num_blks,
+            print_p("  %s [%s]: num_blocks=%" PRId64 " [0x%" PRIx64 "], "
+                    "block_size=%d, %s.%s GB\n", fname, access_typ, num_blks,
                     num_blks, blk_sz, b, dec);
         } else if (mb > 0) {
-            print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
-                    "_bs=%d, %d MB%s\n", fname, access_typ, num_blks,
+            print_p("  %s [%s]: num_blocks=%" PRId64 " [0x%" PRIx64 "], "
+                    "block_size=%d, %d MB%s\n", fname, access_typ, num_blks,
                     num_blks, blk_sz, mb, ((mb < 10) ? " approx" : ""));
         } else
-            print_p("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
-                    "_bs=%d\n", fname, access_typ, num_blks, num_blks,
+            print_p("  %s [%s]: num_blocks=%" PRId64 " [0x%" PRIx64 "], "
+                    "block_size=%d\n", fname, access_typ, num_blks, num_blks,
                     blk_sz);
     }
 }
@@ -1362,6 +1392,33 @@ decode_designation_descriptor(const unsigned char * ucp, int i_len, int verb)
     }
 }
 
+/* Helper for case when EIO or EREMOTE errno suggests the equivalent
+ * of a medium error. Returns 0 unless coe_limit exceeded. */
+int             /* Global function, used by ddpt_win32.c */
+coe_process_eio(struct opts_t * op, int64_t skip)
+{
+    if ((op->coe_limit > 0) && (++op->coe_count > op->coe_limit)) {
+        pr2serr(">> coe_limit on consecutive reads "
+                "exceeded\n");
+        return SG_LIB_CAT_MEDIUM_HARD;
+    }
+    if (op->highest_unrecovered < 0) {
+        op->highest_unrecovered = skip;
+        op->lowest_unrecovered = skip;
+    } else {
+        if (skip < op->lowest_unrecovered)
+            op->lowest_unrecovered = skip;
+        if (skip > op->highest_unrecovered)
+            op->highest_unrecovered = skip;
+    }
+    ++op->unrecovered_errs;
+    ++op->in_partial;
+    --op->in_full;
+    pr2serr(">> unrecovered read error at blk=%" PRId64 ", "
+            "substitute zeros\n", skip);
+    return 0;
+}
+
 void
 print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr)
 {
@@ -1506,9 +1563,13 @@ print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr)
                         exit_stat - DDPT_CAT_TOKOP_BASE);
                 break;
             }
-        } else
-            print_p("%sunexpected exit status value: %d [0x%x]\n", b,
-                    exit_stat, exit_stat);
+        } else {
+            if (exit_stat >= 0)
+                print_p("%sunexpected exit status value: %d [0x%x]\n", b,
+                        exit_stat, exit_stat);
+            else
+                print_p("%sunexpected exit status value: %d\n", b, exit_stat);
+        }
         break;
     }
 }

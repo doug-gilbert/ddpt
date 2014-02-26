@@ -41,7 +41,9 @@ of dd. See the section on DD DIFFERENCES for significant differences
 between ddpt and dd.
 .PP
 This utility either does direct copies, based on read\-write sequences,
-or offload copies.
+or offloaded copies. In an offloaded copy the data being copied does not
+necessarily pass through the memory of the the machine issuing the copy;
+this can be a significant time and CPU usage saving.
 .PP
 When doing a direct copy, this utility breaks the copy into segments since
 computer RAM is typically a scarce resource. First it reads in \fIBPT*IBS\fR
@@ -70,17 +72,16 @@ So "if=/dev/sdc2 iflag=pt skip=3" will start at logical block address 3
 of '/dev/sdc'. As a protection measure ddpt will only accept that if the
 force flag is also given (i.e. 'iflag=pt,force').
 .PP
-This utility supports two types of offload copies via a SCSI pass\-through.
+This utility supports two types of offloaded copies via a SCSI pass\-through.
 Both are based on the EXTENDED COPY (XCOPY or xcopy) family of commands. The
 first uses the XCOPY(LID1) command to do a disk to disk copy. LID1 stands for
 List IDentifier length of 1 byte and the command is described in the SPC\-4
 drafts and the SPC\-3 and SPC\-2 standards. Recent SPC\-4 drafts have added
-the XCOPY(LID4) sub\-family of commands. The second offload copy supported
-by this utilty is called "ODX", a market name, which is a disk to disk subset
-of XCOPY(LID4) based on the POPULATE TOKEN and WRITE USING TOKEN SBC\-3
-commands. In the descriptions below "xcopy" refers to copies based on
-XCOPY(LID1) while "odx" refers to either full or partial ODX copies. See the
-section on XCOPY below for more information.
+the XCOPY(LID4) sub\-family of copy offloaded commands. There is a subset of
+XCOPY(LID4), specialized for offloaded disk to disk copies, that is known by
+the market name: ODX. In the descriptions below "xcopy" refers to copies
+based on XCOPY(LID1) while "odx" refers to either full or partial ODX copies.
+See the XCOPY and ODX sections below for more information.
 .SH OPTIONS
 .TP
 \fBbpt\fR=\fIBPT[,OBPC]\fR
@@ -336,7 +337,7 @@ reports usage message then exits.
 .TP
 \fB\-o\fR, \fB\-\-odx\fR
 indicates to this utility that a ODX partial or full copy is requested.
-ODX is a disk based subset of xcopy(LID4).
+See ODX section.
 .TP
 \fB\-v\fR, \fB\-\-verbose\fR
 equivalent of \fIverbose=1\fR. If \fI\-\-verbose\fR appears twice then
@@ -502,7 +503,7 @@ being used.
 .TP
 del_tkn [o] [odx]
 will set the DEL_TKN bit in the WRITE USING TOKEN command. This will
-cause the token to be deleted (as far as the copy manager is concerned)
+cause the ROD token to be deleted (as far as the copy manager is concerned)
 after the write operation. The default for a partial ODX held(ROD)-->disk
 copy is to clear the DEL_TKN bit. Note that if a full ODX disk-->disk copy
 is being done then setting DEL_TKN is the default (override with the
@@ -721,8 +722,8 @@ unmap [io] [pt]
 same as the trim flag.
 .TP
 xcopy [io] [pt]
-invoke SCSI XCOPY logic and send the XCOPY command to the either IFILE or
-OFILE depending on which flag this called. If both are given (i.e. an
+invoke SCSI XCOPY(LID1) logic and send the XCOPY command to the either IFILE
+or OFILE depending on which flag this called. If both are given (i.e. an
 invocation including 'iflag=xcopy  oflag=xcopy') then send XCOPY to IFILE.
 .SH SPARSE WRITES
 Bypassing writes of blocks full of zeros can save a lot of IO. However
@@ -1046,6 +1047,9 @@ should read the file from tape regardless of the block size used (assuming
 no blocks are larger than 256KB). ddpt's verbose option will display what
 the actual block size(s) is.
 .SH XCOPY
+This section describes XCOPY(LID1) support with this utility. For ODX
+support (XCOPY(LID4) subset) see the ODX section.
+.PP
 A device (logical unit (LU)) that supports XCOPY operations should set
 the 3PC field (3PC stands for Third Party Copy) in its standard INQUIRY
 response. That is not checked when this utility does an xcopy operation
@@ -1081,6 +1085,17 @@ transfer.
 If the \fIpad\fR flag is set for both source and target any residual
 source data will be discarded, and any residual destination data will
 be padded.
+.SH ODX
+This section describes ODX support (XCOPY(LID4) subset) with this utility.
+For XCOPY(LID1) support see the XCOPY section.
+.PP
+ODX descriptions use the following command name abbreviations: PT for
+POPULATE TOKEN, RRTI for READ ROD TOKEN INFORMATION, and WUT for WRITE
+USING TOKEN.
+.PP 
+A device (logical unit (LU)) that supports ODX operations must set
+the 3PC field (3PC stands for Third Party Copy) in its standard INQUIRY
+response and support the Third Party Copy VPD page.
 .SH ENVIRONMENT VARIABLES
 If the command line invocation of an xcopy does not explicitly (and
 unambiguously) indicate whether the XCOPY SCSI command should be sent
@@ -1282,5 +1297,5 @@ copy of the data see
 To scan and repair disk partitions see TestDisk (testdisk).
 .PP
 Additional references:
-.B dd(1), ddrescue(GNU), open(2), flock(2), sg_xcopy,sg_copy_results,
+.B dd(1), open(2), flock(2), ddptctl(ddpt), sg_xcopy,sg_copy_results,
 .B sg_dd(sg3_utils)

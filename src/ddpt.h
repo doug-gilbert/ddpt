@@ -433,6 +433,7 @@ void install_signal_handlers(struct opts_t * op);
 void signals_process_delay(struct opts_t * op, int delay_type);
 void decode_designation_descriptor(const unsigned char * ucp, int i_len,
                                    int verb);
+int coe_process_eio(struct opts_t * op, int64_t skip);
 void print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr);
 
 /* defined in ddpt_pt.c */
@@ -473,9 +474,9 @@ void ddpt_usage(int help);
 
 #ifdef SG_LIB_WIN32
 /* defined in ddpt_win32.c */
-int dd_filetype(const char * fn, int verbose);
-int get_blkdev_capacity(struct opts_t * optsp, int which_arg,
-                        int64_t * num_blks, int * blk_sz);
+int win32_dd_filetype(const char * fn, int verbose);
+int win32_get_blkdev_capacity(struct opts_t * optsp, int which_arg,
+                              int64_t * num_blks, int * blk_sz);
 void win32_adjust_fns_pt(struct opts_t * optsp);
 int win32_open_if(struct opts_t * optsp, int flags, int verbose);
 int win32_open_of(struct opts_t * optsp, int flags, int verbose);
@@ -491,7 +492,6 @@ int win32_cp_read_block(struct opts_t * optsp, struct cp_state_t * csp,
                         unsigned char * wrkPos, int * ifull_extrap,
                         int verbose);
 void win32_sleep_ms(int millisecs);
-int coe_process_eio(struct opts_t * op, int64_t skip);
 
 int sg_do_wscan(char letter, int do_scan, int verb);
 #ifndef HAVE_SYSCONF

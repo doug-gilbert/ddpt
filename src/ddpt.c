@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.94 20140222 [svn: r261]";
+static const char * ddpt_version_str = "0.94 20140226 [svn: r262]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -646,33 +646,6 @@ cp_read_pt(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
         csp->ocbpt = (blks_read * op->ibs) / op->obs;
     }
     op->in_full += csp->icbpt;
-    return 0;
-}
-
-/* Helper for case when EIO or EREMOTE errno suggests the equivalent
- * of a medium error. Returns 0 unless coe_limit exceeded. */
-int             /* Global function, used by ddpt_win32.c */
-coe_process_eio(struct opts_t * op, int64_t skip)
-{
-    if ((op->coe_limit > 0) && (++op->coe_count > op->coe_limit)) {
-        pr2serr(">> coe_limit on consecutive reads "
-                "exceeded\n");
-        return SG_LIB_CAT_MEDIUM_HARD;
-    }
-    if (op->highest_unrecovered < 0) {
-        op->highest_unrecovered = skip;
-        op->lowest_unrecovered = skip;
-    } else {
-        if (skip < op->lowest_unrecovered)
-            op->lowest_unrecovered = skip;
-        if (skip > op->highest_unrecovered)
-            op->highest_unrecovered = skip;
-    }
-    ++op->unrecovered_errs;
-    ++op->in_partial;
-    --op->in_full;
-    pr2serr(">> unrecovered read error at blk=%" PRId64 ", "
-            "substitute zeros\n", skip);
     return 0;
 }
 
