@@ -99,7 +99,7 @@ primary_help:
            "[prio=PRIO]\n"
            "             [protect=RDP[,WRP]] [retries=RETR] [rtf=RTF] "
            "[rtype=RTYPE]\n"
-           "             [seek=SEEK] [skip=SKIP] [status=STAT] [it=TO] "
+           "             [seek=SEEK] [skip=SKIP] [status=STAT] [to=TO] "
            "[verbose=VERB]\n"
 #ifdef SG_LIB_WIN32
            "             [--help] [--odx] [--verbose] [--version] [--wscan] "
@@ -188,7 +188,7 @@ secondary_help:
            "    of2         additional output file (def: /dev/null), "
            "OFILE2 should be\n"
            "                regular file or pipe\n"
-           "    oir         Offset In ROD (odx) (def: 0, units OBS)\n"
+           "    oir         Offset In ROD (odx) (def: 0, units: OBS)\n"
            "    oseek       block position to start writing in OFILE\n"
            "    prio        xcopy: set priority field to PRIO (def: 1)\n"
            "    protect     set rdprotect and/or wrprotect fields on "
@@ -198,7 +198,7 @@ secondary_help:
            "    to          xcopy, odx: timeout in seconds (def: 600 "
            "(10 mins))\n\n");
     pr2serr("FLAGS: (arguments to oflag= and oflag=; may be comma "
-            "separated\n"
+            "separated)\n"
             "  append (o)     append (part of) IFILE to end of OFILE\n"
             "  block (pt)     pt opens are non blocking by default\n"
             "  cat (xcopy)    set CAT bit in segment descriptor header\n"
@@ -230,7 +230,7 @@ secondary_help:
 tertiary_help:
     pr2serr("FLAGS: (continued)\n"
             "  nocache        use posix_fadvise(POSIX_FADV_DONTNEED)\n"
-            "  no_del_tkn (odx)  don not delete ROD token after WRITE USING "
+            "  no_del_tkn (odx)  do not delete ROD token after WRITE USING "
             "TOKEN\n"
             "  nofm (o)       no File Mark (FM) on close when writing to "
             "tape\n"
@@ -954,19 +954,25 @@ cl_sanity_defaults(struct opts_t * op)
         cp = "";
         if (op->idip->fn[0] && op->odip->fn[0]) {
             op->odx_request = ODX_REQ_COPY;
-            cp = "copy; POPULATE TOKEN followed by WRITE USING TOKEN";
+            if (op->verbose > 1)
+                cp = "full copy: POPULATE TOKEN then WRITE USING TOKEN(s), "
+                     "repeatedly";
+            else
+                cp = "full copy\n";
         } else if (op->idip->fn[0]) {
             op->odx_request = ODX_REQ_PT;
-            cp = "disk-->held; POPULATE TOKEN";
+            if (op->verbose)
+                cp = "disk-->held; POPULATE TOKEN";
         } else if (op->odip->fn[0]) {
             op->odx_request = ODX_REQ_WUT;
-            cp = "held-->disk; WRITE USING TOKEN";
+            if (op->verbose)
+                cp = "held-->disk; WRITE USING TOKEN";
         } else {
             pr2serr("Not enough options given to do ODX (xcopy(LID4))\n");
             return SG_LIB_SYNTAX_ERROR;
         }
         if (op->verbose) {
-            pr2serr("ODX: prepare for %s\n", cp);
+            pr2serr("ODX: %s\n", cp);
             if ((op->verbose > 1) && op->rod_type_given)
                 pr2serr("ODX: ROD type: 0x%" PRIx32 "\n", op->rod_type);
         }

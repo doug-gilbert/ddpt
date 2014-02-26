@@ -187,7 +187,7 @@ is_win_blk_dev(const char * fn)
 }
 
 int
-dd_filetype(const char * fn, int verbose)
+win32_dd_filetype(const char * fn, int verbose)
 {
     size_t len = strlen(fn);
 
@@ -541,13 +541,13 @@ win32_block_write(struct opts_t * op, const unsigned char * bp,
     return (int)howMany;
 }
 
-/* get_blkdev_capacity() returns 0 -> success or -1 -> failure. If
+/* win32_get_blkdev_capacity() returns 0 -> success or -1 -> failure. If
  * successful writes back sector size (logical block size) using the sect_sz
  * pointer. Also writes back the number of sectors (logical blocks) on the
  * block device using num_sect pointer. Win32 version. */
 int
-get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
-                    int * sect_sz)
+win32_get_blkdev_capacity(struct opts_t * op, int which_arg,
+			  int64_t * num_sect, int * sect_sz)
 {
     DISK_GEOMETRY g;
     GET_LENGTH_INFORMATION gli;
@@ -562,7 +562,7 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
     fh = (DDPT_ARG_IN == which_arg) ? op->idip->fh : op->odip->fh;
     fname = (DDPT_ARG_IN == which_arg) ? op->idip->fn : op->odip->fn;
     if (op->verbose > 2)
-        pr2serr("get_blkdev_capacity: for %s\n", fname);
+        pr2serr("win32_get_blkdev_capacity: for %s\n", fname);
     if (0 == DeviceIoControl(fh, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0, &g,
                              sizeof(g), &count, NULL)) {
         if (op->verbose)
@@ -594,8 +594,8 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
         return 0;
     }
     if ((fname_len < 4) || (fname_len > (int)sizeof(dirName))) {
-        pr2serr("get_blkdev_capacity: unable to process %s into directory "
-                "name\n", fname);
+        pr2serr("win32_get_blkdev_capacity: unable to process %s into "
+		"directory name\n", fname);
         *num_sect = 0;
         return -1;
     }

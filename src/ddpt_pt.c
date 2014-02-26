@@ -59,7 +59,7 @@
 #include "config.h"
 #endif
 
-#include "ddpt.h"	/* includes <signal.h> */
+#include "ddpt.h"       /* includes <signal.h> */
 
 #include "sg_lib.h"
 #include "sg_cmds_basic.h"
@@ -127,6 +127,9 @@ pt_destruct_obj(void * vp)
     destruct_scsi_pt_obj((struct sg_pt_base *)vp);
 }
 
+/* Opens given device with the pass-through interface. If successful sends
+ * a standard INQUIRY request. Returns file descriptor (>=0) if successful,
+ * -1 if open fails, -2 if standard INQUIRY fails. */
 int
 pt_open_if(struct opts_t * op, struct sg_simple_inquiry_resp * sirp)
 {
@@ -173,10 +176,13 @@ pt_open_if(struct opts_t * op, struct sg_simple_inquiry_resp * sirp)
                     fn, sir.vendor, sir.product, sir.revision, dip->pdt);
     }
     if (sirp)
-	*sirp = sir;
+        *sirp = sir;
     return fd;
 }
 
+/* Opens given device with the pass-through interface. If successful sends
+ * a standard INQUIRY request. Returns file descriptor (>=0) if successful,
+ * -1 if open fails, -2 if standard INQUIRY fails. */
 int
 pt_open_of(struct opts_t * op, struct sg_simple_inquiry_resp * sirp)
 {
@@ -220,7 +226,7 @@ pt_open_of(struct opts_t * op, struct sg_simple_inquiry_resp * sirp)
                     fn, sir.vendor, sir.product, sir.revision, dip->pdt);
     }
     if (sirp)
-	*sirp = sir;
+        *sirp = sir;
     return fd;
 }
 
