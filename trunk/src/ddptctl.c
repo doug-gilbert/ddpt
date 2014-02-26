@@ -64,7 +64,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140222 [svn: r261]";
+const char * ddptctl_version_str = "0.94 20140226 [svn: r262]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -147,11 +147,10 @@ static void
 usage()
 {
     pr2serr("Usage: "
-            "ddptctl [--abort=LID] [--all_toks] [--block] [--help] [--info] "
-            "[--list_id=LID]\n"
-            "               [--poll] [--receive] [--rtf=RTF] [--size] "
-            "[--verbose]\n"
-            "               [--version] [DEVICE]\n"
+            "ddptctl [--abort=LID] [--all_toks] [--block] [--help] [--info]\n"
+            "               [--list_id=LID] [--poll] [--receive] [--rtf=RTF] "
+            "[--size]\n"
+            "               [--verbose] [--version] [DEVICE]\n"
             "  where:\n"
             "    --abort=LID|-A LID    call COPY OPERATION ABORT on LID\n"
             "    --all_toks|-a         call REPORT ALL ROD TOKENS\n"
@@ -401,7 +400,7 @@ state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
 int
 main(int argc, char * argv[])
 {
-    int c, fd, flags, blk_sz, rt_len, cstat, for_sa, sz, cont;
+    int c, fd, flags, blk_sz, rt_len, cstat, for_sa, sz, cont, done;
     int64_t i64, num_blks;
     int do_abort = 0;
     int do_all_toks = 0;
@@ -554,36 +553,10 @@ main(int argc, char * argv[])
         goto clean_up;
     }
 
+    done = 1;
     if (do_all_toks)
         ret = report_all_toks(op, op->idip);
-    else if (do_info) {
-        if (op->idip->d_type & FT_PT) {
-            ret = pt_read_capacity(op, DDPT_ARG_IN, &num_blks, &blk_sz);
-            if (ret)
-                goto clean_up;
-            print_blk_sizes(op->idip->fn, "pt", num_blks, blk_sz, 0);
-            if (0x8 & sir.byte_5) {
-                printf("3PC (third party copy) bit set in standard INQUIRY "
-                       "response\n");
-                printf("  Print Third Party Copy VPD page:\n");
-                print_3pc_vpd(op);
-            } else {
-                printf("3PC (third party copy) bit clear in standard INQUIRY "
-                       "response\n");
-                printf("  so %s [pdt=0x%x] does not seem to support XCOPY\n",
-                       op->idip->fn, sir.peripheral_type);
-            }
-        } else if (op->idip->d_type & FT_BLOCK) {
-            ret = get_blkdev_capacity(op, DDPT_ARG_IN, &num_blks, &blk_sz);
-            if (ret)
-                goto clean_up;
-            print_blk_sizes(op->idip->fn, "block", num_blks, blk_sz, 0);
-        } else {
-            num_blks = 0;
-            blk_sz = 0;
-            printf("unable to print capacity information about device\n");
-        }
-    } else if (do_receive) {
+    else if (do_receive) {
         if (! op->list_id_given)
             op->list_id = 0x101;
         ret = fetch_rrti_after_odx(op, &for_sa, &cstat, &tc, rt_buf, sz,
@@ -607,9 +580,88 @@ main(int argc, char * argv[])
         sg_get_opcode_sa_name(DDPT_TPC_OUT_CMD, for_sa, 0, (int)sizeof(b), b);
         printf("RRTI for %s: %s\n", b,
                cpy_op_status_str(cstat, bb, sizeof(bb)));
-    } else {
-        pr2serr("to be done\n");
+    } else
+        done = 0;
+    if (done)
+        goto clean_up;
+
+    if (do_info) {
+        if (op->idip->d_type & FT_PT) {
+            ret = pt_read_capacity(op, DDPT_ARG_IN, &num_blks, &blk_sz);
+            if (ret) {
+                if (SG_LIB_CAT_UNIT_ATTENTION == ret) {
+                    if (op->verbose)
+                        pr2serr("Unit attention (readcap), continuing\n");
+                    ret = pt_read_capacity(op, DDPT_ARG_IN,
+                                           &num_blks, &blk_sz);
+                    if (ret) {
+                        if (0 == sir.peripheral_type)
+                            pr2serr("read capacity failed, perhaps because "
+                                    "non-disk device [pdt=%d]\n",
+                                    sir.peripheral_type);
+                        goto clean_up;
+                    }
+                }
+            }
+            print_blk_sizes(op->idip->fn, "pt", num_blks, blk_sz, 0);
+            if (0x8 & sir.byte_5) {
+                printf("3PC (third party copy) bit set in standard INQUIRY "
+                       "response\n");
+                printf("  Print Third Party Copy VPD page:\n");
+                print_3pc_vpd(op);
+            } else {
+                printf("3PC (third party copy) bit clear in standard INQUIRY "
+                       "response\n");
+                printf("  so %s [pdt=0x%x] does not seem to support XCOPY\n",
+                       op->idip->fn, sir.peripheral_type);
+            }
+        } else if (op->idip->d_type & FT_BLOCK) {
+            ret = get_blkdev_capacity(op, DDPT_ARG_IN, &num_blks, &blk_sz);
+            if (ret)
+                goto clean_up;
+            print_blk_sizes(op->idip->fn, "block", num_blks, blk_sz, 0);
+        } else {
+            num_blks = 0;
+            blk_sz = 0;
+            printf("unable to print capacity information about device\n");
+        }
+        done = 1;
     }
+    if (do_size && (! do_info)) {
+        if (op->idip->d_type & FT_PT) {
+            ret = pt_read_capacity(op, DDPT_ARG_IN, &num_blks, &blk_sz);
+            if (ret) {
+                if (SG_LIB_CAT_UNIT_ATTENTION == ret) {
+                    if (op->verbose)
+                        pr2serr("Unit attention (readcap), continuing\n");
+                    ret = pt_read_capacity(op, DDPT_ARG_IN,
+                                           &num_blks, &blk_sz);
+                    if (ret) {
+                        if (0 == sir.peripheral_type)
+                            pr2serr("read capacity failed, perhaps because "
+                                    "non-disk device [pdt=%d]\n",
+                                    sir.peripheral_type);
+                        goto clean_up;
+                    }
+                }
+            }
+            print_blk_sizes(op->idip->fn, "pt", num_blks, blk_sz, 0);
+        } else if (op->idip->d_type & FT_BLOCK) {
+            ret = get_blkdev_capacity(op, DDPT_ARG_IN, &num_blks, &blk_sz);
+            if (ret)
+                goto clean_up;
+            print_blk_sizes(op->idip->fn, "block", num_blks, blk_sz, 0);
+        } else {
+            num_blks = 0;
+            blk_sz = 0;
+            printf("%s: unable to print capacity information\n",
+                   op->idip->fn);
+        }
+        done = 1;
+    }
+
+    if (! done)
+        pr2serr("not implemented yet\n");
 
 clean_up:
     if (op->idip->fd >= 0) {
@@ -618,7 +670,13 @@ clean_up:
         else if (op->idip->d_type & FT_BLOCK)
             close(op->idip->fd);
     }
-    if (ret)
-        print_exit_status_msg("Exit status", ret, 0);
+    if (ret) {
+        if (ret > 0)
+            print_exit_status_msg("Exit status", ret, 0);
+        else if (ret < 0) {
+            pr2serr("Some error occurred\n");
+            ret = 1;
+        }
+    }
     return ret;
 }

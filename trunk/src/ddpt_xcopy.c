@@ -1208,13 +1208,12 @@ check_3pc_vpd(struct opts_t * op, struct dev_info_t * dip)
     unsigned char rBuff[256];
     unsigned char * rp;
     unsigned char * ucp;
-    int res, verb, n, len, bump, desc_type, desc_len, k, j, is_src;
+    int res, verb, n, len, bump, desc_type, desc_len, k, j;
     int found = 0;
     uint32_t max_ito = 0;
     uint64_t ull;
 
     verb = (op->verbose ? (op->verbose - 1) : 0);
-    is_src = (op->idip == dip);
     rp = rBuff;
     n = (int)sizeof(rBuff);
     res = fetch_3pc_vpd(dip->fd, rBuff, n, &rp, verb);
@@ -1287,11 +1286,7 @@ check_3pc_vpd(struct opts_t * op, struct dev_info_t * dip)
     if ((max_ito > 0) && (op->inactivity_to > max_ito)) {
         pr2serr("Block Device ROD Token Limits: maximum inactivity timeout "
                 "(%" PRIu32 ") exceeded\n", max_ito);
-        if (is_src && op->iflagp->force)
-            ;
-        else if ((! is_src) && op->oflagp->force)
-            ;
-        else {
+        if (! op->iflagp->force) {
             pr2serr("... exiting; can override with 'force' flag\n");
             return SG_LIB_CAT_OTHER;
         }
@@ -1640,6 +1635,9 @@ do_wut(struct opts_t * op, uint64_t sgl_off, uint32_t num_blks, uint64_t oir)
         pl[15] = (unsigned char)(oir & 0xff);
     }
     if (RODT_BLK_ZERO == op->rod_type) {
+        if (verb > 3)
+            pr2serr("%s: configure for block device zero ROD Token\n",
+                    __func__);
         local_rod_token[0] = (unsigned char)((RODT_BLK_ZERO >> 24) & 0xff);
         local_rod_token[1] = (unsigned char)((RODT_BLK_ZERO >> 16) & 0xff);
         local_rod_token[2] = (unsigned char)((RODT_BLK_ZERO >> 8) & 0xff);
@@ -1781,11 +1779,108 @@ odx_check_sgl(struct opts_t * op, uint64_t num_blks, int in0_out1)
     return 0;
 }
 
+/* This is called when rod_type=zero which implies the input is a dummy
+ * (require 'if=/dev/null') and we want to write block of zeros to the
+ * destination. Returns 0 when successful. */
+static int
+odx_full_zero_copy(struct opts_t * op)
+{
+    int k, got_count, res, out_blk_sz, out_num_elems;
+    struct dev_info_t * odip = op->odip;
+    uint64_t out_sgl_off, num, tc;
+    int64_t out_num_blks, v;
+
+    k = dd_filetype(op->idip->fn, op->verbose);
+    got_count = (op->dd_count > 0);
+    if (FT_DEV_NULL != k) {
+        pr2serr("For single WUT version of ODX write blocks of zeros, "
+                "don't give if=IFILE option\n");
+        pr2serr("For full copy version of ODX write blocks of zeros, "
+                "give if=/dev/null or equivalent\n");
+        return SG_LIB_SYNTAX_ERROR;
+    }
+    if ((res = pt_read_capacity(op, DDPT_ARG_OUT, &out_num_blks,
+                                &out_blk_sz))) {
+        if (SG_LIB_CAT_UNIT_ATTENTION == res) {
+            pr2serr("Unit attention (readcap out), continuing\n");
+            res = pt_read_capacity(op, DDPT_ARG_OUT, &out_num_blks,
+                                   &out_blk_sz);
+        }
+        if (res)
+            return res;
+    }
+    if (op->verbose) {
+        print_blk_sizes(odip->fn, "pt", out_num_blks, out_blk_sz, 1);
+        if (odip->prot_type > 0)
+            pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
+                    odip->prot_type, odip->p_i_exp);
+    }
+    if ((out_num_blks > 0) && (op->obs != out_blk_sz)) {
+        pr2serr(">> warning: %s block size confusion: obs=%d, device "
+                "claims=%d\n", odip->fn, op->obs, out_blk_sz);
+        if (0 == op->oflagp->force) {
+            pr2serr(">> abort copy, use oflag=force to override\n");
+            return -1;
+        }
+    }
+    v = out_num_blks;
+    if (op->out_sgl) {  /* scatter list */
+        out_num_elems = op->out_sgl_elems;
+        out_num_blks = count_sgl_blocks(op->out_sgl, out_num_elems);
+    } else { /* no scatter list */
+        out_num_elems = 1;
+        out_num_blks = got_count ? op->dd_count : 0;
+    }
+    if (0 == op->dd_count) {
+        if (op->verbose)
+            pr2serr("%s: enough checks, count=0 given so exit\n", __func__);
+        return 0;
+    }
+    if ((op->dd_count < 0) && (0 == out_num_blks)) {
+        if (op->verbose > 1)
+            pr2serr("%s: zero the lot after scaling for seek=\n", __func__);
+        v -= op->seek;
+        if (v < 0) {
+            pr2serr("%s: seek exceeds out device size\n", __func__);
+            return SG_LIB_SYNTAX_ERROR;
+        }
+        out_num_blks = v;
+    }
+    out_sgl_off = 0;
+    op->dd_count = out_num_blks;
+    if (op->verbose > 1)
+        pr2serr("%s: about to zero %" PRIi64 " blocks\n", __func__,
+                out_num_blks);
+
+    for (k = 0; out_num_blks > 0; out_num_blks -= num, ++k) {
+        num = out_num_blks;
+        if (op->bpt_given && ((uint64_t)op->bpt_i < num))
+            num = op->bpt_i;    /* in this case BPT refers to OFILE */
+        if (op->out_sgl)
+            num = count_restricted_sgl_blocks(op->out_sgl, out_num_elems,
+                                              out_sgl_off, num,
+                                              odip->odxp->max_range_desc);
+        if ((res = do_wut(op, out_sgl_off, num, 0)))
+            return res;
+        if ((res = fetch_rrti_after_wut(op, &tc)))
+            return res;
+        if (tc != num) {
+            pr2serr("%s: number requested differs from transfer count\n",
+                    __func__);
+            // ouch, think about this one
+        }
+        op->out_full += tc;
+        out_sgl_off += num;
+        op->dd_count -= tc;
+    }
+    return 0;
+}
+
 /* This function is designed to copy large amounts (terabytes) with
  * potentially different block sizes on input and output. Returns
  * 0 on success. */
 static int
-odx_full_copy_work(struct opts_t * op)
+odx_full_copy(struct opts_t * op)
 {
     int k, res, ok, in_blk_sz, out_blk_sz, oneto1, in_mult, out_mult;
     int got_count, in_num_elems, out_num_elems;
@@ -1794,6 +1889,8 @@ odx_full_copy_work(struct opts_t * op)
     struct dev_info_t * idip = op->idip;
     struct dev_info_t * odip = op->odip;
 
+    if (op->rod_type_given && (RODT_BLK_ZERO == op->rod_type))
+        return odx_full_zero_copy(op);
     got_count = (op->dd_count > 0);
     /* need to know block size of input and output */
     if ((res = pt_read_capacity(op, DDPT_ARG_IN, &in_num_blks, &in_blk_sz))) {
@@ -2002,7 +2099,9 @@ odx_full_copy_work(struct opts_t * op)
         if ((res = fetch_rt_after_poptok(op, &tc)))
             return res;
         if (tc != num) {
-            // ouch
+            pr2serr("%s: number requested (in) differs from transfer "
+                    "count\n", __func__);
+            // ouch, think about this one
         }
         op->in_full += tc;
         op->dd_count -= tc;
@@ -2024,34 +2123,36 @@ odx_full_copy_work(struct opts_t * op)
             if ((res = fetch_rrti_after_wut(op, &tc)))
                 return res;
             if (tc != r_o_num) {
-                // ouch
+                pr2serr("%s: number requested (in) differs from transfer "
+                        "count\n", __func__);
+                // ouch, think about this one
             }
             op->out_full += tc;
             out_sgl_off += r_o_num;
         }
-// xxxxxxxx
     }
     return 0;
 }
 
 static int
-odx_copy_work(struct opts_t * op)
+odx_setup(struct opts_t * op)
 {
-    int fd, res, num_elems;
+    int fd, res, num_elems, req;
     struct dev_info_t * dip;
     uint64_t num_blks, tc;
     uint64_t in_max_xfer = 0;
     uint64_t  out_max_xfer = 0;
 
+    req = op->odx_request;
     if (! op->list_id_given)
-        op->list_id = (ODX_REQ_WUT == op->odx_request) ? 0x102 : 0x101;
-    if ((ODX_REQ_PT == op->odx_request) ||
-        (ODX_REQ_COPY == op->odx_request)) {
+        op->list_id = (ODX_REQ_WUT == req) ? 0x102 : 0x101;
+    if ((ODX_REQ_PT == req) ||
+        ((ODX_REQ_COPY == req) && (RODT_BLK_ZERO != op->rod_type))) {
         fd = pt_open_if(op, NULL);
         if (-1 == fd)
             return SG_LIB_FILE_ERROR;
         else if (fd < -1)
-            return -fd;
+            return SG_LIB_CAT_OTHER;
         dip = op->idip;
         dip->fd = fd;
         dip->odxp = (struct block_rodtok_vpd *)malloc(sizeof(*dip->odxp));
@@ -2061,17 +2162,16 @@ odx_copy_work(struct opts_t * op)
         }
         memset(dip->odxp, 0, sizeof(*dip->odxp));
         res = check_3pc_vpd(op, dip);
-        if (res)
+        if (res && (op->iflagp->force < 2))
             return res;
         in_max_xfer = dip->odxp->max_tok_xfer_size;
     }
-    if ((ODX_REQ_WUT == op->odx_request) ||
-        (ODX_REQ_COPY == op->odx_request)) {
+    if ((ODX_REQ_WUT == req) || (ODX_REQ_COPY == req)) {
         fd = pt_open_of(op, NULL);
         if (-1 == fd)
             return SG_LIB_FILE_ERROR;
         else if (fd < -1)
-            return -fd;
+            return SG_LIB_CAT_OTHER;
         dip = op->odip;
         dip->fd = fd;
         dip->odxp = (struct block_rodtok_vpd *)malloc(sizeof(*dip->odxp));
@@ -2080,12 +2180,13 @@ odx_copy_work(struct opts_t * op)
             return SG_LIB_CAT_OTHER;
         }
         memset(dip->odxp, 0, sizeof(*dip->odxp));
-        if ((res = check_3pc_vpd(op, dip)))
+        res = check_3pc_vpd(op, dip);
+        if (res && (op->oflagp->force < 2))
             return res;
         out_max_xfer = dip->odxp->max_tok_xfer_size;
     }
 
-    if (ODX_REQ_PT == op->odx_request) {
+    if (ODX_REQ_PT == req) {
         if (op->bpt_given)
             pr2serr("warning: bpt=BPT ignored for ODX PT\n");
         if (op->in_sgl) {
@@ -2113,7 +2214,7 @@ odx_copy_work(struct opts_t * op)
             return res;
         op->in_full += tc;
         op->dd_count -= tc;
-    } else if (ODX_REQ_WUT == op->odx_request) {
+    } else if (ODX_REQ_WUT == req) {
         if (op->bpt_given)
             pr2serr("warning: bpt=BPT ignored for ODX WUT\n");
         if (op->out_sgl) {
@@ -2141,8 +2242,8 @@ odx_copy_work(struct opts_t * op)
             return res;
         op->out_full += tc;
         op->dd_count -= tc;
-    } else if (ODX_REQ_COPY == op->odx_request) {
-        if ((res = odx_full_copy_work(op)))
+    } else if (ODX_REQ_COPY == req) {
+        if ((res = odx_full_copy(op)))
             return res;
     }
     return 0;
@@ -2173,7 +2274,7 @@ do_odx(struct opts_t * op)
         time_useful = 1;
     if (op->do_time && time_useful)
         calc_duration_init(op);
-    ret = odx_copy_work(op);
+    ret = odx_setup(op);
     if (time_useful && (0 == op->status_none))
         print_stats("", op, (out_immed && full_cp));
     if (op->do_time && time_useful)
