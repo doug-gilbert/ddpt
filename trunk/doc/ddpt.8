@@ -42,8 +42,8 @@ between ddpt and dd.
 .PP
 This utility either does direct copies, based on read\-write sequences,
 or offloaded copies. In an offloaded copy the data being copied does not
-necessarily pass through the memory of the the machine issuing the copy;
-this can be a significant time and CPU usage saving.
+necessarily pass through the memory of the the machine originating the copy
+operation; this can save a significant amount of time and lessen CPU usage.
 .PP
 When doing a direct copy, this utility breaks the copy into segments since
 computer RAM is typically a scarce resource. First it reads in \fIBPT*IBS\fR
@@ -192,20 +192,22 @@ synonym for "skip=".
 odx: \fIITO\fR is the inactivity timeout whose units are seconds. The default
 value is 0 which means the copy manager will take the default inactivity
 timeout value from the Block Device ROD Token Limits descriptor in the
-Third Party Copy VPD page. \fIITO\fR should not exceed the maximum inactivity
-timeout value in the same descriptor.
+Third Party Copy VPD page. \fIITO\fR is ignored if it it exceeds the maximum
+inactivity timeout value in the same descriptor (unless the force flag is
+given).
 .TP
 \fBlist_id\fR=\fILID\fR
 \fILID\fR is the xcopy LIST IDENTIFIER field whose size varies between
-xcopy(LID1) and xcopy(LID4)/odx. The user chooses this value and it should
-not clash with any other xcopy being done on this I_T nexus.
+xcopy(LID1) and xcopy(LID4) [as used by ODX]. If given, the \fILID\fR
+should not clash with any other xcopy \fILID\fR on this I_T nexus.
 .br
 xcopy(LID1): \fILID\fR is a 1 byte (8 bit) value whose default value is 1 or,
 if id_usage=disable, 0 . \fILID\fR must not exceed 255.
 .br
-odx (and xcopy(LID4): \fILID\fR is a 4 byte (32 bit) value whose default
-value is 257 (i.e.  0x101) and if a second default is needed that will be
-258 (0x102).
+odx [and xcopy(LID4)]: \fILID\fR is a 4 byte (32 bit) value whose default
+value is 257 (i.e. 0x101) and if a second default is needed that will be
+258 (0x102). If a clash is detected on the default list identifier value
+then the next higher value is tried.
 .TP
 \fBobs\fR=\fIOBS\fR
 where \fIOBS\fR is the \fIOFILE\fR block size in bytes. The default value
@@ -245,7 +247,8 @@ default value is 0. Numbers are assumed to be in decimal unless preceded
 by "0x" or have a trailing "h" in which case they are decoded as hex. The
 \fIOIR\fR is passed to the WRITE USING TOKEN command. The ROD can be
 considered as a linear representation of data gathered by the POPULATE
-TOKEN command.
+TOKEN command with its LBAs in ascending order but not nexessarily
+consecutive.
 .TP
 \fBoseek\fR=\fISEEK\fR
 start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
@@ -1092,7 +1095,7 @@ For XCOPY(LID1) support see the XCOPY section.
 ODX descriptions use the following command name abbreviations: PT for
 POPULATE TOKEN, RRTI for READ ROD TOKEN INFORMATION, and WUT for WRITE
 USING TOKEN.
-.PP 
+.PP
 A device (logical unit (LU)) that supports ODX operations must set
 the 3PC field (3PC stands for Third Party Copy) in its standard INQUIRY
 response and support the Third Party Copy VPD page.
