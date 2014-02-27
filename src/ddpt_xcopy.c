@@ -104,7 +104,7 @@
 #define TD_ROD 4096
 
 
-#define LOCAL_ROD_TOKEN_SIZE 2048
+#define LOCAL_ROD_TOKEN_SIZE 1024
 static unsigned char local_rod_token[LOCAL_ROD_TOKEN_SIZE];
 
 static const char * rec_copy_op_params_str = "Receive copy operating "
@@ -1460,17 +1460,19 @@ do_pop_tok(struct opts_t * op, uint64_t sgl_off, uint32_t num_blks)
 }
 
 int
-fetch_rrti_after_odx(struct opts_t * op, int * for_sap, int * cstatp,
-                     uint64_t * tc_p, unsigned char * rtp, int max_rt_sz,
-                     int * rt_lenp, int verb)
+fetch_rrti_after_odx(struct opts_t * op, int in0_out1, int * for_sap,
+                     int * cstatp, uint64_t * tc_p, unsigned char * rtp,
+                     int max_rt_sz, int * rt_lenp, int verb)
 {
     int j, res, fd, for_sa, cstat, lsdf, off, rt_len;
     unsigned int len, rtdl;
     uint64_t ull;
-    unsigned char rsp[2048];
+    unsigned char rsp[1024];
     char b[400];
+    char bb[80];
+    const char * cp;
 
-    fd = op->idip->fd;
+    fd = in0_out1 ? op->odip->fd : op->idip->fd;
     res = pt_3party_copy_in(fd, SA_ROD_TOK_INFO, op->list_id,
                             DEF_3PC_IN_TIMEOUT, rsp, sizeof(rsp), 1, verb);
     if (res)
@@ -1483,13 +1485,23 @@ fetch_rrti_after_odx(struct opts_t * op, int * for_sap, int * cstatp,
         len = sizeof(rsp);
     }
     if (verb > 3) {
-        pr2serr("\nOutput response in hex:\n");
+        pr2serr("\nRRTI response in hex:\n");
         dStrHexErr((const char *)rsp, len, 1);
     }
     for_sa = 0x1f & rsp[4];
+    if (SA_POP_TOK == for_sa)
+        cp = "RRTI for PT";
+    else if (SA_WR_USING_TOK == for_sa)
+        cp = "RRTI for WUT";
+    else
+        cp = "RRTI for non ODX service action";
+    if (verb > 2)
+        pr2serr("%s\n", cp);
     if (for_sap)
         *for_sap = for_sa;
     cstat = 0x7f & rsp[5];
+    if (verb > 3)
+       pr2serr("%s: %s\n", cp, cpy_op_status_str(cstat, b, sizeof(b)));
     if (cstatp)
         *cstatp = cstat;
     ull = 0;
@@ -1501,19 +1513,22 @@ fetch_rrti_after_odx(struct opts_t * op, int * for_sap, int * cstatp,
     if (tc_p)
         *tc_p = ull;
     lsdf = rsp[13];
-    if (lsdf > 0)
-        sg_get_sense_str("RRTI data-in sense:", rsp + 32, rsp[14], verb,
-                         sizeof(b), b);
+    if (lsdf > 0) {
+        snprintf(bb, sizeof(bb), "%s: sense data", cp);
+        sg_get_sense_str(cp, rsp + 32, rsp[14], verb, sizeof(b), b);
+        pr2serr("%s\n", b);
+    }
     off = 32 + lsdf;
     rtdl = (rsp[off] << 24) | (rsp[off + 1] << 16) | (rsp[off + 2] << 8) |
            rsp[off + 3];
+    if ((rtdl > 2) && (verb > 2))
+        pr2serr("RRTI: ROD Token received, length=%d bytes\n", rtdl - 2);
     if ((rtdl > 2) && rtp && rt_lenp) {
         rt_len = rtdl - 2;
         memcpy(rtp, rsp + off + 6, (rt_len > max_rt_sz) ? max_rt_sz : rt_len);
         *rt_lenp = rt_len;
     } else if (rt_lenp)
         *rt_lenp = 0;
-
     return 0;
 }
 
@@ -1527,8 +1542,8 @@ fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp)
 
     verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
     sz = (int)sizeof(rt_buf);
-    res = fetch_rrti_after_odx(op, &for_sa, &cstat, &tc, rt_buf, sz, &rt_len,
-                               verb);
+    res = fetch_rrti_after_odx(op, DDPT_ARG_IN, &for_sa, &cstat, &tc, rt_buf,
+                               sz, &rt_len, verb);
     if (res)
         return res;
     if (SA_POP_TOK != for_sa) {
@@ -1585,7 +1600,7 @@ fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp)
 static int
 do_wut(struct opts_t * op, uint64_t sgl_off, uint32_t num_blks, uint64_t oir)
 {
-    int verb, len, k, n, fd, err, res, tmout, sz_bdrd, pl_sz;
+    int verb, len, k, n, fd, err, res, tmout, sz_bdrd, pl_sz, rodt_blk_zero;
     struct flags_t * flp;
     uint64_t lba;
     uint32_t num;
@@ -1599,6 +1614,7 @@ do_wut(struct opts_t * op, uint64_t sgl_off, uint32_t num_blks, uint64_t oir)
                 " oir=0x%" PRIx64 "\n", __func__, sgl_off, num_blks, oir);
     fd = op->odip->fd;
     flp = op->oflagp;
+    rodt_blk_zero = (RODT_BLK_ZERO == op->rod_type);
     if (op->out_sgl) {
         sglp = op->out_sgl;
         for (k = 0; k < op->out_sgl_elems; ++k, ++sglp) {
@@ -1615,12 +1631,14 @@ do_wut(struct opts_t * op, uint64_t sgl_off, uint32_t num_blks, uint64_t oir)
     pl_sz = 540 + (16 * (op->out_sgl ? (op->out_sgl_elems - k) : 1));
     pl = (unsigned char *)malloc(pl_sz);
     memset(pl, 0, pl_sz);
-    if (ODX_REQ_WUT == op->odx_request) {
-        if (flp->del_tkn)
-            pl[2] = 0x2;        /* DEL_TKN bit */
-    } else {
-        if (! flp->no_del_tkn)
-            pl[2] = 0x2;        /* data->data default DEL_TKN unless */
+    if (! rodt_blk_zero) {
+        if (ODX_REQ_WUT == op->odx_request) {
+            if (flp->del_tkn)
+                pl[2] = 0x2;        /* DEL_TKN bit */
+        } else {
+            if (! flp->no_del_tkn)
+                pl[2] = 0x2;        /* data->data default DEL_TKN unless */
+        }
     }
     if (flp->immed)
         pl[2] |= 0x1;           /* IMMED bit */
@@ -1634,7 +1652,7 @@ do_wut(struct opts_t * op, uint64_t sgl_off, uint32_t num_blks, uint64_t oir)
         pl[14] = (unsigned char)((oir >> 8) & 0xff);
         pl[15] = (unsigned char)(oir & 0xff);
     }
-    if (RODT_BLK_ZERO == op->rod_type) {
+    if (rodt_blk_zero) {
         if (verb > 3)
             pr2serr("%s: configure for block device zero ROD Token\n",
                     __func__);
@@ -1732,8 +1750,8 @@ fetch_rrti_after_wut(struct opts_t * op, uint64_t * tcp)
     char b[80];
 
     verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
-    res = fetch_rrti_after_odx(op, &for_sa, &cstat, &tc, NULL, 0, NULL,
-                               verb);
+    res = fetch_rrti_after_odx(op, DDPT_ARG_OUT, &for_sa, &cstat, &tc, NULL,
+                               0, NULL, verb);
     if (res)
         return res;
     if (SA_WR_USING_TOK != for_sa) {
@@ -1856,6 +1874,9 @@ odx_full_zero_copy(struct opts_t * op)
         num = out_num_blks;
         if (op->bpt_given && ((uint64_t)op->bpt_i < num))
             num = op->bpt_i;    /* in this case BPT refers to OFILE */
+        if ((odip->odxp->max_tok_xfer_size > 0) &&
+            (num > odip->odxp->max_tok_xfer_size))
+            num = odip->odxp->max_tok_xfer_size;
         if (op->out_sgl)
             num = count_restricted_sgl_blocks(op->out_sgl, out_num_elems,
                                               out_sgl_off, num,

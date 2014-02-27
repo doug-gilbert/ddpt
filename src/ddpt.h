@@ -460,9 +460,9 @@ int pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
 /* defined in ddpt_xcopy.c */
 const char * cpy_op_status_str(int cos, char * b, int blen);
 int print_3pc_vpd(struct opts_t * op);
-int fetch_rrti_after_odx(struct opts_t * op, int * for_sap, int * cstatp,
-                         uint64_t * tc_p, unsigned char * rtp, int max_rt_sz,
-                         int * rt_lenp, int verb);
+int fetch_rrti_after_odx(struct opts_t * op, int in0_out1, int * for_sap,
+                         int * cstatp, uint64_t * tc_p, unsigned char * rtp,
+                         int max_rt_sz, int * rt_lenp, int verb);
 int do_xcopy(struct opts_t * op);       /* xcopy(LID1) */
 int do_odx(struct opts_t * op);
 

@@ -64,7 +64,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140226 [svn: r262]";
+const char * ddptctl_version_str = "0.94 20140227 [svn: r263]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -559,8 +559,8 @@ main(int argc, char * argv[])
     else if (do_receive) {
         if (! op->list_id_given)
             op->list_id = 0x101;
-        ret = fetch_rrti_after_odx(op, &for_sa, &cstat, &tc, rt_buf, sz,
-                                   &rt_len, op->verbose);
+        ret = fetch_rrti_after_odx(op, DDPT_ARG_IN, &for_sa, &cstat, &tc,
+                                   rt_buf, sz, &rt_len, op->verbose);
         if (ret)
             goto clean_up;
         sg_get_opcode_sa_name(DDPT_TPC_OUT_CMD, for_sa, 0, (int)sizeof(b), b);
@@ -570,8 +570,8 @@ main(int argc, char * argv[])
         if (! op->list_id_given)
             op->list_id = 0x101;
         do {
-            ret = fetch_rrti_after_odx(op, &for_sa, &cstat, &tc, rt_buf, sz,
-                                       &rt_len, op->verbose);
+            ret = fetch_rrti_after_odx(op, DDPT_ARG_IN, &for_sa, &cstat, &tc,
+                                       rt_buf, sz, &rt_len, op->verbose);
             if (ret)
                 goto clean_up;
             cont = ((cstat >= 0x10) && (cstat <= 0x12));

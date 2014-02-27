@@ -654,11 +654,10 @@ calc_duration_throughput(const char * leadin, int contin, struct opts_t * op)
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
     struct timespec end_tm, res_tm;
     double a, b, r;
-    int secs, h, m;
-    int64_t blks;
+    int secs, h, m, use_out_full;
 
     if (op->start_tm_valid && (op->start_tm.tv_sec || op->start_tm.tv_nsec)) {
-        blks = op->in_full;
+        use_out_full = ((0 == op->in_full) && (op->obs > 0));
         clock_gettime(CLOCK_MONOTONIC, &end_tm);
         res_tm.tv_sec = end_tm.tv_sec - op->start_tm.tv_sec;
         res_tm.tv_nsec = end_tm.tv_nsec - op->start_tm.tv_nsec;
@@ -668,7 +667,10 @@ calc_duration_throughput(const char * leadin, int contin, struct opts_t * op)
         }
         a = res_tm.tv_sec;
         a += (0.000001 * (res_tm.tv_nsec / 1000));
-        b = (double)op->ibs_hold * blks;
+        if (use_out_full)
+            b = (double)op->obs * op->out_full;
+        else
+            b = (double)op->ibs_hold * op->in_full;
         pr2serr("%stime to %s data%s: %d.%06d secs", leadin,
                 (op->read1_or_transfer ? "read" : "transfer"),
                 (contin ? " so far" : ""), (int)res_tm.tv_sec,
