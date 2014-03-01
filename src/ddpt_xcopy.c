@@ -1362,14 +1362,15 @@ count_restricted_sgl_blocks(const struct scat_gath_elem * sglp, int elems,
 static int
 do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks)
 {
-    int res, k, n, verb, len, fd, tmout, sz_bdrd, pl_sz;
+    int res, k, n, vb3, vb4, len, fd, tmout, sz_bdrd, pl_sz;
     uint64_t lba, sg0_off;
     uint32_t num;
     const struct scat_gath_elem * sglp;
     unsigned char * pl;
 
-    verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
-    if (verb)
+    vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
+    vb4 = (op->verbose > 2) ? (op->verbose - 3) : 0;
+    if (vb3)
         pr2serr("%s: blk_off=%" PRIu64 ", num_blks=%"  PRIu32 "\n", __func__,
                 blk_off, num_blks);
     fd = op->idip->fd;
@@ -1402,6 +1403,7 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks)
     }
     if (op->iflagp->immed)
         pl[2] |= 0x1;           /* IMMED bit */
+    /* if inactivity_to=0 then cm takes default in TPC VPD page */
     pl[4] = (unsigned char)((op->inactivity_to >> 24) & 0xff);
     pl[5] = (unsigned char)((op->inactivity_to >> 16) & 0xff);
     pl[6] = (unsigned char)((op->inactivity_to >> 8) & 0xff);
@@ -1417,7 +1419,7 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks)
             }
             if (num > num_blks)
                 num = num_blks;
-            if (verb)
+            if (vb3)
                 pr2serr("  lba=0x%" PRIx64 ", num=%" PRIu32 ", k=%d\n", lba,
                         num, k);
             pl[++n] = (unsigned char)((lba >> 56) & 0xff);
@@ -1443,7 +1445,7 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks)
         pl[14] = (unsigned char)((sz_bdrd >> 8) & 0xff);
         pl[15] = (unsigned char)(sz_bdrd & 0xff);
         lba = op->skip + blk_off;
-        if (verb)
+        if (vb3)
             pr2serr("  lba=0x%" PRIx64 ", num_blks=%" PRIu32 "\n", lba,
                     num_blks);
         pl[16] = (unsigned char)((lba >> 56) & 0xff);
@@ -1466,7 +1468,7 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks)
 
     tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
     res = pt_3party_copy_out(fd, SA_POP_TOK, op->list_id, DEF_GROUP_NUM,
-                             tmout, pl, len, 1, verb);
+                             tmout, pl, len, 1, vb4);
     free(pl);
     return res;
 }
@@ -1545,15 +1547,16 @@ fetch_rrti_after_odx(struct opts_t * op, int in0_out1, int * for_sap,
 static int
 fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp)
 {
-    int res, fd, rt_len, verb, for_sa, cstat, err, sz;
+    int res, fd, rt_len, vb3, vb4, for_sa, cstat, err, sz;
     uint64_t tc;
     unsigned char rt_buf[600];
     char b[400];
 
-    verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
+    vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
+    vb4 = (op->verbose > 2) ? (op->verbose - 3) : 0;
     sz = (int)sizeof(rt_buf);
     res = fetch_rrti_after_odx(op, DDPT_ARG_IN, &for_sa, &cstat, &tc, rt_buf,
-                               sz, &rt_len, verb);
+                               sz, &rt_len, vb4);
     if (res)
         return res;
     if (SA_POP_TOK != for_sa) {
@@ -1562,20 +1565,24 @@ fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp)
         pr2serr("Receive ROD Token info expected response for Populate "
                 "Token\n  but got response for %s\n", b);
     }
-    if ((! ((0x1 == cstat) || (0x3 == cstat))) || verb)
-        pr2serr("for PT: %s\n", cpy_op_status_str(cstat, b, sizeof(b)));
-    if (verb)
-        pr2serr("for PT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n", tc,
-                tc);
+    if ((! ((0x1 == cstat) || (0x3 == cstat))) || vb4)
+        pr2serr("RRTI for PT: %s\n", cpy_op_status_str(cstat, b, sizeof(b)));
+    if (vb3)
+        pr2serr("RRTI for PT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n",
+                tc, tc);
     if (tcp)
         *tcp = tc;
     if (rt_len > sz)
         rt_len = sz;
     if (rt_len > 0) {
-        if (verb)
-            pr2serr("%s: copy manager ROD Token id: %s [rt_len=%d]\n",
-                    __func__, rt_cm_id_str(rt_buf, rt_len, b, sizeof(b)),
-                    rt_len);
+        if (vb3) {
+            pr2serr("RRTI for PT: copy manager ROD Token id: %s",
+                    rt_cm_id_str(rt_buf, rt_len, b, sizeof(b)));
+            if (512 == rt_len)
+                pr2serr("\n");
+            else
+                pr2serr(" [rt_len=%d]\n", rt_len);
+        }
         if (op->rtf[0]) {     /* write ROD Token to RTF */
             fd = open(op->rtf, O_WRONLY | O_CREAT | O_TRUNC, 0644);
             if (fd < 0) {
@@ -1614,7 +1621,8 @@ fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp)
 static int
 do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir)
 {
-    int verb, len, k, n, fd, err, res, tmout, sz_bdrd, pl_sz, rodt_blk_zero;
+    int vb3, vb4, len, k, n, fd, err, res, tmout, sz_bdrd, pl_sz;
+    int rodt_blk_zero;
     struct flags_t * flp;
     uint64_t lba, sg0_off;
     uint32_t num;
@@ -1622,8 +1630,9 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir)
     unsigned char * pl;
     unsigned char rt[512];
 
-    verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
-    if (verb)
+    vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
+    vb4 = (op->verbose > 2) ? (op->verbose - 3) : 0;
+    if (vb3)
         pr2serr("%s: enter; blk_off=%" PRIu64 ", num_blks=%"  PRIu32 ", "
                 " oir=0x%" PRIx64 "\n", __func__, blk_off, num_blks, oir);
     fd = op->odip->fd;
@@ -1671,7 +1680,7 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir)
         pl[15] = (unsigned char)(oir & 0xff);
     }
     if (rodt_blk_zero) {
-        if (verb > 1)
+        if (vb3 > 1)
             pr2serr("  configure for block device zero ROD Token\n");
         local_rod_token[0] = (unsigned char)((RODT_BLK_ZERO >> 24) & 0xff);
         local_rod_token[1] = (unsigned char)((RODT_BLK_ZERO >> 16) & 0xff);
@@ -1713,7 +1722,7 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir)
             }
             if (num > num_blks)
                 num = num_blks;
-            if (verb)
+            if (vb3)
                 pr2serr("  lba=0x%" PRIx64 ", num=%" PRIu32 ", k=%d\n", lba,
                         num, k);
             pl[++n] = (unsigned char)((lba >> 56) & 0xff);
@@ -1738,7 +1747,7 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir)
         pl[534] = (unsigned char)((sz_bdrd >> 8) & 0xff);
         pl[535] = (unsigned char)(sz_bdrd & 0xff);
         lba = op->seek + blk_off;
-        if (verb)
+        if (vb3)
             pr2serr("  lba=0x%" PRIx64 ", num_blks=%" PRIu32 "\n", lba,
                     num_blks);
         pl[536] = (unsigned char)((lba >> 56) & 0xff);
@@ -1762,7 +1771,7 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir)
 
     tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
     res = pt_3party_copy_out(fd, SA_WR_USING_TOK, op->list_id, DEF_GROUP_NUM,
-                             tmout, pl, len, 1, verb);
+                             tmout, pl, len, 1, vb4);
     free(pl);
     return res;
 }
@@ -1770,13 +1779,14 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir)
 static int
 fetch_rrti_after_wut(struct opts_t * op, uint64_t * tcp)
 {
-    int res, verb, for_sa, cstat;
+    int res, vb3, vb4, for_sa, cstat;
     uint64_t tc;
     char b[80];
 
-    verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
+    vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
+    vb4 = (op->verbose > 2) ? (op->verbose - 3) : 0;
     res = fetch_rrti_after_odx(op, DDPT_ARG_OUT, &for_sa, &cstat, &tc, NULL,
-                               0, NULL, verb);
+                               0, NULL, vb4);
     if (res)
         return res;
     if (SA_WR_USING_TOK != for_sa) {
@@ -1785,13 +1795,13 @@ fetch_rrti_after_wut(struct opts_t * op, uint64_t * tcp)
         pr2serr("Receive ROD Token info expected response for Write "
                 "Using Token\n  but got response for %s\n", b);
     }
-    if ((! ((0x1 == cstat) || (0x3 == cstat))) || verb)
-        pr2serr("for WUT: %s\n", cpy_op_status_str(cstat, b, sizeof(b)));
+    if ((! ((0x1 == cstat) || (0x3 == cstat))) || vb4)
+        pr2serr("RRTI for WUT: %s\n", cpy_op_status_str(cstat, b, sizeof(b)));
     if (tcp)
         *tcp = tc;
-    if (verb)
-        pr2serr("for WUT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n", tc,
-                tc);
+    if (vb3)
+        pr2serr("RRTI for WUT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n",
+                tc, tc);
     return 0;
 }
 
@@ -2304,27 +2314,23 @@ odx_setup(struct opts_t * op)
 int
 do_odx(struct opts_t * op)
 {
-    int ret, in_immed, out_immed, time_useful, full_cp;
+    int ret, in_immed, out_immed, time_useful;
 
-    full_cp = (ODX_REQ_COPY == op->odx_request);
-    in_immed = (ODX_REQ_PT == op->odx_request) && op->iflagp->immed;
-    out_immed = ((ODX_REQ_WUT == op->odx_request) || full_cp) &&
-                 op->oflagp->immed;
-    if (in_immed && out_immed) {
-        pr2serr("Can't do iflag=immed -and_ oflag=immed\n");
+    in_immed = op->iflagp->immed;
+    out_immed = op->oflagp->immed;
+    if ((ODX_REQ_COPY == op->odx_request) && (in_immed || out_immed)) {
+        pr2serr("odx full copy can't use either immed flag\n");
+        return SG_LIB_SYNTAX_ERROR;
+    } else if (in_immed && out_immed) {
+        pr2serr("odx cannot use both immed flags, choose one\n");
         return SG_LIB_SYNTAX_ERROR;
     }
-    if (in_immed)
-        time_useful = 0;
-    else if (out_immed && (! full_cp))
-        time_useful = 0;
-    else
-        time_useful = 1;
+    time_useful = ! (in_immed || out_immed);
     if (op->do_time && time_useful)
         calc_duration_init(op);
     ret = odx_setup(op);
     if (time_useful && (0 == op->status_none))
-        print_stats("", op, (out_immed && full_cp));
+        print_stats("", op);
     if (op->do_time && time_useful)
         calc_duration_throughput("", 0, op);
     if (in_immed) {

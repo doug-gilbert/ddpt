@@ -410,7 +410,7 @@ int pr2serr(const char * fmt, ...) __attribute__ ((format (printf, 1, 2)));
 int pr2serr(const char * fmt, ...);
 #endif
 void sleep_ms(int millisecs);
-void print_stats(const char * str, struct opts_t * op, int first_half);
+void print_stats(const char * str, struct opts_t * op);
 int dd_filetype(const char * filename, int verbose);
 char * dd_filetype_str(int ft, char * buff, int max_bufflen,
                        const char * fname);
