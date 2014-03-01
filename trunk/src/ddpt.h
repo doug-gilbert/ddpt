@@ -125,6 +125,8 @@ extern "C" {
 #define ODX_REQ_COPY 3          /* PT followed by WUT */
 
 /* ROD Types used by ODX */
+#define RODT_CM_INTERNAL 0x0
+#define RODT_ACCESS_ON_REF 0x10000
 #define RODT_PIT_DEF 0x800000
 #define RODT_PIT_VULN 0x800001
 #define RODT_PIT_PERS 0x800002
@@ -434,6 +436,9 @@ void signals_process_delay(struct opts_t * op, int delay_type);
 void decode_designation_descriptor(const unsigned char * ucp, int i_len,
                                    int verb);
 int coe_process_eio(struct opts_t * op, int64_t skip);
+char * rod_type_str(uint32_t rt, char * b, int b_mlen);
+char * rt_cm_id_str(const unsigned char * rtp, int rt_len, char * b,
+                    int b_mlen);
 void print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr);
 
 /* defined in ddpt_pt.c */

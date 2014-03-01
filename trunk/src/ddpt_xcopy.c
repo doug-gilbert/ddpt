@@ -1360,33 +1360,37 @@ count_restricted_sgl_blocks(const struct scat_gath_elem * sglp, int elems,
 
 /* Do POPULATE_TOKEN command, returns 0 on success */
 static int
-do_pop_tok(struct opts_t * op, uint64_t sgl_off, uint32_t num_blks)
+do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks)
 {
     int res, k, n, verb, len, fd, tmout, sz_bdrd, pl_sz;
-    uint64_t lba;
+    uint64_t lba, sg0_off;
     uint32_t num;
-    const struct scat_gath_elem * sglp = NULL;
+    const struct scat_gath_elem * sglp;
     unsigned char * pl;
 
     verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
-    if (verb > 2)
-        pr2serr("%s: enter; sgl_off=%" PRIu64 ", num_blks=%"  PRIu32 "\n",
-                __func__, sgl_off, num_blks);
+    if (verb)
+        pr2serr("%s: blk_off=%" PRIu64 ", num_blks=%"  PRIu32 "\n", __func__,
+                blk_off, num_blks);
     fd = op->idip->fd;
     if (op->in_sgl) {
-        sglp = op->in_sgl;
-        for (k = 0; k < op->in_sgl_elems; ++k, ++sglp) {
-            if ((uint64_t)sglp->num > sgl_off)
+        sg0_off = blk_off;
+        for (k = 0, sglp = op->in_sgl; k < op->in_sgl_elems; ++k, ++sglp) {
+            if ((uint64_t)sglp->num > sg0_off)
                 break;
-            sgl_off -= sglp->num;
+            sg0_off -= sglp->num;
         }
         if (k >= op->in_sgl_elems) {
             pr2serr("%s: exhausted sgl_elems [%d], miscalculation\n",
                     __func__, op->in_sgl_elems);
             return SG_LIB_CAT_MALFORMED;
         }
+        /* remain sg elements is worst case, might use less */
+        pl_sz = 16 + (16 * (op->in_sgl_elems - k));
+    } else {
+        sglp = NULL;
+        pl_sz = 32;
     }
-    pl_sz = 16 + (16 * (op->in_sgl ? (op->in_sgl_elems - k) : 1));
     pl = (unsigned char *)malloc(pl_sz);
     memset(pl, 0, pl_sz);
     if (op->rod_type_given) {
@@ -1404,10 +1408,18 @@ do_pop_tok(struct opts_t * op, uint64_t sgl_off, uint32_t num_blks)
     pl[7] = (unsigned char)(op->inactivity_to & 0xff);
 
     if (sglp) {
+        lba = sglp->lba + sg0_off;
+        num = sglp->num - sg0_off;
         for (k = 0, n = 15; num_blks > 0; ++k, num_blks -= num, ++sglp) {
-            lba = sglp->lba;
-            if (0 == k)
-                lba += sgl_off;
+            if (k > 0) {
+                lba = sglp->lba;
+                num = sglp->num;
+            }
+            if (num > num_blks)
+                num = num_blks;
+            if (verb)
+                pr2serr("  lba=0x%" PRIx64 ", num=%" PRIu32 ", k=%d\n", lba,
+                        num, k);
             pl[++n] = (unsigned char)((lba >> 56) & 0xff);
             pl[++n] = (unsigned char)((lba >> 48) & 0xff);
             pl[++n] = (unsigned char)((lba >> 40) & 0xff);
@@ -1416,9 +1428,6 @@ do_pop_tok(struct opts_t * op, uint64_t sgl_off, uint32_t num_blks)
             pl[++n] = (unsigned char)((lba >> 16) & 0xff);
             pl[++n] = (unsigned char)((lba >> 8) & 0xff);
             pl[++n] = (unsigned char)(lba & 0xff);
-            num = sglp->num;
-            if (num > num_blks)
-                num = num_blks;
             pl[++n] = (unsigned char)((num >> 24) & 0xff);
             pl[++n] = (unsigned char)((num >> 16) & 0xff);
             pl[++n] = (unsigned char)((num >> 8) & 0xff);
@@ -1433,7 +1442,10 @@ do_pop_tok(struct opts_t * op, uint64_t sgl_off, uint32_t num_blks)
         sz_bdrd = 16;       /* single element */
         pl[14] = (unsigned char)((sz_bdrd >> 8) & 0xff);
         pl[15] = (unsigned char)(sz_bdrd & 0xff);
-        lba = op->skip + sgl_off;
+        lba = op->skip + blk_off;
+        if (verb)
+            pr2serr("  lba=0x%" PRIx64 ", num_blks=%" PRIu32 "\n", lba,
+                    num_blks);
         pl[16] = (unsigned char)((lba >> 56) & 0xff);
         pl[17] = (unsigned char)((lba >> 48) & 0xff);
         pl[18] = (unsigned char)((lba >> 40) & 0xff);
@@ -1521,8 +1533,6 @@ fetch_rrti_after_odx(struct opts_t * op, int in0_out1, int * for_sap,
     off = 32 + lsdf;
     rtdl = (rsp[off] << 24) | (rsp[off + 1] << 16) | (rsp[off + 2] << 8) |
            rsp[off + 3];
-    if ((rtdl > 2) && (verb > 2))
-        pr2serr("RRTI: ROD Token received, length=%d bytes\n", rtdl - 2);
     if ((rtdl > 2) && rtp && rt_lenp) {
         rt_len = rtdl - 2;
         memcpy(rtp, rsp + off + 6, (rt_len > max_rt_sz) ? max_rt_sz : rt_len);
@@ -1562,6 +1572,10 @@ fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp)
     if (rt_len > sz)
         rt_len = sz;
     if (rt_len > 0) {
+        if (verb)
+            pr2serr("%s: copy manager ROD Token id: %s [rt_len=%d]\n",
+                    __func__, rt_cm_id_str(rt_buf, rt_len, b, sizeof(b)),
+                    rt_len);
         if (op->rtf[0]) {     /* write ROD Token to RTF */
             fd = open(op->rtf, O_WRONLY | O_CREAT | O_TRUNC, 0644);
             if (fd < 0) {
@@ -1598,37 +1612,41 @@ fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp)
 
 /* Do WRITE USING TOKEN command, returns 0 on success */
 static int
-do_wut(struct opts_t * op, uint64_t sgl_off, uint32_t num_blks, uint64_t oir)
+do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir)
 {
     int verb, len, k, n, fd, err, res, tmout, sz_bdrd, pl_sz, rodt_blk_zero;
     struct flags_t * flp;
-    uint64_t lba;
+    uint64_t lba, sg0_off;
     uint32_t num;
-    const struct scat_gath_elem * sglp = NULL;
+    const struct scat_gath_elem * sglp;
     unsigned char * pl;
     unsigned char rt[512];
 
     verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
-    if (verb > 2)
-        pr2serr("%s: enter; sgl_off=%" PRIu64 ", num_blks=%"  PRIu32 ", "
-                " oir=0x%" PRIx64 "\n", __func__, sgl_off, num_blks, oir);
+    if (verb)
+        pr2serr("%s: enter; blk_off=%" PRIu64 ", num_blks=%"  PRIu32 ", "
+                " oir=0x%" PRIx64 "\n", __func__, blk_off, num_blks, oir);
     fd = op->odip->fd;
     flp = op->oflagp;
     rodt_blk_zero = (RODT_BLK_ZERO == op->rod_type);
     if (op->out_sgl) {
         sglp = op->out_sgl;
-        for (k = 0; k < op->out_sgl_elems; ++k, ++sglp) {
-            if ((uint64_t)sglp->num > sgl_off)
+        for (k = 0, sg0_off = blk_off; k < op->out_sgl_elems; ++k, ++sglp) {
+            if ((uint64_t)sglp->num > sg0_off)
                 break;
-            sgl_off -= sglp->num;
+            sg0_off -= sglp->num;
         }
         if (k >= op->out_sgl_elems) {
             pr2serr("%s: exhausted sgl_elems [%d], miscalculation\n",
                     __func__, op->out_sgl_elems);
             return SG_LIB_CAT_MALFORMED;
         }
+        /* remain sg elements is worst case, might use less */
+        pl_sz = 540 + (16 * (op->out_sgl_elems - k));
+    } else {
+        sglp = NULL;
+        pl_sz = 540 + 16;
     }
-    pl_sz = 540 + (16 * (op->out_sgl ? (op->out_sgl_elems - k) : 1));
     pl = (unsigned char *)malloc(pl_sz);
     memset(pl, 0, pl_sz);
     if (! rodt_blk_zero) {
@@ -1653,9 +1671,8 @@ do_wut(struct opts_t * op, uint64_t sgl_off, uint32_t num_blks, uint64_t oir)
         pl[15] = (unsigned char)(oir & 0xff);
     }
     if (rodt_blk_zero) {
-        if (verb > 3)
-            pr2serr("%s: configure for block device zero ROD Token\n",
-                    __func__);
+        if (verb > 1)
+            pr2serr("  configure for block device zero ROD Token\n");
         local_rod_token[0] = (unsigned char)((RODT_BLK_ZERO >> 24) & 0xff);
         local_rod_token[1] = (unsigned char)((RODT_BLK_ZERO >> 16) & 0xff);
         local_rod_token[2] = (unsigned char)((RODT_BLK_ZERO >> 8) & 0xff);
@@ -1687,10 +1704,18 @@ do_wut(struct opts_t * op, uint64_t sgl_off, uint32_t num_blks, uint64_t oir)
         memcpy(pl + 16, local_rod_token, 512);
 
     if (sglp) {
+        lba = sglp->lba + sg0_off;
+        num = sglp->num - sg0_off;
         for (k = 0, n = 535; num_blks > 0; ++k, num_blks -= num, ++sglp) {
-            lba = sglp->lba;
-            if (0 == k)
-                lba += sgl_off;
+            if (k > 0) {
+                lba = sglp->lba;
+                num = sglp->num;
+            }
+            if (num > num_blks)
+                num = num_blks;
+            if (verb)
+                pr2serr("  lba=0x%" PRIx64 ", num=%" PRIu32 ", k=%d\n", lba,
+                        num, k);
             pl[++n] = (unsigned char)((lba >> 56) & 0xff);
             pl[++n] = (unsigned char)((lba >> 48) & 0xff);
             pl[++n] = (unsigned char)((lba >> 40) & 0xff);
@@ -1699,9 +1724,6 @@ do_wut(struct opts_t * op, uint64_t sgl_off, uint32_t num_blks, uint64_t oir)
             pl[++n] = (unsigned char)((lba >> 16) & 0xff);
             pl[++n] = (unsigned char)((lba >> 8) & 0xff);
             pl[++n] = (unsigned char)(lba & 0xff);
-            num = sglp->num;
-            if (num > num_blks)
-                num = num_blks;
             pl[++n] = (unsigned char)((num >> 24) & 0xff);
             pl[++n] = (unsigned char)((num >> 16) & 0xff);
             pl[++n] = (unsigned char)((num >> 8) & 0xff);
@@ -1715,7 +1737,10 @@ do_wut(struct opts_t * op, uint64_t sgl_off, uint32_t num_blks, uint64_t oir)
         sz_bdrd = 16;   /* single element */
         pl[534] = (unsigned char)((sz_bdrd >> 8) & 0xff);
         pl[535] = (unsigned char)(sz_bdrd & 0xff);
-        lba = op->seek + sgl_off;
+        lba = op->seek + blk_off;
+        if (verb)
+            pr2serr("  lba=0x%" PRIx64 ", num_blks=%" PRIu32 "\n", lba,
+                    num_blks);
         pl[536] = (unsigned char)((lba >> 56) & 0xff);
         pl[537] = (unsigned char)((lba >> 48) & 0xff);
         pl[538] = (unsigned char)((lba >> 40) & 0xff);
@@ -1805,7 +1830,7 @@ odx_full_zero_copy(struct opts_t * op)
 {
     int k, got_count, res, out_blk_sz, out_num_elems;
     struct dev_info_t * odip = op->odip;
-    uint64_t out_sgl_off, num, tc;
+    uint64_t out_blk_off, num, tc;
     int64_t out_num_blks, v;
 
     k = dd_filetype(op->idip->fn, op->verbose);
@@ -1855,7 +1880,7 @@ odx_full_zero_copy(struct opts_t * op)
         return 0;
     }
     if ((op->dd_count < 0) && (0 == out_num_blks)) {
-        if (op->verbose > 1)
+        if (1 == op->verbose)
             pr2serr("%s: zero the lot after scaling for seek=\n", __func__);
         v -= op->seek;
         if (v < 0) {
@@ -1864,7 +1889,7 @@ odx_full_zero_copy(struct opts_t * op)
         }
         out_num_blks = v;
     }
-    out_sgl_off = 0;
+    out_blk_off = 0;
     op->dd_count = out_num_blks;
     if (op->verbose > 1)
         pr2serr("%s: about to zero %" PRIi64 " blocks\n", __func__,
@@ -1872,16 +1897,16 @@ odx_full_zero_copy(struct opts_t * op)
 
     for (k = 0; out_num_blks > 0; out_num_blks -= num, ++k) {
         num = out_num_blks;
-        if (op->bpt_given && ((uint64_t)op->bpt_i < num))
-            num = op->bpt_i;    /* in this case BPT refers to OFILE */
+        if ((op->obpch > 0) && ((uint64_t)op->obpch < num))
+            num = op->obpch;    /* in this case BPT refers to OFILE */
         if ((odip->odxp->max_tok_xfer_size > 0) &&
             (num > odip->odxp->max_tok_xfer_size))
             num = odip->odxp->max_tok_xfer_size;
         if (op->out_sgl)
             num = count_restricted_sgl_blocks(op->out_sgl, out_num_elems,
-                                              out_sgl_off, num,
+                                              out_blk_off, num,
                                               odip->odxp->max_range_desc);
-        if ((res = do_wut(op, out_sgl_off, num, 0)))
+        if ((res = do_wut(op, out_blk_off, num, 0)))
             return res;
         if ((res = fetch_rrti_after_wut(op, &tc)))
             return res;
@@ -1891,7 +1916,7 @@ odx_full_zero_copy(struct opts_t * op)
             // ouch, think about this one
         }
         op->out_full += tc;
-        out_sgl_off += num;
+        out_blk_off += num;
         op->dd_count -= tc;
     }
     return 0;
@@ -1905,7 +1930,7 @@ odx_full_copy(struct opts_t * op)
 {
     int k, res, ok, in_blk_sz, out_blk_sz, oneto1, in_mult, out_mult;
     int got_count, in_num_elems, out_num_elems;
-    uint64_t in_sgl_off, out_sgl_off, num, o_num, r_o_num, oir, tc;
+    uint64_t in_blk_off, out_blk_off, num, o_num, r_o_num, oir, tc;
     int64_t in_num_blks, out_num_blks, u, uu, v, vv;
     struct dev_info_t * idip = op->idip;
     struct dev_info_t * odip = op->odip;
@@ -2072,8 +2097,8 @@ odx_full_copy(struct opts_t * op)
         }
     }
 
-    in_sgl_off = 0;
-    out_sgl_off = 0;
+    in_blk_off = 0;
+    out_blk_off = 0;
     op->dd_count = in_num_blks;
     if (op->verbose > 1)
         pr2serr("%s: about to copy %" PRIi64 " blocks (seen from input)\n",
@@ -2089,7 +2114,7 @@ odx_full_copy(struct opts_t * op)
             num = idip->odxp->max_tok_xfer_size;
         if (op->in_sgl)
             num = count_restricted_sgl_blocks(op->in_sgl, in_num_elems,
-                                              in_sgl_off, num,
+                                              in_blk_off, num,
                                               idip->odxp->max_range_desc);
         if (! oneto1) {
             if (in_mult) {
@@ -2111,11 +2136,11 @@ odx_full_copy(struct opts_t * op)
         } else
             o_num = num;
         if (op->verbose > 2)
-            pr2serr("%s: k=%d, in_sgl_off=0x%" PRIx64 ", i_num=%" PRIu64 ", "
-                    "out_sgl_off=0x%" PRIx64 ", o_num=%" PRIu64 "\n",
-                    __func__, k, in_sgl_off, num, out_sgl_off, o_num);
+            pr2serr("%s: k=%d, in_blk_off=0x%" PRIx64 ", i_num=%" PRIu64 ", "
+                    "out_blk_off=0x%" PRIx64 ", o_num=%" PRIu64 "\n",
+                    __func__, k, in_blk_off, num, out_blk_off, o_num);
 
-        if ((res = do_pop_tok(op, in_sgl_off, num)))
+        if ((res = do_pop_tok(op, in_blk_off, num)))
             return res;
         if ((res = fetch_rt_after_poptok(op, &tc)))
             return res;
@@ -2126,20 +2151,22 @@ odx_full_copy(struct opts_t * op)
         }
         op->in_full += tc;
         op->dd_count -= tc;
-        in_sgl_off += num;
+        in_blk_off += num;
 
         for (oir = 0; o_num > 0; oir += r_o_num, o_num -= r_o_num) {
             /* output dev might be more restricted than input, so multiple
              * WUT calls (latter ones using offset in ROD) may be needed */
             r_o_num = o_num;
+            if ((op->obpch > 0) && ((uint64_t)op->obpch < r_o_num))
+                r_o_num = op->obpch;
             if ((odip->odxp->max_tok_xfer_size > 0) &&
                 (r_o_num > odip->odxp->max_tok_xfer_size))
                 r_o_num = odip->odxp->max_tok_xfer_size;
             if (op->out_sgl)
                 r_o_num = count_restricted_sgl_blocks(op->out_sgl,
-                                out_num_elems, out_sgl_off, r_o_num,
+                                out_num_elems, out_blk_off, r_o_num,
                                 odip->odxp->max_range_desc);
-            if ((res = do_wut(op, out_sgl_off, r_o_num, oir)))
+            if ((res = do_wut(op, out_blk_off, r_o_num, oir)))
                 return res;
             if ((res = fetch_rrti_after_wut(op, &tc)))
                 return res;
@@ -2149,7 +2176,7 @@ odx_full_copy(struct opts_t * op)
                 // ouch, think about this one
             }
             op->out_full += tc;
-            out_sgl_off += r_o_num;
+            out_blk_off += r_o_num;
         }
     }
     return 0;
@@ -2208,8 +2235,8 @@ odx_setup(struct opts_t * op)
     }
 
     if (ODX_REQ_PT == req) {
-        if (op->bpt_given)
-            pr2serr("warning: bpt=BPT ignored for ODX PT\n");
+        if ((op->bpt_given) || (op->obpch > 0))
+            pr2serr("warning: bpt=BPT[,OBPC] ignored for ODX PT\n");
         if (op->in_sgl) {
             num_elems = op->in_sgl_elems;
             num_blks = count_sgl_blocks(op->in_sgl, num_elems);
@@ -2236,8 +2263,8 @@ odx_setup(struct opts_t * op)
         op->in_full += tc;
         op->dd_count -= tc;
     } else if (ODX_REQ_WUT == req) {
-        if (op->bpt_given)
-            pr2serr("warning: bpt=BPT ignored for ODX WUT\n");
+        if ((op->bpt_given) || (op->obpch > 0))
+            pr2serr("warning: bpt=BPT[,OBPC] ignored for ODX WUT\n");
         if (op->out_sgl) {
             num_elems = op->out_sgl_elems;
             num_blks = count_sgl_blocks(op->out_sgl, num_elems);
