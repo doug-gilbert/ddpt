@@ -64,7 +64,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140228 [svn: r264]";
+const char * ddptctl_version_str = "0.94 20140301 [svn: r265]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -129,6 +129,7 @@ static struct option long_options[] = {
         {"abort", required_argument, 0, 'A'},
         {"all_toks", no_argument, 0, 'a'},
         {"block", no_argument, 0, 'b'},
+        {"delay", required_argument, 0, 'd'},
         {"help", no_argument, 0, 'h'},
         {"info", no_argument, 0, 'i'},
         {"list_id", required_argument, 0, 'l'},
@@ -147,21 +148,25 @@ static void
 usage()
 {
     pr2serr("Usage: "
-            "ddptctl [--abort=LID] [--all_toks] [--block] [--help] [--info]\n"
-            "               [--list_id=LID] [--poll] [--receive] [--rtf=RTF] "
-            "[--size]\n"
-            "               [--verbose] [--version] [DEVICE]\n"
+            "ddptctl [--abort=LID] [--all_toks] [--block] [--delay=MS] "
+            "[--help]\n"
+            "               [--info] [--list_id=LID] [--poll] [--receive] "
+            "[--rtf=RTF]\n"
+            "               [--size] [--verbose] [--version] [DEVICE]\n"
             "  where:\n"
             "    --abort=LID|-A LID    call COPY OPERATION ABORT on LID\n"
             "    --all_toks|-a         call REPORT ALL ROD TOKENS\n"
             "    --block|-B            treat DEVICE as block device (def: "
             "treat as pt)\n"
+            "    --delay=MS|-d MS      delay in milliseconds between polls "
+            "(def: 1000)\n"
             "    --help|-h             print out usage message\n"
             "    --info|-i             provide information on DEVICE or "
             "RTF\n"
             "    --list_id=LID|-l LID    LID is list identifier for --poll "
             "or --receive\n"
-            "    --poll|-p             keep calling RRTI until complete\n"
+            "    --poll|-p             call RRTI every MS millisecs until "
+            "complete\n"
             "    --receive|-R          call RRTI once\n"
             "    --rtf=RTF|-r RTF      ROD Token file for analyse (--info) "
             "or write to\n"
@@ -364,6 +369,7 @@ main(int argc, char * argv[])
     int do_abort = 0;
     int do_all_toks = 0;
     int do_block = 0;
+    int delay_ms = 1000;
     int do_info = 0;
     int do_poll = 0;
     int do_receive = 0;
@@ -387,7 +393,7 @@ main(int argc, char * argv[])
     while (1) {
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "A:aBhil:pr:RsvV", long_options,
+        c = getopt_long(argc, argv, "A:aBd:hil:pr:RsvV", long_options,
                         &option_index);
         if (c == -1)
             break;
@@ -412,6 +418,13 @@ main(int argc, char * argv[])
             break;
         case 'B':
             ++do_block;
+            break;
+        case 'd':
+            delay_ms = sg_get_num(optarg);
+            if (delay_ms < 0) {
+                pr2serr("bad argument to 'delay='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
             break;
         case 'h':
         case '?':
@@ -534,7 +547,8 @@ main(int argc, char * argv[])
             if (ret)
                 goto clean_up;
             cont = ((cstat >= 0x10) && (cstat <= 0x12));
-            sleep(1);
+            if (delay_ms)
+                sleep_ms(delay_ms);
         } while (cont);
         sg_get_opcode_sa_name(DDPT_TPC_OUT_CMD, for_sa, 0, (int)sizeof(b), b);
         printf("RRTI for %s: %s\n", b,

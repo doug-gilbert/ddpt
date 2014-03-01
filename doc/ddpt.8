@@ -1,4 +1,4 @@
-.TH DDPT "8" "February 2014" "ddpt\-0.94" DDPT
+.TH DDPT "8" "March 2014" "ddpt\-0.94" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -276,10 +276,10 @@ Only applies to errors on pt devices.
 .TP
 \fBrtf\fR=\fIRTF\fR
 odx: where \fIRTF\fR is a filename. The ROD token will be written to
-\fIRTF\fR during a disk->held operation. In a held->disk operation the ROD
-token is read from the \fIRTF\fR filename. With a odx disk->disk copy this
-option does not need to be given but if it is the ROD Token is written
-to the \fIRTF\fR filename.
+\fIRTF\fR during a disk->ROD operation (e.g. PT command). In a ROD->disk
+operation (e.g. WUT command) the ROD token is read from the \fIRTF\fR
+filename. With a odx disk->disk copy this option does not need to be given
+but if it is the last ROD Token used is written to the \fIRTF\fR filename.
 .TP
 \fBrtype\fR=\fIRTYPE\fR
 odx: where \fIRTYPE\fR is the ROD type. The default value (0) indicates that
@@ -288,7 +288,7 @@ a hex number (prefixed by 0x or with a "h" appended) or one
 of "pit-def", "pit-vuln", "pit-pers", "pit-any" or "zero". The final
 truncated word can be spelt out (e.g. "pit-vulnerable"). The "pit-" part
 stands for "point in time" copy. The first four names can be used with
-disk->held or disk->disk copy and apply to the \fIIFILE\fR. The "zero" causes
+disk->ROD or disk->disk copy and apply to the \fIIFILE\fR. The "zero" causes
 a special Block device zero Token to be created. It applies to the
 \fIOFILE\fR (replacing the \fIIFILE\fR side) and implies zero->disk and so
 is equivalent to a WRITE SAME(zero) command.
@@ -298,8 +298,9 @@ start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
 \fIOFILE\fR. Default is block 0 (i.e. start of file). The \fISEEK\fR value
 may exceed the number of \fIOBS\fR\-sized blocks in \fIOFILE\fR.
 odx: \fISEEK\fR can be a scatter list: comma separated, in the form
-seek=A1,N1,A2,N2... . \fISEEK\fR may alternatively be "\-" to read from
-stdin of a file containing a scatter list with the form "@<filename>".
+seek=A1,N1[,A2,N2...] . The scatter list may alternatively be read from
+a file using this form: seek=@<filename> or read from stdin using this form:
+seek=\- .
 .TP
 \fBskip\fR=\fISKIP\fR
 start reading \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of
@@ -307,8 +308,9 @@ start reading \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of
 must be less than or equal to the number of \fIIBS\fR\-sized blocks in
 \fIIFILE\fR.
 odx: \fISKIP\fR can be a gather list: comma separated, in the form
-skip=A1,N1,A2,N2... . \fISKIP\fR may alternatively be "\-" to read from
-stdin of a file containing a gather list with the form "@<filename>".
+skip=A1,N1[,A2,N2...] . The gather list may alternatively be read from
+a file using this form: skip=@<filename> or read from stdin using this form:
+skip=\- .
 .TP
 \fBstatus\fR=\fISTAT\fR
 the \fISTAT\fR value of 'noxfer' suppresses the throughput speed and the
@@ -508,7 +510,7 @@ being used.
 del_tkn [o] [odx]
 will set the DEL_TKN bit in the WRITE USING TOKEN command. This will
 cause the ROD token to be deleted (as far as the copy manager is concerned)
-after the write operation. The default for a partial ODX held(ROD)-->disk
+after the write operation. The default for a partial ODX ROD-->disk
 copy is to clear the DEL_TKN bit. Note that if a full ODX disk-->disk copy
 is being done then setting DEL_TKN is the default (override with the
 no_del_tkn flag).
@@ -1090,12 +1092,12 @@ If the \fIpad\fR flag is set for both source and target any residual
 source data will be discarded, and any residual destination data will
 be padded.
 .SH ODX
-This section describes ODX support (XCOPY(LID4) subset) with this utility.
+This section describes ODX support (an XCOPY(LID4) subset) for this utility.
 For XCOPY(LID1) support see the XCOPY section.
 .PP
 ODX descriptions use the following command name abbreviations: PT for
-POPULATE TOKEN, RRTI for READ ROD TOKEN INFORMATION, and WUT for WRITE
-USING TOKEN.
+the POPULATE TOKEN command, RRTI for the READ ROD TOKEN INFORMATION command,
+and WUT for the WRITE USING TOKEN command.
 .PP
 A device (logical unit (LU)) that supports ODX operations must set
 the 3PC field (3PC stands for Third Party Copy) in its standard INQUIRY

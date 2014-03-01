@@ -3,9 +3,10 @@
 ddptctl \- helper/auxiliary utility for ddpt
 .SH SYNOPSIS
 .B ddptctl
-[\fI\-\-abort=LID\fR] [\fI\-\-all_toks\fR] [\fI\-\-block\fR] [\fI\-\-help\fR]
-[\fI\-\-info\fR] [\fI\-\-list_id=LID\fR] [\fI\-\-poll\fR] [\fI\-\-receive\fR]
-[\fI\-\-rtf=RTF\fR] [\fI\-\-size\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR]
+[\fI\-\-abort=LID\fR] [\fI\-\-all_toks\fR] [\fI\-\-block\fR]
+[\fI\-\-delay=MS\fR] [\fI\-\-help\fR] [\fI\-\-info\fR] [\fI\-\-list_id=LID\fR]
+[\fI\-\-poll\fR] [\fI\-\-receive\fR] [\fI\-\-rtf=RTF\fR] [\fI\-\-size\fR]
+[\fI\-\-verbose\fR] [\fI\-\-version\fR]
 [\fIDEVICE\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
@@ -39,6 +40,10 @@ treat \fIDEVICE\fR asa block device when checking its \fI\-\-size\fR. The
 default action of this utility is to treat \fIDEVICE\fR as a SCSI
 pass\-through device.
 .TP
+\fB\-d\fR, \fB\-\-delay\fR=\fIMS\fR
+\fIMS\fR is the delay in milliseconds between each poll (see \fI\-\-poll\fR).
+A value of 0 implies no delay. the deafult value is 1000 (i.e. 1 second).
+.TP
 \fB\-h\fR, \fB\-\-help\fR
 outputs the usage message summarizing command line options then exits.
 .TP
@@ -59,9 +64,9 @@ file.
 send the RECEIVE ROD TOKEN INFORMATION SCSI command (RRTI) to the \fIDEVICE\fR
 using the \fILID\fR (i.e. from the \fI\-\-list_id=LID\fR option). If
 a copy status indicating the operation is still in progress, then the
-same SCSI command is sent every second until some other copy status
-is detected. If the \fI\-\-list_id=LID\fR option is not given then a
-\fILID\fR of 257 is assumed.
+same SCSI command is sent every \fIMS\fR milliseconds (see \fI\-\-delay=MS\fR)
+until some other copy status is detected. If the \fI\-\-list_id=LID\fR option
+is not given then a \fILID\fR of 257 is assumed.
 .br
 If the originating xcopy command was POPULATE TOKEN and the RRTI command
 indicates that it has completed successfully then the associated
