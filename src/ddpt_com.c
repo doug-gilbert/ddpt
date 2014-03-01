@@ -1421,6 +1421,71 @@ coe_process_eio(struct opts_t * op, int64_t skip)
     return 0;
 }
 
+char *
+rod_type_str(uint32_t rt, char * b, int b_mlen)
+{
+    int got_pit = 0;
+    const char * cp = NULL;
+    const char * pitp = "point in time copy - ";
+
+    switch (rt) {
+    case RODT_CM_INTERNAL:
+        cp = "copy manager internal";
+        break;
+    case RODT_ACCESS_ON_REF:
+        cp = "access upon reference";
+        break;
+    case RODT_PIT_DEF:
+        cp = "default";
+        got_pit = 1;
+        break;
+    case RODT_PIT_VULN:
+        cp = "change vulnerable";
+        got_pit = 1;
+        break;
+    case RODT_PIT_PERS:
+        cp = "persistent";
+        got_pit = 1;
+        break;
+    case RODT_PIT_ANY:
+        cp = "any";
+        got_pit = 1;
+        break;
+    case RODT_BLK_ZERO:
+        cp = "block device zero";
+        break;
+    default:
+        if (rt >= 0xfffffff0)
+            cp = "vendor specific";
+        else if (rt >= 0xff000000)
+            cp = "device type specific";
+        else
+            cp = "reserved";
+        break;
+    }
+    if (cp)
+        snprintf(b, b_mlen, "%s%s [0x%" PRIx32 "]", (got_pit ? pitp : ""),
+                 cp, rt);
+    else
+        snprintf(b, b_mlen, "0x%" PRIx32 "", rt);
+    return b;
+}
+
+char *
+rt_cm_id_str(const unsigned char * rtp, int rt_len, char * b, int b_mlen)
+{
+    int m, num;
+
+    if (rt_len < 16)
+        snprintf(b, b_mlen, "ROD Token too short (%d < 16)\n", rt_len);
+    num = 0;
+    num += snprintf(b, b_mlen, "0x");
+    for (m = 0; ((m < 8) && (num < b_mlen)); ++m)
+        num += snprintf(b + num, b_mlen - num, "%02x",
+                        (unsigned int)rtp[8 + m]);
+    return b;
+}
+
 void
 print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr)
 {

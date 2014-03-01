@@ -96,7 +96,8 @@ when \fIIBS\fR < 1024, \fIBPT\fR is 128; when \fIIBS\fR < 8192, \fIBPT\fR
 is 16; when \fIIBS\fR < 32768, \fIBPT\fR is 4; else \fIBPT\fR defaults
 to 1. If \fIBPT\fR is given as 0 it is treated as the default value.
 For "bs=512", \fIBPT\fR defaults to 128 so that 64 KiB (or less) is read
-from \fIIFILE\fR into the copy buffer.
+from \fIIFILE\fR into the copy buffer. This option is treated differently
+in ODX and is typically only needed for testing; see ODX section.
 .br
 The optional \fIOBPC\fR (Output Blocks Per Check) argument controls
 controls the granularity of sparse writes, write sparing and trim checks.
@@ -1099,6 +1100,32 @@ USING TOKEN.
 A device (logical unit (LU)) that supports ODX operations must set
 the 3PC field (3PC stands for Third Party Copy) in its standard INQUIRY
 response and support the Third Party Copy VPD page.
+.PP
+If the block size of the input and output are different (i.e. \fIIBS\f
+is not equal to \fIOBS\fR) then one must be a multiple of the other. So
+an input block size of 512 bytes and an output block size of 4096
+bytes (or vice versa) is acceptable.
+.PP
+The \fIbpt=BPT[,OBPC]\fR option should typically not be given with ODX. This
+utility will try to send the largest sized PT command permitted by the
+input's Third party Copy VPD page. A WUT command of the same size is then
+sent unless it is more constrained by its Third party Copy VPD page in which
+case multiple WUT commands are sent. If \fIbpt=BPT\fR is given it will act
+as an extra constraint. Note that the Third party Copy VPD page can not only
+constrain the largest number of blocks a single PT or WUT command may act on,
+it can also limit the number of scatter gather elements it can handle.
+.PP
+There a four variants of ODX supported by this utility:
+.br
+  \fBfull copy\fR : ddpt if=/dev/sg3 of=/dev/sg4 bs=512 --odx
+.br
+  \fBzero output\fR : ddpt if=/dev/null of=/dev/sg4 bs=512 rtype=zero
+.br
+  \fBsingle PT\fR : ddpt if=/dev/sg3 bs=512 skip=@gath.lst rtf=a.rt
+.br
+  \fBsingle WUT\fR : ddpt bs=512 of=/dev/sg4 seek=@scat.lst rtf=a.rt
+.PP
+xxxxx
 .SH ENVIRONMENT VARIABLES
 If the command line invocation of an xcopy does not explicitly (and
 unambiguously) indicate whether the XCOPY SCSI command should be sent
