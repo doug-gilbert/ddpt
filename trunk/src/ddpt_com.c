@@ -171,7 +171,7 @@ sleep_ms(int millisecs)
 }
 
 void
-print_stats(const char * str, struct opts_t * op, int first_half)
+print_stats(const char * str, struct opts_t * op)
 {
 #ifdef SG_LIB_LINUX
     /* Print tape read summary if necessary . */
@@ -182,8 +182,6 @@ print_stats(const char * str, struct opts_t * op, int first_half)
         pr2serr("  remaining block count=%" PRId64 "\n", op->dd_count);
     pr2serr("%s%" PRId64 "+%d records in\n", str, op->in_full,
             op->in_partial);
-    if (first_half)
-        return;
     pr2serr("%s%" PRId64 "+%d records out\n", str, op->out_full,
             op->out_partial);
     if (op->out_sparse_active || op->out_sparing_active) {
@@ -1147,7 +1145,7 @@ signals_process_delay(struct opts_t * op, int delay_type)
         if (interrupt) {
             pr2serr("Interrupted by signal %s\n",
                     get_signal_name(interrupt, b, sizeof(b)));
-            print_stats("", op, 0);
+            print_stats("", op);
             /* Don't show next message if using oflag=pre-alloc and we didn't
              * use FALLOC_FL_KEEP_SIZE */
             if ((0 == op->reading_fifo) && (FT_REG & op->odip->d_type_hold)
@@ -1157,7 +1155,7 @@ signals_process_delay(struct opts_t * op, int delay_type)
             ; // >>>>>>>>>>>>> cleanup ();
         } else {
             pr2serr("Progress report:\n");
-            print_stats("  ", op, 0);
+            print_stats("  ", op);
             if (op->do_time)
                 calc_duration_throughput("  ", 1, op);
             pr2serr("  continuing ...\n");

@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.94 20140228 [svn: r264]";
+static const char * ddpt_version_str = "0.94 20140301 [svn: r265]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -2611,7 +2611,7 @@ main(int argc, char * argv[])
         ret = do_rw_copy(op);
 
     if (0 == op->status_none)
-        print_stats("", op, 0);
+        print_stats("", op);
 
     if ((op->oflagp->ssync) && (FT_PT & op->odip->d_type)) {
         if (0 == op->status_none)
