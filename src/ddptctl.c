@@ -64,7 +64,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140227 [svn: r263]";
+const char * ddptctl_version_str = "0.94 20140228 [svn: r264]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -175,44 +175,6 @@ usage()
             );
 }
 
-static const char *
-rod_type_str(uint32_t rt, char * b, int blen)
-{
-    const char * pitc = "Point in time copy -";
-
-    switch (rt) {
-    case 0x0:
-        snprintf(b, blen, "Copy Manager internal");
-        break;
-    case 0x10000:
-        snprintf(b, blen, "Access upon reference");
-        break;
-    case 0x800000:
-        snprintf(b, blen, "%s default", pitc);
-        break;
-    case 0x800001:
-        snprintf(b, blen, "%s change vulnerable", pitc);
-        break;
-    case 0x800002:
-        snprintf(b, blen, "%s persistent", pitc);
-        break;
-    case 0x80ffff:
-        snprintf(b, blen, "%s any", pitc);
-        break;
-    case 0xffff0001:
-        snprintf(b, blen, "Block device zero ROD");
-        break;
-    default:
-        if (rt < 0xff000000)
-            snprintf(b, blen, "Reserved (any device type)");
-        else if (rt < 0xfffffff0)
-            snprintf(b, blen, "Reserved (device type specific)");
-        else
-            snprintf(b, blen, "Vendor specific");
-    }
-    return b;
-}
-
 static int
 odx_rt_info(const struct opts_t * op)
 {
@@ -258,8 +220,7 @@ odx_rt_info(const struct opts_t * op)
 
     printf("Decoding information from ROD Token header:\n");
     rod_t = (rth[0] << 24) + (rth[1] << 16) + (rth[2] << 8) + rth[3];
-    printf("  ROD type: %s [0x%" PRIx32 "]\n",
-           rod_type_str(rod_t, b, sizeof(b)), rod_t);
+    printf("  ROD type: %s\n", rod_type_str(rod_t, b, sizeof(b)));
     if (rod_t >= 0xfffffff0) {
         printf("    Since ROD type is vendor specific, the following may "
                "not be relevant\n");
@@ -275,10 +236,8 @@ odx_rt_info(const struct opts_t * op)
             return SG_LIB_FILE_ERROR;
         }
     }
-    printf("  Copy manager ROD Token identifier=0x");
-    for (m = 0; m < 8; ++m)
-        printf("%02x", (unsigned int)rth[8 + m]);
-    printf("\n");
+    printf("  Copy manager ROD Token identifier: %s\n",
+           rt_cm_id_str(rth, rtl + 8, b, sizeof(b)));
     printf("  Creator Logical Unit descriptor:\n");
     /* should make smaller version of following that outputs to stdout */
     if (0xe4 != rth[16]) {

@@ -194,7 +194,10 @@ secondary_help:
            "    protect     set rdprotect and/or wrprotect fields on "
            "pt commands\n"
            "    rtf         ROD Token filename (odx)\n"
-           "    rtype       ROD type (odx) (def: 0 -> cm decides)\n"
+           "    rtype       ROD type (odx), can be pit-any, pit-def, "
+           "pit-pers,\n"
+           "                pit-vuln, zero or number (def: 0 -> cm "
+           "decides)\n"
            "    to          xcopy, odx: timeout in seconds (def: 600 "
            "(10 mins))\n\n");
     pr2serr("FLAGS: (arguments to oflag= and oflag=; may be comma "
@@ -240,8 +243,8 @@ tertiary_help:
             "  nowrite (o)    bypass all writes to OFILE\n"
             "  null           does nothing, place holder\n"
             "  odx            request xcopy(LID4) based on POPULATE TOKEN "
-            "(disk->held)\n"
-            "                 and/or WRITE USING TOKEN (held->disk) "
+            "(disk->ROD)\n"
+            "                 and/or WRITE USING TOKEN (ROD->disk) "
             "commands\n"
             "  pad (o)        pad blocks shorter than OBS with zeroes\n"
             "  pre-alloc (o)  use fallocate() before copy to set OFILE to "
@@ -777,6 +780,7 @@ static int
 cl_sanity_defaults(struct opts_t * op)
 {
     const char * cp;
+    char b[80];
 
     if ((0 == op->ibs) && (0 == op->obs)) {
         op->ibs = DEF_BLOCK_SIZE;
@@ -796,10 +800,14 @@ cl_sanity_defaults(struct opts_t * op)
                     "block size)\n", op->ibs);
     }
     op->ibs_hold = op->ibs;
+    if (op->bpt_given && (op->bpt_i < 1)) {
+	op->bpt_given = 0;
+	/* want to allow bpt=0,<num> where BPT takes the default, for ODX */
+    }
     if (0 == op->bpt_given)
         op->bpt_i = default_bpt_i(op->ibs);
 
-    if ((op->ibs != op->obs) &&
+    if ((op->ibs != op->obs) && (ODX_REQ_NONE == op->odx_request) &&
         (0 != ((op->ibs * op->bpt_i) % op->obs))) {
         pr2serr("when 'ibs' and 'obs' differ, ((ibs*bpt)/obs) must have "
                 "no remainder (bpt=%d)\n", op->bpt_i);
@@ -814,7 +822,7 @@ cl_sanity_defaults(struct opts_t * op)
         return SG_LIB_SYNTAX_ERROR;
     }
     if (op->bpt_i < 1) {
-        pr2serr("bpt must be greater than 0\n");
+        pr2serr("internal BPT value 0, cannot continue\n");
         return SG_LIB_SYNTAX_ERROR;
     }
     if (op->iflagp->append)
@@ -954,19 +962,28 @@ cl_sanity_defaults(struct opts_t * op)
         cp = "";
         if (op->idip->fn[0] && op->odip->fn[0]) {
             op->odx_request = ODX_REQ_COPY;
-            if (op->verbose > 1)
-                cp = "full copy: POPULATE TOKEN then WRITE USING TOKEN(s), "
-                     "repeatedly";
-            else
-                cp = "full copy\n";
+            if (RODT_BLK_ZERO == op->rod_type) {
+                if (op->verbose > 1)
+                    cp = "zero destination: call WRITE USING TOKEN(s), "
+                         "repeatedly";
+                else
+                    cp = "zero destination\n";
+
+            } else {
+                if (op->verbose > 1)
+                    cp = "full copy: POPULATE TOKEN then WRITE USING "
+                         "TOKEN(s), repeatedly";
+                else
+                    cp = "full copy\n";
+            }
         } else if (op->idip->fn[0]) {
             op->odx_request = ODX_REQ_PT;
             if (op->verbose)
-                cp = "disk-->held; POPULATE TOKEN";
+                cp = "disk-->ROD; POPULATE TOKEN";
         } else if (op->odip->fn[0]) {
             op->odx_request = ODX_REQ_WUT;
             if (op->verbose)
-                cp = "held-->disk; WRITE USING TOKEN";
+                cp = "ROD-->disk; WRITE USING TOKEN";
         } else {
             pr2serr("Not enough options given to do ODX (xcopy(LID4))\n");
             return SG_LIB_SYNTAX_ERROR;
@@ -974,7 +991,8 @@ cl_sanity_defaults(struct opts_t * op)
         if (op->verbose) {
             pr2serr("ODX: %s\n", cp);
             if ((op->verbose > 1) && op->rod_type_given)
-                pr2serr("ODX: ROD type: 0x%" PRIx32 "\n", op->rod_type);
+                pr2serr("ODX: ROD type: %s\n",
+                        rod_type_str(op->rod_type, b, sizeof(b)));
         }
     }
     if (op->verbose) {      /* report flags used but not supported */
