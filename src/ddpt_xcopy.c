@@ -103,6 +103,8 @@
 #define TD_IP_COPY_SERVICE 2048
 #define TD_ROD 4096
 
+#define DEF_POLL_DELAY_MS 500
+
 
 #define LOCAL_ROD_TOKEN_SIZE 1024
 static unsigned char local_rod_token[LOCAL_ROD_TOKEN_SIZE];
@@ -1474,13 +1476,11 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks)
 }
 
 int
-fetch_rrti_after_odx(struct opts_t * op, int in0_out1, int * for_sap,
-                     int * cstatp, uint64_t * tc_p, unsigned char * rtp,
-                     int max_rt_sz, int * rt_lenp, int verb)
+fetch_rrti_after_odx(struct opts_t * op, int in0_out1,
+                     struct rrti_resp_t * rrp, int verb)
 {
-    int j, res, fd, for_sa, cstat, lsdf, off, rt_len;
-    unsigned int len, rtdl;
-    uint64_t ull;
+    int j, res, fd, lsdf, off;
+    uint32_t len, rtdl;
     unsigned char rsp[1024];
     char b[400];
     char bb[80];
@@ -1498,90 +1498,101 @@ fetch_rrti_after_odx(struct opts_t * op, int in0_out1, int * for_sap,
                 "truncated\n");
         len = sizeof(rsp);
     }
-    if (verb > 3) {
+    if (verb > 1) {
         pr2serr("\nRRTI response in hex:\n");
         dStrHexErr((const char *)rsp, len, 1);
     }
-    for_sa = 0x1f & rsp[4];
-    if (SA_POP_TOK == for_sa)
+    if (NULL == rrp)
+        return 0;
+    rrp->for_sa = 0x1f & rsp[4];
+    if (SA_POP_TOK == rrp->for_sa)
         cp = "RRTI for PT";
-    else if (SA_WR_USING_TOK == for_sa)
+    else if (SA_WR_USING_TOK == rrp->for_sa)
         cp = "RRTI for WUT";
     else
         cp = "RRTI for non ODX service action";
-    if (verb > 2)
+    if (verb > 1)
         pr2serr("%s\n", cp);
-    if (for_sap)
-        *for_sap = for_sa;
-    cstat = 0x7f & rsp[5];
-    if (verb > 3)
-       pr2serr("%s: %s\n", cp, cpy_op_status_str(cstat, b, sizeof(b)));
-    if (cstatp)
-        *cstatp = cstat;
-    ull = 0;
+    rrp->cstat = 0x7f & rsp[5];
+    rrp->xc_cstatus = rsp[12];
+    rrp->sense_len = rsp[14];
+    rrp->esu_del = (rsp[8] << 24) | (rsp[9] << 16) | (rsp[10] << 8) | rsp[11];
+    if (verb)
+       pr2serr("%s: %s\n", cp, cpy_op_status_str(rrp->cstat, b, sizeof(b)));
+    rrp->tc = 0;
     for (j = 0; j < 8; j++) {
         if (j > 0)
-            ull <<= 8;
-        ull |= rsp[16 + j];
+            rrp->tc <<= 8;
+        rrp->tc |= rsp[16 + j];
     }
-    if (tc_p)
-        *tc_p = ull;
     lsdf = rsp[13];
     if (lsdf > 0) {
         snprintf(bb, sizeof(bb), "%s: sense data", cp);
-        sg_get_sense_str(cp, rsp + 32, rsp[14], verb, sizeof(b), b);
+        sg_get_sense_str(bb, rsp + 32, rsp[14], verb, sizeof(b), b);
         pr2serr("%s\n", b);
     }
     off = 32 + lsdf;
     rtdl = (rsp[off] << 24) | (rsp[off + 1] << 16) | (rsp[off + 2] << 8) |
            rsp[off + 3];
-    if ((rtdl > 2) && rtp && rt_lenp) {
-        rt_len = rtdl - 2;
-        memcpy(rtp, rsp + off + 6, (rt_len > max_rt_sz) ? max_rt_sz : rt_len);
-        *rt_lenp = rt_len;
-    } else if (rt_lenp)
-        *rt_lenp = 0;
+    rrp->rt_len = (rtdl > 2) ? rtdl - 2 : 0;
+    if (rtdl > 2)
+        memcpy(rrp->rod_tok, rsp + off + 6,
+               ((rrp->rt_len > 512) ? 512 : rrp->rt_len));
     return 0;
 }
 
 static int
 fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp)
 {
-    int res, fd, rt_len, vb3, vb4, for_sa, cstat, err, sz;
-    uint64_t tc;
-    unsigned char rt_buf[600];
+    int res, fd, len, vb3, vb4, err, cont;
+    uint32_t delay;
+    struct rrti_resp_t r;
     char b[400];
 
     vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
     vb4 = (op->verbose > 2) ? (op->verbose - 3) : 0;
-    sz = (int)sizeof(rt_buf);
-    res = fetch_rrti_after_odx(op, DDPT_ARG_IN, &for_sa, &cstat, &tc, rt_buf,
-                               sz, &rt_len, vb4);
-    if (res)
-        return res;
-    if (SA_POP_TOK != for_sa) {
-        sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, for_sa, 0, sizeof(b),
-                              b);
-        pr2serr("Receive ROD Token info expected response for Populate "
-                "Token\n  but got response for %s\n", b);
-    }
-    if ((! ((0x1 == cstat) || (0x3 == cstat))) || vb4)
-        pr2serr("RRTI for PT: %s\n", cpy_op_status_str(cstat, b, sizeof(b)));
+    do {
+        res = fetch_rrti_after_odx(op, DDPT_ARG_IN, &r, vb4);
+        if (res)
+            return res;
+        if (SA_POP_TOK != r.for_sa) {
+            sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, r.for_sa, 0,
+                                  sizeof(b), b);
+            pr2serr("Receive ROD Token info expected response for Populate "
+                    "Token\n  but got response for %s\n", b);
+        }
+        cont = ((r.cstat >= 0x10) && (r.cstat <= 0x12));
+        if (cont) {
+            delay = r.esu_del;
+            if ((delay < 0xfffffffe) && (delay > 0)) {
+                if (vb4 > 1)
+                    pr2serr("using copy manager recommended delay of %"
+                            PRIu32 " milliseconds\n", delay);
+            } else {
+                delay = DEF_POLL_DELAY_MS;
+                if (vb4 > 1)
+                    pr2serr("using default for poll delay\n");
+            }
+            if (delay)
+                sleep_ms(delay);
+        }
+    } while (cont);
+    if ((! ((0x1 == r.cstat) || (0x3 == r.cstat))) || vb4)
+        pr2serr("RRTI for PT: %s\n", cpy_op_status_str(r.cstat, b, sizeof(b)));
     if (vb3)
         pr2serr("RRTI for PT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n",
-                tc, tc);
+                r.tc, r.tc);
     if (tcp)
-        *tcp = tc;
-    if (rt_len > sz)
-        rt_len = sz;
-    if (rt_len > 0) {
+        *tcp = r.tc;
+    if (r.rt_len > 0) {
+        len = (r.rt_len > 512) ? 512 : r.rt_len;
         if (vb3) {
             pr2serr("RRTI for PT: copy manager ROD Token id: %s",
-                    rt_cm_id_str(rt_buf, rt_len, b, sizeof(b)));
-            if (512 == rt_len)
+                    rt_cm_id_str(r.rod_tok, r.rt_len, b, sizeof(b)));
+            if (512 == r.rt_len)
                 pr2serr("\n");
             else
-                pr2serr(" [rt_len=%d]\n", rt_len);
+                pr2serr(" [rt_len=%d]\n", r.rt_len);
         }
         if (op->rtf[0]) {     /* write ROD Token to RTF */
             fd = open(op->rtf, O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -1591,7 +1602,7 @@ fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp)
                         op->rtf, safe_strerror(err));
                 return SG_LIB_FILE_ERROR;
             }
-            res = write(fd, rt_buf, rt_len);
+            res = write(fd, r.rod_tok, len);
             if (res < 0) {
                 err = errno;
                 pr2serr("%s: unable to write to file: %s [%s]\n", __func__,
@@ -1600,18 +1611,18 @@ fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp)
                 return SG_LIB_FILE_ERROR;
             }
             close(fd);
-            if (res < rt_len) {
+            if (res < len) {
                 pr2serr("%s: short write to file: %s, wanted %d, got %d\n",
-                        __func__, op->rtf, rt_len, res);
+                        __func__, op->rtf, len, res);
                 return SG_LIB_CAT_OTHER;
             }
         } else {        /* write ROD Token to static */
-            if (rt_len > LOCAL_ROD_TOKEN_SIZE) {
+            if (len > LOCAL_ROD_TOKEN_SIZE) {
                 pr2serr("%s: ROD token too large for static storage, try "
                         "'rtf=RTF'\n", __func__);
                 return SG_LIB_CAT_OTHER;
             }
-            memcpy(local_rod_token, rt_buf, rt_len);
+            memcpy(local_rod_token, r.rod_tok, len);
         }
     }
     return 0;
@@ -1779,29 +1790,48 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir)
 static int
 fetch_rrti_after_wut(struct opts_t * op, uint64_t * tcp)
 {
-    int res, vb3, vb4, for_sa, cstat;
-    uint64_t tc;
+    int res, cont, vb3, vb4;
+    uint32_t delay;
+    struct rrti_resp_t r;
     char b[80];
 
     vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
     vb4 = (op->verbose > 2) ? (op->verbose - 3) : 0;
-    res = fetch_rrti_after_odx(op, DDPT_ARG_OUT, &for_sa, &cstat, &tc, NULL,
-                               0, NULL, vb4);
-    if (res)
-        return res;
-    if (SA_WR_USING_TOK != for_sa) {
-        sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, for_sa, 0, sizeof(b),
-                              b);
-        pr2serr("Receive ROD Token info expected response for Write "
-                "Using Token\n  but got response for %s\n", b);
-    }
-    if ((! ((0x1 == cstat) || (0x3 == cstat))) || vb4)
-        pr2serr("RRTI for WUT: %s\n", cpy_op_status_str(cstat, b, sizeof(b)));
+    do {
+        res = fetch_rrti_after_odx(op, DDPT_ARG_OUT, &r, vb4);
+        if (res)
+            return res;
+        if (SA_WR_USING_TOK != r.for_sa) {
+            sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, r.for_sa, 0,
+                                  sizeof(b), b);
+            pr2serr("Receive ROD Token info expected response for Write "
+                    "Using Token\n  but got response for %s\n", b);
+        }
+        cont = ((r.cstat >= 0x10) && (r.cstat <= 0x12));
+        if (cont) {
+            delay = r.esu_del;
+            if ((delay < 0xfffffffe) && (delay > 0)) {
+                if (vb4 > 1)
+                    pr2serr("using copy manager recommended delay of %"
+                            PRIu32 " milliseconds\n", delay);
+            } else {
+                delay = DEF_POLL_DELAY_MS;
+                if (vb4 > 1)
+                    pr2serr("using default for poll delay\n");
+            }
+            if (delay)
+                sleep_ms(delay);
+        }
+    } while (cont);
+
+    if ((! ((0x1 == r.cstat) || (0x3 == r.cstat))) || vb4)
+        pr2serr("RRTI for WUT: %s\n", cpy_op_status_str(r.cstat, b,
+                sizeof(b)));
     if (tcp)
-        *tcp = tc;
+        *tcp = r.tc;
     if (vb3)
         pr2serr("RRTI for WUT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n",
-                tc, tc);
+                r.tc, r.tc);
     return 0;
 }
 
@@ -2314,31 +2344,22 @@ odx_setup(struct opts_t * op)
 int
 do_odx(struct opts_t * op)
 {
-    int ret, in_immed, out_immed, time_useful;
+    int ret, full_cp_or_zero;
 
-    in_immed = op->iflagp->immed;
-    out_immed = op->oflagp->immed;
-    if ((ODX_REQ_COPY == op->odx_request) && (in_immed || out_immed)) {
-        pr2serr("odx full copy can't use either immed flag\n");
-        return SG_LIB_SYNTAX_ERROR;
-    } else if (in_immed && out_immed) {
-        pr2serr("odx cannot use both immed flags, choose one\n");
-        return SG_LIB_SYNTAX_ERROR;
-    }
-    time_useful = ! (in_immed || out_immed);
-    if (op->do_time && time_useful)
+    full_cp_or_zero = (ODX_REQ_COPY == op->odx_request);
+    if (op->do_time && full_cp_or_zero)
         calc_duration_init(op);
     ret = odx_setup(op);
-    if (time_useful && (0 == op->status_none))
+    if (full_cp_or_zero && (0 == op->status_none))
         print_stats("", op);
-    if (op->do_time && time_useful)
+    if (op->do_time && full_cp_or_zero)
         calc_duration_throughput("", 0, op);
-    if (in_immed) {
+    if (op->iflagp->immed && (! full_cp_or_zero)) {
         op->dd_count = 0;       /* mute early termination report */
         pr2serr("Started ODX read (populate token) in immediate "
                 "mode.\nUser may need list_id=%d for completion\n",
                 op->list_id);
-    } else if (out_immed) {
+    } else if (op->oflagp->immed && (! full_cp_or_zero)) {
         op->dd_count = 0;       /* mute early termination report */
         pr2serr("Started ODX write (write using token) in immediate "
                 "mode.\nUser may need list_id=%d for completion\n",
