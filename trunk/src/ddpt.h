@@ -395,6 +395,17 @@ struct val_str_t {
     const char * name;
 };
 
+struct rrti_resp_t {
+    uint8_t for_sa;     /* response to service action */
+    uint8_t cstat;      /* copy operation status */
+    uint8_t xc_cstatus; /* extended copy completion status */
+    uint8_t sense_len;  /* sense data length */
+    uint32_t esu_del;   /* estimated status update delay (ms) */
+    uint64_t tc;        /* transfer count (blocks) */
+    uint32_t rt_len;    /* might differ from 512, 0 if no ROD token */
+    unsigned char rod_tok[512];
+};
+
 struct sg_simple_inquiry_resp;
 
 
@@ -465,9 +476,8 @@ int pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
 /* defined in ddpt_xcopy.c */
 const char * cpy_op_status_str(int cos, char * b, int blen);
 int print_3pc_vpd(struct opts_t * op);
-int fetch_rrti_after_odx(struct opts_t * op, int in0_out1, int * for_sap,
-                         int * cstatp, uint64_t * tc_p, unsigned char * rtp,
-                         int max_rt_sz, int * rt_lenp, int verb);
+int fetch_rrti_after_odx(struct opts_t * op, int in0_out1,
+                         struct rrti_resp_t * rrp, int verb);
 int do_xcopy(struct opts_t * op);       /* xcopy(LID1) */
 int do_odx(struct opts_t * op);
 

@@ -1,4 +1,4 @@
-.TH DDPTCTL "8" "February 2014" "ddpt\-0.94" DDPT
+.TH DDPTCTL "8" "March 2014" "ddpt\-0.94" DDPT
 .SH NAME
 ddptctl \- helper/auxiliary utility for ddpt
 .SH SYNOPSIS
@@ -71,7 +71,8 @@ is not given then a \fILID\fR of 257 is assumed.
 If the originating xcopy command was POPULATE TOKEN and the RRTI command
 indicates that it has completed successfully then the associated
 ROD Token (returned in the RRTI response) is written to the \fIRTF\fR
-file. If the \fI\-\-rtf=RTF\fR option is not given then ...
+file. If the \fI\-\-rtf=RTF\fR option is not given then the ROD token is
+written to a file called ddptctl_rod_tok.bin in the current directory.
 .TP
 \fB\-R\fR, \fB\-\-receive\fR
 send the RECEIVE ROD TOKEN INFORMATION SCSI command (RRTI) to the \fIDEVICE\fR

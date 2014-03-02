@@ -64,7 +64,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140301 [svn: r265]";
+const char * ddptctl_version_str = "0.94 20140302 [svn: r265]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -112,6 +112,11 @@ const char * ddptctl_version_str = "0.94 20140301 [svn: r265]";
 #define DDPT_TPC_OUT_CMD 0x83
 #define DDPT_TPC_IN_CMD 0x84
 
+#define SA_XCOPY_LID1           0x0     /* OUT, originate */
+#define SA_XCOPY_LID4           0x1     /* OUT, originate */
+#define SA_POP_TOK              0x10    /* OUT, originate */
+#define SA_WR_USING_TOK         0x11    /* OUT, originate */
+#define SA_COPY_ABORT           0x1C    /* OUT, abort */
 #define SA_COPY_STATUS_LID1     0x0     /* IN, retrieve */
 #define SA_COPY_DATA_LID1       0x1     /* IN, retrieve */
 #define SA_COPY_OP_PARAMS       0x3     /* IN, retrieve */
@@ -122,6 +127,8 @@ const char * ddptctl_version_str = "0.94 20140301 [svn: r265]";
 #define SA_ALL_ROD_TOKS         0x8     /* IN, retrieve */
 
 #define DEF_3PC_IN_TIMEOUT 60           /* these should be fast */
+
+#define DEF_ROD_TOK_FILE "ddptctl_rod_tok.bin"
 
 
 
@@ -296,14 +303,14 @@ odx_rt_info(const struct opts_t * op)
 static int
 report_all_toks(struct opts_t * op, struct dev_info_t * dip)
 {
-    int res, fd, verb;
+    int res, fd;
     unsigned int len;
     unsigned char rsp[2048];
 
-    verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
     fd = dip->fd;
     res = pt_3party_copy_in(fd, SA_ALL_ROD_TOKS, op->list_id,
-                            DEF_3PC_IN_TIMEOUT, rsp, sizeof(rsp), 1, verb);
+                            DEF_3PC_IN_TIMEOUT, rsp, sizeof(rsp), 1,
+                            op->verbose);
     if (res)
         return res;
 
@@ -318,6 +325,43 @@ report_all_toks(struct opts_t * op, struct dev_info_t * dip)
         dStrHexErr((const char *)rsp, len, 1);
     }
     // Hmmm, not supported on HP 3 PAR (and not required for ODX)
+    return 0;
+}
+
+static int
+write_to_rtf(const char * rtf, const struct rrti_resp_t * rp)
+{
+    int fd, res, len, err;
+    const char * cp;
+
+    if (rtf[0])
+        cp = rtf;
+    else {
+        cp = DEF_ROD_TOK_FILE;
+        pr2serr("no --rtf=RTF given so writing ROD Token to %s\n", cp);
+    }
+    fd = open(cp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) {
+        err = errno;
+        pr2serr("%s: unable to create file: %s [%s]\n", __func__,
+                cp, safe_strerror(err));
+        return SG_LIB_FILE_ERROR;
+    }
+    len = (rp->rt_len > 512) ? 512 : rp->rt_len;
+    res = write(fd, rp->rod_tok, len);
+    if (res < 0) {
+        err = errno;
+        pr2serr("%s: unable to write to file: %s [%s]\n", __func__,
+                cp, safe_strerror(err));
+        close(fd);
+        return SG_LIB_FILE_ERROR;
+    }
+    close(fd);
+    if (res < len) {
+        pr2serr("%s: short write to file: %s, wanted %d, got %d\n",
+                __func__, cp, len, res);
+        return SG_LIB_CAT_OTHER;
+    }
     return 0;
 }
 
@@ -364,12 +408,13 @@ state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
 int
 main(int argc, char * argv[])
 {
-    int c, fd, flags, blk_sz, rt_len, cstat, for_sa, sz, cont, done;
+    int c, fd, flags, blk_sz, cont, done;
+    uint32_t delay;
     int64_t i64, num_blks;
     int do_abort = 0;
     int do_all_toks = 0;
     int do_block = 0;
-    int delay_ms = 1000;
+    int cl_delay_ms = 1000;
     int do_info = 0;
     int do_poll = 0;
     int do_receive = 0;
@@ -379,16 +424,14 @@ main(int argc, char * argv[])
     struct flags_t iflag, oflag;
     struct dev_info_t ids, ods, o2ds;
     struct sg_simple_inquiry_resp sir;
+    struct rrti_resp_t rrti_rsp;
     struct opts_t * op;
-    unsigned char rt_buf[600];
     char b[80];
     char bb[80];
-    uint64_t tc;
 
     state_init(&ops, &iflag, &oflag, &ids, &ods, &o2ds);
     op = &ops;
     memset(&sir, 0, sizeof(sir));
-    sz = (int)sizeof(rt_buf);
 
     while (1) {
         int option_index = 0;
@@ -420,8 +463,8 @@ main(int argc, char * argv[])
             ++do_block;
             break;
         case 'd':
-            delay_ms = sg_get_num(optarg);
-            if (delay_ms < 0) {
+            cl_delay_ms = sg_get_num(optarg);
+            if (cl_delay_ms < 0) {
                 pr2serr("bad argument to 'delay='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
@@ -531,28 +574,52 @@ main(int argc, char * argv[])
     else if (do_receive) {
         if (! op->list_id_given)
             op->list_id = 0x101;
-        ret = fetch_rrti_after_odx(op, DDPT_ARG_IN, &for_sa, &cstat, &tc,
-                                   rt_buf, sz, &rt_len, op->verbose);
+        ret = fetch_rrti_after_odx(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
         if (ret)
             goto clean_up;
-        sg_get_opcode_sa_name(DDPT_TPC_OUT_CMD, for_sa, 0, (int)sizeof(b), b);
+        sg_get_opcode_sa_name(DDPT_TPC_OUT_CMD, rrti_rsp.for_sa, 0,
+                              (int)sizeof(b), b);
         printf("RRTI for %s: %s\n", b,
-               cpy_op_status_str(cstat, bb, sizeof(bb)));
+               cpy_op_status_str(rrti_rsp.cstat, bb, sizeof(bb)));
+        if ((SA_POP_TOK == rrti_rsp.for_sa) && (rrti_rsp.rt_len > 0)) {
+            ret = write_to_rtf(op->rtf, &rrti_rsp);
+            if (ret)
+                goto clean_up;
+        }
     } else if (do_poll) {
         if (! op->list_id_given)
             op->list_id = 0x101;
         do {
-            ret = fetch_rrti_after_odx(op, DDPT_ARG_IN, &for_sa, &cstat, &tc,
-                                       rt_buf, sz, &rt_len, op->verbose);
+            ret = fetch_rrti_after_odx(op, DDPT_ARG_IN, &rrti_rsp,
+                                       op->verbose);
             if (ret)
                 goto clean_up;
-            cont = ((cstat >= 0x10) && (cstat <= 0x12));
-            if (delay_ms)
-                sleep_ms(delay_ms);
+            cont = ((rrti_rsp.cstat >= 0x10) && (rrti_rsp.cstat <= 0x12));
+            if (cont) {
+                delay = rrti_rsp.esu_del;
+                if ((delay < 0xfffffffe) && (delay > 0)) {
+                    if (op->verbose > 1)
+                        pr2serr("using copy manager recommended delay of %"
+                                PRIu32 " milliseconds\n", delay);
+                } else {
+                    delay = cl_delay_ms;
+                    if (op->verbose > 1)
+                        pr2serr("using --delay=MS or its default for poll "
+                                "delay\n");
+                }
+                if (delay)
+                    sleep_ms(delay);
+            }
         } while (cont);
-        sg_get_opcode_sa_name(DDPT_TPC_OUT_CMD, for_sa, 0, (int)sizeof(b), b);
+        sg_get_opcode_sa_name(DDPT_TPC_OUT_CMD, rrti_rsp.for_sa, 0,
+                              (int)sizeof(b), b);
         printf("RRTI for %s: %s\n", b,
-               cpy_op_status_str(cstat, bb, sizeof(bb)));
+               cpy_op_status_str(rrti_rsp.cstat, bb, sizeof(bb)));
+        if ((SA_POP_TOK == rrti_rsp.for_sa) && (rrti_rsp.rt_len > 0)) {
+            ret = write_to_rtf(op->rtf, &rrti_rsp);
+            if (ret)
+                goto clean_up;
+        }
     } else
         done = 0;
     if (done)
