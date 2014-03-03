@@ -1145,9 +1145,9 @@ pt_tpc_process_res(int cp_ret, int sense_cat, const unsigned char * sense_b,
 int
 pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
                    int timeout_secs, void * paramp, int param_len,
-                   int noisy, int verbose)
+                   int noisy, int vb)
 {
-    int k, res, ret, sense_cat, tmout;
+    int k, res, ret, has_lid, sense_cat, tmout;
     unsigned char xcopyCmdBlk[DDPT_TPC_OUT_CMDLEN] =
       {DDPT_TPC_OUT_CMD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     unsigned char sense_b[SENSE_BUFF_LEN];
@@ -1164,6 +1164,7 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
         xcopyCmdBlk[11] = (unsigned char)((param_len >> 16) & 0xff);
         xcopyCmdBlk[12] = (unsigned char)((param_len >> 8) & 0xff);
         xcopyCmdBlk[13] = (unsigned char)(param_len & 0xff);
+        has_lid = 0;
         break;
     case 0x10:  /* POPULATE TOKEN (SBC-3) */
     case 0x11:  /* WRITE USING TOKEN (SBC-3) */
@@ -1171,6 +1172,7 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
         xcopyCmdBlk[7] = (unsigned char)((list_id >> 16) & 0xff);
         xcopyCmdBlk[8] = (unsigned char)((list_id >> 8) & 0xff);
         xcopyCmdBlk[9] = (unsigned char)(list_id & 0xff);
+        has_lid = 1;
         xcopyCmdBlk[10] = (unsigned char)((param_len >> 24) & 0xff);
         xcopyCmdBlk[11] = (unsigned char)((param_len >> 16) & 0xff);
         xcopyCmdBlk[12] = (unsigned char)((param_len >> 8) & 0xff);
@@ -1182,6 +1184,7 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
         xcopyCmdBlk[3] = (unsigned char)((list_id >> 16) & 0xff);
         xcopyCmdBlk[4] = (unsigned char)((list_id >> 8) & 0xff);
         xcopyCmdBlk[5] = (unsigned char)(list_id & 0xff);
+        has_lid = 1;
         break;
     default:
         pr2serr("pt_3party_copy_out: unknown service action 0x%x\n", sa);
@@ -1189,14 +1192,23 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
     }
     tmout = (timeout_secs > 0) ? timeout_secs : DEF_PT_TIMEOUT;
 
-    if (verbose) {
-        pr2serr("    %s cmd: ", cname);
-        for (k = 0; k < DDPT_TPC_OUT_CMDLEN; ++k)
-            pr2serr("%02x ", xcopyCmdBlk[k]);
-        pr2serr("\n");
-        if ((verbose > 1) && paramp && param_len) {
-            pr2serr("    %s parameter list:\n", cname);
-            dStrHexErr((const char *)paramp, param_len, -1);
+    if (vb) {
+        if ((vb > 1) || (param_len <= 0)) {
+            pr2serr("    %s cmd : ", cname);
+            for (k = 0; k < DDPT_TPC_OUT_CMDLEN; ++k)
+                pr2serr("%02x ", xcopyCmdBlk[k]);
+            pr2serr("\n");
+        } else if (has_lid)
+            pr2serr("    %s for list_id=%" PRIu32 "\n", cname, list_id);
+        if (paramp && param_len) {
+            if ((vb > 1) || (param_len <= 16)) {
+                pr2serr("    %s parameter list:\n", cname);
+                dStrHexErr((const char *)paramp, param_len, -1);
+            } else {
+                pr2serr("    %s, first 16 of %d byte parameter list:\n",
+                        cname, param_len);
+                dStrHexErr((const char *)paramp, 16, -1);
+            }
         }
     }
 
@@ -1208,8 +1220,8 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
     set_scsi_pt_cdb(ptvp, xcopyCmdBlk, sizeof(xcopyCmdBlk));
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_out(ptvp, (unsigned char *)paramp, param_len);
-    res = do_scsi_pt(ptvp, sg_fd, tmout, verbose);
-    ret = sg_cmds_process_resp(ptvp, cname, res, 0, sense_b, noisy, verbose,
+    res = do_scsi_pt(ptvp, sg_fd, tmout, vb);
+    ret = sg_cmds_process_resp(ptvp, cname, res, 0, sense_b, noisy, vb,
                                &sense_cat);
     if ((-1 == ret) &&
         (SCSI_PT_RESULT_STATUS == get_scsi_pt_result_category(ptvp)) &&
@@ -1224,16 +1236,16 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
 
 int
 pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
-                  void * resp, int mx_resp_len, int noisy, int verbose)
+                  void * resp, int mx_resp_len, int noisy, int vb)
 {
     int k, res, ret, sense_cat, tmout;
     unsigned char rcvcopyresCmdBlk[DDPT_TPC_IN_CMDLEN] =
       {DDPT_TPC_IN_CMD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     unsigned char sense_b[SENSE_BUFF_LEN];
     struct sg_pt_base * ptvp;
-    char b[64];
+    char cname[64];
 
-    sg_get_opcode_sa_name(DDPT_TPC_IN_CMD, sa, 0, (int)sizeof(b), b);
+    sg_get_opcode_sa_name(DDPT_TPC_IN_CMD, sa, 0, (int)sizeof(cname), cname);
     rcvcopyresCmdBlk[1] = (unsigned char)(sa & 0x1f);
     if (sa <= 4)        /* LID1 variants */
         rcvcopyresCmdBlk[2] = (unsigned char)(list_id);
@@ -1249,8 +1261,8 @@ pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
     rcvcopyresCmdBlk[13] = (unsigned char)(mx_resp_len & 0xff);
     tmout = (timeout_secs > 0) ? timeout_secs : DEF_PT_TIMEOUT;
 
-    if (verbose) {
-        pr2serr("    %s cmd: ", b);
+    if (vb > 1) {
+        pr2serr("    %s cmd: ", cname);
         for (k = 0; k < DDPT_TPC_IN_CMDLEN; ++k)
             pr2serr("%02x ", rcvcopyresCmdBlk[k]);
         pr2serr("\n");
@@ -1258,15 +1270,15 @@ pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
 
     ptvp = construct_scsi_pt_obj();
     if (NULL == ptvp) {
-        pr2serr("%s: out of memory\n", b);
+        pr2serr("%s: out of memory\n", cname);
         return -1;
     }
     set_scsi_pt_cdb(ptvp, rcvcopyresCmdBlk, sizeof(rcvcopyresCmdBlk));
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_in(ptvp, (unsigned char *)resp, mx_resp_len);
-    res = do_scsi_pt(ptvp, sg_fd, tmout, verbose);
-    ret = sg_cmds_process_resp(ptvp, b, res, mx_resp_len, sense_b, noisy,
-                               verbose, &sense_cat);
+    res = do_scsi_pt(ptvp, sg_fd, tmout, vb);
+    ret = sg_cmds_process_resp(ptvp, cname, res, mx_resp_len, sense_b, noisy,
+                               vb, &sense_cat);
     if ((-1 == ret) &&
         (SCSI_PT_RESULT_STATUS == get_scsi_pt_result_category(ptvp)) &&
         (SAM_STAT_RESERVATION_CONFLICT == get_scsi_pt_status_response(ptvp)))
