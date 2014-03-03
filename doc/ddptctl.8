@@ -3,10 +3,9 @@
 ddptctl \- helper/auxiliary utility for ddpt
 .SH SYNOPSIS
 .B ddptctl
-[\fI\-\-abort=LID\fR] [\fI\-\-all_toks\fR] [\fI\-\-block\fR]
-[\fI\-\-delay=MS\fR] [\fI\-\-help\fR] [\fI\-\-info\fR] [\fI\-\-list_id=LID\fR]
-[\fI\-\-poll\fR] [\fI\-\-receive\fR] [\fI\-\-rtf=RTF\fR] [\fI\-\-size\fR]
-[\fI\-\-verbose\fR] [\fI\-\-version\fR]
+[\fI\-\-abort=LID\fR] [\fI\-\-all_toks\fR] [\fI\-\-block\fR] [\fI\-\-help\fR]
+[\fI\-\-info\fR] [\fI\-\-list_id=LID\fR] [\fI\-\-poll\fR] [\fI\-\-receive\fR]
+[\fI\-\-rtf=RTF\fR] [\fI\-\-size\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR]
 [\fIDEVICE\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
@@ -40,10 +39,6 @@ treat \fIDEVICE\fR asa block device when checking its \fI\-\-size\fR. The
 default action of this utility is to treat \fIDEVICE\fR as a SCSI
 pass\-through device.
 .TP
-\fB\-d\fR, \fB\-\-delay\fR=\fIMS\fR
-\fIMS\fR is the delay in milliseconds between each poll (see \fI\-\-poll\fR).
-A value of 0 implies no delay. the deafult value is 1000 (i.e. 1 second).
-.TP
 \fB\-h\fR, \fB\-\-help\fR
 outputs the usage message summarizing command line options then exits.
 .TP
@@ -63,10 +58,11 @@ file.
 \fB\-p\fR, \fB\-\-poll\fR
 send the RECEIVE ROD TOKEN INFORMATION SCSI command (RRTI) to the \fIDEVICE\fR
 using the \fILID\fR (i.e. from the \fI\-\-list_id=LID\fR option). If
-a copy status indicating the operation is still in progress, then the
-same SCSI command is sent every \fIMS\fR milliseconds (see \fI\-\-delay=MS\fR)
-until some other copy status is detected. If the \fI\-\-list_id=LID\fR option
-is not given then a \fILID\fR of 257 is assumed.
+a copy status is received indicating the operation is still in progress, then
+the same SCSI command is sent periodically (as suggested by the previous RRTI
+command or 500 milliseconds) until some other copy status is detected. If
+the \fI\-\-list_id=LID\fR option is not given then a \fILID\fR of 257 is
+assumed.
 .br
 If the originating xcopy command was POPULATE TOKEN and the RRTI command
 indicates that it has completed successfully then the associated
@@ -95,8 +91,9 @@ increase the level of verbosity, (i.e. debug output).
 print the version string and then exit.
 .SH EXIT STATUS
 The exit status of ddptctl is 0 when it is successful. Otherwise the exit
-status for the ddpt and ddptctl utilities is the same (and is a super-set)
-of the exit status values found in the sg3_utils(8) man page).
+status for the ddpt and ddptctl utilities includes those exit status values
+found in the sg3_utils(8) man page plus some ddpt specific exit values. See
+this section in the ddpt man page.
 .SH EXAMPLES
 TBD
 .SH AUTHORS

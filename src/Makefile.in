@@ -82,12 +82,18 @@ bin_PROGRAMS = ddpt$(EXEEXT) ddptctl$(EXEEXT)
 @OS_WIN32_MINGW_TRUE@am__append_1 = ddpt_win32.c \
 @OS_WIN32_MINGW_TRUE@			ddpt_wscan.c
 
-@OS_WIN32_CYGWIN_TRUE@am__append_2 = ddpt_win32.c \
+@OS_WIN32_MINGW_TRUE@am__append_2 = ddpt_win32.c \
+@OS_WIN32_MINGW_TRUE@			ddpt_wscan.c
+
+@OS_WIN32_CYGWIN_TRUE@am__append_3 = ddpt_win32.c \
 @OS_WIN32_CYGWIN_TRUE@			ddpt_wscan.c
 
-@HAVE_SGUTILS_FALSE@am__append_3 = $(sglib_SOURCES)
+@OS_WIN32_CYGWIN_TRUE@am__append_4 = ddpt_win32.c \
+@OS_WIN32_CYGWIN_TRUE@			ddpt_wscan.c
+
+@HAVE_SGUTILS_FALSE@am__append_5 = $(sglib_SOURCES)
 @HAVE_SGUTILS_TRUE@ddpt_DEPENDENCIES =
-@HAVE_SGUTILS_FALSE@am__append_4 = $(sglib_SOURCES)
+@HAVE_SGUTILS_FALSE@am__append_6 = $(sglib_SOURCES)
 @HAVE_SGUTILS_TRUE@ddptctl_DEPENDENCIES =
 subdir = src
 DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
@@ -122,14 +128,15 @@ am_ddpt_OBJECTS = ddpt.$(OBJEXT) ddpt_cl.$(OBJEXT) ddpt_com.$(OBJEXT) \
 	$(am__objects_2) $(am__objects_4)
 ddpt_OBJECTS = $(am_ddpt_OBJECTS)
 am__ddptctl_SOURCES_DIST = ddptctl.c ddpt.h ddpt_com.c ddpt_pt.c \
-	ddpt_xcopy.c ../lib/sg_lib.c ../include/sg_lib.h \
-	../lib/sg_lib_data.c ../include/sg_lib_data.h \
-	../lib/sg_cmds_basic.c ../lib/sg_cmds_basic2.c \
-	../include/sg_cmds_basic.h ../lib/sg_cmds_extra.c \
-	../include/sg_cmds_extra.h ../include/sg_pt.h \
-	../lib/sg_pt_common.c
+	ddpt_xcopy.c ddpt_win32.c ddpt_wscan.c ../lib/sg_lib.c \
+	../include/sg_lib.h ../lib/sg_lib_data.c \
+	../include/sg_lib_data.h ../lib/sg_cmds_basic.c \
+	../lib/sg_cmds_basic2.c ../include/sg_cmds_basic.h \
+	../lib/sg_cmds_extra.c ../include/sg_cmds_extra.h \
+	../include/sg_pt.h ../lib/sg_pt_common.c
 am_ddptctl_OBJECTS = ddptctl.$(OBJEXT) ddpt_com.$(OBJEXT) \
-	ddpt_pt.$(OBJEXT) ddpt_xcopy.$(OBJEXT) $(am__objects_4)
+	ddpt_pt.$(OBJEXT) ddpt_xcopy.$(OBJEXT) $(am__objects_1) \
+	$(am__objects_2) $(am__objects_4)
 ddptctl_OBJECTS = $(am_ddptctl_OBJECTS)
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -300,9 +307,9 @@ top_srcdir = @top_srcdir@
 # -std=<s> can be c99, c11, gnu11, etc. Default is gnu89 (gnu90 is the same)
 AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W
 ddpt_SOURCES = ddpt.c ddpt.h ddpt_cl.c ddpt_com.c ddpt_pt.c \
-	ddpt_xcopy.c $(am__append_1) $(am__append_2) $(am__append_3)
+	ddpt_xcopy.c $(am__append_1) $(am__append_3) $(am__append_5)
 ddptctl_SOURCES = ddptctl.c ddpt.h ddpt_com.c ddpt_pt.c ddpt_xcopy.c \
-	$(am__append_4)
+	$(am__append_2) $(am__append_4) $(am__append_6)
 sglib_SOURCES = ../lib/sg_lib.c \
                         ../include/sg_lib.h     \
                         ../lib/sg_lib_data.c    \

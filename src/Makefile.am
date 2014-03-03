@@ -44,10 +44,16 @@ sglib_SOURCES =         ../lib/sg_lib.c \
 if OS_WIN32_MINGW
 ddpt_SOURCES +=         ddpt_win32.c \
 			ddpt_wscan.c
+
+ddptctl_SOURCES +=	ddpt_win32.c \
+			ddpt_wscan.c
 endif
 
 if OS_WIN32_CYGWIN
 ddpt_SOURCES +=         ddpt_win32.c \
+			ddpt_wscan.c
+
+ddptctl_SOURCES +=	ddpt_win32.c \
 			ddpt_wscan.c
 endif
 

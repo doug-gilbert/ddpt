@@ -145,6 +145,10 @@ see the CONVERSIONS section below.
 copy \fICOUNT\fR input blocks from \fIIFILE\fR to \fIOFILE\fR. If this
 option is not given (or \fICOUNT\fR is '\-1') then the \fICOUNT\fR may be
 deduced from either \fIIFILE\fR or \fIOFILE\fR. See the COUNT section below.
+.br
+odx: if a gather list is given to \fIskip=SKIP\fR or a scatter list is
+given to \fIseek=SEEK\fR then typically this option should not be supplied.
+This is because a scatter gather list implies a transfer count.
 .TP
 \fBdelay\fR=\fIMS[,W_MS]\fR
 after each segment is copied (typically every (\fIIBS\fR * \fIBPT\fR) bytes)
@@ -200,7 +204,8 @@ given).
 \fBlist_id\fR=\fILID\fR
 \fILID\fR is the xcopy LIST IDENTIFIER field whose size varies between
 xcopy(LID1) and xcopy(LID4) [as used by ODX]. If given, the \fILID\fR
-should not clash with any other xcopy \fILID\fR on this I_T nexus.
+should not clash with any other xcopy \fILID\fR currently in use on
+this I_T nexus.
 .br
 xcopy(LID1): \fILID\fR is a 1 byte (8 bit) value whose default value is 1 or,
 if id_usage=disable, 0 . \fILID\fR must not exceed 255.
@@ -248,7 +253,7 @@ default value is 0. Numbers are assumed to be in decimal unless preceded
 by "0x" or have a trailing "h" in which case they are decoded as hex. The
 \fIOIR\fR is passed to the WRITE USING TOKEN command. The ROD can be
 considered as a linear representation of data gathered by the POPULATE
-TOKEN command with its LBAs in ascending order but not nexessarily
+TOKEN command with its LBAs in ascending order but not necessarily
 consecutive.
 .TP
 \fBoseek\fR=\fISEEK\fR
@@ -276,41 +281,50 @@ Only applies to errors on pt devices.
 .TP
 \fBrtf\fR=\fIRTF\fR
 odx: where \fIRTF\fR is a filename. The ROD token will be written to
-\fIRTF\fR during a disk->ROD operation (e.g. PT command). In a ROD->disk
+\fIRTF\fR during a disk\->ROD operation (e.g. PT command). In a ROD\->disk
 operation (e.g. WUT command) the ROD token is read from the \fIRTF\fR
-filename. With a odx disk->disk copy this option does not need to be given
+filename. With a odx disk\->disk copy this option does not need to be given
 but if it is the last ROD Token used is written to the \fIRTF\fR filename.
 .TP
 \fBrtype\fR=\fIRTYPE\fR
 odx: where \fIRTYPE\fR is the ROD type. The default value (0) indicates that
 the copy manager (in the target) decides. \fIRTYPE\fR can be a decimal number,
 a hex number (prefixed by 0x or with a "h" appended) or one
-of "pit-def", "pit-vuln", "pit-pers", "pit-any" or "zero". The final
-truncated word can be spelt out (e.g. "pit-vulnerable"). The "pit-" part
+of "pit\-def", "pit\-vuln", "pit\-pers", "pit\-any" or "zero". The final
+truncated word can be spelt out (e.g. "pit\-vulnerable"). The "pit\-" part
 stands for "point in time" copy. The first four names can be used with
-disk->ROD or disk->disk copy and apply to the \fIIFILE\fR. The "zero" causes
-a special Block device zero Token to be created. It applies to the
-\fIOFILE\fR (replacing the \fIIFILE\fR side) and implies zero->disk and so
+disk\->ROD or disk\->disk copy and apply to the \fIIFILE\fR. The "zero"
+causes a special Block device zero Token to be created. It applies to the
+\fIOFILE\fR (replacing the \fIIFILE\fR side) and implies zero\->disk and so
 is equivalent to a WRITE SAME(zero) command.
 .TP
 \fBseek\fR=\fISEEK\fR
 start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
 \fIOFILE\fR. Default is block 0 (i.e. start of file). The \fISEEK\fR value
 may exceed the number of \fIOBS\fR\-sized blocks in \fIOFILE\fR.
+.br
 odx: \fISEEK\fR can be a scatter list: comma separated, in the form
 seek=A1,N1[,A2,N2...] . The scatter list may alternatively be read from
 a file using this form: seek=@<filename> or read from stdin using this form:
-seek=\- .
+seek=\- . A<n> and N<n> are decimal unless a hex indication is given. Hex
+values are indicated by either a leading "0x" or a trailing "h". The
+address (i.e. A<n>) is a 64 bit unsigned integer while the number of
+blocks (i.e. N<n>) is a 32 bit integer. Thus for a block size of 512 bytes,
+a single scatter gather list element cannot represent 4
+TB ((2**32 \- 1) * 512) or more. Note that \fICOUNT\fR is a 64 bit unsigned
+integer and thus does not have this restriction.
 .TP
 \fBskip\fR=\fISKIP\fR
 start reading \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of
 \fIIFILE\fR. Default is block 0 (i.e. start of file). The \fISKIP\fR value
 must be less than or equal to the number of \fIIBS\fR\-sized blocks in
 \fIIFILE\fR.
+.br
 odx: \fISKIP\fR can be a gather list: comma separated, in the form
 skip=A1,N1[,A2,N2...] . The gather list may alternatively be read from
 a file using this form: skip=@<filename> or read from stdin using this form:
-skip=\- .
+skip=\- . See the odx section of the \fIseek=SEEK\fR option for further
+details.
 .TP
 \fBstatus\fR=\fISTAT\fR
 the \fISTAT\fR value of 'noxfer' suppresses the throughput speed and the
@@ -324,7 +338,7 @@ As a convenience the value 'null' is accepted for \fISTAT\fR and does nothing.
 odx, xcopy: where \fITO\fR is a xcopy/odx related command timeout in seconds.
 The default value is 0 which is converted internally to 600 seconds (10
 minutes). Best to set this timeout value well above the expected copy time.
-In a odx disk->disk copy this timeout is applied to both the POPULATE TOKEN
+In a odx disk\->disk copy this timeout is applied to both the POPULATE TOKEN
 and WRITE USING TOKEN commands.
 .TP
 \fBverbose\fR=\fIVERB\fR
@@ -465,7 +479,7 @@ attempting to 'append' to a device file (e.g. a disk) will usually be
 ignored or may cause an error to be reported.
 .TP
 block [io] [pt]
-pass-through file opens are non-blocking by default and may report the
+pass\-through file opens are non\-blocking by default and may report the
 pt device is busy. Use this flag to open blocking so utility may wait until
 another process locking (or with an exclusive open) is complete before
 continuing.
@@ -510,8 +524,8 @@ being used.
 del_tkn [o] [odx]
 will set the DEL_TKN bit in the WRITE USING TOKEN command. This will
 cause the ROD token to be deleted (as far as the copy manager is concerned)
-after the write operation. The default for a partial ODX ROD-->disk
-copy is to clear the DEL_TKN bit. Note that if a full ODX disk-->disk copy
+after the write operation. The default for a partial ODX ROD\-\->disk
+copy is to clear the DEL_TKN bit. Note that if a full ODX disk\-\->disk copy
 is being done then setting DEL_TKN is the default (override with the
 no_del_tkn flag).
 .TP
@@ -590,8 +604,8 @@ See TAPE section.
 .TP
 immed [io] [odx]
 sets the IMMED bit in POPULATE TOKEN (when [i]) or WRITE USING TOKEN (when
-[o]) command. If set ddpt will poll for completion with the RECEIVE ROD
-TOKEN INFORMATION command.
+[o]) command. The action varies depending on the ODX variant, see the ODX
+section.
 .TP
 nocache [io] [reg,blk]
 use posix_fadvise(POSIX_FADV_DONTNEED) to advise corresponding file there is
@@ -600,7 +614,7 @@ used with "iflag=" it will increase the read ahead on \fIIFILE\fR.
 .TP
 no_del_tkn [o] [odx]
 will clear the DEL_TKN bit in the WRITE USING TOKEN command associated with
-a full disk-->disk ODX copy. The default action with a full ODX copy is to
+a full disk\-\->disk ODX copy. The default action with a full ODX copy is to
 set the DEL_TKN bit. Also see the del_tkn flag.
 .TP
 nofm [o] [tape]
@@ -627,10 +641,9 @@ null [io]
 has no affect, just a placeholder.
 .TP
 odx [io] [odx]
-indicates to this utility that a ODX partial or full copy is requested.
-Using any of the \fI\-\-odx\fR, \fIrtf=RTF\fR or \fIrtype=RTYPE\fR options
-also indicates that ODX is requested. ODX is a disk based subset of
-xcopy(LID4).
+indicates to this utility that one of the four variants of an ODX copy is
+requested. Using any of the \fI\-\-odx\fR, \fIrtf=RTF\fR or \fIrtype=RTYPE\fR
+options also indicates that ODX is requested. See the ODX section.
 .TP
 pad [o] [reg,blk,pt]
 when the block to be written (typically the last block) contains less than
@@ -731,6 +744,126 @@ xcopy [io] [pt]
 invoke SCSI XCOPY(LID1) logic and send the XCOPY command to the either IFILE
 or OFILE depending on which flag this called. If both are given (i.e. an
 invocation including 'iflag=xcopy  oflag=xcopy') then send XCOPY to IFILE.
+.SH XCOPY
+This section describes XCOPY(LID1) support with this utility. For ODX
+support (XCOPY(LID4) subset) see the ODX section.
+.PP
+A device (logical unit (LU)) that supports XCOPY operations should set
+the 3PC field (3PC stands for Third Party Copy) in its standard INQUIRY
+response. That is not checked when this utility does an xcopy operation
+but if it fails, that is one thing that the user may want to check.
+.PP
+If the xcopy starts and fails while underway, then 'sg_copy_results \-s'
+may be useful to view the copy status. It might also be used from
+another I_T nexus (e.g. another machine with access to the "3PC"
+device) to check status during an xcopy operation.
+.PP
+The \fIpad\fR and \fIcat\fR flags control the handling of residual
+data. As the data can be specified either in terms of source or target
+block size and both might have different block sizes residual data is
+likely to happen in these cases.
+If both block sizes are identical these bits have no effect as
+residual data will not occur.
+.PP
+If neither of these flags are set, the EXTENDED COPY command will be
+aborted with additional sense 'UNEXPECTED INEXACT SEGMENT'.
+.PP
+If only the \fIcat\fR flag is set the residual data will be retained
+and made available for subsequent segment descriptors. Residual data
+will be discarded for the last segment descriptor.
+.PP
+If the \fIpad\fR flag is set for the source descriptor only, any
+residual data for both source or destination will be discarded.
+.PP
+If the \fIpad\fR flag is set for the target descriptor only any
+residual source data will be handled as if the \fIcat\fR flag is set,
+but any residual destination data will be padded to make a whole block
+transfer.
+.PP
+If the \fIpad\fR flag is set for both source and target any residual
+source data will be discarded, and any residual destination data will
+be padded.
+.SH ODX
+This section describes ODX support (an XCOPY(LID4) subset) for this utility.
+ODX descriptions use the following command name abbreviations: PT for
+the POPULATE TOKEN command, RRTI for the READ ROD TOKEN INFORMATION command,
+and WUT for the WRITE USING TOKEN command.
+.PP
+A device (logical unit (LU)) that supports ODX operations is required to set
+the 3PC field (3PC stands for Third Party Copy) in its standard INQUIRY
+response and support the Third Party Copy VPD page. If this utility generates
+errors noting these type of problems then the device in question probably
+does not support ODX.
+.PP
+There a four variants of ODX supported by this utility:
+.br
+  \fBfull copy\fR : ddpt if=/dev/sg3 of=/dev/sg4 bs=512 \-\-odx
+.br
+  \fBzero output blocks\fR : ddpt if=/dev/null of=/dev/sg4 bs=512 rtype=zero
+.br
+  \fBsingle PT\fR : ddpt if=/dev/sg3 bs=512 skip=@gath.lst rtf=a.rt
+.br
+  \fBsingle WUT\fR : ddpt bs=512 of=/dev/sg4 seek=@scat.lst rtf=a.rt
+.PP
+The full copy will call PT and WUT commands repeatedly until the copy is
+complete. More precisely the full copy will make the largest single call
+to PT allowed by the input's Third Party Copy VPD page (and, if given,
+the \fIBPT\fR argument in the \fIbpt=BPT[,OBPC]\fR option). Then one or
+more WUT calls are made to copy the ROD created by the PT step. The
+largest single WUT call is constrained by the output's Third Party Copy
+VPD page (and, if given, the \fIOBPC\fR argument in the \fIbpt=BPT[,OBPC]\fR
+option). This sequence continues until the requested copy is complete.
+.PP
+The zero output blocks variant is a special case of the full copy in
+which only WUT calls are made. ODX defines a special ROD Token to
+zero blocks. That special ROD Token has a defined pattern and does not need
+to be created by a PT command like normal ROD Tokens.
+.PP
+Both the full copy and zero output blocks variants can been invoked with
+the immed flag. Then the PT and/or WUT commands are issued with the
+IMMED bit set and the RRTI command is used to poll for completion. The
+delay between the polls is as suggested by the RRTI (or if no suggestion
+is made 500 milliseconds). With a full copy either iflag=immed, oflag=immed
+or both can be given. With the zero output blocks variant, only oflag=immed
+is active.
+.PP
+The single PT variant issues a single WUT command. If iflag=immed is not
+given, then the \fIrtf=RTF\fR option should be given. Then on success the ROD
+Token created by the copy manager (and conveyed back to this utility with the
+RRTI command) will be stored in a file named \fIRTF\fR. If the iflag=immed
+option is given then this utility issues the PT command with its IMMED bit
+set and exits on the completion of the PT command which should be soon
+thereafter. After ddpt exits a command like this:
+.br
+  ddptctl \-\-poll \-\-lid=<same_LID> \-\-rtf=<filename> <same_dev>
+.br
+might be used to check for successful completion and store the resulting
+ROD Token in a file.
+.PP
+In the single WUT variant the \fIrtf=RTF\fR option must be given. In the
+absence of oflag=immed this utility will wait until the WUT command
+completes and then issue a RRTI command to get the final information (e.g.
+the actual transfer count). If the oflag=immed option is given then this
+utility issues the WUT command with its IMMED bit set and exits on the
+completion of the WUT command which should be soon thereafter. After ddpt
+exits a command like this:
+.br
+  ddptctl \-\-poll \-\-lid=<same_LID> <same_dev>
+.br
+might be used to check for successful completion of the write operation.
+.PP
+The four ODX variants are distinguished as follows: if \fIOFILE\fR is a
+pass\-through device, if=/dev/null (or equivalent) and rtype=zero then the
+zero output blocks variant is selected. If both \fIIFILE\fR and \fIOFILE\fR
+are pass\-through devices and there is some indication of an ODX request (e.g.
+the \fI\-\-odx\fR option), then the full copy variant is selected. The single
+PT and single WUT variants are indicated by the absence of either a
+\fIof=OFILE\fR or a \fIif=IFILE\fR option, respectively.
+.PP
+If the block size of the input and output are different (i.e. \fIIBS\fR
+is not equal to \fIOBS\fR) then one must be a multiple of the other. So
+an input block size of 512 bytes and an output block size of 4096
+bytes (or vice versa) is acceptable.
 .SH SPARSE WRITES
 Bypassing writes of blocks full of zeros can save a lot of IO. However
 with regular files, bypassed writes at the end of the copy can lead
@@ -1052,82 +1185,6 @@ command like:
 should read the file from tape regardless of the block size used (assuming
 no blocks are larger than 256KB). ddpt's verbose option will display what
 the actual block size(s) is.
-.SH XCOPY
-This section describes XCOPY(LID1) support with this utility. For ODX
-support (XCOPY(LID4) subset) see the ODX section.
-.PP
-A device (logical unit (LU)) that supports XCOPY operations should set
-the 3PC field (3PC stands for Third Party Copy) in its standard INQUIRY
-response. That is not checked when this utility does an xcopy operation
-but if it fails, that is one thing that the user may want to check.
-.PP
-If the xcopy starts and fails while underway, then 'sg_copy_results \-s'
-may be useful to view the copy status. It might also be used from
-another I_T nexus (e.g. another machine with access to the "3PC"
-device) to check status during an xcopy operation.
-.PP
-The \fIpad\fR and \fIcat\fR flags control the handling of residual
-data. As the data can be specified either in terms of source or target
-block size and both might have different block sizes residual data is
-likely to happen in these cases.
-If both block sizes are identical these bits have no effect as
-residual data will not occur.
-.PP
-If neither of these flags are set, the EXTENDED COPY command will be
-aborted with additional sense 'UNEXPECTED INEXACT SEGMENT'.
-.PP
-If only the \fIcat\fR flag is set the residual data will be retained
-and made available for subsequent segment descriptors. Residual data
-will be discarded for the last segment descriptor.
-.PP
-If the \fIpad\fR flag is set for the source descriptor only, any
-residual data for both source or destination will be discarded.
-.PP
-If the \fIpad\fR flag is set for the target descriptor only any
-residual source data will be handled as if the \fIcat\fR flag is set,
-but any residual destination data will be padded to make a whole block
-transfer.
-.PP
-If the \fIpad\fR flag is set for both source and target any residual
-source data will be discarded, and any residual destination data will
-be padded.
-.SH ODX
-This section describes ODX support (an XCOPY(LID4) subset) for this utility.
-For XCOPY(LID1) support see the XCOPY section.
-.PP
-ODX descriptions use the following command name abbreviations: PT for
-the POPULATE TOKEN command, RRTI for the READ ROD TOKEN INFORMATION command,
-and WUT for the WRITE USING TOKEN command.
-.PP
-A device (logical unit (LU)) that supports ODX operations must set
-the 3PC field (3PC stands for Third Party Copy) in its standard INQUIRY
-response and support the Third Party Copy VPD page.
-.PP
-If the block size of the input and output are different (i.e. \fIIBS\f
-is not equal to \fIOBS\fR) then one must be a multiple of the other. So
-an input block size of 512 bytes and an output block size of 4096
-bytes (or vice versa) is acceptable.
-.PP
-The \fIbpt=BPT[,OBPC]\fR option should typically not be given with ODX. This
-utility will try to send the largest sized PT command permitted by the
-input's Third party Copy VPD page. A WUT command of the same size is then
-sent unless it is more constrained by its Third party Copy VPD page in which
-case multiple WUT commands are sent. If \fIbpt=BPT\fR is given it will act
-as an extra constraint. Note that the Third party Copy VPD page can not only
-constrain the largest number of blocks a single PT or WUT command may act on,
-it can also limit the number of scatter gather elements it can handle.
-.PP
-There a four variants of ODX supported by this utility:
-.br
-  \fBfull copy\fR : ddpt if=/dev/sg3 of=/dev/sg4 bs=512 --odx
-.br
-  \fBzero output\fR : ddpt if=/dev/null of=/dev/sg4 bs=512 rtype=zero
-.br
-  \fBsingle PT\fR : ddpt if=/dev/sg3 bs=512 skip=@gath.lst rtf=a.rt
-.br
-  \fBsingle WUT\fR : ddpt bs=512 of=/dev/sg4 seek=@scat.lst rtf=a.rt
-.PP
-xxxxx
 .SH ENVIRONMENT VARIABLES
 If the command line invocation of an xcopy does not explicitly (and
 unambiguously) indicate whether the XCOPY SCSI command should be sent
@@ -1310,6 +1367,9 @@ Copyright \(co 2008\-2014 Douglas Gilbert
 This software is distributed under the GPL version 2. There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 .SH "SEE ALSO"
+This utility has a companion/helper utility called
+.B ddptctl(8)
+.br
 There is a web page discussing ddpt at http://sg.danny.cz/sg/ddpt.html
 .PP
 The lmbench package contains
@@ -1329,5 +1389,5 @@ copy of the data see
 To scan and repair disk partitions see TestDisk (testdisk).
 .PP
 Additional references:
-.B dd(1), open(2), flock(2), ddptctl(ddpt), sg_xcopy,sg_copy_results,
+.B dd(1), open(2), flock(2), sg_xcopy,sg_copy_results,
 .B sg_dd(sg3_utils)

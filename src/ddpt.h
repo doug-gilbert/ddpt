@@ -183,6 +183,8 @@ extern "C" {
 #define XCOPY_TO_DST "XCOPY_TO_DST"
 #define DEF_XCOPY_SRC0_DST1 1
 
+#define DEF_ODX_POLL_DELAY_MS 500
+
 struct scat_gath_elem {
     uint64_t lba;       /* of first block */
     uint32_t num;       /* of blocks */
@@ -475,7 +477,7 @@ int pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
 
 /* defined in ddpt_xcopy.c */
 const char * cpy_op_status_str(int cos, char * b, int blen);
-int print_3pc_vpd(struct opts_t * op);
+int print_3pc_vpd(struct opts_t * op, int to_stderr);
 int fetch_rrti_after_odx(struct opts_t * op, int in0_out1,
                          struct rrti_resp_t * rrp, int verb);
 int do_xcopy(struct opts_t * op);       /* xcopy(LID1) */
