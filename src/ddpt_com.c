@@ -178,7 +178,7 @@ print_stats(const char * str, struct opts_t * op)
     print_tape_summary(op, 0, str);
 #endif
 
-    if ((0 != op->dd_count) && (! op->reading_fifo))
+    if ((op->dd_count > 0) && (! op->reading_fifo))
         pr2serr("  remaining block count=%" PRId64 "\n", op->dd_count);
     pr2serr("%s%" PRId64 "+%d records in\n", str, op->in_full,
             op->in_partial);
