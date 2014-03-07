@@ -446,7 +446,7 @@ void print_tape_pos(const char * prefix, const char * postfix,
 #endif
 void install_signal_handlers(struct opts_t * op);
 void signals_process_delay(struct opts_t * op, int delay_type);
-void decode_designation_descriptor(const unsigned char * ucp, int i_len,
+void decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
                                    int verb);
 int coe_process_eio(struct opts_t * op, int64_t skip);
 char * rod_type_str(uint32_t rt, char * b, int b_mlen);

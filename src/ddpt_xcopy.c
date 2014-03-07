@@ -874,7 +874,7 @@ do_xcopy(struct opts_t * op)
     return res;
 }
 
-/* vvvvvvvvv  ODX [SBC-3's POPULATE TOKEN + WRITE USING TOKEN vvvvvvv */
+/* vvvvvvvvv  ODX [SBC-3's POPULATE TOKEN + WRITE USING TOKEN] vvvvvvv */
 
 
 const char *
@@ -2147,6 +2147,8 @@ odx_full_copy(struct opts_t * op)
 
     /* copy using PT, WUT, [WUT, ...], PT, WUT, [WUT, ...] sequence */
     for (k = 0; in_num_blks > 0; in_num_blks -= num, ++k) {
+        if (k > 0)
+            signals_process_delay(op, DELAY_COPY_SEGMENT);
         num = in_num_blks;
         if (op->bpt_given && ((uint64_t)op->bpt_i < num))
             num = op->bpt_i;
@@ -2195,8 +2197,10 @@ odx_full_copy(struct opts_t * op)
         in_blk_off += num;
 
         for (oir = 0; o_num > 0; oir += r_o_num, o_num -= r_o_num) {
-            /* output dev might be more restricted than input, so multiple
+            /* output dev might be more constrained than input, so multiple
              * WUT calls (latter ones using offset in ROD) may be needed */
+            if (k > 0)
+                signals_process_delay(op, DELAY_WRITE);
             r_o_num = o_num;
             if ((op->obpch > 0) && ((uint64_t)op->obpch < r_o_num))
                 r_o_num = op->obpch;

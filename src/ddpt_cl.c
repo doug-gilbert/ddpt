@@ -1288,7 +1288,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 op->rod_type = RODT_PIT_PERS;
             else if (0 == strncmp("pit-any", buf, 7))
                 op->rod_type = RODT_PIT_ANY;
-            else if (0 == strcmp("zero", buf))
+            else if (0 == strncmp("zero", buf, 4))
                 op->rod_type = RODT_BLK_ZERO;
             else {
                 n = sg_get_num(buf);
