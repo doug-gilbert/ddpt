@@ -25,10 +25,11 @@ For comparison here is the synopsis for GNU's dd command:
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
-Copy data between files or read data from a file. Specialized for "files"
-that are storage devices, especially those that can use the SCSI command
-sets (e.g. SATA and SAS disks, plus DVD drives). Can issue SCSI commands
-in pass\-through ("pt") mode. Similar syntax and semantics to the Unix
+Copies data between files or simply reads data from a file. This utility is
+specialized for "files" that are storage devices, especially those that can
+use the SCSI command sets (e.g. SATA and SAS disks). It can issue SCSI
+commands in pass\-through ("pt") mode. Similar syntax and semantics to the
+Unix
 .B dd(1)
 command.
 .PP
@@ -61,7 +62,7 @@ The term "pt device" is used for a pass\-through device to which SCSI
 commands like READ(10), WRITE(10) or POPULATE TOKEN may be sent. A pt device
 may only be able to process SCSI commands in which case the "pt" flag is
 assumed. The ability to recognize such a pt only device may vary depending
-on the operating system (e.g. in Linux '/dev/sg2' and /dev/bsg/3:0:1:0 are
+on the operating system (e.g. in Linux /dev/sg2 and /dev/bsg/3:0:1:0 are
 recognized). However if a device can process either normal UNIX read()/
 write() calls or pass\-through SCSI commands then the default is to use
 UNIX read()/write() calls. That default can be overridden by using the "pt"
@@ -72,17 +73,19 @@ So "if=/dev/sdc2 iflag=pt skip=3" will start at logical block address 3
 of '/dev/sdc'. As a protection measure ddpt will only accept that if the
 force flag is also given (i.e. 'iflag=pt,force').
 .PP
-This utility supports two types of offloaded copies via a SCSI pass\-through.
-Both are based on the EXTENDED COPY (XCOPY or xcopy) family of commands. The
-first uses the XCOPY(LID1) command to do a disk to disk copy. LID1 stands for
-List IDentifier length of 1 byte and the command is described in the SPC\-4
-drafts and the SPC\-3 and SPC\-2 standards. Recent SPC\-4 drafts have added
+This utility supports two types of offloaded copies. Both are based on the
+ EXTENDED COPY (XCOPY or xcopy) family of SCSI commands. The first uses the
+XCOPY(LID1) command to do a disk to disk copy. LID1 stands for List
+IDentifier length of 1 byte and the command is described in the SPC\-4 drafts
+and the earlier SPC\-3 and SPC\-2 standards. Recent SPC\-4 drafts have added
 the XCOPY(LID4) sub\-family of copy offloaded commands. There is a subset of
 XCOPY(LID4), specialized for offloaded disk to disk copies, that is known by
 the market name: ODX. In the descriptions below "xcopy" refers to copies
 based on XCOPY(LID1) while "odx" refers to either full or partial ODX copies.
 See the XCOPY and ODX sections below for more information.
 .SH OPTIONS
+The dd\-like options with the name=value syntax are listed first, sorted by
+name. Following that, options starting with "\-" are listed.
 .TP
 \fBbpt\fR=\fIBPT[,OBPC]\fR
 where \fIBPT\fR is Blocks Per Transfer. The copy is made up of multiple
@@ -110,7 +113,7 @@ granularity is used. Large \fIOBPC\fR values are rounded down so that
 .TP
 \fBbs\fR=\fIBS\fR
 where \fIBS\fR is the \fIIFILE\fR and \fIOFILE\fR block size in bytes.
-Conflicts with either "ibs=" or "obs=" options. The value of \fIBS\fR
+Conflicts with either the "ibs=" or "obs=" options. The value of \fIBS\fR
 is placed in \fIIBS\fR and \fIOBS\fR.
 If \fIIFILE\fR or \fIOFILE\fR is a "pt" device then \fIBS\fR
 .B must
@@ -120,7 +123,7 @@ Other logical block sizes are 2048 bytes for DVDs and 4096 bytes for
 the coming generation of hard disks.
 .TP
 \fBcdbsz\fR={6|10|12|16|32}
-size of SCSI READ and/or WRITE commands issued on pt devices.
+size of SCSI READ and/or WRITE commands issued to pt devices.
 Default is 10 byte SCSI command blocks (unless calculations indicate
 that a 4 byte block number may be exceeded or \fIBPT\fR is greater than
 16 bits (65535), in which case it defaults to 16 byte SCSI commands).
@@ -133,10 +136,10 @@ the 'coe' flag for more information.
 .TP
 \fBcoe_limit\fR=\fICL\fR
 where \fICL\fR is the maximum number of consecutive bad blocks stepped
-over (due to "coe=1") on reads before the copy terminates. The default
+over due to "coe=1" on reads before the copy terminates. The default
 is 0 which is interpreted as no limit. This option is meant to stop the
 copy soon after unrecorded media is detected while still
-offering "continue on error" capability.
+offering "continue on error" capability for infrequent errors.
 .TP
 \fBconv\fR=\fICONVS\fR
 see the CONVERSIONS section below.
@@ -147,8 +150,8 @@ option is not given (or \fICOUNT\fR is '\-1') then the \fICOUNT\fR may be
 deduced from either \fIIFILE\fR or \fIOFILE\fR. See the COUNT section below.
 .br
 odx: if a gather list is given to \fIskip=SKIP\fR or a scatter list is
-given to \fIseek=SEEK\fR then typically this option should not be supplied.
-This is because a scatter gather list implies a transfer count.
+given to \fIseek=SEEK\fR then typically \fIcount=COUNT\fR should not be
+supplied. This is because a scatter gather list implies a transfer count.
 .TP
 \fBdelay\fR=\fIMS[,W_MS]\fR
 after each segment is copied (typically every (\fIIBS\fR * \fIBPT\fR) bytes)
@@ -163,7 +166,7 @@ bandwidth limiting.
 .TP
 \fBibs\fR=\fIIBS\fR
 where \fIIBS\fR is the \fIIFILE\fR block size in bytes. The default value
-is \fIBS\fR or its default (512). Conflicts the "bs=" option (e.g. giving
+is \fIBS\fR or its default (512). Conflicts the "bs=" option (i.e. giving
 both "bs=512 ibs=512" is considered a syntax error).
 .TP
 \fBid_usage\fR=\fILIU\fR
@@ -173,14 +176,18 @@ xcopy: SCSI EXTENDED COPY parameter list LIST ID USAGE field is set to
 0, 'discard' for 2 or 'disable' for 3.
 .TP
 \fBif\fR=\fIIFILE\fR
-read from \fIIFILE\fR. This option must be given (i.e. it is mandatory). If
-\fIIFILE\fR is '\-' then stdin is read. Starts reading at the beginning of
-\fIIFILE\fR unless \fISKIP\fR is given.
+read from \fIIFILE\fR. This option must be given (apart from one odx case).
+If \fIIFILE\fR is '\-' then stdin is read. Starts reading at the beginning
+of \fIIFILE\fR unless \fISKIP\fR is given.
+.br
+odx: the absence of the \fIif=IFILE\fR option and given a \fIof=OFILE\fR
+option and another option that is odx specific (e.g. \fI\-\-odx\fR) is
+interpreted as a request to send a single WUT command, see the ODX section.
 .TP
 \fBiflag\fR=\fIFLAGS\fR
 where \fIFLAGS\fR is a comma separated list of one or more flags outlined
 in the FLAGS section below.  These flags are associated with \fIIFILE\fR and
-are ignored when \fIIFILE\fR is stdin.
+are mostly ignored when \fIIFILE\fR is stdin.
 .TP
 \fBintio\fR={0|1}
 set to 1 for allow signals (SIGINT, SIGPIPE and SIGUSR1 (or SIGINFO)) to be

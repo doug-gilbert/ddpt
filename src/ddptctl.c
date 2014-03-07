@@ -50,6 +50,7 @@
 #include <ctype.h>
 #include <getopt.h>
 #include <errno.h>
+#define __STDC_LIMIT_MACROS 1   /* for UINT64_MAX and friends */
 #include <limits.h>
 #include <fcntl.h>
 #define __STDC_FORMAT_MACROS 1
@@ -64,7 +65,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140303 [svn: r267]";
+const char * ddptctl_version_str = "0.94 20140306 [svn: r268]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -186,7 +187,7 @@ usage()
 static int
 odx_rt_info(const struct opts_t * op)
 {
-    int res, fd, err, m, prot_en, p_type, lbppbe, vendor;
+    int res, fd, err, m, prot_en, p_type, lbppbe, vendor, desig_type;
     uint64_t bc;
     uint32_t rod_t, bs;
     uint16_t rtl;
@@ -259,15 +260,25 @@ odx_rt_info(const struct opts_t * op)
     printf("    Peripheral Device type: 0x%x\n", rth[17] & 0x1f);
     printf("    Relative initiator port identifier: 0x%x\n",
            (rth[18] << 8) + rth[19]);
-    decode_designation_descriptor(rth + 20, 28, op->verbose);
+    printf("    Relative initiator port identifier: 0x%x\n",
+           (rth[18] << 8) + rth[19]);
+    desig_type = rth[20 + 1] & 0xf;
+    if ((0x2 == desig_type) || (0x3 == desig_type))
+        decode_designation_descriptor(rth + 20, 32 - 4, op->verbose);
+    else
+        printf("      Expected designator type of EUI-64 or NAA, got 0x%x\n",
+               desig_type);
     bc = 0;
     for (m = 0; m < 8; m++) {
         if (m > 0)
             bc <<= 8;
         bc |= rth[48 + m];
     }
-    printf("  Number of bytes represented: %" PRIu64 " [0x%" PRIx64 "]\n",
-           bc, bc);
+    if (UINT64_MAX == bc)
+        printf("  Number of bytes represented: unknown or too large\n");
+    else
+        printf("  Number of bytes represented: %" PRIu64 " [0x%" PRIx64 "]\n",
+               bc, bc);
 
     printf("  Assume pdt=0 (e.g. disk) and decode device type specific "
            "data:\n");
@@ -284,11 +295,10 @@ odx_rt_info(const struct opts_t * op)
     printf("    Logical block provisioning: lbpme=%d, lbprz=%d\n",
                    !!(rth[102] & 0x80), !!(rth[102] & 0x40));
     lbppbe = rth[102] & 0xf;
-    printf("    Logical blocks per physical block exponent=%d", lbppbe);
+    printf("    Logical blocks per physical block exponent=%d\n", lbppbe);
     if (lbppbe > 0)
-        printf(" [so physical block length=%u bytes]\n", bs * (1 << lbppbe));
-    else
-        printf("\n");
+        printf("      [so physical block length=%u bytes]\n",
+               bs * (1 << lbppbe));
     printf("    Lowest aligned logical block address=%d\n",
            ((rth[102] & 0x3f) << 8) + rth[103]);
 

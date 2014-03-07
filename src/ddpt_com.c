@@ -1190,15 +1190,17 @@ signals_process_delay(struct opts_t * op, int delay_type)
 }
 
 void
-decode_designation_descriptor(const unsigned char * ucp, int i_len, int verb)
+decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
+                              int verb)
 {
-    int m, p_id, piv, c_set, assoc, desig_type, d_id, naa;
+    int m, p_id, piv, c_set, assoc, desig_type, d_id, naa, i_len;
     int k;
     const unsigned char * ip;
     uint64_t vsei;
     char b[64];
 
     ip = ucp + 4;
+    i_len = len_less_4;         /* valid ucp length is (len_less_4 + 4) */
     p_id = ((ucp[0] >> 4) & 0xf);
     c_set = (ucp[0] & 0xf);
     piv = ((ucp[1] & 0x80) ? 1 : 0);

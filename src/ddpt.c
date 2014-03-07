@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.94 20140303 [svn: r267]";
+static const char * ddpt_version_str = "0.94 20140306 [svn: r268]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -2540,9 +2540,7 @@ main(int argc, char * argv[])
         return sg_do_wscan('\0', op->wscan, op->verbose);
 #endif
 
-#if 1
     install_signal_handlers(op);
-#endif
 
     if (op->has_odx) {
         started_copy = 1;
@@ -2550,6 +2548,7 @@ main(int argc, char * argv[])
         goto cleanup;
     }
 
+    /* may allow scatter gather lists for non-odx copies in future */
     ret = chk_sgl_for_non_offload(op);
     if (ret)
         return ret;
