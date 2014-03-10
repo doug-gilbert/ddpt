@@ -185,6 +185,27 @@ extern "C" {
 
 #define DEF_ODX_POLL_DELAY_MS 500
 
+/* In SPC-4 the cdb opcodes have more generic names */
+#define THIRD_PARTY_COPY_OUT_CMD 0x83
+#define THIRD_PARTY_COPY_IN_CMD 0x84
+
+/* Third party copy IN (opcode 0x84) and OUT (opcode 0x83) command service
+ * actions */
+#define SA_XCOPY_LID1           0x0     /* OUT, originate */
+#define SA_XCOPY_LID4           0x1     /* OUT, originate */
+#define SA_POP_TOK              0x10    /* OUT, originate */
+#define SA_WR_USING_TOK         0x11    /* OUT, originate */
+#define SA_COPY_ABORT           0x1C    /* OUT, abort */
+#define SA_COPY_STATUS_LID1     0x0     /* IN, retrieve */
+#define SA_COPY_DATA_LID1       0x1     /* IN, retrieve */
+#define SA_COPY_OP_PARAMS       0x3     /* IN, retrieve */
+#define SA_COPY_FAIL_DETAILS    0x4     /* IN, retrieve */
+#define SA_COPY_STATUS_LID4     0x5     /* IN, retrieve */
+#define SA_COPY_DATA_LID4       0x6     /* IN, retrieve */
+#define SA_ROD_TOK_INFO         0x7     /* IN, retrieve */
+#define SA_ALL_ROD_TOKS         0x8     /* IN, retrieve */
+
+
 struct scat_gath_elem {
     uint64_t lba;       /* of first block */
     uint32_t num;       /* of blocks */
