@@ -65,7 +65,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140306 [svn: r268]";
+const char * ddptctl_version_str = "0.94 20140310 [svn: r269]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -109,23 +109,6 @@ const char * ddptctl_version_str = "0.94 20140306 [svn: r268]";
 #include "sg_lib.h"
 #include "sg_cmds_basic.h"
 
-
-#define DDPT_TPC_OUT_CMD 0x83
-#define DDPT_TPC_IN_CMD 0x84
-
-#define SA_XCOPY_LID1           0x0     /* OUT, originate */
-#define SA_XCOPY_LID4           0x1     /* OUT, originate */
-#define SA_POP_TOK              0x10    /* OUT, originate */
-#define SA_WR_USING_TOK         0x11    /* OUT, originate */
-#define SA_COPY_ABORT           0x1C    /* OUT, abort */
-#define SA_COPY_STATUS_LID1     0x0     /* IN, retrieve */
-#define SA_COPY_DATA_LID1       0x1     /* IN, retrieve */
-#define SA_COPY_OP_PARAMS       0x3     /* IN, retrieve */
-#define SA_COPY_FAIL_DETAILS    0x4     /* IN, retrieve */
-#define SA_COPY_STATUS_LID4     0x5     /* IN, retrieve */
-#define SA_COPY_DATA_LID4       0x6     /* IN, retrieve */
-#define SA_ROD_TOK_INFO         0x7     /* IN, retrieve */
-#define SA_ALL_ROD_TOKS         0x8     /* IN, retrieve */
 
 #define DEF_3PC_IN_TIMEOUT 60           /* these should be fast */
 
@@ -172,9 +155,10 @@ usage()
             "    --poll|-p             call RRTI periodically until "
             "finished\n"
             "    --receive|-R          call RRTI once\n"
-            "    --rtf=RTF|-r RTF      ROD Token file for analyse (--info) "
-            "or write to\n"
-            "                          (with --poll or --receive)\n"
+            "    --rtf=RTF|-r RTF      ROD Token file for analysis (--info) "
+            "or to write\n"
+            "                          ROD Token to (with --poll or "
+            "--receive)\n"
             "    --size|-s             get size of DEVICE (def: pt)\n"
             "    --verbose|-v          increase verbosity\n"
             "    --version|-V          print version string and exit\n\n"
@@ -188,10 +172,11 @@ static int
 odx_rt_info(const struct opts_t * op)
 {
     int res, fd, err, m, prot_en, p_type, lbppbe, vendor, desig_type;
+    int target_dev_desc = 0;
     uint64_t bc;
     uint32_t rod_t, bs;
     uint16_t rtl;
-    unsigned char rth[128];
+    unsigned char rth[256];
     char b[128];
 
     if ('\0' == op->rtf[0]) {
@@ -227,15 +212,19 @@ odx_rt_info(const struct opts_t * op)
         dStrHexErr((const char *)rth, (int)sizeof(rth), 1);
     }
 
-    printf("Decoding information from ROD Token header:\n");
+    printf("Decoding information from ROD Token:\n");
     rod_t = (rth[0] << 24) + (rth[1] << 16) + (rth[2] << 8) + rth[3];
     printf("  ROD type: %s\n", rod_type_str(rod_t, b, sizeof(b)));
     if (rod_t >= 0xfffffff0) {
         printf("    Since ROD type is vendor specific, the following may "
                "not be relevant\n");
         vendor = 1;
-    } else
+    } else {
         vendor = 0;
+        target_dev_desc = (RODT_ACCESS_ON_REF == rod_t) ||
+                  (RODT_PIT_DEF == rod_t) || (RODT_PIT_VULN == rod_t) ||
+                  (RODT_PIT_PERS == rod_t);
+    }
     rtl = (rth[6] << 8) + rth[7];
     if (rtl < 0x1f8) {
         pr2serr(">>> ROD Token length field is too short, should be at "
@@ -302,6 +291,16 @@ odx_rt_info(const struct opts_t * op)
     printf("    Lowest aligned logical block address=%d\n",
            ((rth[102] & 0x3f) << 8) + rth[103]);
 
+    if (target_dev_desc) {
+        desig_type = rth[128 + 1] & 0xf;
+        if ((0x2 == desig_type) || (0x3 == desig_type) ||
+            (0x8 == desig_type) || op->verbose) {
+            printf("  Target device descriptor:\n");
+            decode_designation_descriptor(rth + 128, 128 - 4, op->verbose);
+        } else
+            printf("  Target device descriptor: unexpected designator type "
+                   "[0x%x]\n", desig_type);
+    }
     close(fd);
     return 0;
 }
@@ -575,7 +574,7 @@ main(int argc, char * argv[])
         ret = fetch_rrti_after_odx(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
         if (ret)
             goto clean_up;
-        sg_get_opcode_sa_name(DDPT_TPC_OUT_CMD, rrti_rsp.for_sa, 0,
+        sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, rrti_rsp.for_sa, 0,
                               (int)sizeof(b), b);
         printf("RRTI for %s: %s\n", b,
                cpy_op_status_str(rrti_rsp.cstat, bb, sizeof(bb)));
@@ -608,7 +607,7 @@ main(int argc, char * argv[])
                     sleep_ms(delay);
             }
         } while (cont);
-        sg_get_opcode_sa_name(DDPT_TPC_OUT_CMD, rrti_rsp.for_sa, 0,
+        sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, rrti_rsp.for_sa, 0,
                               (int)sizeof(b), b);
         printf("RRTI for %s: %s\n", b,
                cpy_op_status_str(rrti_rsp.cstat, bb, sizeof(bb)));
