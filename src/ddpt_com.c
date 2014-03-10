@@ -1224,7 +1224,7 @@ decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
             pr2serr("      vendor specific: %.*s\n", i_len, ip);
         else {
             pr2serr("      vendor specific:\n");
-            dStrHexErr((const char *)ip, i_len, 0);
+            dStrHexErr((const char *)ip, i_len, -1);
         }
         break;
     case 1: /* T10 vendor identification */
@@ -1247,13 +1247,13 @@ decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
     case 3: /* NAA */
         if (1 != c_set) {
             pr2serr("      << unexpected code set %d for NAA>>\n", c_set);
-            dStrHexErr((const char *)ip, i_len, 0);
+            dStrHexErr((const char *)ip, i_len, -1);
             break;
         }
         naa = (ip[0] >> 4) & 0xff;
         if (! ((2 == naa) || (5 == naa) || (6 == naa))) {
             pr2serr("      << unexpected NAA [0x%x]>>\n", naa);
-            dStrHexErr((const char *)ip, i_len, 0);
+            dStrHexErr((const char *)ip, i_len, -1);
             break;
         }
         if ((5 == naa) && (0x10 == i_len)) {
@@ -1266,7 +1266,7 @@ decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
             if (8 != i_len) {
                 pr2serr("      << unexpected NAA 2 identifier length: "
                         "0x%x>>\n", i_len);
-                dStrHexErr((const char *)ip, i_len, 0);
+                dStrHexErr((const char *)ip, i_len, -1);
                 break;
             }
             d_id = (((ip[0] & 0xf) << 8) | ip[1]);
@@ -1280,7 +1280,7 @@ decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
             if (8 != i_len) {
                 pr2serr("      << unexpected NAA 5 identifier length: "
                         "0x%x>>\n", i_len);
-                dStrHexErr((const char *)ip, i_len, 0);
+                dStrHexErr((const char *)ip, i_len, -1);
                 break;
             }
             /* c_id = (((ip[0] & 0xf) << 20) | (ip[1] << 12) | */
@@ -1298,7 +1298,7 @@ decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
             if (16 != i_len) {
                 pr2serr("      << unexpected NAA 6 identifier length: "
                         "0x%x>>\n", i_len);
-                dStrHexErr((const char *)ip, i_len, 0);
+                dStrHexErr((const char *)ip, i_len, -1);
                 break;
             }
             /* c_id = (((ip[0] & 0xf) << 20) | (ip[1] << 12) | */

@@ -220,7 +220,7 @@ if id_usage=disable, 0 . \fILID\fR must not exceed 255.
 odx [and xcopy(LID4)]: \fILID\fR is a 4 byte (32 bit) value whose default
 value is 257 (i.e. 0x101) and if a second default is needed that will be
 258 (0x102). If a clash is detected on the default list identifier value
-then the next higher value is tried.
+then the next higher value is tried (stopping after 10 attempts).
 .TP
 \fBobs\fR=\fIOBS\fR
 where \fIOBS\fR is the \fIOFILE\fR block size in bytes. The default value
@@ -258,10 +258,9 @@ ignored when \fIOFILE\fR is /dev/null, '.' (period), or stdout.
 odx: \fIOIR\fR is the Offset In ROD and its units are \fIOBS\fR bytes. The
 default value is 0. Numbers are assumed to be in decimal unless preceded
 by "0x" or have a trailing "h" in which case they are decoded as hex. The
-\fIOIR\fR is passed to the WRITE USING TOKEN command. The ROD can be
-considered as a linear representation of data gathered by the POPULATE
-TOKEN command with its LBAs in ascending order but not necessarily
-consecutive.
+\fIOIR\fR is passed to the WRITE USING TOKEN command. This option is only
+used in the odx single WUT variant. It is ignored in the odx full copy
+and zero output blocks variants. See the ODX section.
 .TP
 \fBoseek\fR=\fISEEK\fR
 start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
@@ -363,7 +362,7 @@ to /dev/null .
 reports usage message then exits.
 .TP
 \fB\-o\fR, \fB\-\-odx\fR
-indicates to this utility that a ODX partial or full copy is requested.
+indicates to this utility that one of the four odx variants is requested.
 See ODX section.
 .TP
 \fB\-v\fR, \fB\-\-verbose\fR
@@ -529,12 +528,12 @@ segment descriptor header. May appear in either flag list when xcopy is
 being used.
 .TP
 del_tkn [o] [odx]
-will set the DEL_TKN bit in the WRITE USING TOKEN command. This will
-cause the ROD token to be deleted (as far as the copy manager is concerned)
-after the write operation. The default for a partial ODX ROD\-\->disk
-copy is to clear the DEL_TKN bit. Note that if a full ODX disk\-\->disk copy
-is being done then setting DEL_TKN is the default (override with the
-no_del_tkn flag).
+will set the DEL_TKN bit in the WRITE USING TOKEN command of the single WUT
+odx variant, ignored in other odx variants. Even though the default for
+the DEL_TKN bit is to clear it, a ROD Token is deleted by the copy manager
+when a copy is complete or the inactivity timeout is reached. Hence this
+flag is useful after a partial write when the rest of the ROD is not
+required.
 .TP
 direct [io] [reg,blk]
 causes the O_DIRECT flag to be added to the open of \fIIFILE\fR and/or
@@ -611,7 +610,7 @@ See TAPE section.
 .TP
 immed [io] [odx]
 sets the IMMED bit in POPULATE TOKEN (when [i]) or WRITE USING TOKEN (when
-[o]) command. The action varies depending on the ODX variant, see the ODX
+[o]) command. The action varies depending on the odx variant, see the ODX
 section.
 .TP
 nocache [io] [reg,blk]
@@ -620,9 +619,13 @@ no need to fill the file buffer with recently read or written blocks. If
 used with "iflag=" it will increase the read ahead on \fIIFILE\fR.
 .TP
 no_del_tkn [o] [odx]
-will clear the DEL_TKN bit in the WRITE USING TOKEN command associated with
-a full disk\-\->disk ODX copy. The default action with a full ODX copy is to
-set the DEL_TKN bit. Also see the del_tkn flag.
+will clear the DEL_TKN bit on the last WRITE USING TOKEN command of each ROD
+Token in a odx full copy. In a large odx full copy several ROD Tokens may
+be used (one after the other). The default action is to set the DEL_TKN bit
+on the last WUT command of each ROD. Either way it should not make much
+difference because the copy manager deletes a ROD Token after a copy is
+completed. It will also delete a ROD Token if the inactivity timeout is
+reached.
 .TP
 nofm [o] [tape]
 no File Mark (FM) on close when writing to tape. See TAPE section.
@@ -648,9 +651,9 @@ null [io]
 has no affect, just a placeholder.
 .TP
 odx [io] [odx]
-indicates to this utility that one of the four variants of an ODX copy is
+indicates to this utility that one of the four variants of an odx copy is
 requested. Using any of the \fI\-\-odx\fR, \fIrtf=RTF\fR or \fIrtype=RTYPE\fR
-options also indicates that ODX is requested. See the ODX section.
+options also indicates that odx is requested. See the ODX section.
 .TP
 pad [o] [reg,blk,pt]
 when the block to be written (typically the last block) contains less than
@@ -858,6 +861,13 @@ exits a command like this:
   ddptctl \-\-poll \-\-lid=<same_LID> <same_dev>
 .br
 might be used to check for successful completion of the write operation.
+.PP
+Typically there is no need to give the \fIlist_id=LID\fR option for an ODX
+full copy (and a zero output blocks). This option becomes more useful for
+the single PT and single WUT variants, especially if the 'immed' flag is
+given. If the \fILID\fR is already in use (e.g. by another process using
+ODX on the same machine) then ddpt exits with status of 55 (operation in
+progress). In this case the user should choose another \fILID\fR.
 .PP
 The four ODX variants are distinguished as follows: if \fIOFILE\fR is a
 pass\-through device, if=/dev/null (or equivalent) and rtype=zero then the
@@ -1260,6 +1270,30 @@ probably leaving the utility with an exit status of 0 .
 .B 33
 the command sent to device has timed out. This occurs in Linux only; in
 other ports a command timeout will appear as a transport (or OS) error.
+.TP
+.B 51
+a command received 'illegal field in parameter list'. This may occur with an
+odx copy if some combination of parameters is illegal or not supported (e.g.
+iflag=immed)
+.TP
+.B 55
+a command received 'operation in progress'. This may occur with an odx copy
+when the given \fILID\fR is already being used by another process (e.g. also
+using odx) on the same machine. Choose another \fILID\fR.
+.TP
+.B 70
+a command received 'invalid token operation, cause not reportable'. This may
+occur with an odx operation when the given ROD Token is invalid. One reason
+for that may be the inactivity timeout has been reached and the copy manager
+has cancelled the ROD Token.
+.TP
+.B 71-89
+these status values provide more information than exit status 70. See SPC\-4
+ASC and ASCQ assignments (currently in Annex F.2), specifically the entries
+for asc=23h . For example exit status 72 corresponds to asc=23h, ascq=2h
+which implies the odx copy manager does not support copies between LUs in
+different targets. That is optional; an odx copy manager is required to
+support copies between LUs (that are block devices) in the same target.
 .TP
 .B 90
 the flock flag has been given on a device and some other process holds the

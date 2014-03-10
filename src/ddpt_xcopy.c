@@ -65,26 +65,6 @@
 #include "sg_cmds_basic.h"
 
 
-/* In SPC-4 the cdb opcodes have more generic names */
-#define THIRD_PARTY_COPY_OUT_CMD 0x83
-#define THIRD_PARTY_COPY_IN_CMD 0x84
-
-/* Third party copy IN (opcode 0x84) and OUT (opcode 0x83) command service
- * actions */
-#define SA_XCOPY_LID1           0x0     /* OUT, originate */
-#define SA_XCOPY_LID4           0x1     /* OUT, originate */
-#define SA_POP_TOK              0x10    /* OUT, originate */
-#define SA_WR_USING_TOK         0x11    /* OUT, originate */
-#define SA_COPY_ABORT           0x1C    /* OUT, abort */
-#define SA_COPY_STATUS_LID1     0x0     /* IN, retrieve */
-#define SA_COPY_DATA_LID1       0x1     /* IN, retrieve */
-#define SA_COPY_OP_PARAMS       0x3     /* IN, retrieve */
-#define SA_COPY_FAIL_DETAILS    0x4     /* IN, retrieve */
-#define SA_COPY_STATUS_LID4     0x5     /* IN, retrieve */
-#define SA_COPY_DATA_LID4       0x6     /* IN, retrieve */
-#define SA_ROD_TOK_INFO         0x7     /* IN, retrieve */
-#define SA_ALL_ROD_TOKS         0x8     /* IN, retrieve */
-
 #define DEF_3PC_OUT_TIMEOUT (10 * 60)   /* is 10 minutes enough? */
 #define DEF_3PC_IN_TIMEOUT 60           /* these should be fast */
 
@@ -102,6 +82,8 @@
 #define TD_IPV6 1024
 #define TD_IP_COPY_SERVICE 2048
 #define TD_ROD 4096
+
+#define MAX_IN_PROGRESS 10
 
 
 #define LOCAL_ROD_TOKEN_SIZE 1024
@@ -1361,9 +1343,10 @@ count_restricted_sgl_blocks(const struct scat_gath_elem * sglp, int elems,
 
 /* Do POPULATE_TOKEN command, returns 0 on success */
 static int
-do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks)
+do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
+           int walk_list_id)
 {
-    int res, k, n, vb3, vb4, len, fd, tmout, sz_bdrd, pl_sz;
+    int res, k, j, n, vb3, vb4, len, fd, tmout, sz_bdrd, pl_sz;
     uint64_t lba, sg0_off;
     uint32_t num;
     const struct scat_gath_elem * sglp;
@@ -1471,6 +1454,18 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks)
     tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
     res = pt_3party_copy_out(fd, SA_POP_TOK, op->list_id, DEF_GROUP_NUM,
                              tmout, pl, len, 1, vb4);
+    if ((DDPT_CAT_OP_IN_PROGRESS == res) && walk_list_id) {
+        for (j = 0; j < MAX_IN_PROGRESS; ++j) {
+            res = pt_3party_copy_out(fd, SA_POP_TOK, ++op->list_id,
+                                     DEF_GROUP_NUM, tmout, pl, len, 1, vb4);
+            if (DDPT_CAT_OP_IN_PROGRESS != res)
+                break;
+        }
+        if (MAX_IN_PROGRESS == j) {
+            if (vb3)
+                pr2serr("%s: too many list_id_s 'in progress'\n", __func__);
+        }
+    }
     free(pl);
     return res;
 }
@@ -1630,9 +1625,10 @@ fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp)
 
 /* Do WRITE USING TOKEN command, returns 0 on success */
 static int
-do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir)
+do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir,
+       int more_left, int walk_list_id)
 {
-    int vb3, vb4, len, k, n, fd, err, res, tmout, sz_bdrd, pl_sz;
+    int vb3, vb4, len, k, j, n, fd, err, res, tmout, sz_bdrd, pl_sz;
     int rodt_blk_zero;
     struct flags_t * flp;
     uint64_t lba, sg0_off;
@@ -1674,7 +1670,7 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir)
         if (ODX_REQ_WUT == op->odx_request) {
             if (flp->del_tkn)
                 pl[2] = 0x2;        /* DEL_TKN bit */
-        } else {
+        } else if (! more_left) {
             if (! flp->no_del_tkn)
                 pl[2] = 0x2;        /* data->data default DEL_TKN unless */
         }
@@ -1784,6 +1780,18 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir)
     tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
     res = pt_3party_copy_out(fd, SA_WR_USING_TOK, op->list_id, DEF_GROUP_NUM,
                              tmout, pl, len, 1, vb4);
+    if ((DDPT_CAT_OP_IN_PROGRESS == res) && walk_list_id) {
+        for (j = 0; j < MAX_IN_PROGRESS; ++j) {
+            res = pt_3party_copy_out(fd, SA_WR_USING_TOK, ++op->list_id,
+                                     DEF_GROUP_NUM, tmout, pl, len, 1, vb4);
+            if (DDPT_CAT_OP_IN_PROGRESS != res)
+                break;
+        }
+        if (MAX_IN_PROGRESS == j) {
+            if (vb3)
+                pr2serr("%s: too many list_id_s 'in progress'\n", __func__);
+        }
+    }
     free(pl);
     return res;
 }
@@ -1947,7 +1955,8 @@ odx_full_zero_copy(struct opts_t * op)
             num = count_restricted_sgl_blocks(op->out_sgl, out_num_elems,
                                               out_blk_off, num,
                                               odip->odxp->max_range_desc);
-        if ((res = do_wut(op, out_blk_off, num, 0)))
+        if ((res = do_wut(op, out_blk_off, num, op->offset_in_rod, 0,
+                          ! op->list_id_given)))
             return res;
         if ((res = fetch_rrti_after_wut(op, &tc)))
             return res;
@@ -2183,7 +2192,7 @@ odx_full_copy(struct opts_t * op)
                     "out_blk_off=0x%" PRIx64 ", o_num=%" PRIu64 "\n",
                     __func__, k, in_blk_off, num, out_blk_off, o_num);
 
-        if ((res = do_pop_tok(op, in_blk_off, num)))
+        if ((res = do_pop_tok(op, in_blk_off, num, ! op->list_id_given)))
             return res;
         if ((res = fetch_rt_after_poptok(op, &tc)))
             return res;
@@ -2211,7 +2220,9 @@ odx_full_copy(struct opts_t * op)
                 r_o_num = count_restricted_sgl_blocks(op->out_sgl,
                                 out_num_elems, out_blk_off, r_o_num,
                                 odip->odxp->max_range_desc);
-            if ((res = do_wut(op, out_blk_off, r_o_num, oir)))
+            res = do_wut(op, out_blk_off, r_o_num, oir, (r_o_num < o_num),
+                         ! op->list_id_given);
+            if (res)
                 return res;
             if ((res = fetch_rrti_after_wut(op, &tc)))
                 return res;
@@ -2299,7 +2310,7 @@ odx_setup(struct opts_t * op)
             pr2serr("warning: number of blocks requested [%" PRIu64 "] "
                     "exceeds\n   VPD page maximum token transfer size [%"
                     PRIu64 "], may fail\n", num_blks, in_max_xfer);
-        if ((res = do_pop_tok(op, 0, num_blks)))
+        if ((res = do_pop_tok(op, 0, num_blks, 0)))
             return res;
         else if (op->iflagp->immed)
             return 0;
@@ -2327,7 +2338,7 @@ odx_setup(struct opts_t * op)
             pr2serr("warning: number of blocks requested [%" PRIu64 "] "
                     "exceeds\n   VPD page maximum token transfer size [%"
                     PRIu64 "], may fail\n", num_blks, out_max_xfer);
-        if ((res = do_wut(op, 0, num_blks, 0)))
+        if ((res = do_wut(op, 0, num_blks, 0, 0, 0)))
             return res;
         else if (op->oflagp->immed)
             return 0;
