@@ -683,7 +683,7 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
 /* Called from main() in ddpt.c . Returns 0 on success or a positive
  * errno value if problems. This is for a xcopy(LID1) disk->disk copy. */
 int
-do_xcopy(struct opts_t * op)
+do_xcopy_lid1(struct opts_t * op)
 {
     int res, ibpt, obpt, bs_same, max_bpt, blocks, oblocks;
     int src_desc_len, dst_desc_len, seg_desc_type;
@@ -804,7 +804,7 @@ do_xcopy(struct opts_t * op)
         }
     }
     if (op->verbose > 1)
-        pr2serr("do_xcopy: xcopy->%s will use ibpt=%d, obpt=%d\n",
+        pr2serr("do_xcopy_lid1: xcopy->%s will use ibpt=%d, obpt=%d\n",
                 (ifp->xcopy ? idip->fn : odip->fn),  ibpt, obpt);
     seg_desc_type = seg_desc_from_d_type(simplified_dt(op->idip), 0,
                                          simplified_dt(op->odip), 0);
@@ -1295,7 +1295,7 @@ print_3pc_vpd(struct opts_t * op, int to_stderr)
     return res;
 }
 
-static uint64_t
+uint64_t
 count_sgl_blocks(const struct scat_gath_elem * sglp, int elems)
 {
     int k;
@@ -1342,26 +1342,25 @@ count_restricted_sgl_blocks(const struct scat_gath_elem * sglp, int elems,
 }
 
 /* Do POPULATE_TOKEN command, returns 0 on success */
-static int
+int
 do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
-           int walk_list_id)
+           int walk_list_id, int vb_a)
 {
-    int res, k, j, n, vb3, vb4, len, fd, tmout, sz_bdrd, pl_sz;
+    int res, k, j, n, vb_b, len, fd, tmout, sz_bdrd, elems, pl_sz;
     uint64_t lba, sg0_off;
     uint32_t num;
     const struct scat_gath_elem * sglp;
     unsigned char * pl;
 
-    vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
-    vb4 = (op->verbose > 2) ? (op->verbose - 3) : 0;
-    if (vb3)
+    vb_b = (vb_a > 0) ? (vb_a - 1) : 0;
+    if (vb_a)
         pr2serr("%s: blk_off=%" PRIu64 ", num_blks=%"  PRIu32 "\n", __func__,
                 blk_off, num_blks);
     fd = op->idip->fd;
     if (op->in_sgl) {
         sg0_off = blk_off;
         for (k = 0, sglp = op->in_sgl; k < op->in_sgl_elems; ++k, ++sglp) {
-            if ((uint64_t)sglp->num > sg0_off)
+            if ((uint64_t)sglp->num >= sg0_off)
                 break;
             sg0_off -= sglp->num;
         }
@@ -1371,10 +1370,12 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
             return SG_LIB_CAT_MALFORMED;
         }
         /* remain sg elements is worst case, might use less */
-        pl_sz = 16 + (16 * (op->in_sgl_elems - k));
+        elems = op->in_sgl_elems - k;
+        pl_sz = 16 + (16 * elems);
     } else {
         sg0_off = 0;    /* compilers should be smarter */
         sglp = NULL;
+        elems = 1;
         pl_sz = 32;
     }
     pl = (unsigned char *)malloc(pl_sz);
@@ -1397,14 +1398,14 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
     if (sglp) {
         lba = sglp->lba + sg0_off;
         num = sglp->num - sg0_off;
-        for (k = 0, n = 15; num_blks > 0; ++k, num_blks -= num, ++sglp) {
+        for (k = 0, n = 15; k < elems; ++k, num_blks -= num, ++sglp) {
             if (k > 0) {
                 lba = sglp->lba;
                 num = sglp->num;
             }
             if (num > num_blks)
                 num = num_blks;
-            if (vb3)
+            if (vb_a)
                 pr2serr("  lba=0x%" PRIx64 ", num=%" PRIu32 ", k=%d\n", lba,
                         num, k);
             pl[++n] = (unsigned char)((lba >> 56) & 0xff);
@@ -1430,7 +1431,7 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
         pl[14] = (unsigned char)((sz_bdrd >> 8) & 0xff);
         pl[15] = (unsigned char)(sz_bdrd & 0xff);
         lba = op->skip + blk_off;
-        if (vb3)
+        if (vb_a)
             pr2serr("  lba=0x%" PRIx64 ", num_blks=%" PRIu32 "\n", lba,
                     num_blks);
         pl[16] = (unsigned char)((lba >> 56) & 0xff);
@@ -1453,16 +1454,16 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
 
     tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
     res = pt_3party_copy_out(fd, SA_POP_TOK, op->list_id, DEF_GROUP_NUM,
-                             tmout, pl, len, 1, vb4);
+                             tmout, pl, len, 1, vb_b);
     if ((DDPT_CAT_OP_IN_PROGRESS == res) && walk_list_id) {
         for (j = 0; j < MAX_IN_PROGRESS; ++j) {
             res = pt_3party_copy_out(fd, SA_POP_TOK, ++op->list_id,
-                                     DEF_GROUP_NUM, tmout, pl, len, 1, vb4);
+                                     DEF_GROUP_NUM, tmout, pl, len, 1, vb_b);
             if (DDPT_CAT_OP_IN_PROGRESS != res)
                 break;
         }
         if (MAX_IN_PROGRESS == j) {
-            if (vb3)
+            if (vb_a)
                 pr2serr("%s: too many list_id_s 'in progress'\n", __func__);
         }
     }
@@ -1536,18 +1537,17 @@ fetch_rrti_after_odx(struct opts_t * op, int in0_out1,
     return 0;
 }
 
-static int
-fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp)
+int
+fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a)
 {
-    int res, fd, len, vb3, vb4, err, cont;
+    int res, fd, len, vb_b, err, cont;
     uint32_t delay;
     struct rrti_resp_t r;
     char b[400];
 
-    vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
-    vb4 = (op->verbose > 2) ? (op->verbose - 3) : 0;
+    vb_b = (vb_a > 0) ? (vb_a - 1) : 0;
     do {
-        res = fetch_rrti_after_odx(op, DDPT_ARG_IN, &r, vb4);
+        res = fetch_rrti_after_odx(op, DDPT_ARG_IN, &r, vb_b);
         if (res)
             return res;
         if (SA_POP_TOK != r.for_sa) {
@@ -1560,28 +1560,28 @@ fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp)
         if (cont) {
             delay = r.esu_del;
             if ((delay < 0xfffffffe) && (delay > 0)) {
-                if (vb4 > 1)
+                if (vb_b > 1)
                     pr2serr("using copy manager recommended delay of %"
                             PRIu32 " milliseconds\n", delay);
             } else {
                 delay = DEF_ODX_POLL_DELAY_MS;
-                if (vb4 > 1)
+                if (vb_b > 1)
                     pr2serr("using default for poll delay\n");
             }
             if (delay)
                 sleep_ms(delay);
         }
     } while (cont);
-    if ((! ((0x1 == r.cstat) || (0x3 == r.cstat))) || (vb4 > 1))
+    if ((! ((0x1 == r.cstat) || (0x3 == r.cstat))) || (vb_b > 1))
         pr2serr("RRTI for PT: %s\n", cpy_op_status_str(r.cstat, b, sizeof(b)));
-    if (vb3)
+    if (vb_a)
         pr2serr("RRTI for PT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n",
                 r.tc, r.tc);
     if (tcp)
         *tcp = r.tc;
     if (r.rt_len > 0) {
         len = (r.rt_len > 512) ? 512 : r.rt_len;
-        if (vb3) {
+        if (vb_a) {
             pr2serr("RRTI for PT: copy manager ROD Token id: %s",
                     rt_cm_id_str(r.rod_tok, r.rt_len, b, sizeof(b)));
             if (512 == r.rt_len)
@@ -1624,11 +1624,11 @@ fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp)
 }
 
 /* Do WRITE USING TOKEN command, returns 0 on success */
-static int
+int
 do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir,
-       int more_left, int walk_list_id)
+       int more_left, int walk_list_id, int vb_a)
 {
-    int vb3, vb4, len, k, j, n, fd, err, res, tmout, sz_bdrd, pl_sz;
+    int vb_b, len, k, j, n, fd, err, res, tmout, sz_bdrd, elems, pl_sz;
     int rodt_blk_zero;
     struct flags_t * flp;
     uint64_t lba, sg0_off;
@@ -1637,9 +1637,8 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir,
     unsigned char * pl;
     unsigned char rt[512];
 
-    vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
-    vb4 = (op->verbose > 2) ? (op->verbose - 3) : 0;
-    if (vb3)
+    vb_b = (vb_a > 0) ? (vb_a - 1) : 0;
+    if (vb_a)
         pr2serr("%s: enter; blk_off=%" PRIu64 ", num_blks=%"  PRIu32 ", "
                 " oir=0x%" PRIx64 "\n", __func__, blk_off, num_blks, oir);
     fd = op->odip->fd;
@@ -1648,7 +1647,7 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir,
     if (op->out_sgl) {
         sglp = op->out_sgl;
         for (k = 0, sg0_off = blk_off; k < op->out_sgl_elems; ++k, ++sglp) {
-            if ((uint64_t)sglp->num > sg0_off)
+            if ((uint64_t)sglp->num >= sg0_off)
                 break;
             sg0_off -= sglp->num;
         }
@@ -1658,10 +1657,12 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir,
             return SG_LIB_CAT_MALFORMED;
         }
         /* remain sg elements is worst case, might use less */
-        pl_sz = 540 + (16 * (op->out_sgl_elems - k));
+        elems = op->out_sgl_elems - k;
+        pl_sz = 540 + (16 * elems);
     } else {
         sg0_off = 0;    /* compilers should be smarter */
         sglp = NULL;
+        elems = 1;
         pl_sz = 540 + 16;
     }
     pl = (unsigned char *)malloc(pl_sz);
@@ -1688,7 +1689,7 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir,
         pl[15] = (unsigned char)(oir & 0xff);
     }
     if (rodt_blk_zero) {
-        if (vb3 > 1)
+        if (vb_a > 1)
             pr2serr("  configure for block device zero ROD Token\n");
         local_rod_token[0] = (unsigned char)((RODT_BLK_ZERO >> 24) & 0xff);
         local_rod_token[1] = (unsigned char)((RODT_BLK_ZERO >> 16) & 0xff);
@@ -1723,14 +1724,14 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir,
     if (sglp) {
         lba = sglp->lba + sg0_off;
         num = sglp->num - sg0_off;
-        for (k = 0, n = 535; num_blks > 0; ++k, num_blks -= num, ++sglp) {
+        for (k = 0, n = 535; k < elems; ++k, num_blks -= num, ++sglp) {
             if (k > 0) {
                 lba = sglp->lba;
                 num = sglp->num;
             }
             if (num > num_blks)
                 num = num_blks;
-            if (vb3)
+            if (vb_a)
                 pr2serr("  lba=0x%" PRIx64 ", num=%" PRIu32 ", k=%d\n", lba,
                         num, k);
             pl[++n] = (unsigned char)((lba >> 56) & 0xff);
@@ -1755,7 +1756,7 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir,
         pl[534] = (unsigned char)((sz_bdrd >> 8) & 0xff);
         pl[535] = (unsigned char)(sz_bdrd & 0xff);
         lba = op->seek + blk_off;
-        if (vb3)
+        if (vb_a)
             pr2serr("  lba=0x%" PRIx64 ", num_blks=%" PRIu32 "\n", lba,
                     num_blks);
         pl[536] = (unsigned char)((lba >> 56) & 0xff);
@@ -1779,16 +1780,16 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir,
 
     tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
     res = pt_3party_copy_out(fd, SA_WR_USING_TOK, op->list_id, DEF_GROUP_NUM,
-                             tmout, pl, len, 1, vb4);
+                             tmout, pl, len, 1, vb_b);
     if ((DDPT_CAT_OP_IN_PROGRESS == res) && walk_list_id) {
         for (j = 0; j < MAX_IN_PROGRESS; ++j) {
             res = pt_3party_copy_out(fd, SA_WR_USING_TOK, ++op->list_id,
-                                     DEF_GROUP_NUM, tmout, pl, len, 1, vb4);
+                                     DEF_GROUP_NUM, tmout, pl, len, 1, vb_b);
             if (DDPT_CAT_OP_IN_PROGRESS != res)
                 break;
         }
         if (MAX_IN_PROGRESS == j) {
-            if (vb3)
+            if (vb_a)
                 pr2serr("%s: too many list_id_s 'in progress'\n", __func__);
         }
     }
@@ -1796,18 +1797,17 @@ do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks, uint64_t oir,
     return res;
 }
 
-static int
-fetch_rrti_after_wut(struct opts_t * op, uint64_t * tcp)
+int
+fetch_rrti_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a)
 {
-    int res, cont, vb3, vb4;
+    int res, cont, vb_b;
     uint32_t delay;
     struct rrti_resp_t r;
     char b[80];
 
-    vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
-    vb4 = (op->verbose > 2) ? (op->verbose - 3) : 0;
+    vb_b = (vb_a > 0) ? (vb_a - 1) : 0;
     do {
-        res = fetch_rrti_after_odx(op, DDPT_ARG_OUT, &r, vb4);
+        res = fetch_rrti_after_odx(op, DDPT_ARG_OUT, &r, vb_b);
         if (res)
             return res;
         if (SA_WR_USING_TOK != r.for_sa) {
@@ -1820,12 +1820,12 @@ fetch_rrti_after_wut(struct opts_t * op, uint64_t * tcp)
         if (cont) {
             delay = r.esu_del;
             if ((delay < 0xfffffffe) && (delay > 0)) {
-                if (vb4 > 1)
+                if (vb_b > 1)
                     pr2serr("using copy manager recommended delay of %"
                             PRIu32 " milliseconds\n", delay);
             } else {
                 delay = DEF_ODX_POLL_DELAY_MS;
-                if (vb4 > 1)
+                if (vb_b > 1)
                     pr2serr("using default for poll delay\n");
             }
             if (delay)
@@ -1833,12 +1833,12 @@ fetch_rrti_after_wut(struct opts_t * op, uint64_t * tcp)
         }
     } while (cont);
 
-    if ((! ((0x1 == r.cstat) || (0x3 == r.cstat))) || (vb4 > 1))
+    if ((! ((0x1 == r.cstat) || (0x3 == r.cstat))) || (vb_b > 1))
         pr2serr("RRTI for WUT: %s\n", cpy_op_status_str(r.cstat, b,
                 sizeof(b)));
     if (tcp)
         *tcp = r.tc;
-    if (vb3)
+    if (vb_a)
         pr2serr("RRTI for WUT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n",
                 r.tc, r.tc);
     return 0;
@@ -1871,17 +1871,53 @@ odx_check_sgl(struct opts_t * op, uint64_t num_blks, int in0_out1)
     return 0;
 }
 
+static int
+fetch_read_cap(struct opts_t * op, int in0_out1, int64_t * num_blks,
+               int * blk_sz)
+{
+    int res;
+    int bs = in0_out1 ? op->obs : op->ibs;
+    struct dev_info_t * dip = in0_out1 ? op->odip : op->idip;
+    struct flags_t * flagp = in0_out1 ? op->oflagp : op->iflagp;
+    const char * oip = in0_out1 ? "o" : "i";
+
+    if ((res = pt_read_capacity(op, in0_out1, num_blks, blk_sz))) {
+        if (SG_LIB_CAT_UNIT_ATTENTION == res) {
+            pr2serr("Unit attention (readcap(%s)), continuing\n", oip);
+            res = pt_read_capacity(op, in0_out1, num_blks, blk_sz);
+        }
+        if (res)
+            return res;
+    }
+    if (op->verbose) {
+        print_blk_sizes(dip->fn, "readcap", *num_blks, *blk_sz, 1);
+        if (dip->prot_type > 0)
+            pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
+                    dip->prot_type, dip->p_i_exp);
+    }
+    if ((*num_blks > 0) && (*blk_sz != bs)) {
+        pr2serr(">> warning: %s block size confusion: %sbs=%d, device "
+                "claims=%d\n", dip->fn, oip, bs, *blk_sz);
+        if (0 == flagp->force) {
+            pr2serr(">> abort copy, use %sflag=force to override\n", oip);
+            return -1;
+        }
+    }
+    return 0;
+}
+
 /* This is called when rod_type=zero which implies the input is a dummy
  * (require 'if=/dev/null') and we want to write block of zeros to the
  * destination. Returns 0 when successful. */
 static int
 odx_full_zero_copy(struct opts_t * op)
 {
-    int k, got_count, res, out_blk_sz, out_num_elems;
+    int k, got_count, res, out_blk_sz, out_num_elems, vb3;
     struct dev_info_t * odip = op->odip;
     uint64_t out_blk_off, num, tc;
     int64_t out_num_blks, v;
 
+    vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
     k = dd_filetype(op->idip->fn, op->verbose);
     got_count = (op->dd_count > 0);
     if (FT_DEV_NULL != k) {
@@ -1891,30 +1927,9 @@ odx_full_zero_copy(struct opts_t * op)
                 "give if=/dev/null or equivalent\n");
         return SG_LIB_SYNTAX_ERROR;
     }
-    if ((res = pt_read_capacity(op, DDPT_ARG_OUT, &out_num_blks,
-                                &out_blk_sz))) {
-        if (SG_LIB_CAT_UNIT_ATTENTION == res) {
-            pr2serr("Unit attention (readcap out), continuing\n");
-            res = pt_read_capacity(op, DDPT_ARG_OUT, &out_num_blks,
-                                   &out_blk_sz);
-        }
-        if (res)
-            return res;
-    }
-    if (op->verbose) {
-        print_blk_sizes(odip->fn, "pt", out_num_blks, out_blk_sz, 1);
-        if (odip->prot_type > 0)
-            pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
-                    odip->prot_type, odip->p_i_exp);
-    }
-    if ((out_num_blks > 0) && (op->obs != out_blk_sz)) {
-        pr2serr(">> warning: %s block size confusion: obs=%d, device "
-                "claims=%d\n", odip->fn, op->obs, out_blk_sz);
-        if (0 == op->oflagp->force) {
-            pr2serr(">> abort copy, use oflag=force to override\n");
-            return -1;
-        }
-    }
+    res = fetch_read_cap(op, DDPT_ARG_OUT, &out_num_blks, &out_blk_sz);
+    if (res)
+        return res;
     v = out_num_blks;
     if (op->out_sgl) {  /* scatter list */
         out_num_elems = op->out_sgl_elems;
@@ -1956,9 +1971,9 @@ odx_full_zero_copy(struct opts_t * op)
                                               out_blk_off, num,
                                               odip->odxp->max_range_desc);
         if ((res = do_wut(op, out_blk_off, num, op->offset_in_rod, 0,
-                          ! op->list_id_given)))
+                          ! op->list_id_given, vb3)))
             return res;
-        if ((res = fetch_rrti_after_wut(op, &tc)))
+        if ((res = fetch_rrti_after_wut(op, &tc, vb3)))
             return res;
         if (tc != num) {
             pr2serr("%s: number requested differs from transfer count\n",
@@ -1979,64 +1994,22 @@ static int
 odx_full_copy(struct opts_t * op)
 {
     int k, res, ok, in_blk_sz, out_blk_sz, oneto1, in_mult, out_mult;
-    int got_count, in_num_elems, out_num_elems;
+    int got_count, in_num_elems, out_num_elems, vb3;
     uint64_t in_blk_off, out_blk_off, num, o_num, r_o_num, oir, tc;
     int64_t in_num_blks, out_num_blks, u, uu, v, vv;
     struct dev_info_t * idip = op->idip;
     struct dev_info_t * odip = op->odip;
 
-    if (op->rod_type_given && (RODT_BLK_ZERO == op->rod_type))
-        return odx_full_zero_copy(op);
+    vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
     got_count = (op->dd_count > 0);
     /* need to know block size of input and output */
-    if ((res = pt_read_capacity(op, DDPT_ARG_IN, &in_num_blks, &in_blk_sz))) {
-        if (SG_LIB_CAT_UNIT_ATTENTION == res) {
-            pr2serr("Unit attention (readcap in), continuing\n");
-            res = pt_read_capacity(op, DDPT_ARG_IN, &in_num_blks,
-                                   &in_blk_sz);
-        }
-        if (res)
-            return res;
-    }
-    if (op->verbose) {
-        print_blk_sizes(idip->fn, "pt", in_num_blks, in_blk_sz, 1);
-        if (idip->prot_type > 0)
-            pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
-                    idip->prot_type, idip->p_i_exp);
-    }
-    if ((in_num_blks > 0) && (in_blk_sz != op->ibs)) {
-        pr2serr(">> warning: %s block size confusion: ibs=%d, device "
-                "claims=%d\n", idip->fn, op->ibs, in_blk_sz);
-        if (0 == op->iflagp->force) {
-            pr2serr(">> abort copy, use iflag=force to override\n");
-            return -1;
-        }
-    }
+    res = fetch_read_cap(op, DDPT_ARG_IN, &in_num_blks, &in_blk_sz);
+    if (res)
+        return res;
     u = in_num_blks;
-    if ((res = pt_read_capacity(op, DDPT_ARG_OUT, &out_num_blks,
-                                &out_blk_sz))) {
-        if (SG_LIB_CAT_UNIT_ATTENTION == res) {
-            pr2serr("Unit attention (readcap out), continuing\n");
-            res = pt_read_capacity(op, DDPT_ARG_OUT, &out_num_blks,
-                                   &out_blk_sz);
-        }
-        if (res)
-            return res;
-    }
-    if (op->verbose) {
-        print_blk_sizes(odip->fn, "pt", out_num_blks, out_blk_sz, 1);
-        if (odip->prot_type > 0)
-            pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
-                    odip->prot_type, odip->p_i_exp);
-    }
-    if ((out_num_blks > 0) && (op->obs != out_blk_sz)) {
-        pr2serr(">> warning: %s block size confusion: obs=%d, device "
-                "claims=%d\n", odip->fn, op->obs, out_blk_sz);
-        if (0 == op->oflagp->force) {
-            pr2serr(">> abort copy, use oflag=force to override\n");
-            return -1;
-        }
-    }
+    res = fetch_read_cap(op, DDPT_ARG_OUT, &out_num_blks, &out_blk_sz);
+    if (res)
+        return res;
     v = out_num_blks;
     oneto1 = (in_blk_sz == out_blk_sz);
     in_mult = 0;        /* so (in_blk_sz < out_blk_sz) */
@@ -2192,9 +2165,9 @@ odx_full_copy(struct opts_t * op)
                     "out_blk_off=0x%" PRIx64 ", o_num=%" PRIu64 "\n",
                     __func__, k, in_blk_off, num, out_blk_off, o_num);
 
-        if ((res = do_pop_tok(op, in_blk_off, num, ! op->list_id_given)))
+        if ((res = do_pop_tok(op, in_blk_off, num, ! op->list_id_given, vb3)))
             return res;
-        if ((res = fetch_rt_after_poptok(op, &tc)))
+        if ((res = fetch_rt_after_poptok(op, &tc, vb3)))
             return res;
         if (tc != num) {
             pr2serr("%s: number requested (in) differs from transfer "
@@ -2221,10 +2194,10 @@ odx_full_copy(struct opts_t * op)
                                 out_num_elems, out_blk_off, r_o_num,
                                 odip->odxp->max_range_desc);
             res = do_wut(op, out_blk_off, r_o_num, oir, (r_o_num < o_num),
-                         ! op->list_id_given);
+                         ! op->list_id_given, vb3);
             if (res)
                 return res;
-            if ((res = fetch_rrti_after_wut(op, &tc)))
+            if ((res = fetch_rrti_after_wut(op, &tc, vb3)))
                 return res;
             if (tc != r_o_num) {
                 pr2serr("%s: number requested (in) differs from transfer "
@@ -2239,14 +2212,15 @@ odx_full_copy(struct opts_t * op)
 }
 
 static int
-odx_setup(struct opts_t * op)
+odx_setup_and_run(struct opts_t * op)
 {
-    int fd, res, num_elems, req;
+    int fd, res, num_elems, req, vb3;
     struct dev_info_t * dip;
     uint64_t num_blks, tc;
     uint64_t in_max_xfer = 0;
     uint64_t  out_max_xfer = 0;
 
+    vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
     req = op->odx_request;
     if (! op->list_id_given)
         op->list_id = (ODX_REQ_WUT == req) ? 0x102 : 0x101;
@@ -2310,11 +2284,11 @@ odx_setup(struct opts_t * op)
             pr2serr("warning: number of blocks requested [%" PRIu64 "] "
                     "exceeds\n   VPD page maximum token transfer size [%"
                     PRIu64 "], may fail\n", num_blks, in_max_xfer);
-        if ((res = do_pop_tok(op, 0, num_blks, 0)))
+        if ((res = do_pop_tok(op, 0, num_blks, 0, vb3)))
             return res;
         else if (op->iflagp->immed)
             return 0;
-        if ((res = fetch_rt_after_poptok(op, &tc)))
+        if ((res = fetch_rt_after_poptok(op, &tc, vb3)))
             return res;
         op->in_full += tc;
         op->dd_count -= tc;
@@ -2338,17 +2312,19 @@ odx_setup(struct opts_t * op)
             pr2serr("warning: number of blocks requested [%" PRIu64 "] "
                     "exceeds\n   VPD page maximum token transfer size [%"
                     PRIu64 "], may fail\n", num_blks, out_max_xfer);
-        if ((res = do_wut(op, 0, num_blks, 0, 0, 0)))
+        if ((res = do_wut(op, 0, num_blks, 0, 0, 0, vb3)))
             return res;
         else if (op->oflagp->immed)
             return 0;
-        if ((res = fetch_rrti_after_wut(op, &tc)))
+        if ((res = fetch_rrti_after_wut(op, &tc, vb3)))
             return res;
         op->out_full += tc;
         op->dd_count -= tc;
     } else if (ODX_REQ_COPY == req) {
-        if ((res = odx_full_copy(op)))
-            return res;
+        if (op->rod_type_given && (RODT_BLK_ZERO == op->rod_type))
+            return odx_full_zero_copy(op);
+        else
+            return odx_full_copy(op);
     }
     return 0;
 }
@@ -2365,7 +2341,7 @@ do_odx(struct opts_t * op)
     full_cp_or_zero = (ODX_REQ_COPY == op->odx_request);
     if (op->do_time && full_cp_or_zero)
         calc_duration_init(op);
-    ret = odx_setup(op);
+    ret = odx_setup_and_run(op);
     if (full_cp_or_zero && (0 == op->status_none))
         print_stats("", op);
     if (op->do_time && full_cp_or_zero)
