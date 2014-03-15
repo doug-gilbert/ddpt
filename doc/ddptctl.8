@@ -4,9 +4,10 @@ ddptctl \- helper/auxiliary utility for ddpt
 .SH SYNOPSIS
 .B ddptctl
 [\fI\-\-abort=LID\fR] [\fI\-\-all_toks\fR] [\fI\-\-block\fR] [\fI\-\-help\fR]
-[\fI\-\-info\fR] [\fI\-\-list_id=LID\fR] [\fI\-\-poll\fR] [\fI\-\-receive\fR]
-[\fI\-\-rtf=RTF\fR] [\fI\-\-size\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR]
-[\fIDEVICE\fR]
+[\fI\-\-immed\fR] [\fI\-\-info\fR] [\fI\-\-oir=OIR\fR] [\fI\-\-list_id=LID\fR]
+[\fI\-\-poll\fR] [\fI\-\-pt=GL\fR] [\fI\-\-receive\fR] [\fI\-\-rtf=RTF\fR]
+[\fI\-\-rtype=RTYPE\fR] [\fI\-\-size\fR] [\fI\-\-timeout=ITO[,CMD]\fR]
+[\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wut=SL\fR] [\fIDEVICE\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
@@ -16,11 +17,16 @@ syntax is modelled on that of the POSIX dd command, this utility has a more
 standard Unix command line syntax with both short and long vaiants of each
 option.
 .PP
-This utility is aimed mainly at offload copy (xcopy) support and several
-options assume ODX (disk->held->disk (partial) copies based on the SBC\-3's
-POPULATE TOKEN and WRITE USING TOKEN commands).
+The T10 committee defines a family of SCSI commands for offloaded copy. The
+central (but not the only) command is EXTENDED COPY often shortened to XCOPY
+or xcopy. There are now two generations of xcopy, the older one is given the
+suffix "LID1" and the newer one: "LID4". There is a subset of XCOPY(LID4)
+based on the SBC\-3 commands: POPULATE TOKEN (PT) and WRITE USING TOKEN (WUT)
+which do disk to disk copies. ODX is a market name that has become associated
+with this subset. This utility can issue PT, WUT and related commands, read
+the Third Party Copy VPD page and perform several other housekeeping tasks.
 .PP
-Several forms of xcopy are described in the SPC\-4 and SBC\-3 documents
+The xcopy family of commands are described in the SPC\-4 and SBC\-3 documents
 found at http://www.t10.org .
 .SH OPTIONS
 Arguments to long options are mandatory for short options as well.
@@ -42,6 +48,15 @@ pass\-through device.
 \fB\-h\fR, \fB\-\-help\fR
 outputs the usage message summarizing command line options then exits.
 .TP
+\fB\-I\fR, \fB\-\-immed\fR
+set the IMMED bit in the PT or WUT command. When given the PT and WUT
+commands return promptly before the data transfer is complete; then this
+utility exits. The use should then invoke the utility again with the
+\fI\-\-poll\fR option and the same \fILID\fR to await completion and
+receive the final transfer count. The default action of PT and WUT (i.e.
+without this option) is to wait for completion (i.e. all data transferred
+or an error) before xiting this utility.
+.TP
 \fB\-i\fR, \fB\-\-info\fR
 when the \fIDEVICE\fR argument is given then check its Third Party Copy VPD
 page and print out anything found. Also check if the 3PC bit is set in the
@@ -54,6 +69,10 @@ file.
 \fB\-l\fR, \fB\-\-list_id\fR=\fILID\fR
 \fILID\fR is a list identifier that is used by either the \fI\-\-poll\fR or
 \fI\-\-receive\fR logic.
+.TP
+\fB\-O\fR, \fB\-\-oir\fR=\fIOIR\fR
+\fIOIR\fR is the Offset In ROD, a field in the PT command. Its default value
+is 0 and its units are the logical block size of \fIDEVICE\fR.
 .TP
 \fB\-p\fR, \fB\-\-poll\fR
 send the RECEIVE ROD TOKEN INFORMATION SCSI command (RRTI) to the \fIDEVICE\fR
@@ -70,6 +89,10 @@ ROD Token (returned in the RRTI response) is written to the \fIRTF\fR
 file. If the \fI\-\-rtf=RTF\fR option is not given then the ROD token is
 written to a file called ddptctl_rod_tok.bin in the current directory.
 .TP
+\fB\-P\fR, \fB\-\-pt\fR=\fIGL\fR
+send a POPULATE TOKEN (PT) command with the given gather list.
+xxxxx
+.TP
 \fB\-R\fR, \fB\-\-receive\fR
 send the RECEIVE ROD TOKEN INFORMATION SCSI command (RRTI) to the \fIDEVICE\fR
 using the \fILID\fR (i.e. from the \fI\-\-list_id=LID\fR option). If the
@@ -84,11 +107,24 @@ file. If the \fI\-\-rtf=RTF\fR option is not given then ...
 when \fIRTF\fR is a file containing an ODX ROD Token (typically 512 bytes
 long) or the name of a file the ROD Token is to be written to.
 .TP
+\fB\-t\fR, \fB\-\-rtype\fR=\fIRTYPE\fR
+yyyyyyyyyyyyyyyy
+.TP
+\fB\-s\fR, \fB\-\-size\fR
+xxxxxxxxxxxxxxx
+.TP
+\fB\-T\fR, \fB\-\-timeout\fR=\fIITO[,CMD]\fR
+yyyyyyyyyyyyyyyy
+.TP
 \fB\-v\fR, \fB\-\-verbose\fR
 increase the level of verbosity, (i.e. debug output).
 .TP
 \fB\-V\fR, \fB\-\-version\fR
 print the version string and then exit.
+.TP
+\fB\-w\fR, \fB\-\-wut\fR=\fISL\fR
+send a WRITE USING TOKEN (WUT) command with the given scatter list.
+xxxxx
 .SH EXIT STATUS
 The exit status of ddptctl is 0 when it is successful. Otherwise the exit
 status for this utility is the same as that for ddpt. See the EXIT STATUS

@@ -205,6 +205,8 @@ extern "C" {
 #define SA_ROD_TOK_INFO         0x7     /* IN, retrieve */
 #define SA_ALL_ROD_TOKS         0x8     /* IN, retrieve */
 
+#define MAX_FIXED_SGL_ELEMS 128         /* same for gl and sl; MS max is 64 */
+
 
 struct scat_gath_elem {
     uint64_t lba;       /* of first block */
@@ -474,6 +476,10 @@ char * rod_type_str(uint32_t rt, char * b, int b_mlen);
 char * rt_cm_id_str(const unsigned char * rtp, int rt_len, char * b,
                     int b_mlen);
 void print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr);
+int cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr,
+              int * arr_len, int max_arr_len);
+int file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
+                int * arr_len, int max_arr_len);
 
 /* defined in ddpt_pt.c */
 void * pt_construct_obj(void);
@@ -498,10 +504,17 @@ int pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
 
 /* defined in ddpt_xcopy.c */
 const char * cpy_op_status_str(int cos, char * b, int blen);
+uint64_t count_sgl_blocks(const struct scat_gath_elem * sglp, int elems);
 int print_3pc_vpd(struct opts_t * op, int to_stderr);
+int do_xcopy_lid1(struct opts_t * op);
+int do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
+               int walk_list_id, int vb_a);
 int fetch_rrti_after_odx(struct opts_t * op, int in0_out1,
                          struct rrti_resp_t * rrp, int verb);
-int do_xcopy(struct opts_t * op);       /* xcopy(LID1) */
+int fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a);
+int do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
+           uint64_t oir, int more_left, int walk_list_id, int vb_a);
+int fetch_rrti_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a);
 int do_odx(struct opts_t * op);
 
 /* defined in ddpt_cl.c */

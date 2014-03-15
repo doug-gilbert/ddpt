@@ -1640,3 +1640,223 @@ print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr)
         break;
     }
 }
+
+/* Trying to decode multipliers as sg_get_llnum() [in sg_libs] does would
+ * only confuse things here, so use this local trimmed version */
+static int64_t
+get_llnum_no_mult(const char * buf)
+{
+    int res, len;
+    int64_t num;
+    uint64_t unum;
+
+    if ((NULL == buf) || ('\0' == buf[0]))
+        return -1LL;
+    len = strspn(buf, "0123456789aAbBcCdDeEfFhHxX");
+    if (0 == len)
+        return -1LL;
+    if (('0' == buf[0]) && (('x' == buf[1]) || ('X' == buf[1]))) {
+        res = sscanf(buf + 2, "%" SCNx64 "", &unum);
+        num = unum;
+    } else if ('H' == toupper(buf[len - 1])) {
+        res = sscanf(buf, "%" SCNx64 "", &unum);
+        num = unum;
+    } else
+        res = sscanf(buf, "%" SCNd64 "", &num);
+    if (1 == res)
+        return num;
+    else
+        return -1LL;
+}
+
+/* Read numbers (up to 64 bits in size) from command line (comma (or
+ * (single) space) separated list). Assumed decimal unless prefixed
+ * by '0x', '0X' or contains trailing 'h' or 'H' (which indicate hex).
+ * Returns 0 if ok, or 1 if error. */
+int
+cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr,
+              int * arr_len, int max_arr_len)
+{
+    int in_len, k;
+    const char * lcp;
+    int64_t ll;
+    char * cp;
+    char * c2p;
+
+    if ((NULL == inp) || (NULL == sgl_arr) ||
+        (NULL == arr_len))
+        return 1;
+    lcp = inp;
+    in_len = strlen(inp);
+    if (0 == in_len)
+        *arr_len = 0;
+    if ('-' == inp[0]) {        /* read from stdin */
+        pr2serr("'--lba' cannot be read from stdin\n");
+        return 1;
+    } else {        /* list of numbers (default decimal) on command line */
+        k = strspn(inp, "0123456789aAbBcCdDeEfFhHxX, ");
+        if (in_len != k) {
+            pr2serr("cl_to_sgl: error at pos %d\n", k + 1);
+            return 1;
+        }
+        for (k = 0; k < max_arr_len; ++k) {
+            ll = get_llnum_no_mult(lcp);
+            if (-1 != ll) {
+                sgl_arr[k].lba = (uint64_t)ll;
+                cp = (char *)strchr(lcp, ',');
+                c2p = (char *)strchr(lcp, ' ');
+                if (NULL == cp)
+                    cp = c2p;
+                if (NULL == cp)
+                    break;
+                if (c2p && (c2p < cp))
+                    cp = c2p;
+                lcp = cp + 1;
+            } else {
+                pr2serr("cl_to_sgl: error at pos %d\n", (int)(lcp - inp + 1));
+                return 1;
+            }
+            ll = get_llnum_no_mult(lcp);
+            if (-1 != ll) {
+                if (ll > UINT32_MAX) {
+                    pr2serr("cl_to_sgl: number exceeds 32 bits at pos %d\n",
+                            (int)(lcp - inp + 1));
+                    return 1;
+                }
+                sgl_arr[k].num = (uint32_t)ll;
+                cp = (char *)strchr(lcp, ',');
+                c2p = (char *)strchr(lcp, ' ');
+                if (NULL == cp)
+                    cp = c2p;
+                if (NULL == cp)
+                    break;
+                if (c2p && (c2p < cp))
+                    cp = c2p;
+                lcp = cp + 1;
+            } else {
+                pr2serr("cl_to_sgl: error at pos %d\n", (int)(lcp - inp + 1));
+                return 1;
+            }
+        }
+        *arr_len = k + 1;
+        if (k == max_arr_len) {
+            pr2serr("cl_to_sgl: array length exceeded\n");
+            return 1;
+        }
+    }
+#if 0
+    pr2serr("cl_to_sgl: elems=%d\n", k + 1);
+    {
+        int n;
+        for (n = 0; n < k + 1; ++n)
+            pr2serr("   lba=0x%" PRIx64 ", num=%" PRIu32 "\n", sgl_arr[n].lba,
+                    sgl_arr[n].num);
+    }
+#endif
+    return 0;
+}
+
+/* Read numbers from filename (or stdin) line by line (comma (or
+ * (single) space) separated list). Assumed decimal unless prefixed
+ * by '0x', '0X' or contains trailing 'h' or 'H' (which indicate hex).
+ * Returns 0 if ok, or 1 if error. */
+int
+file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
+            int * arr_len, int max_arr_len)
+{
+    char line[1024];
+    int off = 0;
+    int in_len, k, j, m, have_stdin, ind, bit0;
+    char * lcp;
+    FILE * fp;
+    int64_t ll;
+
+    have_stdin = ((1 == strlen(file_name)) && ('-' == file_name[0]));
+    if (have_stdin)
+        fp = stdin;
+    else {
+        fp = fopen(file_name, "r");
+        if (NULL == fp) {
+            pr2serr("file_to_sgl: unable to open %s\n", file_name);
+            return 1;
+        }
+    }
+
+    for (j = 0; j < 512; ++j) {
+        if (NULL == fgets(line, sizeof(line), fp))
+            break;
+        // could improve with carry_over logic if sizeof(line) too small
+        in_len = strlen(line);
+        if (in_len > 0) {
+            if ('\n' == line[in_len - 1]) {
+                --in_len;
+                line[in_len] = '\0';
+            }
+            else {
+                pr2serr("file_to_sgl: line too long, max %d bytes\n",
+                        (int)(sizeof(line) - 1));
+                return 1;
+            }
+        }
+        if (in_len < 1)
+            continue;
+        lcp = line;
+        m = strspn(lcp, " \t");
+        if (m == in_len)
+            continue;
+        lcp += m;
+        in_len -= m;
+        if ('#' == *lcp)
+            continue;
+        k = strspn(lcp, "0123456789aAbBcCdDeEfFhHxX ,\t");
+        if ((k < in_len) && ('#' != lcp[k])) {
+            pr2serr("file_to_sgl: syntax error at line %d, pos %d\n", j + 1,
+                    m + k + 1);
+            return 1;
+        }
+        for (k = 0; k < 1024; ++k) {
+            ll = get_llnum_no_mult(lcp);
+            if (-1 != ll) {
+                ind = ((off + k) >> 1);
+                bit0 = 0x1 & (off + k);
+                if (ind >= max_arr_len) {
+                    pr2serr("file_to_sgl: array length exceeded\n");
+                    return 1;
+                }
+                if (bit0) {
+                    if (ll > UINT32_MAX) {
+                        pr2serr("file_to_sgl: number exceeds 32 bits in "
+                                "line %d, at pos %d\n", j + 1,
+                                (int)(lcp - line + 1));
+                        return 1;
+                    }
+                    sgl_arr[ind].num = (uint32_t)ll;
+                } else
+                    sgl_arr[ind].lba = (uint64_t)ll;
+                lcp = strpbrk(lcp, " ,\t");
+                if (NULL == lcp)
+                    break;
+                lcp += strspn(lcp, " ,\t");
+                if ('\0' == *lcp)
+                    break;
+            } else {
+                if ('#' == *lcp) {
+                    --k;
+                    break;
+                }
+                pr2serr("file_to_sgl: error in line %d, at pos %d\n", j + 1,
+                        (int)(lcp - line + 1));
+                return 1;
+            }
+        }
+        off += (k + 1);
+    }
+    if (0x1 & off) {
+        pr2serr("file_to_sgl: expect LBA,NUM pairs but decoded odd number\n"
+                "  from %s\n", have_stdin ? "stdin" : file_name);
+        return 1;
+    }
+    *arr_len = off >> 1;
+    return 0;
+}
+

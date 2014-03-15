@@ -50,7 +50,7 @@
 #include <ctype.h>
 #include <getopt.h>
 #include <errno.h>
-#define __STDC_LIMIT_MACROS 1   /* for UINT64_MAX and friends */
+#define __STDC_LIMIT_MACROS 1   /* for UINT64_MAX, UINT32_MAX, etc */
 #include <limits.h>
 #include <fcntl.h>
 #define __STDC_FORMAT_MACROS 1
@@ -65,7 +65,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140310 [svn: r269]";
+const char * ddptctl_version_str = "0.94 20140315 [svn: r270]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -110,25 +110,33 @@ const char * ddptctl_version_str = "0.94 20140310 [svn: r269]";
 #include "sg_cmds_basic.h"
 
 
+#define DEF_3PC_OUT_TIMEOUT (10 * 60)   /* is 10 minutes enough? */
 #define DEF_3PC_IN_TIMEOUT 60           /* these should be fast */
 
 #define DEF_ROD_TOK_FILE "ddptctl_rod_tok.bin"
 
 
+static struct scat_gath_elem fixed_sgl[MAX_FIXED_SGL_ELEMS];
 
 static struct option long_options[] = {
-        {"abort", required_argument, 0, 'A'},
+        {"abort", no_argument, 0, 'A'},
         {"all_toks", no_argument, 0, 'a'},
         {"block", no_argument, 0, 'b'},
         {"help", no_argument, 0, 'h'},
         {"info", no_argument, 0, 'i'},
+        {"immed", no_argument, 0, 'I'},
         {"list_id", required_argument, 0, 'l'},
+        {"oir", required_argument, 0, 'O'},
         {"poll", no_argument, 0, 'p'},
+        {"pt", required_argument, 0, 'P'},
         {"receive", no_argument, 0, 'R'},
         {"rtf", required_argument, 0, 'r'},
+        {"rtype", required_argument, 0, 't'},
+        {"timeout", required_argument, 0, 'T'},
         {"size", no_argument, 0, 's'},
         {"verbose", no_argument, 0, 'v'},
         {"version", no_argument, 0, 'V'},
+        {"wut", required_argument, 0, 'w'},
         {0, 0, 0, 0},
 };
 
@@ -138,33 +146,58 @@ static void
 usage()
 {
     pr2serr("Usage: "
-            "ddptctl [--abort=LID] [--all_toks] [--block] [--help] [--info]\n"
-            "               [--list_id=LID] [--poll] [--receive] [--rtf=RTF] "
-            "[--size]\n"
-            "               [--verbose] [--version] [DEVICE]\n"
+            "ddptctl [--abort] [--all_toks] [--block] [--help] [-immed] "
+            "[--info]\n"
+            "               [--list_id=LID] [--oir=OIR] [--poll] [--pt=GL] "
+            "[--receive]\n"
+            "               [--rtf=RTF] [rtype=RTYPE] [--size] "
+            "[--timeout=ITO[,CMD]]\n"
+            "               [--verbose] [--version] [--wut=SL] [DEVICE]\n"
             "  where:\n"
-            "    --abort=LID|-A LID    call COPY OPERATION ABORT on LID\n"
-            "    --all_toks|-a         call REPORT ALL ROD TOKENS\n"
-            "    --block|-B            treat DEVICE as block device (def: "
-            "treat as pt)\n"
+            "    --abort|-A            call COPY OPERATION ABORT command\n"
+            "    --all_toks|-a         call REPORT ALL ROD TOKENS command\n"
+            "    --block|-B            treat as block DEVICE (def: use "
+            "SCSI commands)\n"
             "    --help|-h             print out usage message\n"
+            "    --immed|-I            set IMMED bit in PT or WUT, exit "
+            "prior to\n"
+            "                          data transfer completion (then use "
+            "--poll)\n"
             "    --info|-i             provide information on DEVICE or "
             "RTF\n"
-            "    --list_id=LID|-l LID    LID is list identifier for --poll "
-            "or --receive\n"
+            "    --list_id=LID|-l LID    LID is list identifier used with "
+            "PT, WUT,\n"
+            "                            RTTI or COPY OPERATION ABORT (def: "
+            "257)\n"
+            "    --oir=OIR|-O OIR      Offset In ROD (def: 0), used by WUT\n"
             "    --poll|-p             call RRTI periodically until "
-            "finished\n"
+            "completed\n"
+            "    --pt=GL|-P GL         call PT with gather list GL. GL's "
+            "format is\n"
+            "                          LBA1,NUM1[,LBA2,NUM2...]\n"
             "    --receive|-R          call RRTI once\n"
-            "    --rtf=RTF|-r RTF      ROD Token file for analysis (--info) "
-            "or to write\n"
-            "                          ROD Token to (with --poll or "
-            "--receive)\n"
-            "    --size|-s             get size of DEVICE (def: pt)\n"
+            "    --rtf=RTF|-r RTF      ROD Token file for analysis (--info); "
+            "output by\n"
+            "                          -pt=, --poll or --receive; input to "
+            "--wut=\n"
+            "    --rtype=RTYPE|-t RTYPE    ROD type (def: RTV cleared in "
+            "PT command)\n"
+            "    --size|-s             get size of DEVICE (def: with SCSI "
+            "commands)\n"
+            "    --timeout=ITO[,CMD] | -T ITO[,CMD]\n"
+            "                          ITO is inactivity timeout (def: 0), "
+            "CMD is\n"
+            "                          command timeout (def: 600); units: "
+            "seconds\n"
             "    --verbose|-v          increase verbosity\n"
-            "    --version|-V          print version string and exit\n\n"
-            "ddptctl is a ddpt helper utility, mainly with xcopy(LID1) and "
-            "ODX. RRTI\nrefers to the RECEIVE ROD TOKEN INFORMATION "
-            "command.\n"
+            "    --version|-V          print version string and exit\n"
+            "    --wut=SL|-w SL        call WUT with scatter list SL. SL's "
+            "format same\n"
+            "                          as GL\n\n"
+            "ddptctl is a ddpt helper utility, mainly for ODX, a subset of "
+            "xcopy(LID4).\nPT refers to the POPULATE TOKEN command, WUT to "
+            "the WRITE USING TOKEN\ncommand and RRTI to the RECEIVE ROD "
+            "TOKEN INFORMATION command.\n"
             );
 }
 
@@ -172,10 +205,12 @@ static int
 odx_rt_info(const struct opts_t * op)
 {
     int res, fd, err, m, prot_en, p_type, lbppbe, vendor, desig_type;
+    int all_0, all_1;
     int target_dev_desc = 0;
     uint64_t bc;
     uint32_t rod_t, bs;
     uint16_t rtl;
+    unsigned char uc;
     unsigned char rth[256];
     char b[128];
 
@@ -249,26 +284,49 @@ odx_rt_info(const struct opts_t * op)
     printf("    Peripheral Device type: 0x%x\n", rth[17] & 0x1f);
     printf("    Relative initiator port identifier: 0x%x\n",
            (rth[18] << 8) + rth[19]);
-    printf("    Relative initiator port identifier: 0x%x\n",
-           (rth[18] << 8) + rth[19]);
     desig_type = rth[20 + 1] & 0xf;
     if ((0x2 == desig_type) || (0x3 == desig_type))
         decode_designation_descriptor(rth + 20, 32 - 4, op->verbose);
     else
         printf("      Expected designator type of EUI-64 or NAA, got 0x%x\n",
                desig_type);
+
+    /* A 16 byte integer worth of bytes! Seems like overkill. */
+    /* Look for all 0s or all 1s in the top 8 bytes */
+    all_0 = (0x0 == rth[48]);
+    if (all_0)
+        all_1 = 0;
+    else if (0xff == rth[48])
+        all_1 = 1;
+    else {
+        all_1 = 0;
+        printf("  Number of bytes represented: strange, bypass\n");
+        goto skip_bytes_rep;
+    }
+    for (m = 1; m < 8; m++) {
+        uc = rth[48 + m];
+        if (! (((0xff == uc) && all_1) || ((0 == uc) && all_0)))
+            break;
+    }
+    if (m < 8) {
+        printf("  Number of bytes represented: strange, bypass\n");
+        goto skip_bytes_rep;
+    }
     bc = 0;
     for (m = 0; m < 8; m++) {
         if (m > 0)
             bc <<= 8;
-        bc |= rth[48 + m];
+        bc |= rth[56 + m];
     }
-    if (UINT64_MAX == bc)
+    if ((UINT64_MAX == bc) && all_1)
         printf("  Number of bytes represented: unknown or too large\n");
-    else
+    else if (all_0)
         printf("  Number of bytes represented: %" PRIu64 " [0x%" PRIx64 "]\n",
                bc, bc);
+    else
+        printf("  Number of bytes represented: strange (top 8 bytes 0xff)\n");
 
+skip_bytes_rep:
     printf("  Assume pdt=0 (e.g. disk) and decode device type specific "
            "data:\n");
     bs = ((rth[96] << 24) + (rth[97] << 16) + (rth[98] << 8) + rth[99]);
@@ -303,6 +361,14 @@ odx_rt_info(const struct opts_t * op)
     }
     close(fd);
     return 0;
+}
+
+static int
+do_copy_abort(struct opts_t * op)
+{
+    return pt_3party_copy_out(op->idip->fd, SA_COPY_ABORT, op->list_id,
+                              DEF_GROUP_NUM, DEF_3PC_OUT_TIMEOUT, NULL, 0, 1,
+                              op->verbose);
 }
 
 static int
@@ -370,6 +436,51 @@ write_to_rtf(const char * rtf, const struct rrti_resp_t * rp)
     return 0;
 }
 
+/* Returns the number of times 'ch' is found in string 's' given the
+ * string's length. */
+static int
+num_chs_in_str(const char * s, int slen, int ch)
+{
+    int res = 0;
+
+    while (--slen >= 0) {
+        if (ch == s[slen])
+            ++res;
+    }
+    return res;
+}
+
+static int
+do_sgl(struct opts_t * op, const char * opt, const char * buf)
+{
+    int len, res, got;
+
+    len = (int)strlen(buf);
+    if ((('-' == buf[0]) && (1 == len)) || ((len > 1) && ('@' == buf[0]))) {
+        res = file_to_sgl(((len > 1) ? (buf + 1) : buf), fixed_sgl, &got,
+                          MAX_FIXED_SGL_ELEMS);
+        if (res) {
+            pr2serr("bad argument to '%s'\n", opt);
+            return SG_LIB_SYNTAX_ERROR;
+        }
+    } else if (num_chs_in_str(buf, len, ',') > 0) {
+        res = cl_to_sgl(buf, fixed_sgl, &got, MAX_FIXED_SGL_ELEMS);
+        if (res) {
+            pr2serr("bad argument to '%s'\n", opt);
+            return SG_LIB_SYNTAX_ERROR;
+        }
+    } else {
+        pr2serr("bad argument to '%s', need at least one LBA,NUM pair\n",
+                 opt);
+        return SG_LIB_SYNTAX_ERROR;
+    }
+    op->in_sgl = fixed_sgl;
+    op->in_sgl_elems = got;
+    op->out_sgl = fixed_sgl;
+    op->out_sgl_elems = got;
+    return 0;
+}
+
 static void
 state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
            struct dev_info_t * idip, struct dev_info_t * odip,
@@ -413,16 +524,19 @@ state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
 int
 main(int argc, char * argv[])
 {
-    int c, fd, flags, blk_sz, cont, done;
+    int c, k, n, fd, flags, blk_sz, cont, done;
     uint32_t delay;
     int64_t i64, num_blks;
-    int do_abort = 0;
-    int do_all_toks = 0;
+    uint64_t tc;
+    int req_abort = 0;
+    int req_all_toks = 0;
     int do_block = 0;
     int do_info = 0;
     int do_poll = 0;
+    int req_pt = 0;
     int do_receive = 0;
     int do_size = 0;
+    int req_wut = 0;
     int ret = 0;
     struct opts_t ops;
     struct flags_t iflag, oflag;
@@ -430,6 +544,7 @@ main(int argc, char * argv[])
     struct sg_simple_inquiry_resp sir;
     struct rrti_resp_t rrti_rsp;
     struct opts_t * op;
+    char * np;
     char b[80];
     char bb[80];
 
@@ -440,28 +555,17 @@ main(int argc, char * argv[])
     while (1) {
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "A:aBhil:pr:RsvV", long_options,
+        c = getopt_long(argc, argv, "AaBhiIl:O:pP:r:Rst:T:vVw:", long_options,
                         &option_index);
         if (c == -1)
             break;
 
         switch (c) {
         case 'A':
-            ++do_abort;
-            i64 = sg_get_llnum(optarg);
-            if (-1 == i64) {
-                pr2serr("bad argument to 'abort='\n");
-                return SG_LIB_SYNTAX_ERROR;
-            }
-            if (i64 > UINT_MAX) {
-                pr2serr("argument to 'abort=' too big for 32 bits\n");
-                return SG_LIB_SYNTAX_ERROR;
-            }
-            op->list_id = (uint32_t)i64;
-            op->list_id_given = 1;
+            ++req_abort;
             break;
         case 'a':
-            ++do_all_toks;
+            ++req_all_toks;
             break;
         case 'B':
             ++do_block;
@@ -473,21 +577,38 @@ main(int argc, char * argv[])
         case 'i':
             ++do_info;
             break;
+        case 'I':
+            ++op->iflagp->immed;
+            ++op->oflagp->immed;
+            break;
         case 'l':
             i64 = sg_get_llnum(optarg);
             if (-1 == i64) {
                 pr2serr("bad argument to 'list_id='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-            if (i64 > UINT_MAX) {
+            if (i64 > UINT32_MAX) {
                 pr2serr("argument to 'list_id=' too big for 32 bits\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
             op->list_id = (uint32_t)i64;
             op->list_id_given = 1;
             break;
+        case 'O':
+            op->offset_in_rod = sg_get_llnum(optarg);
+            if (-1LL == op->offset_in_rod) {
+                pr2serr("bad argument to '--oir='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            break;
         case 'p':
             ++do_poll;
+            break;
+        case 'P':       /* takes gather list as argument */
+            ++req_pt;
+            ret = do_sgl(op, "--pt=", optarg);
+            if (ret)
+                return ret;
             break;
         case 'r':
             if (op->rtf[0]) {
@@ -496,11 +617,55 @@ main(int argc, char * argv[])
                 return SG_LIB_SYNTAX_ERROR;
             }
             strncpy(op->rtf, optarg, INOUTF_SZ - 1);
+            break;
         case 'R':
             ++do_receive;
             break;
         case 's':
             ++do_size;
+            break;
+        case 't':
+            if (0 == strncmp("pit-def", optarg, 7))
+                op->rod_type = RODT_PIT_DEF;
+            else if (0 == strncmp("pit-vuln", optarg, 8))
+                op->rod_type = RODT_PIT_VULN;
+            else if (0 == strncmp("pit-pers", optarg, 8))
+                op->rod_type = RODT_PIT_PERS;
+            else if (0 == strncmp("pit-any", optarg, 7))
+                op->rod_type = RODT_PIT_ANY;
+            else if (0 == strncmp("zero", optarg, 4))
+                op->rod_type = RODT_BLK_ZERO;
+            else {
+                i64 = sg_get_llnum(optarg);
+                if (-1 == i64) {
+                    pr2serr("bad argument to '--rtype='; can give (hex) "
+                            "number, 'pit-def', 'pit-vuln',\n");
+                    pr2serr("'pit-pers', 'pit-any' or 'zero'\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+                if (i64 > UINT32_MAX) {
+                    pr2serr("'rtype=' argument exceeds 32 bits\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+                op->rod_type = (uint32_t)i64;
+            }
+            ++op->rod_type_given;
+            break;
+        case 'T':
+            n = sg_get_num(optarg);
+            if (-1 == n) {
+                pr2serr("bad argument to '--timeout='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            op->inactivity_to = n;
+            np = strchr(optarg, ',');
+            if (np) {
+                op->timeout_xcopy = sg_get_num(++np);
+                if (-1 == op->timeout_xcopy) {
+                    pr2serr("bad argument to '--timeout=ok,xxx'\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+            }
             break;
         case 'v':
             ++op->verbose;
@@ -508,6 +673,12 @@ main(int argc, char * argv[])
         case 'V':
             pr2serr("version: %s\n", ddptctl_version_str);
             return 0;
+        case 'w':       /* takes scatter list as argument */
+            ++req_wut;
+            ret = do_sgl(op, "--wut=", optarg);
+            if (ret)
+                return ret;
+            break;
         default:
             pr2serr("unrecognised option code 0x%x ??\n", c);
             usage();
@@ -517,6 +688,7 @@ main(int argc, char * argv[])
     if (optind < argc) {
         if ('\0' == op->idip->fn[0]) {
             strncpy(op->idip->fn, argv[optind], INOUTF_SZ - 1);
+            strncpy(op->odip->fn, argv[optind], INOUTF_SZ - 1);
             ++optind;
         }
         if (optind < argc) {
@@ -527,14 +699,39 @@ main(int argc, char * argv[])
         }
     }
     if ('\0' == op->idip->fn[0]) {
-        if (op->rtf[0])
-            return odx_rt_info(op);
-        pr2serr("missing device name!\n");
-        usage();
+        if (! op->rtf[0]) {
+            pr2serr("missing device name!\n");
+            usage();
+            return SG_LIB_SYNTAX_ERROR;
+        }
+    }
+
+    k = 0;
+    if (req_abort)
+        ++k;
+    if (req_all_toks)
+        ++k;
+    if (do_poll)
+        ++k;
+    if (req_pt)
+        ++k;
+    if (do_receive)
+        ++k;
+    if (req_wut)
+        ++k;
+    if (k > 1) {
+        pr2serr("Can only have one of --abort, --all_toks, --poll, --pt=, "
+                "--receive and --wut=\n");
+        return SG_LIB_SYNTAX_ERROR;
+    }
+    if (do_info && (1 == k)) {
+        pr2serr("--info cannot be used with an ODX command option (e.g. "
+                "--pt=)\n");
         return SG_LIB_SYNTAX_ERROR;
     }
     if (do_info && op->rtf[0]) {
-        pr2serr("Ignore device name [%s] and decode RTF\n", op->idip->fn);
+        if (op->idip->fn[0])
+            pr2serr("Ignore device name [%s] and decode RTF\n", op->idip->fn);
         return odx_rt_info(op);
     }
 
@@ -549,6 +746,7 @@ main(int argc, char * argv[])
             goto clean_up;
         }
         op->idip->fd = fd;
+        op->odip->fd = fd;
     } else if (op->idip->d_type & FT_BLOCK) {
         flags = O_RDONLY;
         fd = open(op->idip->fn, flags);
@@ -559,6 +757,7 @@ main(int argc, char * argv[])
             goto clean_up;
         }
         op->idip->fd = fd;
+        op->odip->fd = fd;
     } else {
         pr2serr("expecting to open a file but nothing found\n");
         ret = SG_LIB_CAT_OTHER;
@@ -566,23 +765,14 @@ main(int argc, char * argv[])
     }
 
     done = 1;
-    if (do_all_toks)
-        ret = report_all_toks(op, op->idip);
-    else if (do_receive) {
-        if (! op->list_id_given)
-            op->list_id = 0x101;
-        ret = fetch_rrti_after_odx(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
+    if (req_abort) {
+        ret = do_copy_abort(op);
         if (ret)
             goto clean_up;
-        sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, rrti_rsp.for_sa, 0,
-                              (int)sizeof(b), b);
-        printf("RRTI for %s: %s\n", b,
-               cpy_op_status_str(rrti_rsp.cstat, bb, sizeof(bb)));
-        if ((SA_POP_TOK == rrti_rsp.for_sa) && (rrti_rsp.rt_len > 0)) {
-            ret = write_to_rtf(op->rtf, &rrti_rsp);
-            if (ret)
-                goto clean_up;
-        }
+    } else if (req_all_toks) {
+        ret = report_all_toks(op, op->idip);
+        if (ret)
+            goto clean_up;
     } else if (do_poll) {
         if (! op->list_id_given)
             op->list_id = 0x101;
@@ -616,6 +806,46 @@ main(int argc, char * argv[])
             if (ret)
                 goto clean_up;
         }
+    } else if (req_pt) {
+        if (! op->list_id_given)
+            op->list_id = 0x101;
+        num_blks = count_sgl_blocks(op->in_sgl, op->in_sgl_elems);
+        if ((ret = do_pop_tok(op, 0, num_blks, 0, op->verbose)))
+            goto clean_up;
+        else if (op->iflagp->immed)
+            goto clean_up;
+        if ((ret = fetch_rt_after_poptok(op, &tc, op->verbose)))
+            goto clean_up;
+        printf("PT completes with transfer count %" PRIu64 " [0x%" PRIx64
+               "]\n", tc, tc);
+        goto clean_up;
+    } else if (do_receive) {
+        if (! op->list_id_given)
+            op->list_id = 0x101;
+        ret = fetch_rrti_after_odx(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
+        if (ret)
+            goto clean_up;
+        sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, rrti_rsp.for_sa, 0,
+                              (int)sizeof(b), b);
+        printf("RRTI for %s: %s\n", b,
+               cpy_op_status_str(rrti_rsp.cstat, bb, sizeof(bb)));
+        if ((SA_POP_TOK == rrti_rsp.for_sa) && (rrti_rsp.rt_len > 0)) {
+            ret = write_to_rtf(op->rtf, &rrti_rsp);
+            if (ret)
+                goto clean_up;
+        }
+    } else if (req_wut) {
+        if (! op->list_id_given)
+            op->list_id = 0x101;
+        num_blks = count_sgl_blocks(op->out_sgl, op->out_sgl_elems);
+        if ((ret = do_wut(op, 0, num_blks, 0, 0, 0, op->verbose)))
+            goto clean_up;
+        else if (op->oflagp->immed)
+            goto clean_up;
+        if ((ret = fetch_rrti_after_wut(op, &tc, op->verbose)))
+            goto clean_up;
+        printf("WUT completes with transfer count %" PRIu64 " [0x%" PRIx64
+               "]\n", tc, tc);
     } else
         done = 0;
     if (done)
@@ -639,7 +869,7 @@ main(int argc, char * argv[])
                     }
                 }
             }
-            print_blk_sizes(op->idip->fn, "pt", num_blks, blk_sz, 0);
+            print_blk_sizes(op->idip->fn, "readcap", num_blks, blk_sz, 0);
             if (0x8 & sir.byte_5) {
                 printf("3PC (third party copy) bit set in standard INQUIRY "
                        "response\n");
@@ -681,7 +911,7 @@ main(int argc, char * argv[])
                     }
                 }
             }
-            print_blk_sizes(op->idip->fn, "pt", num_blks, blk_sz, 0);
+            print_blk_sizes(op->idip->fn, "readcap", num_blks, blk_sz, 0);
         } else if (op->idip->d_type & FT_BLOCK) {
             ret = get_blkdev_capacity(op, DDPT_ARG_IN, &num_blks, &blk_sz);
             if (ret)

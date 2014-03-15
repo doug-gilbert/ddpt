@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.94 20140310 [svn: r269]";
+static const char * ddpt_version_str = "0.94 20140315 [svn: r270]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -386,7 +386,7 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
             return res;
         } else {
             if (op->verbose) {
-                print_blk_sizes(ifn, "pt", *in_num_blksp, in_blk_sz, 1);
+                print_blk_sizes(ifn, "readcap", *in_num_blksp, in_blk_sz, 1);
                 if (op->idip->prot_type > 0)
                     pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
                             op->idip->prot_type, op->idip->p_i_exp);
@@ -488,7 +488,8 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
             return res;
         } else {
             if (op->verbose) {
-                print_blk_sizes(ofn, "pt", *out_num_blksp, out_blk_sz, 1);
+                print_blk_sizes(ofn, "readcap", *out_num_blksp, out_blk_sz,
+                                1);
                 if (op->odip->prot_type > 0)
                     pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
                             op->odip->prot_type, op->odip->p_i_exp);
@@ -2605,7 +2606,7 @@ main(int argc, char * argv[])
 
     ++started_copy;
     if (op->has_xcopy)
-        ret = do_xcopy(op);
+        ret = do_xcopy_lid1(op);
     else
         ret = do_rw_copy(op);
 
