@@ -9,7 +9,7 @@ devices that understand the SCSI command set.
 [\fIdelay=MS[,W_MS]\fR] [\fIibs=IBS\fR] [\fIid_usage=LIU\fR] \fIif=IFILE\fR
 [\fIiflag=FLAGS\fR] [\fIintio=\fR{0|1}] [\fIiseek=SKIP\fR] [\fIito=ITO\fR]
 [\fIlist_id=LID\fR] [\fIobs=OBS\fR] [\fIof=OFILE\fR] [\fIof2=OFILE2\fR]
-[\fIoflag=FLAGS\fR] [\fIoir=OIR\fR] [\fIoseek=SEEK\fR] [\fIprio=PRIO\fR]
+[\fIoflag=FLAGS\fR] [\fIoseek=SEEK\fR] [\fIprio=PRIO\fR]
 [\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR] [\fIrtf=RTF\fR]
 [\fIrtype=RTYPE\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR]
 [\fIto=TO\fR] [\fIverbose=VERB\fR] [\fI\-\-help\fR] [\fI\-\-odx\fR]
@@ -254,14 +254,6 @@ where \fIFLAGS\fR is a comma separated list of one or more flags outlined
 in the FLAGS section. These flags are associated with \fIOFILE\fR and are
 ignored when \fIOFILE\fR is /dev/null, '.' (period), or stdout.
 .TP
-\fBoir\fR=\fIOIR\fR
-odx: \fIOIR\fR is the Offset In ROD and its units are \fIOBS\fR bytes. The
-default value is 0. Numbers are assumed to be in decimal unless preceded
-by "0x" or have a trailing "h" in which case they are decoded as hex. The
-\fIOIR\fR is passed to the WRITE USING TOKEN command. This option is only
-used in the odx single WUT variant. It is ignored in the odx full copy
-and zero output blocks variants. See the ODX section.
-.TP
 \fBoseek\fR=\fISEEK\fR
 start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
 \fIOFILE\fR. Default is block 0 (i.e. start of file). This option is a
@@ -475,7 +467,7 @@ device (accessed via Unix read() and write() commands) or a pass\-through
 device respectively. Other special file types that are sometimes referred
 to are "fifo" and "tape".
 .TP
-append [o] [reg]
+append [o] [reg], [io] [odx]
 causes the O_APPEND flag to be added to the open of \fIOFILE\fR. For
 regular files this will lead to data appended to the end of any existing
 data. Conflicts the \fIseek=SEEK\fR option. The default action of this
@@ -483,6 +475,8 @@ utility is to overwrite any existing data from the beginning of \fIOFILE\fR
 or, if \fISEEK\fR is given, starting at block \fISEEK\fR. Note that
 attempting to 'append' to a device file (e.g. a disk) will usually be
 ignored or may cause an error to be reported.
+.br
+odx: xxxxxxxxx
 .TP
 block [io] [pt]
 pass\-through file opens are non\-blocking by default and may report the
@@ -732,6 +726,15 @@ sync [io] [reg,blk]
 causes the O_SYNC flag to be added to the open of \fIIFILE\fR and/or
 \fIOFILE\fR. See open(2) man page.
 .TP
+rtf_len [io] [odx]
+odx: with the 'read to tokens' variant, after 512 bytes of each ROD Token
+are written to \fIIRTF\fR an additional 8 byte (big endian) integer is
+written. That integer is the number of bytes the associated ROD represents.
+The draft standards say for standard ROD types the ROD Token holds this
+value. However vendor specific ROD types may be used or the bendors may
+choose not to comply. Either way the 'write from tokens' variant needs to
+know the of the ROD it is writing from.
+.TP
 trim [io] [pt] [experimental]
 similar logic to the "sparse" option. However instead of skipping segments
 that are full of zeros a "trim" command is sent to \fIOFILE\fR. Usually set
@@ -811,9 +814,9 @@ There a four variants of ODX supported by this utility:
 .br
   \fBzero output blocks\fR : ddpt if=/dev/null of=/dev/sg4 bs=512 rtype=zero
 .br
-  \fBsingle PT\fR : ddpt if=/dev/sg3 bs=512 skip=@gath.lst rtf=a.rt
+  \fBread to tokens\fR : ddpt if=/dev/sg3 bs=512 skip=@gath.lst rtf=a.rt
 .br
-  \fBsingle WUT\fR : ddpt bs=512 of=/dev/sg4 seek=@scat.lst rtf=a.rt
+  \fBwrite from tokens\fR : ddpt rtf=a.rt bs=512 of=/dev/sg4 seek=@scat.lst
 .PP
 The full copy will call PT and WUT commands repeatedly until the copy is
 complete. More precisely the full copy will make the largest single call
@@ -837,6 +840,11 @@ is made 500 milliseconds). With a full copy either iflag=immed, oflag=immed
 or both can be given. With the zero output blocks variant, only oflag=immed
 is active.
 .PP
+The read to tokens and the write to tokens variants are designed to be the
+read (input) and write (output) sides of a network copy with each running
+on different machines. xxxxx
+.PP
+xxxx  Now in ddptctl
 The single PT variant issues a single WUT command. If iflag=immed is not
 given, then the \fIrtf=RTF\fR option should be given. Then on success the ROD
 Token created by the copy manager (and conveyed back to this utility with the
@@ -850,6 +858,7 @@ thereafter. After ddpt exits a command like this:
 might be used to check for successful completion and store the resulting
 ROD Token in a file.
 .PP
+xxxx  Now in ddptctl
 In the single WUT variant the \fIrtf=RTF\fR option must be given. In the
 absence of oflag=immed this utility will wait until the WUT command
 completes and then issue a RRTI command to get the final information (e.g.
