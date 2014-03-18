@@ -65,7 +65,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140318 [svn: r271]";
+const char * ddptctl_version_str = "0.94 20140318 [svn: r272]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -122,6 +122,7 @@ static struct option long_options[] = {
         {"abort", no_argument, 0, 'A'},
         {"all_toks", no_argument, 0, 'a'},
         {"block", no_argument, 0, 'b'},
+        {"del_tkn", no_argument, 0, 'D'},
         {"help", no_argument, 0, 'h'},
         {"info", no_argument, 0, 'i'},
         {"immed", no_argument, 0, 'I'},
@@ -146,19 +147,21 @@ static void
 usage()
 {
     pr2serr("Usage: "
-            "ddptctl [--abort] [--all_toks] [--block] [--help] [-immed] "
-            "[--info]\n"
-            "               [--list_id=LID] [--oir=OIR] [--poll] [--pt=GL] "
-            "[--receive]\n"
-            "               [--rtf=RTF] [rtype=RTYPE] [--size] "
-            "[--timeout=ITO[,CMD]]\n"
-            "               [--verbose] [--version] [--wut=SL] [DEVICE]\n"
+            "ddptctl [--abort] [--all_toks] [--block] [--del_tkn] [--help] "
+            "[-immed]\n"
+            "               [--info] [--list_id=LID] [--oir=OIR] [--poll] "
+            "[--pt=GL]\n"
+            "               [--receive] [--rtf=RTF] [rtype=RTYPE] [--size]\n"
+            "               [--timeout=ITO[,CMD]] [--verbose] [--version] "
+            "[--wut=SL]\n"
+            "               [DEVICE]\n"
             "  where:\n"
             "    --abort|-A            call COPY OPERATION ABORT command\n"
             "    --all_toks|-a         call REPORT ALL ROD TOKENS command\n"
             "    --block|-B            treat as block DEVICE (def: use "
             "SCSI commands)\n"
             "    --help|-h             print out usage message\n"
+            "    --del_tkn|-D          set DEL_TKN bit in WUT command\n"
             "    --immed|-I            set IMMED bit in PT or WUT, exit "
             "prior to\n"
             "                          data transfer completion (then use "
@@ -167,7 +170,7 @@ usage()
             "RTF\n"
             "    --list_id=LID|-l LID    LID is list identifier used with "
             "PT, WUT,\n"
-            "                            RTTI or COPY OPERATION ABORT (def: "
+            "                            RRTI or COPY OPERATION ABORT (def: "
             "257)\n"
             "    --oir=OIR|-O OIR      Offset In ROD (def: 0), used by WUT\n"
             "    --poll|-p             call RRTI periodically until "
@@ -197,7 +200,9 @@ usage()
             "ddptctl is a ddpt helper utility, mainly for ODX, a subset of "
             "xcopy(LID4).\nPT refers to the POPULATE TOKEN command, WUT to "
             "the WRITE USING TOKEN\ncommand and RRTI to the RECEIVE ROD "
-            "TOKEN INFORMATION command.\n"
+            "TOKEN INFORMATION command. If\nthe ODX_RTF_LEN environment "
+            "variable is present, the ROD's size is\nappended to the ROD "
+            "Token placed in the RTF file.\n"
             );
 }
 
@@ -511,7 +516,7 @@ main(int argc, char * argv[])
     while (1) {
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "AaBhiIl:O:pP:r:Rst:T:vVw:", long_options,
+        c = getopt_long(argc, argv, "AaBDhiIl:O:pP:r:Rst:T:vVw:", long_options,
                         &option_index);
         if (c == -1)
             break;
@@ -525,6 +530,9 @@ main(int argc, char * argv[])
             break;
         case 'B':
             ++do_block;
+            break;
+        case 'D':
+            ++op->oflagp->del_tkn;
             break;
         case 'h':
         case '?':
@@ -707,6 +715,11 @@ main(int argc, char * argv[])
             pr2serr("Ignore device name [%s] and decode RTF\n", op->idip->fn);
         return odx_rt_info(op);
     }
+    /* If present, this will cause the ROD's size to be appended to the
+     * corresponding ROD Token placed in the RTF file (big endian, 8 byte) */
+    np = getenv(ODX_RTF_LEN);
+    if (np)
+        ++op->rtf_len_add;
 
     op->idip->d_type = do_block ? FT_BLOCK : FT_PT;
     if (op->idip->d_type & FT_PT) {
@@ -850,8 +863,8 @@ main(int argc, char * argv[])
         if (! op->list_id_given)
             op->list_id = 0x101;
         num_blks = count_sgl_blocks(op->out_sgl, op->out_sgl_elems);
-        if ((ret = do_wut(op, rt, 0, num_blks, op->offset_in_rod, 0, 0,
-                          op->verbose)))
+        if ((ret = do_wut(op, rt, 0, num_blks, op->offset_in_rod,
+                          1 /* assume more left */, 0, op->verbose)))
             goto clean_up;
         else if (op->oflagp->immed)
             goto clean_up;

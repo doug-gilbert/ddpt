@@ -3,11 +3,12 @@
 ddptctl \- helper/auxiliary utility for ddpt
 .SH SYNOPSIS
 .B ddptctl
-[\fI\-\-abort=LID\fR] [\fI\-\-all_toks\fR] [\fI\-\-block\fR] [\fI\-\-help\fR]
-[\fI\-\-immed\fR] [\fI\-\-info\fR] [\fI\-\-oir=OIR\fR] [\fI\-\-list_id=LID\fR]
-[\fI\-\-poll\fR] [\fI\-\-pt=GL\fR] [\fI\-\-receive\fR] [\fI\-\-rtf=RTF\fR]
-[\fI\-\-rtype=RTYPE\fR] [\fI\-\-size\fR] [\fI\-\-timeout=ITO[,CMD]\fR]
-[\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wut=SL\fR] [\fIDEVICE\fR]
+[\fI\-\-abort=LID\fR] [\fI\-\-all_toks\fR] [\fI\-\-block\fR]
+[\fI\-\-del_tkn\fR] [\fI\-\-help\fR] [\fI\-\-immed\fR] [\fI\-\-info\fR]
+[\fI\-\-oir=OIR\fR] [\fI\-\-list_id=LID\fR] [\fI\-\-poll\fR] [\fI\-\-pt=GL\fR]
+[\fI\-\-receive\fR] [\fI\-\-rtf=RTF\fR] [\fI\-\-rtype=RTYPE\fR]
+[\fI\-\-size\fR] [\fI\-\-timeout=ITO[,CMD]\fR] [\fI\-\-verbose\fR]
+[\fI\-\-version\fR] [\fI\-\-wut=SL\fR] [\fIDEVICE\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
@@ -44,6 +45,9 @@ response.
 treat \fIDEVICE\fR asa block device when checking its \fI\-\-size\fR. The
 default action of this utility is to treat \fIDEVICE\fR as a SCSI
 pass\-through device.
+.TP
+\fB\-D\fR, \fB\-\-del_tkn\fR
+set the DEL_TKN bit in a PT command (default: clear the DEL_TKN bit).
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 outputs the usage message summarizing command line options then exits.
@@ -90,8 +94,13 @@ file. If the \fI\-\-rtf=RTF\fR option is not given then the ROD token is
 written to a file called ddptctl_rod_tok.bin in the current directory.
 .TP
 \fB\-P\fR, \fB\-\-pt\fR=\fIGL\fR
-send a POPULATE TOKEN (PT) command with the given gather list.
-xxxxx
+send a POPULATE TOKEN (PT) command with the given gather list. If used
+without the \fI\-\-immed\fR option then this utility after the PT command
+finishes successfully will call the RRTI command. When the RRTI command
+finishes, potentially with a new ROD Token, this utility will exit.
+.br
+If the \fI\-\-immed\fR option is given this utility will exit after the
+PT command finishes.
 .TP
 \fB\-R\fR, \fB\-\-receive\fR
 send the RECEIVE ROD TOKEN INFORMATION SCSI command (RRTI) to the \fIDEVICE\fR
@@ -108,13 +117,31 @@ when \fIRTF\fR is a file containing an ODX ROD Token (typically 512 bytes
 long) or the name of a file the ROD Token is to be written to.
 .TP
 \fB\-t\fR, \fB\-\-rtype\fR=\fIRTYPE\fR
-yyyyyyyyyyyyyyyy
+where \fIRTYPE\fR is the ROD type. The default value (0) indicates that the
+copy manager (in the source) decides. \fIRTYPE\fR can be a decimal number, a
+hex number (prefixed by 0x or with a "h" appended) or one
+of "pit\-def", "pit\-vuln", "pit\-pers", "pit\-any" or "zero". The final
+truncated word can be spelt out (e.g. "pit\-vulnerable"). The "pit\-" part
+stands for "point in time" copy. The "zero" causes a special Block device
+zero Token to be created.
 .TP
 \fB\-s\fR, \fB\-\-size\fR
-xxxxxxxxxxxxxxx
+prints the number of blocks and the size of each block for the given
+\fIDEVICE\fR. Protection information is printed if available. By default
+uses the pass\-through interface and the READ CAPACITY command to obtain
+this information. If the \fI\-\-block\fR option is given then the block
+layer in the OS is query for size information (and protection information
+is not reported).
 .TP
 \fB\-T\fR, \fB\-\-timeout\fR=\fIITO[,CMD]\fR
-yyyyyyyyyyyyyyyy
+where \fIITO\fR is the inactivity timeout (units: seconds) given to the
+PT commmand. The default is 0 in which case the copy manager uses its own
+default which is shown in the Third party Copy VPD page.
+.br
+\fICMD\fR is the SCSI command timeout (units: seconds) applied to SCSI
+commands issued by the utility; default is 0 which is translated to 600
+seconds for originating xcopy commands (e.g. PT and WUT) and 60 seconds
+for other commands. Best not to trigger command timeouts.
 .TP
 \fB\-v\fR, \fB\-\-verbose\fR
 increase the level of verbosity, (i.e. debug output).
@@ -123,8 +150,13 @@ increase the level of verbosity, (i.e. debug output).
 print the version string and then exit.
 .TP
 \fB\-w\fR, \fB\-\-wut\fR=\fISL\fR
-send a WRITE USING TOKEN (WUT) command with the given scatter list.
-xxxxx
+send a WRITE USING TOKEN (WUT) command with the given scatter list. If used
+without the \fI\-\-immed\fR option then this utility after the WUT command
+finishes successfully will call the RRTI command. When the RRTI command
+finishes this utility will exit.
+.br
+If the \fI\-\-immed\fR option is given this utility will exit after the
+WUT command finishes.
 .SH EXIT STATUS
 The exit status of ddptctl is 0 when it is successful. Otherwise the exit
 status for this utility is the same as that for ddpt. See the EXIT STATUS

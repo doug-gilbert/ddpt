@@ -114,7 +114,7 @@ primary_help:
            "    coe         0->exit on error (def), 1->continue on "
            "error (zero fill)\n"
            "    conv        conversions, comma separated list of CONVS "
-           "(see below)\n"
+           "(see '-hhh')\n"
            "    count       number of input blocks to copy (def: "
            "(remaining)\n"
            "                device/file size)\n"
@@ -204,8 +204,6 @@ secondary_help:
             "  dc (xcopy)     set DC bit in segment descriptor header\n"
             "  direct         set O_DIRECT flag in open() of IFILE and/or "
             "OFILE\n"
-            "  del_tkn (odx)  delete ROD token after WRITE USING TOKEN "
-            "complete\n"
             "  dpo            set disable page out (DPO) on pt READs and "
             "WRITES\n"
             "  errblk (i,pt)  write errored LBAs to errblk.txt file\n"
@@ -228,8 +226,8 @@ secondary_help:
 tertiary_help:
     pr2serr("FLAGS: (continued)\n"
             "  nocache        use posix_fadvise(POSIX_FADV_DONTNEED)\n"
-            "  no_del_tkn (odx)  do not delete ROD token after WRITE USING "
-            "TOKEN\n"
+            "  no_del_tkn (odx)  do not set DEL_TKN on last write from "
+            "ROD\n"
             "  nofm (o)       no File Mark (FM) on close when writing to "
             "tape\n"
             "  nopad          inhibits tapes blocks less than OBS being "
@@ -248,6 +246,7 @@ tertiary_help:
             "  pt             instruct pass-through interface to be used\n"
             "  rarc (i,pt)    set RARC (rebuild assist) bit in SCSI READs\n"
             "  resume (o)     attempt to restart an interrupted copy\n"
+            "  rtf_len        place ROD size after each ROD token in RTF\n"
             "  self (pt)      used with trim; IFILE=OFILE; trim zero "
             "segments\n"
             "  sparing (o)    read OFILE prior to a write; don't write if "
@@ -271,17 +270,21 @@ tertiary_help:
             "CONVS:\n"
             "  fdatasync      same as oflag=fdatasync\n"
             "  fsync          same as oflag=fsync\n"
+            "  no_del_tkn     same as oflag=no_del_tkn\n"
             "  noerror        same as iflag=coe\n"
             "  notrunc        does nothing because this is default action "
             "of ddpt\n"
             "  null           does nothing, place holder\n"
             "  resume         same as oflag=resume\n"
+            "  rtf_len        same as oflag=rtf_len\n"
             "  sparing        same as oflag=sparing\n"
             "  sparse         same as oflag=sparse\n"
             "  sync           ignored to allow 'conv=noerror,sync' dd usage "
             "for coe\n"
             "  trunc          same as oflag=trunc\n\n"
             "ENVIRONMENT VARIABLES:\n"
+            "  ODX_RTF_LEN    append ROD size (8 byte big-endian) to token "
+            "in RTF\n"
             "  XCOPY_TO_DST   send XCOPY command to OFILE (destination) "
             "if no other\n"
             "                 indication\n"
@@ -393,6 +396,8 @@ conv_process(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
             ++ofp->fdatasync;
         else if (0 == strcmp(cp, "fsync"))
             ++ofp->fsync;
+        else if (0 == strcmp(cp, "no_del_tkn"))
+            ++ofp->no_del_tkn;
         else if (0 == strcmp(cp, "noerror"))
             ++ifp->coe;         /* will still fail on write error */
         else if (0 == strcmp(cp, "notrunc"))
@@ -401,6 +406,8 @@ conv_process(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
             ;
         else if (0 == strcmp(cp, "resume"))
             ++ofp->resume;
+        else if (0 == strcmp(cp, "rtf_len"))
+            ++ofp->rtf_len;
         else if (0 == strcmp(cp, "sparing"))
             ++ofp->sparing;
         else if (0 == strcmp(cp, "sparse"))
@@ -449,8 +456,6 @@ flags_process(const char * arg, struct flags_t * fp)
             ++fp->coe;
         else if (0 == strcmp(cp, "dc"))
             ++fp->dc;
-        else if (0 == strcmp(cp, "del_tkn"))
-            ++fp->del_tkn;
         else if (0 == strcmp(cp, "direct"))
             ++fp->direct;
         else if (0 == strcmp(cp, "dpo"))
@@ -558,6 +563,8 @@ static int
 cl_sanity_defaults(struct opts_t * op)
 {
     const char * cp;
+    char * csp;
+    char * cdp;
     char b[80];
 
     if ((0 == op->ibs) && (0 == op->obs)) {
@@ -667,9 +674,6 @@ cl_sanity_defaults(struct opts_t * op)
         ++op->has_xcopy;
     if (op->has_xcopy) {
         if ((!! op->iflagp->xcopy) == (!! op->oflagp->xcopy)) {
-            char * csp;
-            char * cdp;
-
             csp = getenv(XCOPY_TO_SRC);
             cdp = getenv(XCOPY_TO_DST);
             if ((!! csp) == (!! cdp)) {
@@ -757,17 +761,21 @@ cl_sanity_defaults(struct opts_t * op)
         } else if (op->idip->fn[0]) {
             op->odx_request = ODX_READ_INTO_RODS;
             if (op->verbose)
-                cp = "disk-->ROD; POPULATE TOKEN";
+                cp = "disk-->ROD; read into RODs [POPULATE TOKENs]";
         } else if (op->odip->fn[0]) {
             op->odx_request = ODX_WRITE_FROM_RODS;
             if (op->verbose)
-                cp = "ROD-->disk; WRITE USING TOKEN";
+                cp = "ROD-->disk; write from RODs [WRITE USING TOKENs]";
         } else {
             pr2serr("Not enough options given to do ODX (xcopy(LID4))\n");
             return SG_LIB_SYNTAX_ERROR;
         }
+        csp = getenv(ODX_RTF_LEN);
+        if (csp)
+                ++op->rtf_len_add;
         if (op->verbose) {
-            pr2serr("ODX: %s\n", cp);
+            pr2serr("ODX: %s%s\n", cp, (csp ? "\n    [ODX_RTF_LEN "
+                    "environment variable present]" : ""));
             if ((op->verbose > 1) && op->rod_type_given)
                 pr2serr("ODX: ROD type: %s\n",
                         rod_type_str(op->rod_type, b, sizeof(b)));

@@ -182,6 +182,7 @@ extern "C" {
 #define XCOPY_TO_SRC "XCOPY_TO_SRC"
 #define XCOPY_TO_DST "XCOPY_TO_DST"
 #define DEF_XCOPY_SRC0_DST1 1
+#define ODX_RTF_LEN "ODX_RTF_LEN"     /* append 8 byte ROD size to token */
 
 #define DEF_ODX_POLL_DELAY_MS 500
 
