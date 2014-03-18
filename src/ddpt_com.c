@@ -171,7 +171,49 @@ sleep_ms(int millisecs)
 }
 
 void
-print_stats(const char * str, struct opts_t * op)
+state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
+           struct dev_info_t * idip, struct dev_info_t * odip,
+           struct dev_info_t * o2dip)
+{
+    memset(op, 0, sizeof(struct opts_t));
+    op->dd_count = -1;
+    op->highest_unrecovered = -1;
+    op->do_time = 1;         /* default was 0 in sg_dd */
+    op->id_usage = -1;
+    op->list_id = 1;
+    op->prio = 1;
+    op->max_uas = MAX_UNIT_ATTENTIONS;
+    op->max_aborted = MAX_ABORTED_CMDS;
+    memset(ifp, 0, sizeof(struct flags_t));
+    memset(ofp, 0, sizeof(struct flags_t));
+    op->iflagp = ifp;
+    op->oflagp = ofp;
+    memset(idip, 0, sizeof(struct dev_info_t));
+    memset(odip, 0, sizeof(struct dev_info_t));
+    memset(o2dip, 0, sizeof(struct dev_info_t));
+    idip->d_type = FT_OTHER;
+    idip->fd = -1;
+    odip->d_type = FT_OTHER;
+    odip->fd = -1;
+    o2dip->d_type = FT_OTHER;
+    o2dip->fd = -1;
+    op->idip = idip;
+    op->odip = odip;
+    op->o2dip = o2dip;
+    ifp->cdbsz = DEF_SCSI_CDBSZ;
+    ofp->cdbsz = DEF_SCSI_CDBSZ;
+#ifdef HAVE_POSIX_FADVISE
+    op->lowest_skip = -1;
+    op->lowest_seek = -1;
+#endif
+    op->idip->pdt = -1;
+    op->odip->pdt = -1;
+    op->rtf_fd = -1;
+}
+
+/* When who<=0 print both in+out, when who==1 print in, else print out */
+void
+print_stats(const char * str, struct opts_t * op, int who)
 {
 #ifdef SG_LIB_LINUX
     /* Print tape read summary if necessary . */
@@ -180,10 +222,12 @@ print_stats(const char * str, struct opts_t * op)
 
     if ((op->dd_count > 0) && (! op->reading_fifo))
         pr2serr("  remaining block count=%" PRId64 "\n", op->dd_count);
-    pr2serr("%s%" PRId64 "+%d records in\n", str, op->in_full,
-            op->in_partial);
-    pr2serr("%s%" PRId64 "+%d records out\n", str, op->out_full,
-            op->out_partial);
+    if (who < 2)
+        pr2serr("%s%" PRId64 "+%d records in\n", str, op->in_full,
+                op->in_partial);
+    if (1 != who)
+        pr2serr("%s%" PRId64 "+%d records out\n", str, op->out_full,
+                op->out_partial);
     if (op->out_sparse_active || op->out_sparing_active) {
         if (op->out_trim_active) {
             const char * cp;
@@ -1145,7 +1189,7 @@ signals_process_delay(struct opts_t * op, int delay_type)
         if (interrupt) {
             pr2serr("Interrupted by signal %s\n",
                     get_signal_name(interrupt, b, sizeof(b)));
-            print_stats("", op);
+            print_stats("", op, 0);
             /* Don't show next message if using oflag=pre-alloc and we didn't
              * use FALLOC_FL_KEEP_SIZE */
             if ((0 == op->reading_fifo) && (FT_REG & op->odip->d_type_hold)
@@ -1155,7 +1199,7 @@ signals_process_delay(struct opts_t * op, int delay_type)
             ; // >>>>>>>>>>>>> cleanup ();
         } else {
             pr2serr("Progress report:\n");
-            print_stats("  ", op);
+            print_stats("  ", op, 0);
             if (op->do_time)
                 calc_duration_throughput("  ", 1, op);
             pr2serr("  continuing ...\n");
@@ -1859,4 +1903,3 @@ file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
     *arr_len = off >> 1;
     return 0;
 }
-

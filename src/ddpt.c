@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.94 20140315 [svn: r270]";
+static const char * ddpt_version_str = "0.94 20140318 [svn: r270]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -1995,46 +1995,6 @@ prepare_pi(struct opts_t * op)
     return 0;
 }
 
-static void
-state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
-           struct dev_info_t * idip, struct dev_info_t * odip,
-           struct dev_info_t * o2dip)
-{
-    memset(op, 0, sizeof(struct opts_t));
-    op->dd_count = -1;
-    op->highest_unrecovered = -1;
-    op->do_time = 1;         /* default was 0 in sg_dd */
-    op->id_usage = -1;
-    op->list_id = 1;
-    op->prio = 1;
-    op->max_uas = MAX_UNIT_ATTENTIONS;
-    op->max_aborted = MAX_ABORTED_CMDS;
-    memset(ifp, 0, sizeof(struct flags_t));
-    memset(ofp, 0, sizeof(struct flags_t));
-    op->iflagp = ifp;
-    op->oflagp = ofp;
-    memset(idip, 0, sizeof(struct dev_info_t));
-    memset(odip, 0, sizeof(struct dev_info_t));
-    memset(o2dip, 0, sizeof(struct dev_info_t));
-    idip->d_type = FT_OTHER;
-    idip->fd = -1;
-    odip->d_type = FT_OTHER;
-    odip->fd = -1;
-    o2dip->d_type = FT_OTHER;
-    o2dip->fd = -1;
-    op->idip = idip;
-    op->odip = odip;
-    op->o2dip = o2dip;
-    ifp->cdbsz = DEF_SCSI_CDBSZ;
-    ofp->cdbsz = DEF_SCSI_CDBSZ;
-#ifdef HAVE_POSIX_FADVISE
-    op->lowest_skip = -1;
-    op->lowest_seek = -1;
-#endif
-    op->idip->pdt = -1;
-    op->odip->pdt = -1;
-}
-
 static int
 open_files_devices(struct opts_t * op)
 {
@@ -2611,7 +2571,7 @@ main(int argc, char * argv[])
         ret = do_rw_copy(op);
 
     if (0 == op->status_none)
-        print_stats("", op);
+        print_stats("", op, 0);
 
     if ((op->oflagp->ssync) && (FT_PT & op->odip->d_type)) {
         if (0 == op->status_none)

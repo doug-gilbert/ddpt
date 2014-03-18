@@ -91,7 +91,7 @@ primary_help:
            "[intio=0|1]\n"
            "             [iseek=SKIP] [ito=ITO] [list_id=LID] [obs=OBS] "
            "[of=OFILE]\n"
-           "             [of2=OFILE2] [oflag=FLAGS] [oir=OIR] [oseek=SEEK] "
+           "             [of2=OFILE2] [oflag=FLAGS] [oseek=SEEK] "
            "[prio=PRIO]\n"
            "             [protect=RDP[,WRP]] [retries=RETR] [rtf=RTF] "
            "[rtype=RTYPE]\n"
@@ -184,7 +184,6 @@ secondary_help:
            "    of2         additional output file (def: /dev/null), "
            "OFILE2 should be\n"
            "                regular file or pipe\n"
-           "    oir         Offset In ROD (odx) (def: 0, units: OBS)\n"
            "    oseek       block position to start writing in OFILE\n"
            "    prio        xcopy: set priority field to PRIO (def: 1)\n"
            "    protect     set rdprotect and/or wrprotect fields on "
@@ -502,6 +501,8 @@ flags_process(const char * arg, struct flags_t * fp)
             ++fp->rarc;
         else if (0 == strcmp(cp, "resume"))
             ++fp->resume;
+        else if (0 == strcmp(cp, "rtf_len"))
+            ++fp->rtf_len;
         else if (0 == strcmp(cp, "self"))
             ++fp->self;
         else if (0 == strcmp(cp, "sparing"))
@@ -738,7 +739,7 @@ cl_sanity_defaults(struct opts_t * op)
         }
         cp = "";
         if (op->idip->fn[0] && op->odip->fn[0]) {
-            op->odx_request = ODX_REQ_COPY;
+            op->odx_request = ODX_COPY;
             if (RODT_BLK_ZERO == op->rod_type) {
                 if (op->verbose > 1)
                     cp = "zero destination: call WRITE USING TOKEN(s), "
@@ -754,11 +755,11 @@ cl_sanity_defaults(struct opts_t * op)
                     cp = "full copy\n";
             }
         } else if (op->idip->fn[0]) {
-            op->odx_request = ODX_REQ_PT;
+            op->odx_request = ODX_READ_INTO_RODS;
             if (op->verbose)
                 cp = "disk-->ROD; POPULATE TOKEN";
         } else if (op->odip->fn[0]) {
-            op->odx_request = ODX_REQ_WUT;
+            op->odx_request = ODX_WRITE_FROM_RODS;
             if (op->verbose)
                 cp = "ROD-->disk; WRITE USING TOKEN";
         } else {
@@ -1008,12 +1009,6 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 pr2serr("bad argument to 'oflag='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-        } else if (0 == strcmp(key, "oir")) {
-            op->offset_in_rod = sg_get_llnum(buf);
-            if (-1LL == op->offset_in_rod) {
-                pr2serr("bad argument to 'oir='\n");
-                return SG_LIB_SYNTAX_ERROR;
-            }
         } else if (0 == strcmp(key, "oseek")) {
             res = do_seek(op, key, buf);
             if (res)
@@ -1053,6 +1048,10 @@ cl_process(struct opts_t * op, int argc, char * argv[],
         } else if (0 == strcmp(key, "rtf")) {
             if (op->rtf[0]) {
                 pr2serr("Can only use rtf=RTF once for ROD Token filename\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            if ((NULL == buf) || (strlen(buf) < 1)) {
+                pr2serr("rtf=RTF requires an non-empty filename for RTF\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
             strncpy(op->rtf, buf, INOUTF_SZ - 1);

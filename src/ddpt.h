@@ -120,9 +120,9 @@ extern "C" {
 
 /* ODX type requested */
 #define ODX_REQ_NONE 0          /* some other type of copy */
-#define ODX_REQ_PT 1            /* POPULATE TOKEN (PT): disk->held */
-#define ODX_REQ_WUT 2           /* WRITE USING TOKEN (WUT): held->disk */
-#define ODX_REQ_COPY 3          /* PT followed by WUT */
+#define ODX_READ_INTO_RODS 1    /* POPULATE TOKENs (PTs): disk->rods */
+#define ODX_WRITE_FROM_RODS 2   /* WRITE USING TOKENs (WUTs): rods->disk */
+#define ODX_COPY 3              /* odx disk->disk or zero->disk */
 
 /* ROD Types used by ODX */
 #define RODT_CM_INTERNAL 0x0
@@ -257,6 +257,7 @@ struct flags_t {
     int resume;
     int rarc;
     int retries;
+    int rtf_len;
     int self;
     int sparing;
     int sparse;
@@ -332,6 +333,9 @@ struct opts_t {
     int timeout_xcopy;          /* xcopy(LID1) and ODX */
     int in_sgl_elems;           /* xcopy, odx */
     int out_sgl_elems;          /* xcopy, odx */
+    int rtf_fd;                 /* ODX: rtf's file descriptor (init: -1) */
+    int rtf_len_add;            /* append 64 bit ROD byte size to token */
+    int rtf_append;             /* if rtf is regular file: open(O_APPEND) */
     char rtf[INOUTF_SZ];        /* ODX: ROD token filename */
     struct scat_gath_elem * in_sgl;     /* xcopy, odx: alternative to skip=
                                          * and count= */
@@ -446,7 +450,10 @@ int pr2serr(const char * fmt, ...) __attribute__ ((format (printf, 1, 2)));
 int pr2serr(const char * fmt, ...);
 #endif
 void sleep_ms(int millisecs);
-void print_stats(const char * str, struct opts_t * op);
+void state_init(struct opts_t * op, struct flags_t * ifp,
+                struct flags_t * ofp, struct dev_info_t * idip,
+                struct dev_info_t * odip, struct dev_info_t * o2dip);
+void print_stats(const char * str, struct opts_t * op, int who);
 int dd_filetype(const char * filename, int verbose);
 char * dd_filetype_str(int ft, char * buff, int max_bufflen,
                        const char * fname);
@@ -503,6 +510,7 @@ int pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
                       void * resp, int mx_resp_len, int noisy, int verbose);
 
 /* defined in ddpt_xcopy.c */
+int open_rtf(struct opts_t * op);
 const char * cpy_op_status_str(int cos, char * b, int blen);
 uint64_t count_sgl_blocks(const struct scat_gath_elem * sglp, int elems);
 int print_3pc_vpd(struct opts_t * op, int to_stderr);
@@ -512,8 +520,9 @@ int do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
 int fetch_rrti_after_odx(struct opts_t * op, int in0_out1,
                          struct rrti_resp_t * rrp, int verb);
 int fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a);
-int do_wut(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
-           uint64_t oir, int more_left, int walk_list_id, int vb_a);
+int do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
+	   uint32_t num_blks, uint64_t oir, int more_left, int walk_list_id,
+	   int vb_a);
 int fetch_rrti_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a);
 int do_odx(struct opts_t * op);
 

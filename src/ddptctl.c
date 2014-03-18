@@ -65,7 +65,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140315 [svn: r270]";
+const char * ddptctl_version_str = "0.94 20140318 [svn: r271]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -400,34 +400,28 @@ report_all_toks(struct opts_t * op, struct dev_info_t * dip)
 }
 
 static int
-write_to_rtf(const char * rtf, const struct rrti_resp_t * rp)
+write_to_rtf(struct opts_t * op, const struct rrti_resp_t * rp)
 {
-    int fd, res, len, err;
+    int res, len, err;
     const char * cp;
 
-    if (rtf[0])
-        cp = rtf;
-    else {
+    if (op->rtf_fd < 0) {
         cp = DEF_ROD_TOK_FILE;
-        pr2serr("no --rtf=RTF given so writing ROD Token to %s\n", cp);
-    }
-    fd = open(cp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0) {
-        err = errno;
-        pr2serr("%s: unable to create file: %s [%s]\n", __func__,
-                cp, safe_strerror(err));
-        return SG_LIB_FILE_ERROR;
+        strncpy(op->rtf, cp, INOUTF_SZ - 1);
+        pr2serr("no --rtf=RTF given (or RTF broken) so writing ROD Token "
+                "to %s\n", cp);
+        res = open_rtf(op);
+        if (res)
+            return SG_LIB_FILE_ERROR;
     }
     len = (rp->rt_len > 512) ? 512 : rp->rt_len;
-    res = write(fd, rp->rod_tok, len);
+    res = write(op->rtf_fd, rp->rod_tok, len);
     if (res < 0) {
         err = errno;
         pr2serr("%s: unable to write to file: %s [%s]\n", __func__,
                 cp, safe_strerror(err));
-        close(fd);
         return SG_LIB_FILE_ERROR;
     }
-    close(fd);
     if (res < len) {
         pr2serr("%s: short write to file: %s, wanted %d, got %d\n",
                 __func__, cp, len, res);
@@ -481,50 +475,11 @@ do_sgl(struct opts_t * op, const char * opt, const char * buf)
     return 0;
 }
 
-static void
-state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
-           struct dev_info_t * idip, struct dev_info_t * odip,
-           struct dev_info_t * o2dip)
-{
-    memset(op, 0, sizeof(struct opts_t));
-    op->dd_count = -1;
-    op->highest_unrecovered = -1;
-    op->do_time = 1;         /* default was 0 in sg_dd */
-    op->id_usage = -1;
-    op->list_id = 1;
-    op->prio = 1;
-    op->max_uas = MAX_UNIT_ATTENTIONS;
-    op->max_aborted = MAX_ABORTED_CMDS;
-    memset(ifp, 0, sizeof(struct flags_t));
-    memset(ofp, 0, sizeof(struct flags_t));
-    op->iflagp = ifp;
-    op->oflagp = ofp;
-    memset(idip, 0, sizeof(struct dev_info_t));
-    memset(odip, 0, sizeof(struct dev_info_t));
-    memset(o2dip, 0, sizeof(struct dev_info_t));
-    idip->d_type = FT_OTHER;
-    idip->fd = -1;
-    odip->d_type = FT_OTHER;
-    odip->fd = -1;
-    o2dip->d_type = FT_OTHER;
-    o2dip->fd = -1;
-    op->idip = idip;
-    op->odip = odip;
-    op->o2dip = o2dip;
-    ifp->cdbsz = DEF_SCSI_CDBSZ;
-    ofp->cdbsz = DEF_SCSI_CDBSZ;
-#ifdef HAVE_POSIX_FADVISE
-    op->lowest_skip = -1;
-    op->lowest_seek = -1;
-#endif
-    op->idip->pdt = -1;
-    op->odip->pdt = -1;
-}
 
 int
 main(int argc, char * argv[])
 {
-    int c, k, n, fd, flags, blk_sz, cont, done;
+    int c, k, n, fd, flags, blk_sz, cont, done, err;
     uint32_t delay;
     int64_t i64, num_blks;
     uint64_t tc;
@@ -547,6 +502,7 @@ main(int argc, char * argv[])
     char * np;
     char b[80];
     char bb[80];
+    unsigned char rt[512];
 
     state_init(&ops, &iflag, &oflag, &ids, &ods, &o2ds);
     op = &ops;
@@ -614,6 +570,10 @@ main(int argc, char * argv[])
             if (op->rtf[0]) {
                 pr2serr("Can only use --rtf=RTF once for ROD Token "
                         "filename\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            if (optarg && (0 == strlen(optarg))) {
+                pr2serr("--rtf= needs a non-blank argument (a filename)\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
             strncpy(op->rtf, optarg, INOUTF_SZ - 1);
@@ -706,19 +666,28 @@ main(int argc, char * argv[])
         }
     }
 
+    op->odx_request = ODX_REQ_NONE;
     k = 0;
     if (req_abort)
         ++k;
     if (req_all_toks)
         ++k;
-    if (do_poll)
+    if (do_poll) {
         ++k;
-    if (req_pt)
+        op->odx_request = ODX_READ_INTO_RODS;
+    }
+    if (req_pt) {
         ++k;
-    if (do_receive)
+        op->odx_request = ODX_READ_INTO_RODS;
+    }
+    if (do_receive) {
         ++k;
-    if (req_wut)
+        op->odx_request = ODX_READ_INTO_RODS;
+    }
+    if (req_wut) {
         ++k;
+        op->odx_request = ODX_WRITE_FROM_RODS;
+    }
     if (k > 1) {
         pr2serr("Can only have one of --abort, --all_toks, --poll, --pt=, "
                 "--receive and --wut=\n");
@@ -727,6 +696,10 @@ main(int argc, char * argv[])
     if (do_info && (1 == k)) {
         pr2serr("--info cannot be used with an ODX command option (e.g. "
                 "--pt=)\n");
+        return SG_LIB_SYNTAX_ERROR;
+    }
+    if ((1 == k) && ('\0' == op->idip->fn[0])) {
+        pr2serr("need a DEVICE (e.g. /dev/sg3) to send command to\n");
         return SG_LIB_SYNTAX_ERROR;
     }
     if (do_info && op->rtf[0]) {
@@ -762,6 +735,21 @@ main(int argc, char * argv[])
         pr2serr("expecting to open a file but nothing found\n");
         ret = SG_LIB_CAT_OTHER;
         goto clean_up;
+    }
+
+    if (op->odx_request != ODX_REQ_NONE) {
+        if (('\0' == op->rtf[0]) &&
+            (ODX_WRITE_FROM_RODS == op->odx_request) &&
+            (RODT_BLK_ZERO != op->rod_type)) {
+            pr2serr("--wut= needs ROD token file but no --rtf=RTF\n");
+            ret = SG_LIB_FILE_ERROR;
+            goto clean_up;
+        }
+        ret = open_rtf(op);
+        if (ret) {
+            ret = SG_LIB_FILE_ERROR;
+            goto clean_up;
+        }
     }
 
     done = 1;
@@ -802,11 +790,12 @@ main(int argc, char * argv[])
         printf("RRTI for %s: %s\n", b,
                cpy_op_status_str(rrti_rsp.cstat, bb, sizeof(bb)));
         if ((SA_POP_TOK == rrti_rsp.for_sa) && (rrti_rsp.rt_len > 0)) {
-            ret = write_to_rtf(op->rtf, &rrti_rsp);
+            ret = write_to_rtf(op, &rrti_rsp);
             if (ret)
                 goto clean_up;
         }
     } else if (req_pt) {
+        op->odx_request = ODX_READ_INTO_RODS;
         if (! op->list_id_given)
             op->list_id = 0x101;
         num_blks = count_sgl_blocks(op->in_sgl, op->in_sgl_elems);
@@ -830,15 +819,39 @@ main(int argc, char * argv[])
         printf("RRTI for %s: %s\n", b,
                cpy_op_status_str(rrti_rsp.cstat, bb, sizeof(bb)));
         if ((SA_POP_TOK == rrti_rsp.for_sa) && (rrti_rsp.rt_len > 0)) {
-            ret = write_to_rtf(op->rtf, &rrti_rsp);
+            ret = write_to_rtf(op, &rrti_rsp);
             if (ret)
                 goto clean_up;
         }
     } else if (req_wut) {
+        op->odx_request = ODX_WRITE_FROM_RODS;
+        memset(rt, 0, sizeof(rt));
+        if (RODT_BLK_ZERO == op->rod_type) {
+            if (op->verbose > 1)
+                pr2serr("  configure for block device zero ROD Token\n");
+            rt[0] = (unsigned char)((RODT_BLK_ZERO >> 24) & 0xff);
+            rt[1] = (unsigned char)((RODT_BLK_ZERO >> 16) & 0xff);
+            rt[2] = (unsigned char)((RODT_BLK_ZERO >> 8) & 0xff);
+            rt[3] = (unsigned char)(RODT_BLK_ZERO & 0xff);
+            rt[6] = (unsigned char)(0x1);
+            rt[7] = (unsigned char)(0xf8);
+        } else {
+            ret = read(op->rtf_fd, rt, sizeof(rt));
+            if (ret < 0) {
+                err = errno;
+                pr2serr("could not read '%s': %s\n", op->rtf,
+                        safe_strerror(err));
+                goto clean_up;
+            }
+            if (ret < (int)sizeof(rt))
+                pr2serr("unable to read %d bytes from '%s', only got %d "
+                        "bytes\n", (int)sizeof(rt), op->rtf, ret);
+        }
         if (! op->list_id_given)
             op->list_id = 0x101;
         num_blks = count_sgl_blocks(op->out_sgl, op->out_sgl_elems);
-        if ((ret = do_wut(op, 0, num_blks, 0, 0, 0, op->verbose)))
+        if ((ret = do_wut(op, rt, 0, num_blks, op->offset_in_rod, 0, 0,
+                          op->verbose)))
             goto clean_up;
         else if (op->oflagp->immed)
             goto clean_up;
@@ -936,6 +949,8 @@ clean_up:
         else if (op->idip->d_type & FT_BLOCK)
             close(op->idip->fd);
     }
+    if (op->rtf_fd >= 0)
+        close(op->rtf_fd);
     if (ret) {
         if (ret > 0)
             print_exit_status_msg("Exit status", ret, 0);
