@@ -286,15 +286,12 @@ but if it is the last ROD Token used is written to the \fIRTF\fR filename.
 .TP
 \fBrtype\fR=\fIRTYPE\fR
 odx: where \fIRTYPE\fR is the ROD type. The default value (0) indicates that
-the copy manager (in the target) decides. \fIRTYPE\fR can be a decimal number,
+the copy manager (in the source) decides. \fIRTYPE\fR can be a decimal number,
 a hex number (prefixed by 0x or with a "h" appended) or one
 of "pit\-def", "pit\-vuln", "pit\-pers", "pit\-any" or "zero". The final
 truncated word can be spelt out (e.g. "pit\-vulnerable"). The "pit\-" part
-stands for "point in time" copy. The first four names can be used with
-disk\->ROD or disk\->disk copy and apply to the \fIIFILE\fR. The "zero"
-causes a special Block device zero Token to be created. It applies to the
-\fIOFILE\fR (replacing the \fIIFILE\fR side) and implies zero\->disk and so
-is equivalent to a WRITE SAME(zero) command.
+stands for "point in time" copy. The "zero" causes a special Block device
+zero Token to be created.
 .TP
 \fBseek\fR=\fISEEK\fR
 start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
@@ -424,7 +421,9 @@ for compatibility with GNU's dd.
 fsync
 equivalent to "oflag=fsync". Flushes data and meta\-data associated
 with the \fIOFILE\fR to storage at the end of the copy. This conversion
-is for compatibility with GNU's dd.
+.TP
+no_del_tkn
+equivalent to "oflag=no_del_tkn".
 .TP
 noerror
 this conversion is very close to "iflag=coe" and is treated as such. See
@@ -439,6 +438,9 @@ has no affect, just a placeholder.
 .TP
 resume
 See "resume" in the FLAGS sections for more information.
+.TP
+rtf_len
+equivalent to "oflag=rtf_len".
 .TP
 sparing
 See "sparing" in the FLAGS sections for more information.
@@ -476,7 +478,10 @@ or, if \fISEEK\fR is given, starting at block \fISEEK\fR. Note that
 attempting to 'append' to a device file (e.g. a disk) will usually be
 ignored or may cause an error to be reported.
 .br
-odx: xxxxxxxxx
+odx: if the \fIrtf=RTF\fR option is given, \fIRTF\fR exists, is a regular
+file and this utility want to write to \fIRTF\fR then new ROD Tokens are
+appended to \fIRTF\fR. The default action is to truncate \fIRTF\fR before
+new ROD Tokens are written to it.
 .TP
 block [io] [pt]
 pass\-through file opens are non\-blocking by default and may report the
@@ -520,14 +525,6 @@ dc [io] [blk,pt]
 set DC (destination counter) bit in EXTENDED COPY (LID1) parameter list
 segment descriptor header. May appear in either flag list when xcopy is
 being used.
-.TP
-del_tkn [o] [odx]
-will set the DEL_TKN bit in the WRITE USING TOKEN command of the single WUT
-odx variant, ignored in other odx variants. Even though the default for
-the DEL_TKN bit is to clear it, a ROD Token is deleted by the copy manager
-when a copy is complete or the inactivity timeout is reached. Hence this
-flag is useful after a partial write when the rest of the ROD is not
-required.
 .TP
 direct [io] [reg,blk]
 causes the O_DIRECT flag to be added to the open of \fIIFILE\fR and/or
@@ -618,8 +615,8 @@ Token in a odx full copy. In a large odx full copy several ROD Tokens may
 be used (one after the other). The default action is to set the DEL_TKN bit
 on the last WUT command of each ROD. Either way it should not make much
 difference because the copy manager deletes a ROD Token after a copy is
-completed. It will also delete a ROD Token if the inactivity timeout is
-reached.
+completed. The copy manager will also delete/invalidate a ROD Token if the
+inactivity timeout is reached.
 .TP
 nofm [o] [tape]
 no File Mark (FM) on close when writing to tape. See TAPE section.
@@ -731,9 +728,9 @@ odx: with the 'read to tokens' variant, after 512 bytes of each ROD Token
 are written to \fIIRTF\fR an additional 8 byte (big endian) integer is
 written. That integer is the number of bytes the associated ROD represents.
 The draft standards say for standard ROD types the ROD Token holds this
-value. However vendor specific ROD types may be used or the bendors may
+value. However vendor specific ROD types may be used or the vendors may
 choose not to comply. Either way the 'write from tokens' variant needs to
-know the of the ROD it is writing from.
+know the size of the ROD it is writing from.
 .TP
 trim [io] [pt] [experimental]
 similar logic to the "sparse" option. However instead of skipping segments
@@ -821,28 +818,32 @@ There a four variants of ODX supported by this utility:
 The full copy will call PT and WUT commands repeatedly until the copy is
 complete. More precisely the full copy will make the largest single call
 to PT allowed by the input's Third Party Copy VPD page (and, if given,
-the \fIBPT\fR argument in the \fIbpt=BPT[,OBPC]\fR option). Then one or
-more WUT calls are made to copy the ROD created by the PT step. The
-largest single WUT call is constrained by the output's Third Party Copy
-VPD page (and, if given, the \fIOBPC\fR argument in the \fIbpt=BPT[,OBPC]\fR
-option). This sequence continues until the requested copy is complete.
+allowed by the \fIBPT\fR argument in the \fIbpt=BPT[,OBPC]\fR option). Then
+one or more WUT calls are made to write out from the ROD created by the PT
+step. The largest single WUT call is constrained by the output's Third Party
+Copy VPD page (and, if given, allowed by the \fIOBPC\fR argument in the
+\fIbpt=BPT[,OBPC]\fR option). This sequence continues until the requested
+copy is complete.
 .PP
 The zero output blocks variant is a special case of the full copy in
 which only WUT calls are made. ODX defines a special ROD Token to
 zero blocks. That special ROD Token has a defined pattern and does not need
 to be created by a PT command like normal ROD Tokens.
 .PP
-Both the full copy and zero output blocks variants can been invoked with
-the immed flag. Then the PT and/or WUT commands are issued with the
-IMMED bit set and the RRTI command is used to poll for completion. The
-delay between the polls is as suggested by the RRTI (or if no suggestion
-is made 500 milliseconds). With a full copy either iflag=immed, oflag=immed
-or both can be given. With the zero output blocks variant, only oflag=immed
-is active.
+The read into tokens and the write from tokens variants are designed to be
+the read (input) and write (output) sides respectively of a network copy.
+Each can run on different machines by sending the \fIRTF\fR file from
+the machine doing the read to the machine doing the write. The read into
+tokens will make one or more PT calls and output the resulting ROD Token
+to the \fIRTF\fR file. \fIRTF\fR might be a regular file or a named pipe.
+xxxxx
 .PP
-The read to tokens and the write to tokens variants are designed to be the
-read (input) and write (output) sides of a network copy with each running
-on different machines. xxxxx
+All four variants can have the immed flag set. Then the PT and/or WUT
+commands are issued with the IMMED bit set and the RRTI command is used to
+poll for completion. The delay between the polls is as suggested by the
+RRTI (or if no suggestion is made, 500 milliseconds). Either iflag=immed,
+oflag=immed or both can be given but are only effective if the corresponding
+\fIIFILE\fR or \fIOFILE\fR sends a PT or WUT command.
 .PP
 xxxx  Now in ddptctl
 The single PT variant issues a single WUT command. If iflag=immed is not
@@ -1219,6 +1220,16 @@ then a check is made for the presence of the XCOPY_TO_SRC and
 XCOPY_TO_DST environment variables. If either one exists (but not both)
 then it indicates where the SCSI XCOPY command will be sent. By default
 the XCOPY command is sent to \fIOFILE\fR.
+.PP
+The ODX write from RODs variant is very complex to implement if the amount
+of data held in each ROD is not known. The value should be found in
+the "number of bytes represented" field in the ROD Token but that is not well
+supported by vendors. So for such case that number can be appended as a big
+endian 8 byte integer following each ROD Token in the \fIRTF\fR file. The
+\fIconv=rtf_len\fR will cause that length to be appended. Specifying that
+option on each read into RODs and write from RODs invocation can be a
+nuisance. Setting the environment variable ODX_RTF_LEN will cause this
+utility to act as if the \fIconv=rtf_len\fR option has been given.
 .SH EXIT STATUS
 To aid scripts that call ddpt, the exit status is set to indicate
 success (0) or failure (1 or more). Note that some of the lower values
