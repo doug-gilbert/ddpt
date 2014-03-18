@@ -1747,13 +1747,10 @@ do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
     pl = (unsigned char *)malloc(pl_sz);
     memset(pl, 0, pl_sz);
     if (! rodt_blk_zero) {
-        if (ODX_WRITE_FROM_RODS == op->odx_request) {
-            if (flp->del_tkn)
-                pl[2] = 0x2;        /* DEL_TKN bit */
-        } else if (! more_left) {
-            if (! flp->no_del_tkn)
-                pl[2] = 0x2;        /* disk->disk default DEL_TKN unless */
-        }
+        if (flp->del_tkn)       /* only from ddptctl */
+            pl[2] = 0x2;        /* DEL_TKN bit */
+        else if ((! more_left) && (! flp->no_del_tkn))
+            pl[2] = 0x2;        /* last write from ROD which may hold more */
     }
     if (flp->immed)
         pl[2] |= 0x1;           /* IMMED bit */
@@ -2194,11 +2191,18 @@ odx_write_from_rods(struct opts_t * op)
                     safe_strerror(err));
             return SG_LIB_FILE_ERROR;
         }
-        if (0 == res)
+        if (0 == res) {
+            if (op->verbose)
+                pr2serr("%s: there are no more tokens to read from RTF or, \n"
+                        "if it is a pipe or socket, the other end closed "
+                        " it\n", __func__);
             break;
-        if (res < n)
+        }
+        if (res < n) {
             pr2serr("%s: unable to read %d bytes from '%s', only got %d "
                     "bytes\n", __func__, (int)sizeof(rt), op->rtf, res);
+            pr2serr("    try to continue\n");
+        }
         if (op->rtf_len_add)
             off = 512;
         else {
@@ -2210,8 +2214,8 @@ odx_write_from_rods(struct opts_t * op)
                     break;
             }
             if (n < 8) {
-                pr2serr("%s: wild 'bytes represented' field so give up. Try "
-                        "again with\n    rtf_len flags on read and write\n",
+                pr2serr("%s: wild 'bytes represented' field in ROD Token so "
+                        "give up.\n    Try again with conv=rtf_len\n",
                          __func__);
                 return SG_LIB_CAT_OTHER;
             }
@@ -2225,14 +2229,13 @@ odx_write_from_rods(struct opts_t * op)
         o_num = num / (unsigned int)op->obs;
         if (o_num > 0xffffffffff) {
             pr2serr("%s: ROD size seems too large (%" PRIu64 " blocks "
-                    "each %d bytes)\nUse rtf_len flags on both the read "
-                    "and write\n", __func__, o_num, op->obs);
+                    "each %d bytes)\nTry again with conv=rtf_len\n", __func__,
+                    o_num, op->obs);
             return SG_LIB_CAT_OTHER;
         }
         if (0 == o_num) {
             pr2serr("%s: ROD size is less than 1 block (%d bytes). Try "
-                    "again with\nrtf_len flags on both the read and write\n",
-                    __func__, op->obs);
+                    "again with conv=rtf_len\n", __func__, op->obs);
             return SG_LIB_CAT_OTHER;
         }
         num = o_num;
