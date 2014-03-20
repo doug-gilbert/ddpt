@@ -802,10 +802,10 @@ and WUT for the WRITE USING TOKEN command.
 A device (logical unit (LU)) that supports ODX operations is required to set
 the 3PC field (3PC stands for Third Party Copy) in its standard INQUIRY
 response and support the Third Party Copy VPD page. If this utility generates
-errors noting these type of problems then the device in question probably
-does not support ODX.
+errors noting the absence of these then the device in question probably does
+not support ODX.
 .PP
-There a four variants of ODX supported by this utility:
+There a four variants of ODX supported by ddpt:
 .br
   \fBfull copy\fR : ddpt if=/dev/sg3 of=/dev/sg4 bs=512 \-\-odx
 .br
@@ -827,16 +827,15 @@ copy is complete.
 .PP
 The zero output blocks variant is a special case of the full copy in
 which only WUT calls are made. ODX defines a special ROD Token to
-zero blocks. That special ROD Token has a defined pattern and does not need
-to be created by a PT command like normal ROD Tokens.
+zero blocks. That special ROD Token has a fixed pattern (shown in SBC\-3)
+and does not need to be created by a PT command like normal ROD Tokens.
 .PP
-The read into tokens and the write from tokens variants are designed to be
+The read to tokens and the write from tokens variants are designed to be
 the read (input) and write (output) sides respectively of a network copy.
 Each can run on different machines by sending the \fIRTF\fR file from
-the machine doing the read to the machine doing the write. The read into
-tokens will make one or more PT calls and output the resulting ROD Token
+the machine doing the read to the machine doing the write. The read to
+tokens will make one or more PT calls and output the resulting ROD Tokens
 to the \fIRTF\fR file. \fIRTF\fR might be a regular file or a named pipe.
-xxxxx
 .PP
 All four variants can have the immed flag set. Then the PT and/or WUT
 commands are issued with the IMMED bit set and the RRTI command is used to
@@ -845,52 +844,32 @@ RRTI (or if no suggestion is made, 500 milliseconds). Either iflag=immed,
 oflag=immed or both can be given but are only effective if the corresponding
 \fIIFILE\fR or \fIOFILE\fR sends a PT or WUT command.
 .PP
-xxxx  Now in ddptctl
-The single PT variant issues a single WUT command. If iflag=immed is not
-given, then the \fIrtf=RTF\fR option should be given. Then on success the ROD
-Token created by the copy manager (and conveyed back to this utility with the
-RRTI command) will be stored in a file named \fIRTF\fR. If the iflag=immed
-option is given then this utility issues the PT command with its IMMED bit
-set and exits on the completion of the PT command which should be soon
-thereafter. After ddpt exits a command like this:
-.br
-  ddptctl \-\-poll \-\-lid=<same_LID> \-\-rtf=<filename> <same_dev>
-.br
-might be used to check for successful completion and store the resulting
-ROD Token in a file.
-.PP
-xxxx  Now in ddptctl
-In the single WUT variant the \fIrtf=RTF\fR option must be given. In the
-absence of oflag=immed this utility will wait until the WUT command
-completes and then issue a RRTI command to get the final information (e.g.
-the actual transfer count). If the oflag=immed option is given then this
-utility issues the WUT command with its IMMED bit set and exits on the
-completion of the WUT command which should be soon thereafter. After ddpt
-exits a command like this:
-.br
-  ddptctl \-\-poll \-\-lid=<same_LID> <same_dev>
-.br
-might be used to check for successful completion of the write operation.
-.PP
-Typically there is no need to give the \fIlist_id=LID\fR option for an ODX
-full copy (and a zero output blocks). This option becomes more useful for
-the single PT and single WUT variants, especially if the 'immed' flag is
-given. If the \fILID\fR is already in use (e.g. by another process using
-ODX on the same machine) then ddpt exits with status of 55 (operation in
-progress). In this case the user should choose another \fILID\fR.
-.PP
-The four ODX variants are distinguished as follows: if \fIOFILE\fR is a
-pass\-through device, if=/dev/null (or equivalent) and rtype=zero then the
-zero output blocks variant is selected. If both \fIIFILE\fR and \fIOFILE\fR
-are pass\-through devices and there is some indication of an ODX request (e.g.
-the \fI\-\-odx\fR option), then the full copy variant is selected. The single
-PT and single WUT variants are indicated by the absence of either a
-\fIof=OFILE\fR or a \fIif=IFILE\fR option, respectively.
+Typically there is no need to give the \fIlist_id=LID\fR option. If this
+option is not given then 257 is chosen. If that is busy then 258 is tried.
+That continues until a usable \fILID\fR is found or 10 \fILID\fRs have been
+tried. In tha latter case ddpt exits with status of 55 (operation in
+progress). If the user gives \fIlist_id=LID\fR option and \fILID\fR is
+busy then ddpt exits with exit status 55.
 .PP
 If the block size of the input and output are different (i.e. \fIIBS\fR
 is not equal to \fIOBS\fR) then one must be a multiple of the other. So
 an input block size of 512 bytes and an output block size of 4096
 bytes (or vice versa) is acceptable.
+.PP
+The four ODX variants are distinguished as follows: if \fIOFILE\fR is a
+pass\-through device, if=/dev/null (or equivalent) and rtype=zero then the
+zero output blocks variant is selected. If both \fIIFILE\fR and \fIOFILE\fR
+are pass\-through devices and there is some indication of an ODX request (e.g.
+the \fI\-\-odx\fR option), then the full copy variant is selected. The read
+to tokens and the write from token variants are indicated by the absence
+of either a \fIof=OFILE\fR or a \fIif=IFILE\fR option, respectively, plus
+the presence of a \fIrtf=RTF\fR option.
+.PP
+The helper utility ddptctl contains options to issue a single PT, RRTI,
+WUT or COPY OPERATION ABORT command. It can also issue a series of
+polling RRTI commands. It can decode information in ROD Tokens (which is
+not as informative as it should be) and print the number of blocks and block
+size of a disk, plus protection information if available. See ddptctl.
 .SH SPARSE WRITES
 Bypassing writes of blocks full of zeros can save a lot of IO. However
 with regular files, bypassed writes at the end of the copy can lead
