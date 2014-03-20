@@ -65,7 +65,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140318 [svn: r272]";
+const char * ddptctl_version_str = "0.94 20140320 [svn: r273]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -484,7 +484,7 @@ do_sgl(struct opts_t * op, const char * opt, const char * buf)
 int
 main(int argc, char * argv[])
 {
-    int c, k, n, fd, flags, blk_sz, cont, done, err;
+    int c, k, n, fd, flags, blk_sz, cont, err;
     uint32_t delay;
     int64_t i64, num_blks;
     uint64_t tc;
@@ -569,6 +569,10 @@ main(int argc, char * argv[])
             ++do_poll;
             break;
         case 'P':       /* takes gather list as argument */
+            if (req_pt) {
+                pr2serr("Using two --pt=GL options is contradictory\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
             ++req_pt;
             ret = do_sgl(op, "--pt=", optarg);
             if (ret)
@@ -642,6 +646,10 @@ main(int argc, char * argv[])
             pr2serr("version: %s\n", ddptctl_version_str);
             return 0;
         case 'w':       /* takes scatter list as argument */
+            if (req_wut) {
+                pr2serr("Using two --wut=SL options is contradictory\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
             ++req_wut;
             ret = do_sgl(op, "--wut=", optarg);
             if (ret)
@@ -710,10 +718,14 @@ main(int argc, char * argv[])
         pr2serr("need a DEVICE (e.g. /dev/sg3) to send command to\n");
         return SG_LIB_SYNTAX_ERROR;
     }
-    if (do_info && op->rtf[0]) {
-        if (op->idip->fn[0])
-            pr2serr("Ignore device name [%s] and decode RTF\n", op->idip->fn);
-        return odx_rt_info(op);
+    if (op->rtf[0]) {
+        if (do_info) {
+            if (op->idip->fn[0])
+                pr2serr("Ignore device name [%s] and decode RTF\n",
+                        op->idip->fn);
+            return odx_rt_info(op);
+        } else if ('\0' == op->idip->fn[0])
+            return odx_rt_info(op);
     }
     /* If present, this will cause the ROD's size to be appended to the
      * corresponding ROD Token placed in the RTF file (big endian, 8 byte) */
@@ -765,7 +777,6 @@ main(int argc, char * argv[])
         }
     }
 
-    done = 1;
     if (req_abort) {
         ret = do_copy_abort(op);
         if (ret)
@@ -872,12 +883,7 @@ main(int argc, char * argv[])
             goto clean_up;
         printf("WUT completes with transfer count %" PRIu64 " [0x%" PRIx64
                "]\n", tc, tc);
-    } else
-        done = 0;
-    if (done)
-        goto clean_up;
-
-    if (do_info) {
+    } else if (do_info || do_size) {
         if (op->idip->d_type & FT_PT) {
             ret = pt_read_capacity(op, DDPT_ARG_IN, &num_blks, &blk_sz);
             if (ret) {
@@ -896,16 +902,18 @@ main(int argc, char * argv[])
                 }
             }
             print_blk_sizes(op->idip->fn, "readcap", num_blks, blk_sz, 0);
-            if (0x8 & sir.byte_5) {
-                printf("3PC (third party copy) bit set in standard INQUIRY "
-                       "response\n");
-                printf("  Print Third Party Copy VPD page:\n");
-                print_3pc_vpd(op, 0);
-            } else {
-                printf("3PC (third party copy) bit clear in standard INQUIRY "
-                       "response\n");
-                printf("  so %s [pdt=0x%x] does not seem to support XCOPY\n",
-                       op->idip->fn, sir.peripheral_type);
+            if (do_info) {
+                if (0x8 & sir.byte_5) {
+                    printf("3PC (third party copy) bit set in standard "
+                           "INQUIRY response\n");
+                    printf("  Print Third Party Copy VPD page:\n");
+                    print_3pc_vpd(op, 0);
+                } else {
+                    printf("3PC (third party copy) bit clear in standard "
+                           "INQUIRY response\n");
+                    printf("  so %s [pdt=0x%x] does not seem to support "
+                           "XCOPY\n", op->idip->fn, sir.peripheral_type);
+                }
             }
         } else if (op->idip->d_type & FT_BLOCK) {
             ret = get_blkdev_capacity(op, DDPT_ARG_IN, &num_blks, &blk_sz);
@@ -917,45 +925,15 @@ main(int argc, char * argv[])
             blk_sz = 0;
             printf("unable to print capacity information about device\n");
         }
-        done = 1;
-    }
-    if (do_size && (! do_info)) {
-        if (op->idip->d_type & FT_PT) {
-            ret = pt_read_capacity(op, DDPT_ARG_IN, &num_blks, &blk_sz);
-            if (ret) {
-                if (SG_LIB_CAT_UNIT_ATTENTION == ret) {
-                    if (op->verbose)
-                        pr2serr("Unit attention (readcap), continuing\n");
-                    ret = pt_read_capacity(op, DDPT_ARG_IN,
-                                           &num_blks, &blk_sz);
-                    if (ret) {
-                        if (0 == sir.peripheral_type)
-                            pr2serr("read capacity failed, perhaps because "
-                                    "non-disk device [pdt=%d]\n",
-                                    sir.peripheral_type);
-                        goto clean_up;
-                    }
-                }
-            }
-            print_blk_sizes(op->idip->fn, "readcap", num_blks, blk_sz, 0);
-        } else if (op->idip->d_type & FT_BLOCK) {
-            ret = get_blkdev_capacity(op, DDPT_ARG_IN, &num_blks, &blk_sz);
-            if (ret)
-                goto clean_up;
-            print_blk_sizes(op->idip->fn, "block", num_blks, blk_sz, 0);
-        } else {
-            num_blks = 0;
-            blk_sz = 0;
-            printf("%s: unable to print capacity information\n",
-                   op->idip->fn);
-        }
-        done = 1;
-    }
-
-    if (! done)
-        pr2serr("not implemented yet\n");
+    } else
+        printf("Has something been forgotten\n");
 
 clean_up:
+    if ((req_pt || req_wut) && op->iflagp->immed && (0 == ret))
+        pr2serr("Started ODX %s command in immediate mode.\nUser may need "
+                "--list_id=%d on following invocation with --receive or\n"
+                "--poll for completion\n", (req_pt ? "Populate Token" :
+                                 "Write Using Token"), op->list_id);
     if (op->idip->fd >= 0) {
         if (op->idip->d_type & FT_PT)
             pt_close(op->idip->fd);
