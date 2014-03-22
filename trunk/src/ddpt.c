@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.94 20140320 [svn: r273]";
+static const char * ddpt_version_str = "0.94 20140322 [svn: r274]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -2451,15 +2451,17 @@ chk_sgl_for_non_offload(struct opts_t * op)
         }
         op->skip = op->in_sgl[0].lba;
         op->dd_count = op->in_sgl[0].num;
-    } else if (op->out_sgl) {
+    }
+    if (op->out_sgl) {
         if (op->out_sgl_elems > 1) {
             pr2serr("Don't accept multiple element scatter(-gather) lists "
                     "for OFILE currently\n");
             return SG_LIB_SYNTAX_ERROR;
         }
-        if (op->dd_count >= 0) {
-            pr2serr("dd_count [%" PRIu64 "] and skip (sgl num) [%" PRIu32 "] "
-                    "too confusing\n", op->dd_count, op->in_sgl[0].num);
+        /* assuming ibs==obs, revisit xxxxxxx */
+        if ((op->dd_count >= 0) && (op->dd_count != op->out_sgl[0].num)) {
+            pr2serr("dd_count [%" PRIu64 "] and seek (sgl num) [%" PRIu32 "] "
+                    "too confusing\n", op->dd_count, op->out_sgl[0].num);
             return SG_LIB_SYNTAX_ERROR;
         }
         op->seek = op->out_sgl[0].lba;
