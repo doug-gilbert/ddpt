@@ -746,26 +746,26 @@ cl_sanity_defaults(struct opts_t * op)
             op->odx_request = ODX_COPY;
             if (RODT_BLK_ZERO == op->rod_type) {
                 if (op->verbose > 1)
-                    cp = "zero destination: call WRITE USING TOKEN(s), "
+                    cp = "zero output blocks: call WRITE USING TOKEN(s), "
                          "repeatedly";
                 else
-                    cp = "zero destination\n";
+                    cp = "zero output blocks";
 
             } else {
                 if (op->verbose > 1)
                     cp = "full copy: POPULATE TOKEN then WRITE USING "
                          "TOKEN(s), repeatedly";
                 else
-                    cp = "full copy\n";
+                    cp = "full copy";
             }
         } else if (op->idip->fn[0]) {
             op->odx_request = ODX_READ_INTO_RODS;
             if (op->verbose)
-                cp = "disk-->ROD; read into RODs [POPULATE TOKENs]";
+                cp = "read to tokens; disk-->ROD";
         } else if (op->odip->fn[0]) {
             op->odx_request = ODX_WRITE_FROM_RODS;
             if (op->verbose)
-                cp = "ROD-->disk; write from RODs [WRITE USING TOKENs]";
+                cp = "write from tokens; ROD-->disk";
         } else {
             pr2serr("Not enough options given to do ODX (xcopy(LID4))\n");
             return SG_LIB_SYNTAX_ERROR;

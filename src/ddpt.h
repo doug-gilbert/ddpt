@@ -506,9 +506,10 @@ int pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
 void pt_sync_cache(int fd);
 int pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
                        int timeout_secs, void * paramp, int param_len,
-                       int noisy, int verbose);
+                       int noisy, int verbose, int err_vb);
 int pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
-                      void * resp, int mx_resp_len, int noisy, int verbose);
+                      void * resp, int mx_resp_len, int noisy, int verbose,
+                      int err_vb);
 
 /* defined in ddpt_xcopy.c */
 int open_rtf(struct opts_t * op);
@@ -522,8 +523,8 @@ int fetch_rrti_after_odx(struct opts_t * op, int in0_out1,
                          struct rrti_resp_t * rrp, int verb);
 int fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a);
 int do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
-	   uint32_t num_blks, uint64_t oir, int more_left, int walk_list_id,
-	   int vb_a);
+           uint32_t num_blks, uint64_t oir, int more_left, int walk_list_id,
+           int vb_a);
 int fetch_rrti_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a);
 int do_odx(struct opts_t * op);
 

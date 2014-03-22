@@ -65,7 +65,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140320 [svn: r273]";
+const char * ddptctl_version_str = "0.94 20140322 [svn: r274]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -160,8 +160,8 @@ usage()
             "    --all_toks|-a         call REPORT ALL ROD TOKENS command\n"
             "    --block|-B            treat as block DEVICE (def: use "
             "SCSI commands)\n"
-            "    --help|-h             print out usage message\n"
             "    --del_tkn|-D          set DEL_TKN bit in WUT command\n"
+            "    --help|-h             print out usage message\n"
             "    --immed|-I            set IMMED bit in PT or WUT, exit "
             "prior to\n"
             "                          data transfer completion (then use "
@@ -373,7 +373,7 @@ do_copy_abort(struct opts_t * op)
 {
     return pt_3party_copy_out(op->idip->fd, SA_COPY_ABORT, op->list_id,
                               DEF_GROUP_NUM, DEF_3PC_OUT_TIMEOUT, NULL, 0, 1,
-                              op->verbose);
+                              op->verbose, op->verbose);
 }
 
 static int
@@ -386,7 +386,7 @@ report_all_toks(struct opts_t * op, struct dev_info_t * dip)
     fd = dip->fd;
     res = pt_3party_copy_in(fd, SA_ALL_ROD_TOKS, op->list_id,
                             DEF_3PC_IN_TIMEOUT, rsp, sizeof(rsp), 1,
-                            op->verbose);
+                            op->verbose, op->verbose);
     if (res)
         return res;
 
@@ -452,7 +452,7 @@ num_chs_in_str(const char * s, int slen, int ch)
 static int
 do_sgl(struct opts_t * op, const char * opt, const char * buf)
 {
-    int len, res, got;
+    int k, len, res, got;
 
     len = (int)strlen(buf);
     if ((('-' == buf[0]) && (1 == len)) || ((len > 1) && ('@' == buf[0]))) {
@@ -477,6 +477,12 @@ do_sgl(struct opts_t * op, const char * opt, const char * buf)
     op->in_sgl_elems = got;
     op->out_sgl = fixed_sgl;
     op->out_sgl_elems = got;
+    if (op->verbose > 3) {
+        pr2serr("scatter-gather list (%d elements):\n", op->in_sgl_elems);
+        for (k = 0; k < op->in_sgl_elems; ++k)
+            pr2serr("  lba: 0x%" PRIx64 ", number: 0x%" PRIx32 "\n",
+                    op->in_sgl[k].lba, op->in_sgl[k].num);
+    }
     return 0;
 }
 
@@ -505,6 +511,7 @@ main(int argc, char * argv[])
     struct rrti_resp_t rrti_rsp;
     struct opts_t * op;
     char * np;
+    const char * sglp = NULL;
     char b[80];
     char bb[80];
     unsigned char rt[512];
@@ -574,9 +581,7 @@ main(int argc, char * argv[])
                 return SG_LIB_SYNTAX_ERROR;
             }
             ++req_pt;
-            ret = do_sgl(op, "--pt=", optarg);
-            if (ret)
-                return ret;
+            sglp = optarg;
             break;
         case 'r':
             if (op->rtf[0]) {
@@ -651,9 +656,7 @@ main(int argc, char * argv[])
                 return SG_LIB_SYNTAX_ERROR;
             }
             ++req_wut;
-            ret = do_sgl(op, "--wut=", optarg);
-            if (ret)
-                return ret;
+            sglp = optarg;
             break;
         default:
             pr2serr("unrecognised option code 0x%x ??\n", c);
@@ -733,6 +736,11 @@ main(int argc, char * argv[])
     if (np)
         ++op->rtf_len_add;
 
+    if (req_pt || req_wut) {
+        ret = do_sgl(op, (req_pt ? "--pt=" : "--wut="), sglp);
+        if (ret)
+            return ret;
+    }
     op->idip->d_type = do_block ? FT_BLOCK : FT_PT;
     if (op->idip->d_type & FT_PT) {
         fd = pt_open_if(op, &sir);

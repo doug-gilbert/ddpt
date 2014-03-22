@@ -255,7 +255,8 @@ scsi_extended_copy(struct opts_t * op, unsigned char *src_desc,
     desc_offset += seg_desc_len;
     tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
     return pt_3party_copy_out(fd, SA_XCOPY_LID1, op->list_id, DEF_GROUP_NUM,
-                              tmout, xcopyBuff, desc_offset, 1, verb);
+                              tmout, xcopyBuff, desc_offset, 1, verb,
+                              op->verbose);
 }
 
 /* Returns target descriptor variety encoded into an int. There may be
@@ -292,7 +293,7 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
 
     /* Third Party Copy IN command; sa: RECEIVE COPY OPERATING PARAMETERS */
     res = pt_3party_copy_in(fd, SA_COPY_OP_PARAMS, 0, DEF_3PC_IN_TIMEOUT,
-                            rcBuff, rcBuffLen, 1, verb);
+                            rcBuff, rcBuffLen, 1, verb, op->verbose);
     if (0 != res)
         return -res;
 
@@ -1241,7 +1242,7 @@ fetch_3pc_vpd(int fd, const char * fn, unsigned char * fixed_b,
     if (len > fixed_blen) {
         rp = (unsigned char *)malloc(len);
         if (NULL == rp) {
-            pr2serr("Not enough user memory for fetch_3pc_vpd\n");
+            pr2serr("Not enough user memory for %s\n", __func__);
             return SG_LIB_CAT_OTHER;
         }
         if (alloc_bp)
@@ -1452,6 +1453,10 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
         pl_sz = 32;
     }
     pl = (unsigned char *)malloc(pl_sz);
+    if (NULL == pl) {
+        pr2serr("Not enough user memory for %s\n", __func__);
+        return SG_LIB_CAT_OTHER;
+    }
     memset(pl, 0, pl_sz);
     if (op->rod_type_given) {
         pl[2] = 0x2;            /* RTV bit */
@@ -1527,11 +1532,12 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
 
     tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
     res = pt_3party_copy_out(fd, SA_POP_TOK, op->list_id, DEF_GROUP_NUM,
-                             tmout, pl, len, 1, vb_b);
+                             tmout, pl, len, 1, vb_b, op->verbose);
     if ((DDPT_CAT_OP_IN_PROGRESS == res) && walk_list_id) {
         for (j = 0; j < MAX_IN_PROGRESS; ++j) {
             res = pt_3party_copy_out(fd, SA_POP_TOK, ++op->list_id,
-                                     DEF_GROUP_NUM, tmout, pl, len, 1, vb_b);
+                                     DEF_GROUP_NUM, tmout, pl, len, 1, vb_b,
+                                     op->verbose);
             if (DDPT_CAT_OP_IN_PROGRESS != res)
                 break;
         }
@@ -1557,7 +1563,8 @@ fetch_rrti_after_odx(struct opts_t * op, int in0_out1,
 
     fd = in0_out1 ? op->odip->fd : op->idip->fd;
     res = pt_3party_copy_in(fd, SA_ROD_TOK_INFO, op->list_id,
-                            DEF_3PC_IN_TIMEOUT, rsp, sizeof(rsp), 1, verb);
+                            DEF_3PC_IN_TIMEOUT, rsp, sizeof(rsp), 1, verb,
+                            op->verbose);
     if (res)
         return res;
 
@@ -1745,6 +1752,10 @@ do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
         pl_sz = 540 + 16;
     }
     pl = (unsigned char *)malloc(pl_sz);
+    if (NULL == pl) {
+        pr2serr("Not enough user memory for %s\n", __func__);
+        return SG_LIB_CAT_OTHER;
+    }
     memset(pl, 0, pl_sz);
     if (! rodt_blk_zero) {
         if (flp->del_tkn)       /* only from ddptctl */
@@ -1825,11 +1836,12 @@ do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
 
     tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
     res = pt_3party_copy_out(fd, SA_WR_USING_TOK, op->list_id, DEF_GROUP_NUM,
-                             tmout, pl, len, 1, vb_b);
+                             tmout, pl, len, 1, vb_b, op->verbose);
     if ((DDPT_CAT_OP_IN_PROGRESS == res) && walk_list_id) {
         for (j = 0; j < MAX_IN_PROGRESS; ++j) {
             res = pt_3party_copy_out(fd, SA_WR_USING_TOK, ++op->list_id,
-                                     DEF_GROUP_NUM, tmout, pl, len, 1, vb_b);
+                                     DEF_GROUP_NUM, tmout, pl, len, 1, vb_b,
+                                     op->verbose);
             if (DDPT_CAT_OP_IN_PROGRESS != res)
                 break;
         }
@@ -2530,7 +2542,7 @@ odx_setup_and_run(struct opts_t * op, int * whop)
         dip->fd = fd;
         dip->odxp = (struct block_rodtok_vpd *)malloc(sizeof(*dip->odxp));
         if (NULL == dip->odxp) {
-            pr2serr("Not enough user memory for do_odx_copy\n");
+            pr2serr("Not enough user memory for %s\n", __func__);
             return SG_LIB_CAT_OTHER;
         }
         memset(dip->odxp, 0, sizeof(*dip->odxp));
@@ -2548,7 +2560,7 @@ odx_setup_and_run(struct opts_t * op, int * whop)
         dip->fd = fd;
         dip->odxp = (struct block_rodtok_vpd *)malloc(sizeof(*dip->odxp));
         if (NULL == dip->odxp) {
-            pr2serr("Not enough user memory for do_odx_copy\n");
+            pr2serr("Not enough user memory for %s 2\n", __func__);
             return SG_LIB_CAT_OTHER;
         }
         memset(dip->odxp, 0, sizeof(*dip->odxp));

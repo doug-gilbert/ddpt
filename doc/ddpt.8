@@ -152,6 +152,8 @@ deduced from either \fIIFILE\fR or \fIOFILE\fR. See the COUNT section below.
 odx: if a gather list is given to \fIskip=SKIP\fR or a scatter list is
 given to \fIseek=SEEK\fR then typically \fIcount=COUNT\fR should not be
 supplied. This is because a scatter gather list implies a transfer count.
+If both are given then ddpt will exit if they are unequal, the force option
+can be used to override this action.
 .TP
 \fBdelay\fR=\fIMS[,W_MS]\fR
 after each segment is copied (typically every (\fIIBS\fR * \fIBPT\fR) bytes)
@@ -182,7 +184,8 @@ of \fIIFILE\fR unless \fISKIP\fR is given.
 .br
 odx: the absence of the \fIif=IFILE\fR option and given a \fIof=OFILE\fR
 option and another option that is odx specific (e.g. \fI\-\-odx\fR) is
-interpreted as a request to send a single WUT command, see the ODX section.
+interpreted as a write to tokens variant. In this case the \fIrtf=RTF\fR
+option must be given and is essentially the input. See the ODX section.
 .TP
 \fBiflag\fR=\fIFLAGS\fR
 where \fIFLAGS\fR is a comma separated list of one or more flags outlined
@@ -278,11 +281,12 @@ WRITEs are retried on error, \fIRETR\fR times. Default value is zero.
 Only applies to errors on pt devices.
 .TP
 \fBrtf\fR=\fIRTF\fR
-odx: where \fIRTF\fR is a filename. The ROD token will be written to
-\fIRTF\fR during a disk\->ROD operation (e.g. PT command). In a ROD\->disk
-operation (e.g. WUT command) the ROD token is read from the \fIRTF\fR
-filename. With a odx disk\->disk copy this option does not need to be given
-but if it is the last ROD Token used is written to the \fIRTF\fR filename.
+odx: where \fIRTF\fR is a filename. One or more ROD tokens are written to
+\fIRTF\fR during a read to tokens variant or a full copy variant. One or
+more ROD tokens are read from \fIRTF\fR during a write from token variant.
+This option is not required on a full copy variant. ROD Tokens are 512
+bytes long and an extra 8 byte (big\-endian) integer containing the 'number
+of bytes represented' is placed after each ROD Token if rtf_len is given.
 .TP
 \fBrtype\fR=\fIRTYPE\fR
 odx: where \fIRTYPE\fR is the ROD type. The default value (0) indicates that
@@ -479,7 +483,7 @@ attempting to 'append' to a device file (e.g. a disk) will usually be
 ignored or may cause an error to be reported.
 .br
 odx: if the \fIrtf=RTF\fR option is given, \fIRTF\fR exists, is a regular
-file and this utility want to write to \fIRTF\fR then new ROD Tokens are
+file and this utility wants to write to \fIRTF\fR then new ROD Tokens are
 appended to \fIRTF\fR. The default action is to truncate \fIRTF\fR before
 new ROD Tokens are written to it.
 .TP
@@ -840,14 +844,14 @@ to the \fIRTF\fR file. \fIRTF\fR might be a regular file or a named pipe.
 All four variants can have the immed flag set. Then the PT and/or WUT
 commands are issued with the IMMED bit set and the RRTI command is used to
 poll for completion. The delay between the polls is as suggested by the
-RRTI (or if no suggestion is made, 500 milliseconds). Either iflag=immed,
-oflag=immed or both can be given but are only effective if the corresponding
-\fIIFILE\fR or \fIOFILE\fR sends a PT or WUT command.
+RRTI command (or if no suggestion is made, 500 milliseconds). Either
+iflag=immed, oflag=immed or both can be given but are only effective if
+the corresponding \fIIFILE\fR or \fIOFILE\fR sends a PT or WUT command.
 .PP
 Typically there is no need to give the \fIlist_id=LID\fR option. If this
 option is not given then 257 is chosen. If that is busy then 258 is tried.
 That continues until a usable \fILID\fR is found or 10 \fILID\fRs have been
-tried. In tha latter case ddpt exits with status of 55 (operation in
+tried. In the latter case ddpt exits with status of 55 (operation in
 progress). If the user gives \fIlist_id=LID\fR option and \fILID\fR is
 busy then ddpt exits with exit status 55.
 .PP
@@ -1200,13 +1204,13 @@ XCOPY_TO_DST environment variables. If either one exists (but not both)
 then it indicates where the SCSI XCOPY command will be sent. By default
 the XCOPY command is sent to \fIOFILE\fR.
 .PP
-The ODX write from RODs variant is very complex to implement if the amount
+The ODX write from tokens variant is very complex to implement if the amount
 of data held in each ROD is not known. The value should be found in
 the "number of bytes represented" field in the ROD Token but that is not well
-supported by vendors. So for such case that number can be appended as a big
-endian 8 byte integer following each ROD Token in the \fIRTF\fR file. The
+supported yet by vendors. So for such case that number can be appended as a
+big endian 8 byte integer following each ROD Token in the \fIRTF\fR file. The
 \fIconv=rtf_len\fR will cause that length to be appended. Specifying that
-option on each read into RODs and write from RODs invocation can be a
+option on each read to tokens and write from tokens invocation can be a
 nuisance. Setting the environment variable ODX_RTF_LEN will cause this
 utility to act as if the \fIconv=rtf_len\fR option has been given.
 .SH EXIT STATUS
