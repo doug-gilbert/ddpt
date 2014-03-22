@@ -1145,7 +1145,7 @@ pt_tpc_process_res(int cp_ret, int sense_cat, const unsigned char * sense_b,
 int
 pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
                    int timeout_secs, void * paramp, int param_len,
-                   int noisy, int vb)
+                   int noisy, int vb, int err_vb)
 {
     int k, res, ret, has_lid, sense_cat, tmout;
     unsigned char xcopyCmdBlk[DDPT_TPC_OUT_CMDLEN] =
@@ -1221,7 +1221,7 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_out(ptvp, (unsigned char *)paramp, param_len);
     res = do_scsi_pt(ptvp, sg_fd, tmout, vb);
-    ret = sg_cmds_process_resp(ptvp, cname, res, 0, sense_b, noisy, vb,
+    ret = sg_cmds_process_resp(ptvp, cname, res, 0, sense_b, noisy, err_vb,
                                &sense_cat);
     if ((-1 == ret) &&
         (SCSI_PT_RESULT_STATUS == get_scsi_pt_result_category(ptvp)) &&
@@ -1236,7 +1236,7 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
 
 int
 pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
-                  void * resp, int mx_resp_len, int noisy, int vb)
+                  void * resp, int mx_resp_len, int noisy, int vb, int err_vb)
 {
     int k, res, ret, sense_cat, tmout;
     unsigned char rcvcopyresCmdBlk[DDPT_TPC_IN_CMDLEN] =
@@ -1278,7 +1278,7 @@ pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
     set_scsi_pt_data_in(ptvp, (unsigned char *)resp, mx_resp_len);
     res = do_scsi_pt(ptvp, sg_fd, tmout, vb);
     ret = sg_cmds_process_resp(ptvp, cname, res, mx_resp_len, sense_b, noisy,
-                               vb, &sense_cat);
+                               err_vb, &sense_cat);
     if ((-1 == ret) &&
         (SCSI_PT_RESULT_STATUS == get_scsi_pt_result_category(ptvp)) &&
         (SAM_STAT_RESERVATION_CONFLICT == get_scsi_pt_status_response(ptvp)))

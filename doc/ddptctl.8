@@ -5,7 +5,7 @@ ddptctl \- helper/auxiliary utility for ddpt
 .B ddptctl
 [\fI\-\-abort=LID\fR] [\fI\-\-all_toks\fR] [\fI\-\-block\fR]
 [\fI\-\-del_tkn\fR] [\fI\-\-help\fR] [\fI\-\-immed\fR] [\fI\-\-info\fR]
-[\fI\-\-oir=OIR\fR] [\fI\-\-list_id=LID\fR] [\fI\-\-poll\fR] [\fI\-\-pt=GL\fR]
+[\fI\-\-list_id=LID\fR] [\fI\-\-oir=OIR\fR] [\fI\-\-poll\fR] [\fI\-\-pt=GL\fR]
 [\fI\-\-receive\fR] [\fI\-\-rtf=RTF\fR] [\fI\-\-rtype=RTYPE\fR]
 [\fI\-\-size\fR] [\fI\-\-timeout=ITO[,CMD]\fR] [\fI\-\-verbose\fR]
 [\fI\-\-version\fR] [\fI\-\-wut=SL\fR] [\fIDEVICE\fR]
@@ -15,17 +15,18 @@ ddptctl \- helper/auxiliary utility for ddpt
 This utility is a helper/auxiliary for the ddpt utility which copies data
 between or within SCSI devices (logical units). While ddpt's command line
 syntax is modelled on that of the POSIX dd command, this utility has a more
-standard Unix command line syntax with both short and long vaiants of each
+standard Unix command line syntax with both short and long variants of each
 option.
 .PP
 The T10 committee defines a family of SCSI commands for offloaded copy. The
 central (but not the only) command is EXTENDED COPY often shortened to XCOPY
 or xcopy. There are now two generations of xcopy, the older one is given the
 suffix "LID1" and the newer one: "LID4". There is a subset of XCOPY(LID4)
-based on the SBC\-3 commands: POPULATE TOKEN (PT) and WRITE USING TOKEN (WUT)
-which do disk to disk copies. ODX is a market name that has become associated
-with this subset. This utility can issue PT, WUT and related commands, read
-the Third Party Copy VPD page and perform several other housekeeping tasks.
+that supports disk to disk copies and is based on the SBC\-3 commands:
+POPULATE TOKEN (PT) and WRITE USING TOKEN (WUT). ODX is a market name that has
+become associated with this subset. This utility can issue PT, WUT and related
+commands, read the Third Party Copy VPD page and perform several other
+housekeeping tasks.
 .PP
 The xcopy family of commands are described in the SPC\-4 and SBC\-3 documents
 found at http://www.t10.org .
@@ -66,9 +67,11 @@ when the \fIDEVICE\fR argument is given then check its Third Party Copy VPD
 page and print out anything found. Also check if the 3PC bit is set in the
 standard INQUIRY response.
 .br
-when the \fIDEVICE\fR argument is not given and the \fI\-\-rtf=RTF\fR option
-is given then decodes part of the ROD Token held in the \fI\-\-RTF\fR
-file.
+If the \fIDEVICE\fR argument is not given and the \fI\-\-rtf=RTF\fR option
+is given then decode part of the ROD Token held in the \fI\-\-RTF\fR
+file. SPC\-4 defines some parts of a ROD Token that can be decoded but
+does not require the copy manager to set these fields; so many fields may
+appear as zeros.
 .TP
 \fB\-l\fR, \fB\-\-list_id\fR=\fILID\fR
 \fILID\fR is a list identifier that is used by either the \fI\-\-poll\fR or
@@ -94,10 +97,11 @@ file. If the \fI\-\-rtf=RTF\fR option is not given then the ROD token is
 written to a file called ddptctl_rod_tok.bin in the current directory.
 .TP
 \fB\-P\fR, \fB\-\-pt\fR=\fIGL\fR
-send a POPULATE TOKEN (PT) command with the given gather list. If used
-without the \fI\-\-immed\fR option then this utility after the PT command
-finishes successfully will call the RRTI command. When the RRTI command
-finishes, potentially with a new ROD Token, this utility will exit.
+send a POPULATE TOKEN (PT) command with the given gather list. The format
+of \fIGL\fR is given in the NOTES section. If used without the \fI\-\-immed\fR
+option then this utility, after the PT command finishes successfully, will
+call the RRTI command. When the RRTI command finishes, potentially with a
+new ROD Token, this utility will exit.
 .br
 If the \fI\-\-immed\fR option is given this utility will exit after the
 PT command finishes.
@@ -139,7 +143,7 @@ PT commmand. The default is 0 in which case the copy manager uses its own
 default which is shown in the Third party Copy VPD page.
 .br
 \fICMD\fR is the SCSI command timeout (units: seconds) applied to SCSI
-commands issued by the utility; default is 0 which is translated to 600
+commands issued by this utility; default is 0 which is translated to 600
 seconds for originating xcopy commands (e.g. PT and WUT) and 60 seconds
 for other commands. Best not to trigger command timeouts.
 .TP
@@ -150,13 +154,35 @@ increase the level of verbosity, (i.e. debug output).
 print the version string and then exit.
 .TP
 \fB\-w\fR, \fB\-\-wut\fR=\fISL\fR
-send a WRITE USING TOKEN (WUT) command with the given scatter list. If used
-without the \fI\-\-immed\fR option then this utility after the WUT command
-finishes successfully will call the RRTI command. When the RRTI command
-finishes this utility will exit.
+send a WRITE USING TOKEN (WUT) command with the given scatter list. The
+format of \fISL\fR is given in the NOTES section. If used without the
+\fI\-\-immed\fR option then this utility after the WUT command finishes
+successfully will call the RRTI command. When the RRTI command finishes
+this utility will exit.
 .br
 If the \fI\-\-immed\fR option is given this utility will exit after the
 WUT command finishes.
+.SH NOTES
+The scatter gather list given to the \fI\-\-pt=GL\fR and \fI\-\-wut=SL\fR
+options in the simplest case contains a pair a numbers, separated by a
+comma. The first number is the starting LBA and the second number is
+the number of blocks (no bigger than 32 bits) to read to or write from that
+starting LBA. Another pair of numbers can appear after that forming the
+second element of a scatter gather list. Starting LBAs can be in any order
+but T10 prohibits any logocal block appearing more than once in a scatter
+gather list.
+.PP
+Scatter gather lists can be placed in a file or read from stdin. A file
+name referring to a file containing a scatter gather list must follow
+the "@" character (e.g. \-\-pt=@my_sgl.txt"). Reading a list from stdin is
+indicated by "@\-" or "\-" (e.g. "\-\-pt=\-"). Scatter gather lists in a
+file have a looser format and can take spaces and tabs as well as a comma
+as separators. Anything from and including a "#" on a line is ignored.
+.PP
+Both the PT and WUT commands are issued "as is" without checking the Third
+Party Copy VPD page. The copy manager may well reject these commands (with
+exit status 51: invalid field in parameter list) if the maximum range
+descriptors field or the maximum token transfer size field are exceeded.
 .SH EXIT STATUS
 The exit status of ddptctl is 0 when it is successful. Otherwise the exit
 status for this utility is the same as that for ddpt. See the EXIT STATUS

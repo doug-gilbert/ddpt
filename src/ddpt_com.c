@@ -1611,7 +1611,7 @@ print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr)
         print_p("%starget overrun\n", b);
         break;
     case DDPT_CAT_OP_IN_PROGRESS:   /* 55 */
-        print_p("%soperation in progress\n", b);
+        print_p("%soperation in progress [list_id in use]\n", b);
         break;
     case DDPT_CAT_INSUFF_RES_CREATE_ROD:   /* 56 */
         print_p("%sinsufficient resources to create ROD\n", b);
@@ -1626,10 +1626,10 @@ print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr)
         print_p("%sresponse to SCSI command malformed\n", b);
         break;
     case SG_LIB_CAT_SENSE:   /* 98 */
-        print_p("%ssome other error/warning is sense buffer\n", b);
+        print_p("%ssome other error/warning in sense data\n", b);
         break;
     case SG_LIB_CAT_OTHER:   /* 99 */
-        print_p("%ssome other error/warning, not sense buffer related\n", b);
+        print_p("%ssome other error/warning, not sense data related\n", b);
         break;
     default:
         if ((exit_stat >= DDPT_CAT_TOKOP_BASE) &&
@@ -1685,34 +1685,6 @@ print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr)
     }
 }
 
-/* Trying to decode multipliers as sg_get_llnum() [in sg_libs] does would
- * only confuse things here, so use this local trimmed version */
-static int64_t
-get_llnum_no_mult(const char * buf)
-{
-    int res, len;
-    int64_t num;
-    uint64_t unum;
-
-    if ((NULL == buf) || ('\0' == buf[0]))
-        return -1LL;
-    len = strspn(buf, "0123456789aAbBcCdDeEfFhHxX");
-    if (0 == len)
-        return -1LL;
-    if (('0' == buf[0]) && (('x' == buf[1]) || ('X' == buf[1]))) {
-        res = sscanf(buf + 2, "%" SCNx64 "", &unum);
-        num = unum;
-    } else if ('H' == toupper(buf[len - 1])) {
-        res = sscanf(buf, "%" SCNx64 "", &unum);
-        num = unum;
-    } else
-        res = sscanf(buf, "%" SCNd64 "", &num);
-    if (1 == res)
-        return num;
-    else
-        return -1LL;
-}
-
 /* Read numbers (up to 64 bits in size) from command line (comma (or
  * (single) space) separated list). Assumed decimal unless prefixed
  * by '0x', '0X' or contains trailing 'h' or 'H' (which indicate hex).
@@ -1738,21 +1710,22 @@ cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr,
         pr2serr("'--lba' cannot be read from stdin\n");
         return 1;
     } else {        /* list of numbers (default decimal) on command line */
-        k = strspn(inp, "0123456789aAbBcCdDeEfFhHxX, ");
+        k = strspn(inp, "0123456789aAbBcCdDeEfFhHxXbBdDiIkKmMgGtTpP, ");
         if (in_len != k) {
             pr2serr("cl_to_sgl: error at pos %d\n", k + 1);
             return 1;
         }
         for (k = 0; k < max_arr_len; ++k) {
-            ll = get_llnum_no_mult(lcp);
+            ll = sg_get_llnum(lcp);
             if (-1 != ll) {
                 sgl_arr[k].lba = (uint64_t)ll;
                 cp = (char *)strchr(lcp, ',');
                 c2p = (char *)strchr(lcp, ' ');
-                if (NULL == cp)
+                if (NULL == cp) {
                     cp = c2p;
-                if (NULL == cp)
-                    break;
+                    if (NULL == cp)
+                        break;
+                }
                 if (c2p && (c2p < cp))
                     cp = c2p;
                 lcp = cp + 1;
@@ -1760,7 +1733,7 @@ cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr,
                 pr2serr("cl_to_sgl: error at pos %d\n", (int)(lcp - inp + 1));
                 return 1;
             }
-            ll = get_llnum_no_mult(lcp);
+            ll = sg_get_llnum(lcp);
             if (-1 != ll) {
                 if (ll > UINT32_MAX) {
                     pr2serr("cl_to_sgl: number exceeds 32 bits at pos %d\n",
@@ -1770,10 +1743,11 @@ cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr,
                 sgl_arr[k].num = (uint32_t)ll;
                 cp = (char *)strchr(lcp, ',');
                 c2p = (char *)strchr(lcp, ' ');
-                if (NULL == cp)
+                if (NULL == cp) {
                     cp = c2p;
-                if (NULL == cp)
-                    break;
+                    if (NULL == cp)
+                        break;
+                }
                 if (c2p && (c2p < cp))
                     cp = c2p;
                 lcp = cp + 1;
@@ -1788,15 +1762,6 @@ cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr,
             return 1;
         }
     }
-#if 0
-    pr2serr("cl_to_sgl: elems=%d\n", k + 1);
-    {
-        int n;
-        for (n = 0; n < k + 1; ++n)
-            pr2serr("   lba=0x%" PRIx64 ", num=%" PRIu32 "\n", sgl_arr[n].lba,
-                    sgl_arr[n].num);
-    }
-#endif
     return 0;
 }
 
@@ -1852,14 +1817,14 @@ file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
         in_len -= m;
         if ('#' == *lcp)
             continue;
-        k = strspn(lcp, "0123456789aAbBcCdDeEfFhHxX ,\t");
+        k = strspn(lcp, "0123456789aAbBcCdDeEfFhHxXbBdDiIkKmMgGtTpP, \t");
         if ((k < in_len) && ('#' != lcp[k])) {
             pr2serr("file_to_sgl: syntax error at line %d, pos %d\n", j + 1,
                     m + k + 1);
             return 1;
         }
         for (k = 0; k < 1024; ++k) {
-            ll = get_llnum_no_mult(lcp);
+            ll = sg_get_llnum(lcp);
             if (-1 != ll) {
                 ind = ((off + k) >> 1);
                 bit0 = 0x1 & (off + k);
@@ -1877,8 +1842,8 @@ file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
                     sgl_arr[ind].num = (uint32_t)ll;
                 } else
                     sgl_arr[ind].lba = (uint64_t)ll;
-                lcp = strpbrk(lcp, " ,\t");
-                if (NULL == lcp)
+                lcp = strpbrk(lcp, " ,\t#");
+                if ((NULL == lcp) || ('#' == *lcp))
                     break;
                 lcp += strspn(lcp, " ,\t");
                 if ('\0' == *lcp)
