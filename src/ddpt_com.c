@@ -1235,14 +1235,18 @@ signals_process_delay(struct opts_t * op, int delay_type)
 
 void
 decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
-                              int verb)
+                              int to_stderr, int verb)
 {
     int m, p_id, piv, c_set, assoc, desig_type, d_id, naa, i_len;
     int k;
     const unsigned char * ip;
     uint64_t vsei;
-    char b[64];
+    char b[80];
+    int (*print_p)(const char *, ...);
+    void (*dStrHexp)(const char *, int, int);
 
+    print_p = to_stderr ? pr2serr : printf;
+    dStrHexp = to_stderr ? dStrHexErr : dStrHex;
     ip = ucp + 4;
     i_len = len_less_4;         /* valid ucp length is (len_less_4 + 4) */
     p_id = ((ucp[0] >> 4) & 0xf);
@@ -1250,9 +1254,9 @@ decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
     piv = ((ucp[1] & 0x80) ? 1 : 0);
     assoc = ((ucp[1] >> 4) & 0x3);
     desig_type = (ucp[1] & 0xf);
-    pr2serr("    designator type: %d,  code set: %d\n", desig_type, c_set);
+    print_p("    designator type: %d,  code set: %d\n", desig_type, c_set);
     if (piv && ((1 == assoc) || (2 == assoc)))
-        pr2serr("     transport: %s\n",
+        print_p("     transport: %s\n",
                 sg_get_trans_proto_str(p_id, sizeof(b), b));
 
     switch (desig_type) {
@@ -1265,66 +1269,65 @@ decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
                 k = 1;
         }
         if (k)
-            pr2serr("      vendor specific: %.*s\n", i_len, ip);
+            print_p("      vendor specific: %.*s\n", i_len, ip);
         else {
-            pr2serr("      vendor specific:\n");
-            dStrHexErr((const char *)ip, i_len, -1);
+            print_p("      vendor specific:\n");
+            dStrHexp((const char *)ip, i_len, -1);
         }
         break;
     case 1: /* T10 vendor identification */
-        pr2serr("      vendor id: %.8s\n", ip);
+        print_p("      vendor id: %.8s\n", ip);
         if (i_len > 8)
-            pr2serr("      vendor specific: %.*s\n", i_len - 8, ip + 8);
+            print_p("      vendor specific: %.*s\n", i_len - 8, ip + 8);
         break;
     case 2: /* EUI-64 based */
         if ((8 != i_len) && (12 != i_len) && (16 != i_len)) {
-            pr2serr("      << expect 8, 12 and 16 byte EUI, got %d>>\n",
+            print_p("      << expect 8, 12 and 16 byte EUI, got %d>>\n",
                     i_len);
-            dStrHexErr((const char *)ip, i_len, 0);
+            dStrHexp((const char *)ip, i_len, 0);
             break;
         }
-        pr2serr("      0x");
+        print_p("      0x");
         for (m = 0; m < i_len; ++m)
-            pr2serr("%02x", (unsigned int)ip[m]);
-        pr2serr("\n");
+            print_p("%02x", (unsigned int)ip[m]);
+        print_p("\n");
         break;
     case 3: /* NAA */
-        if (1 != c_set) {
-            pr2serr("      << unexpected code set %d for NAA>>\n", c_set);
-            dStrHexErr((const char *)ip, i_len, -1);
-            break;
-        }
         naa = (ip[0] >> 4) & 0xff;
-        if (! ((2 == naa) || (5 == naa) || (6 == naa))) {
-            pr2serr("      << unexpected NAA [0x%x]>>\n", naa);
-            dStrHexErr((const char *)ip, i_len, -1);
+        if (1 != c_set) {
+            print_p("      << expected binary code set (1), got %d for "
+                    "NAA=%d>>\n", c_set, naa);
+            dStrHexp((const char *)ip, i_len, -1);
             break;
         }
         if ((5 == naa) && (0x10 == i_len)) {
             if (verb > 2)
-                pr2serr("      << unexpected NAA 5 len 16, assuming NAA 6 "
+                print_p("      << unexpected NAA 5 len 16, assuming NAA 6 "
                         ">>\n");
             naa = 6;
         }
-        if (2 == naa) {
+        switch (naa) {
+        case 2:         /* NAA: IEEE extended */
             if (8 != i_len) {
-                pr2serr("      << unexpected NAA 2 identifier length: "
+                print_p("      << unexpected NAA 2 identifier length: "
                         "0x%x>>\n", i_len);
-                dStrHexErr((const char *)ip, i_len, -1);
+                dStrHexp((const char *)ip, i_len, -1);
                 break;
             }
             d_id = (((ip[0] & 0xf) << 8) | ip[1]);
             /* c_id = ((ip[2] << 16) | (ip[3] << 8) | ip[4]); */
             /* vsi = ((ip[5] << 16) | (ip[6] << 8) | ip[7]); */
-            pr2serr("      0x");
+            print_p("      0x");
             for (m = 0; m < 8; ++m)
-                pr2serr("%02x", (unsigned int)ip[m]);
-            pr2serr("\n");
-        } else if (5 == naa) {
+                print_p("%02x", (unsigned int)ip[m]);
+            print_p("\n");
+            break;
+        case 3:         /* NAA: Locally assigned */
+        case 5:         /* NAA: IEEE Registered */
             if (8 != i_len) {
-                pr2serr("      << unexpected NAA 5 identifier length: "
+                print_p("      << unexpected NAA 5 identifier length: "
                         "0x%x>>\n", i_len);
-                dStrHexErr((const char *)ip, i_len, -1);
+                dStrHexp((const char *)ip, i_len, -1);
                 break;
             }
             /* c_id = (((ip[0] & 0xf) << 20) | (ip[1] << 12) | */
@@ -1334,15 +1337,16 @@ decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
                 vsei <<= 8;
                 vsei |= ip[3 + m];
             }
-            pr2serr("      0x");
+            print_p("      0x");
             for (m = 0; m < 8; ++m)
-                pr2serr("%02x", (unsigned int)ip[m]);
-            pr2serr("\n");
-        } else if (6 == naa) {
+                print_p("%02x", (unsigned int)ip[m]);
+            print_p("\n");
+            break;
+        case 6:         /* NAA IEEE registered extended */
             if (16 != i_len) {
-                pr2serr("      << unexpected NAA 6 identifier length: "
+                print_p("      << unexpected NAA 6 identifier length: "
                         "0x%x>>\n", i_len);
-                dStrHexErr((const char *)ip, i_len, -1);
+                dStrHexp((const char *)ip, i_len, -1);
                 break;
             }
             /* c_id = (((ip[0] & 0xf) << 20) | (ip[1] << 12) | */
@@ -1352,88 +1356,94 @@ decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
                 vsei <<= 8;
                 vsei |= ip[3 + m];
             }
-            pr2serr("      0x");
+            print_p("      0x");
             for (m = 0; m < 16; ++m)
-                pr2serr("%02x", (unsigned int)ip[m]);
-            pr2serr("\n");
+                print_p("%02x", (unsigned int)ip[m]);
+            print_p("\n");
+            break;
+        default:
+            print_p("      << expected NAA nibble of 2, 3, 5 or 6, got "
+                    "%d>>\n", naa);
+            dStrHexp((const char *)ip, i_len, -1);
+            break;
         }
         break;
     case 4: /* Relative target port */
         if ((1 != c_set) || (1 != assoc) || (4 != i_len)) {
-            pr2serr("      << expected binary code_set, target port "
+            print_p("      << expected binary code_set, target port "
                     "association, length 4>>\n");
-            dStrHexErr((const char *)ip, i_len, 0);
+            dStrHexp((const char *)ip, i_len, 0);
             break;
         }
         d_id = ((ip[2] << 8) | ip[3]);
-        pr2serr("      Relative target port: 0x%x\n", d_id);
+        print_p("      Relative target port: 0x%x\n", d_id);
         break;
     case 5: /* (primary) Target port group */
         if ((1 != c_set) || (1 != assoc) || (4 != i_len)) {
-            pr2serr("      << expected binary code_set, target port "
+            print_p("      << expected binary code_set, target port "
                     "association, length 4>>\n");
-            dStrHexErr((const char *)ip, i_len, 0);
+            dStrHexp((const char *)ip, i_len, 0);
             break;
         }
         d_id = ((ip[2] << 8) | ip[3]);
-        pr2serr("      Target port group: 0x%x\n", d_id);
+        print_p("      Target port group: 0x%x\n", d_id);
         break;
     case 6: /* Logical unit group */
         if ((1 != c_set) || (0 != assoc) || (4 != i_len)) {
-            pr2serr("      << expected binary code_set, logical unit "
+            print_p("      << expected binary code_set, logical unit "
                     "association, length 4>>\n");
-            dStrHexErr((const char *)ip, i_len, 0);
+            dStrHexp((const char *)ip, i_len, 0);
             break;
         }
         d_id = ((ip[2] << 8) | ip[3]);
-        pr2serr("      Logical unit group: 0x%x\n", d_id);
+        print_p("      Logical unit group: 0x%x\n", d_id);
         break;
     case 7: /* MD5 logical unit identifier */
         if ((1 != c_set) || (0 != assoc)) {
-            pr2serr("      << expected binary code_set, logical unit "
+            print_p("      << expected binary code_set, logical unit "
                     "association>>\n");
-            dStrHexErr((const char *)ip, i_len, 0);
+            dStrHexp((const char *)ip, i_len, 0);
             break;
         }
-        pr2serr("      MD5 logical unit identifier:\n");
-        dStrHexErr((const char *)ip, i_len, 0);
+        print_p("      MD5 logical unit identifier:\n");
+        dStrHexp((const char *)ip, i_len, 0);
         break;
     case 8: /* SCSI name string */
         if (3 != c_set) {
-            pr2serr("      << expected UTF-8 code_set>>\n");
-            dStrHexErr((const char *)ip, i_len, 0);
+            print_p("      << expected UTF-8 code_set>>\n");
+            dStrHexp((const char *)ip, i_len, 0);
             break;
         }
-        pr2serr("      SCSI name string:\n");
+        print_p("      SCSI name string:\n");
         /* does %s print out UTF-8 ok??
          * Seems to depend on the locale. Looks ok here with my
          * locale setting: en_AU.UTF-8
          */
-        pr2serr("      %s\n", (const char *)ip);
+        print_p("      %s\n", (const char *)ip);
         break;
     case 9: /* Protocol specific port identifier */
         /* added in spc4r36, PIV must be set, proto_id indicates */
         /* whether UAS (USB) or SOP (PCIe) or ... */
         if (! piv)
-            pr2serr("      >>>> Protocol specific port identifier "
+            print_p("      >>>> Protocol specific port identifier "
                     "expects protocol\n"
                     "           identifier to be valid and it is not\n");
         if (TPROTO_UAS == p_id) {
-            pr2serr("      USB device address: 0x%x\n", 0x7f & ip[0]);
-            pr2serr("      USB interface number: 0x%x\n", ip[2]);
+            print_p("      USB device address: 0x%x\n", 0x7f & ip[0]);
+            print_p("      USB interface number: 0x%x\n", ip[2]);
         } else if (TPROTO_SOP == p_id) {
-            pr2serr("      PCIe routing ID, bus number: 0x%x\n", ip[0]);
-            pr2serr("          function number: 0x%x\n", ip[1]);
-            pr2serr("          [or device number: 0x%x, function number: "
+            print_p("      PCIe routing ID, bus number: 0x%x\n", ip[0]);
+            print_p("          function number: 0x%x\n", ip[1]);
+            print_p("          [or device number: 0x%x, function number: "
                     "0x%x]\n", (0x1f & (ip[1] >> 3)), 0x7 & ip[1]);
         } else
-            pr2serr("      >>>> unexpected protocol indentifier: 0x%x\n"
+            print_p("      >>>> unexpected protocol indentifier: 0x%x\n"
                     "           with Protocol specific port "
                     "identifier\n", p_id);
         break;
     default: /* reserved */
-        pr2serr("      reserved designator=0x%x\n", desig_type);
-        dStrHexErr((const char *)ip, i_len, 0);
+        print_p("      reserved designator=0x%x\n", desig_type);
+        dStrHexp((const char *)ip, i_len, 0);
         break;
     }
 }
