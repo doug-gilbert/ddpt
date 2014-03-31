@@ -2,17 +2,23 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.94 [20140322] [svn: r274]
-  - ddptctl: add helper utility
+Changelog for ddpt-0.94 [20140330] [svn: r275]
   - xcopy: change default to send xcopy command to dst
     - add XCOPY_TO_SRC and XCOPY_TO_DST environment
       variables to guide where to send xcopy command
-  - odx: add 4 variants: full copy, zero blocks,
-    single PT and single WUT
+  - odx: add new offloaded copy technique, also known
+    as "xcopy v2, lite", that exposes ROD Tokens
+    - ddpt supports 4 odx variants: full copy, zero
+      output blocks, read to tokens and write from
+      tokens. Latter 2 facilitate network copies
     - add scatter-gather capability to seek=, skip=
-      read from command line, file or stdin
+      to read from command line, file or stdin
+  - ddptctl: add odx helper utility
+    - can issue individual PT, WUT, RRTI, Report All
+      Rod Tokens, and Copy Operation Abort commands
+    - can decode T10 defined info in Rod Token
   - improve CL handling of short options (e.g. '-vv')
-  - point svn:externals to rev 561 of sg3_utils
+  - point svn:externals to rev 562 of sg3_utils
   - configure: add --disable-libsgutils so build
     bypasses that library if present
 

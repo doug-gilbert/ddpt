@@ -660,7 +660,7 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
     }
     if (best) {
         if (op->verbose)
-            decode_designation_descriptor(best, best_len, op->verbose);
+            decode_designation_descriptor(best, best_len, 1, op->verbose);
         if (best_len + 4 < desc_len) {
             memset(desc, 0, 32);
             desc[0] = 0xe4;
@@ -2015,14 +2015,14 @@ odx_full_zero_copy(struct opts_t * op)
     out_blk_off = 0;
     op->dd_count = out_num_blks;
 
-    /* Build ROD Token Block Zero; specified by SBC-3 */
+    /* Build fixed format ROD Token Block Zero; specified by SBC-3 */
     memset(local_rod_token, 0, sizeof(local_rod_token));
     local_rod_token[0] = (unsigned char)((RODT_BLK_ZERO >> 24) & 0xff);
     local_rod_token[1] = (unsigned char)((RODT_BLK_ZERO >> 16) & 0xff);
     local_rod_token[2] = (unsigned char)((RODT_BLK_ZERO >> 8) & 0xff);
     local_rod_token[3] = (unsigned char)(RODT_BLK_ZERO & 0xff);
-    local_rod_token[6] = (unsigned char)(0x1);
-    local_rod_token[7] = (unsigned char)(0xf8);
+    local_rod_token[6] = (unsigned char)((ODX_ROD_TOK_LEN_FLD >> 8) & 0xff);
+    local_rod_token[7] = (unsigned char)(ODX_ROD_TOK_LEN_FLD & 0xff);
 
     if (op->verbose > 1)
         pr2serr("%s: about to zero %" PRIi64 " blocks\n", __func__,

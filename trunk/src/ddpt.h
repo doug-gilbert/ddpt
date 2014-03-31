@@ -184,6 +184,9 @@ extern "C" {
 #define DEF_XCOPY_SRC0_DST1 1
 #define ODX_RTF_LEN "ODX_RTF_LEN"     /* append 8 byte ROD size to token */
 
+/* ODX: length field inside ROD Token constant, implies 512 byte ROD Token */
+#define ODX_ROD_TOK_LEN_FLD 504       /* 0x1f8 */
+
 #define DEF_ODX_POLL_DELAY_MS 500
 
 /* In SPC-4 the cdb opcodes have more generic names */
@@ -478,7 +481,7 @@ void print_tape_pos(const char * prefix, const char * postfix,
 void install_signal_handlers(struct opts_t * op);
 void signals_process_delay(struct opts_t * op, int delay_type);
 void decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
-                                   int verb);
+                                   int to_stderr, int verb);
 int coe_process_eio(struct opts_t * op, int64_t skip);
 char * rod_type_str(uint32_t rt, char * b, int b_mlen);
 char * rt_cm_id_str(const unsigned char * rtp, int rt_len, char * b,
