@@ -43,7 +43,7 @@ send the REPORT ALL ROD TOKENS SCSI command to \fIDEVICE\fR and decode the
 response.
 .TP
 \fB\-B\fR, \fB\-\-block\fR
-treat \fIDEVICE\fR asa block device when checking its \fI\-\-size\fR. The
+treat \fIDEVICE\fR as a block device when checking its \fI\-\-size\fR. The
 default action of this utility is to treat \fIDEVICE\fR as a SCSI
 pass\-through device.
 .TP
@@ -60,7 +60,7 @@ utility exits. The use should then invoke the utility again with the
 \fI\-\-poll\fR option and the same \fILID\fR to await completion and
 receive the final transfer count. The default action of PT and WUT (i.e.
 without this option) is to wait for completion (i.e. all data transferred
-or an error) before xiting this utility.
+or an error) before exiting this utility.
 .TP
 \fB\-i\fR, \fB\-\-info\fR
 when the \fIDEVICE\fR argument is given then check its Third Party Copy VPD
@@ -71,7 +71,10 @@ If the \fIDEVICE\fR argument is not given and the \fI\-\-rtf=RTF\fR option
 is given then decode part of the ROD Token held in the \fI\-\-RTF\fR
 file. SPC\-4 defines some parts of a ROD Token that can be decoded but
 does not require the copy manager to set these fields; so many fields may
-appear as zeros.
+appear as zeros. The \fI\-\-RTF\fR file may contain multiple ROD Tokens,
+each optionally followed by an 8 byte "number of bytes represented" integer.
+They all decoded, based on \fI\-\-RTF\fR file length which should either
+be a multiple of 512 or 520 bytes.
 .TP
 \fB\-l\fR, \fB\-\-list_id\fR=\fILID\fR
 \fILID\fR is a list identifier that is used by either the \fI\-\-poll\fR or
@@ -117,8 +120,16 @@ ROD Token (returned in the RRTI response) is written to the \fIRTF\fR
 file. If the \fI\-\-rtf=RTF\fR option is not given then ...
 .TP
 \fB\-r\fR, \fB\-\-rtf\fR=\fIRTF\fR
-when \fIRTF\fR is a file containing an ODX ROD Token (typically 512 bytes
-long) or the name of a file the ROD Token is to be written to.
+when \fIRTF\fR is a file containing an ODX ROD Token or the name of a file
+the ROD Token is to be written to. A ROD Token used by ODX is 512 bytes
+long. If the \fIRTF\fR file was produced by the ddpt utility then it might
+contain multiple ROD Tokens, each optionally followed by an 8 byte integer
+containing the "number of bytes represented" by the preceding ROD Token.
+.br
+If an \fIRTF\fR file with multiple ROD Tokens is given to this utility with
+\fI\-\-wut=SL\fR then only the first ROD Token is used. If an \fIRTF\fR file
+is being decoded (i.e. no \fIDEVICE\fR argument given) then all ROD Tokens
+are decoded.
 .TP
 \fB\-t\fR, \fB\-\-rtype\fR=\fIRTYPE\fR
 where \fIRTYPE\fR is the ROD type. The default value (0) indicates that the
@@ -139,7 +150,7 @@ is not reported).
 .TP
 \fB\-T\fR, \fB\-\-timeout\fR=\fIITO[,CMD]\fR
 where \fIITO\fR is the inactivity timeout (units: seconds) given to the
-PT commmand. The default is 0 in which case the copy manager uses its own
+PT command. The default is 0 in which case the copy manager uses its own
 default which is shown in the Third party Copy VPD page.
 .br
 \fICMD\fR is the SCSI command timeout (units: seconds) applied to SCSI
@@ -169,7 +180,7 @@ comma. The first number is the starting LBA and the second number is
 the number of blocks (no bigger than 32 bits) to read to or write from that
 starting LBA. Another pair of numbers can appear after that forming the
 second element of a scatter gather list. Starting LBAs can be in any order
-but T10 prohibits any logocal block appearing more than once in a scatter
+but T10 prohibits any logical block appearing more than once in a scatter
 gather list.
 .PP
 Scatter gather lists can be placed in a file or read from stdin. A file
