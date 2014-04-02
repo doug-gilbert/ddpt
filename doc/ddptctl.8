@@ -1,14 +1,14 @@
-.TH DDPTCTL "8" "March 2014" "ddpt\-0.94" DDPT
+.TH DDPTCTL "8" "April 2014" "ddpt\-0.94" DDPT
 .SH NAME
 ddptctl \- helper/auxiliary utility for ddpt
 .SH SYNOPSIS
 .B ddptctl
-[\fI\-\-abort=LID\fR] [\fI\-\-all_toks\fR] [\fI\-\-block\fR]
-[\fI\-\-del_tkn\fR] [\fI\-\-help\fR] [\fI\-\-immed\fR] [\fI\-\-info\fR]
-[\fI\-\-list_id=LID\fR] [\fI\-\-oir=OIR\fR] [\fI\-\-poll\fR] [\fI\-\-pt=GL\fR]
-[\fI\-\-receive\fR] [\fI\-\-rtf=RTF\fR] [\fI\-\-rtype=RTYPE\fR]
-[\fI\-\-size\fR] [\fI\-\-timeout=ITO[,CMD]\fR] [\fI\-\-verbose\fR]
-[\fI\-\-version\fR] [\fI\-\-wut=SL\fR] [\fIDEVICE\fR]
+[\fI\-\-abort\fR] [\fI\-\-all_toks\fR] [\fI\-\-block\fR] [\fI\-\-del_tkn\fR]
+[\fI\-\-help\fR] [\fI\-\-immed\fR] [\fI\-\-info\fR] [\fI\-\-list_id=LID\fR]
+[\fI\-\-oir=OIR\fR] [\fI\-\-poll\fR] [\fI\-\-pt=GL\fR] [\fI\-\-receive\fR]
+[\fI\-\-rtf=RTF\fR] [\fI\-\-rtype=RTYPE\fR] [\fI\-\-size\fR]
+[\fI\-\-timeout=ITO[,CMD]\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR]
+[\fI\-\-wut=SL\fR] [\fIDEVICE\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
@@ -33,14 +33,18 @@ found at http://www.t10.org .
 .SH OPTIONS
 Arguments to long options are mandatory for short options as well.
 .TP
-\fB\-A\fR, \fB\-\-abort\fR=\fILID\fR
-\fILID\fR is a list identifier associated with a xcopy command started by this
-I\-T nexus (e.g. this machine). If the xcopy command is still in progress then
-the copy is aborted.
+\fB\-A\fR, \fB\-\-abort\fR
+this option will issue the COPY OPERATION ABORT command with the \fILID\fR
+given in the \fI\-\-list_id=LID\fR option. If the \fI\-\-list_id=LID\fR
+option is not given then its default \fILID\fR (257) is used. If there is
+an xcopy operation ongoing on this I\-T nexus (i.e. issued by this
+machine to any LU sharing the same target) using that \fILID\fR then the
+copy is aborted. Note there is a sense key (COPY ABORTED) indicating some
+but not all data has been copied due to this action.
 .TP
 \fB\-a\fR, \fB\-\-all_toks\fR
 send the REPORT ALL ROD TOKENS SCSI command to \fIDEVICE\fR and decode the
-response.
+response. An ODX implementation is not required to support this command.
 .TP
 \fB\-B\fR, \fB\-\-block\fR
 treat \fIDEVICE\fR as a block device when checking its \fI\-\-size\fR. The
@@ -48,7 +52,14 @@ default action of this utility is to treat \fIDEVICE\fR as a SCSI
 pass\-through device.
 .TP
 \fB\-D\fR, \fB\-\-del_tkn\fR
-set the DEL_TKN bit in a PT command (default: clear the DEL_TKN bit).
+set the DEL_TKN bit in a WUT command (default: clear the DEL_TKN bit).
+Since an ODX copy manager deletes the ROD Token after is has been
+fully copied from (once), this option is typically not needed. It may
+be useful for long\-lived ROD Tokens that have only been partially
+written from (or not used at all) and are no longer needed.
+.br
+To delete an unused ROD Token a degenerate scatter list seems to be
+acceptable (e.g. '\-\-wut=0,0 \-\-del_tkn').
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 outputs the usage message summarizing command line options then exits.
@@ -56,11 +67,11 @@ outputs the usage message summarizing command line options then exits.
 \fB\-I\fR, \fB\-\-immed\fR
 set the IMMED bit in the PT or WUT command. When given the PT and WUT
 commands return promptly before the data transfer is complete; then this
-utility exits. The use should then invoke the utility again with the
-\fI\-\-poll\fR option and the same \fILID\fR to await completion and
-receive the final transfer count. The default action of PT and WUT (i.e.
-without this option) is to wait for completion (i.e. all data transferred
-or an error) before exiting this utility.
+utility exits. The user should then invoke the utility again with the
+\fI\-\-poll\fR option and the same \fILID\fR and \fIDEVICE\fR to await
+completion and receive the final transfer count. The default action of
+PT and WUT (i.e.  without this option) is to wait for completion (i.e.
+all data transferred or an error occurs) before exiting this utility.
 .TP
 \fB\-i\fR, \fB\-\-info\fR
 when the \fIDEVICE\fR argument is given then check its Third Party Copy VPD
@@ -68,30 +79,40 @@ page and print out anything found. Also check if the 3PC bit is set in the
 standard INQUIRY response.
 .br
 If the \fIDEVICE\fR argument is not given and the \fI\-\-rtf=RTF\fR option
-is given then decode part of the ROD Token held in the \fI\-\-RTF\fR
-file. SPC\-4 defines some parts of a ROD Token that can be decoded but
-does not require the copy manager to set these fields; so many fields may
-appear as zeros. The \fI\-\-RTF\fR file may contain multiple ROD Tokens,
-each optionally followed by an 8 byte "number of bytes represented" integer.
-They all decoded, based on \fI\-\-RTF\fR file length which should either
-be a multiple of 512 or 520 bytes.
+is given then decode part of the ROD Token held in the \fI\-\-RTF\fR file.
+SPC\-4 defines some parts of a ROD Token that can be decoded but does not
+require the copy manager to set these fields; so many fields may appear as
+zeros. A \fI\-\-RTF\fR file that has been generated by the ddpt utility may
+contain multiple ROD Tokens, each optionally followed by an 8 byte "number
+of bytes represented" integer. They are all decoded, based on \fI\-\-RTF\fR
+file length which should either be a multiple of 512 or 520 bytes.
 .TP
 \fB\-l\fR, \fB\-\-list_id\fR=\fILID\fR
-\fILID\fR is a list identifier that is used by either the \fI\-\-poll\fR or
-\fI\-\-receive\fR logic.
+\fILID\fR is a list identifier which is used to associate an originating
+xcopy command (e.g. PT or WUT) with a follow\-up command that retrieves
+information or aborts the operation. T10 requires active \fILID\fRs to be
+unique on a given I\-T nexus. An I\-T nexus is the current machine (more
+precisely a HBA if a machine has two or more) and a specific target which
+will contain one or more logical units (LUs) of which \fIDEVICE\fR is one.
+If the \fIDEVICE\fR's copy manager feels that rather complex condition has
+not been met then an error is generated with sense data that decodes
+to "operation in progress". Rather than try to work out who is doing
+what elsewhere, try another \fILID\fR value.
+.br
+The default value for \fILID\fR is 257.
 .TP
 \fB\-O\fR, \fB\-\-oir\fR=\fIOIR\fR
-\fIOIR\fR is the Offset In ROD, a field in the PT command. Its default value
-is 0 and its units are the logical block size of \fIDEVICE\fR.
+\fIOIR\fR is the Offset In ROD, a field in the WUT command. It may be be
+used together with the \fI\-\-wut=SL\fR option. Its default value is 0 and
+its units are the logical block size of \fIDEVICE\fR.
 .TP
 \fB\-p\fR, \fB\-\-poll\fR
-send the RECEIVE ROD TOKEN INFORMATION SCSI command (RRTI) to the \fIDEVICE\fR
+send RECEIVE ROD TOKEN INFORMATION SCSI commands (RRTIs) to the \fIDEVICE\fR
 using the \fILID\fR (i.e. from the \fI\-\-list_id=LID\fR option). If
-a copy status is received indicating the operation is still in progress, then
-the same SCSI command is sent periodically (as suggested by the previous RRTI
-command or 500 milliseconds) until some other copy status is detected. If
-the \fI\-\-list_id=LID\fR option is not given then a \fILID\fR of 257 is
-assumed.
+a copy status is received indicating the operation is ongoing, then this
+SCSI command is sent periodically (as suggested by the previous RRTI command
+or 500 milliseconds) until some other copy status is detected. If the
+\fI\-\-list_id=LID\fR option is not given then a \fILID\fR of 257 is assumed.
 .br
 If the originating xcopy command was POPULATE TOKEN and the RRTI command
 indicates that it has completed successfully then the associated
@@ -104,10 +125,15 @@ send a POPULATE TOKEN (PT) command with the given gather list. The format
 of \fIGL\fR is given in the NOTES section. If used without the \fI\-\-immed\fR
 option then this utility, after the PT command finishes successfully, will
 call the RRTI command. When the RRTI command finishes, potentially with a
-new ROD Token, this utility will exit.
+new ROD Token, this utility will exit. Prior to that exit, if a new ROD
+Token is available and the \fI\-\-rtf=RTF\fR option is given then that
+ROD Token is written to the \fIRTF\fR file. If the \fI\-\-rtf=RTF\fR
+option is not given then the ROD token is written to a file called
+ddptctl_rod_tok.bin in the current directory.
 .br
 If the \fI\-\-immed\fR option is given this utility will exit after the
-PT command finishes.
+PT command finishes. To complete the operation this utility should be
+invoked again with the \fI\-\-poll\fR option and the same \fIDEVICE\fR.
 .TP
 \fB\-R\fR, \fB\-\-receive\fR
 send the RECEIVE ROD TOKEN INFORMATION SCSI command (RRTI) to the \fIDEVICE\fR
@@ -117,7 +143,8 @@ using the \fILID\fR (i.e. from the \fI\-\-list_id=LID\fR option). If the
 If the originating xcopy command was POPULATE TOKEN and the RRTI command
 indicates that it has completed successfully then the associated
 ROD Token (returned in the RRTI response) is written to the \fIRTF\fR
-file. If the \fI\-\-rtf=RTF\fR option is not given then ...
+file. If the \fI\-\-rtf=RTF\fR option is not given then the ROD token is
+written to a file called ddptctl_rod_tok.bin in the current directory.
 .TP
 \fB\-r\fR, \fB\-\-rtf\fR=\fIRTF\fR
 when \fIRTF\fR is a file containing an ODX ROD Token or the name of a file
@@ -132,13 +159,18 @@ is being decoded (i.e. no \fIDEVICE\fR argument given) then all ROD Tokens
 are decoded.
 .TP
 \fB\-t\fR, \fB\-\-rtype\fR=\fIRTYPE\fR
-where \fIRTYPE\fR is the ROD type. The default value (0) indicates that the
-copy manager (in the source) decides. \fIRTYPE\fR can be a decimal number, a
-hex number (prefixed by 0x or with a "h" appended) or one
+where \fIRTYPE\fR is the ROD Type, a field in the PT command (apart
+from "zero"). The default value (0) indicates that the copy manager (in the
+\fIDEVICE\fR) decides. \fIRTYPE\fR can be a decimal number, a hex
+number (prefixed by 0x or with a "h" appended) or one
 of "pit\-def", "pit\-vuln", "pit\-pers", "pit\-any" or "zero". The final
-truncated word can be spelt out (e.g. "pit\-vulnerable"). The "pit\-" part
-stands for "point in time" copy. The "zero" causes a special Block device
-zero Token to be created.
+truncated word can be spelt out (e.g. "pit\-vulnerable"). The "pit\-"
+lead\-in stands for "point in time" copy.
+.br
+The "zero" is a special case and is not given to a PT command. Instead it
+causes a special Block Device Zero Token to be created that can be used
+with the \fI\-\-wut=SL\fR option to write blocks of zeros to the given
+\fIDEVICE\fR.
 .TP
 \fB\-s\fR, \fB\-\-size\fR
 prints the number of blocks and the size of each block for the given
@@ -166,13 +198,15 @@ print the version string and then exit.
 .TP
 \fB\-w\fR, \fB\-\-wut\fR=\fISL\fR
 send a WRITE USING TOKEN (WUT) command with the given scatter list. The
-format of \fISL\fR is given in the NOTES section. If used without the
-\fI\-\-immed\fR option then this utility after the WUT command finishes
-successfully will call the RRTI command. When the RRTI command finishes
+format of \fISL\fR is given in the NOTES section. This option requires
+the \fI\-\-rtf=RTF\fR option to supply the ROD Token. If used without the
+\fI\-\-immed\fR option then after the WUT command finishes successfully
+this utility will call the RRTI command. When the RRTI command finishes
 this utility will exit.
 .br
 If the \fI\-\-immed\fR option is given this utility will exit after the
-WUT command finishes.
+WUT command finishes. To complete the operation this utility should be
+invoked again with the \fI\-\-poll\fR option and the same \fIDEVICE\fR.
 .SH NOTES
 The scatter gather list given to the \fI\-\-pt=GL\fR and \fI\-\-wut=SL\fR
 options in the simplest case contains a pair a numbers, separated by a
@@ -199,7 +233,99 @@ The exit status of ddptctl is 0 when it is successful. Otherwise the exit
 status for this utility is the same as that for ddpt. See the EXIT STATUS
 section in the ddpt man page.
 .SH EXAMPLES
-TBD
+First issue a PT command without the \fI\-\-immed\fR option so RRTI is
+called to complete the operation:
+.PP
+  # ddptctl \-\-pt=0x0,10k,20k,5k \-\-rtf=aa.rt /dev/sdb
+.br
+  PT completes with a transfer count of 15360 [0x3c00]
+.PP
+The transfer count (10k + 5k == 15360) indicates the operation was successful
+and the ROD Token is in the aa.rt file. Now use that ROD Token to write to
+the same locations on /dev/sdc:
+.PP
+  # ddptctl \-\-rtf=aa.rt \-\-wut=0x0,10k,20k,5k /dev/sdc
+.br
+  WUT completes with a transfer count of 15360 [0x3c00]
+.PP
+So the copy was successful. Now taking a closer look at the ROD token:
+.PP
+  # ddptctl \-\-info --rtf=aa.rt
+.br
+  Decoding information from ROD Token:
+.br
+    ROD type: point in time copy - default [0x800000]
+.br
+    Copy manager ROD Token identifier: 0x520000710000000c
+.br
+    Creator Logical Unit descriptor:
+.br
+      Peripheral Device type: 0x0
+.br
+      Relative initiator port identifier: 0x0
+.br
+      designator_type: NAA,  code_set: Binary
+.br
+      associated with the addressed logical unit
+.br
+        0x60002ac0000000000000000c00009502
+.br
+    Number of bytes represented: 0 [0x0]
+.br
+    Device type specific data (for disk) has block size of 0; unlikely so skip
+.br
+    Target device descriptor: unexpected designator type [0x0]
+.PP
+T10 does not require implementations to supply much of the above (only the
+ROD type and the token length) so expect to see some empty fields.
+.PP
+To see information about /dev/sdb relevant to ODX, try:
+.PP
+  # ddptctl --info /dev/sdb
+.br
+    /dev/sdb [readcap]: num_blks=209715200 [0xc800000], blk_size=512, 107 GB
+.br
+  3PC (third party copy) bit set in standard INQUIRY response
+.br
+   Third Party Copy VPD page:
+.br
+   Block Device ROD Token Limits:
+.br
+    Maximum Range Descriptors: 8
+.br
+    Maximum Inactivity Timeout: 60 seconds
+.br
+    Default Inactivity Timeout: 30 seconds
+.br
+    Maximum Token Transfer Size: 524288
+.br
+    Optimal Transfer Count: 524288
+.PP
+That maximum token transfer size [524288 blocks each 512 bytes gives 256 MB]
+is the largest size a ROD Token created by /dev/sdb can hold. Use that and
+show the \fI\-\-immed\fR option on the destination:
+.PP
+  # ddptctl --pt=0x0,0x80000 --rtf=aa.rt /dev/sdb
+.br
+  PT completes with a transfer count of 524288 [0x80000]
+.PP
+  # ddptctl --rtf=aa.rt --wut=0x0,0x80000 --immed /dev/sdc
+.br
+  Started ODX Write Using Token command in immediate mode.
+.br
+  User may need --list_id=257 on following invocation with --receive or
+.br
+  --poll for completion
+.PP
+  # ddptctl --poll --rtf=aa.rt /dev/sdc
+.br
+  RRTI for Write using token: Operation completed without errors
+.br
+    transfer count of 524288 [0x80000]
+.PP
+To copy larger amounts and/or with a larger number of scatter gather
+elements (than 8 "range descriptors") use one of the four ODX variants in
+the ddpt utility.
 .SH AUTHORS
 Written by Douglas Gilbert.
 .SH "REPORTING BUGS"

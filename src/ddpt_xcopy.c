@@ -1551,10 +1551,9 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
 }
 
 int
-fetch_rrti_after_odx(struct opts_t * op, int in0_out1,
-                     struct rrti_resp_t * rrp, int verb)
+do_rrti(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp, int verb)
 {
-    int j, res, fd, lsdf, off;
+    int j, res, fd, off;
     uint32_t len, rtdl;
     unsigned char rsp[1024];
     char b[400];
@@ -1581,12 +1580,23 @@ fetch_rrti_after_odx(struct opts_t * op, int in0_out1,
     if (NULL == rrp)
         return 0;
     rrp->for_sa = 0x1f & rsp[4];
-    if (SA_POP_TOK == rrp->for_sa)
+    switch(rrp->for_sa) {
+    case SA_POP_TOK:
         cp = "RRTI for PT";
-    else if (SA_WR_USING_TOK == rrp->for_sa)
+        break;
+    case SA_WR_USING_TOK:
         cp = "RRTI for WUT";
-    else
-        cp = "RRTI for non ODX service action";
+        break;
+    case SA_XCOPY_LID1:
+        cp = "RRTI for XCOPY(LID1)";
+        break;
+    case SA_XCOPY_LID4:
+        cp = "RRTI for XCOPY(LID4)";
+        break;
+    default:
+        cp = "RRTI for unknown originating xcopy command";
+        break;
+    }
     if (verb > 1)
         pr2serr("%s\n", cp);
     rrp->cstat = 0x7f & rsp[5];
@@ -1601,13 +1611,12 @@ fetch_rrti_after_odx(struct opts_t * op, int in0_out1,
             rrp->tc <<= 8;
         rrp->tc |= rsp[16 + j];
     }
-    lsdf = rsp[13];
-    if (lsdf > 0) {
+    if (rrp->sense_len > 0) {
         snprintf(bb, sizeof(bb), "%s: sense data", cp);
-        sg_get_sense_str(bb, rsp + 32, rsp[14], verb, sizeof(b), b);
+        sg_get_sense_str(bb, rsp + 32, rrp->sense_len, verb, sizeof(b), b);
         pr2serr("%s\n", b);
     }
-    off = 32 + lsdf;
+    off = 32 + rsp[13];
     rtdl = (rsp[off] << 24) | (rsp[off + 1] << 16) | (rsp[off + 2] << 8) |
            rsp[off + 3];
     rrp->rt_len = (rtdl > 2) ? rtdl - 2 : 0;
@@ -1618,7 +1627,7 @@ fetch_rrti_after_odx(struct opts_t * op, int in0_out1,
 }
 
 int
-fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a)
+process_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a)
 {
     int res, k, len, vb_b, err, cont;
     uint64_t rod_sz;
@@ -1629,7 +1638,7 @@ fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a)
 
     vb_b = (vb_a > 0) ? (vb_a - 1) : 0;
     do {
-        res = fetch_rrti_after_odx(op, DDPT_ARG_IN, &r, vb_b);
+        res = do_rrti(op, DDPT_ARG_IN, &r, vb_b);
         if (res)
             return res;
         if (SA_POP_TOK != r.for_sa) {
@@ -1669,7 +1678,7 @@ fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a)
             if (512 == r.rt_len)
                 pr2serr("\n");
             else
-                pr2serr(" [rt_len=%d]\n", r.rt_len);
+                pr2serr(" [rt_len=%" PRIu32 "d]\n", r.rt_len);
         }
         if (op->rtf_fd >= 0) {     /* write ROD Token to RTF */
             res = write(op->rtf_fd, r.rod_tok, len);
@@ -1706,6 +1715,17 @@ fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a)
         memcpy(local_rod_token, r.rod_tok, len);
     }
     return 0;
+}
+
+void
+get_local_rod_tok(unsigned char * tokp, int max_tok_len)
+{
+    int len;
+
+    if (tokp && (max_tok_len > 0)) {
+        len = (max_tok_len > 512) ? 512 : max_tok_len;
+        memcpy(tokp, local_rod_token, len);
+    }
 }
 
 /* Do WRITE USING TOKEN command, returns 0 on success */
@@ -1855,7 +1875,7 @@ do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
 }
 
 int
-fetch_rrti_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a)
+process_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a)
 {
     int res, cont, vb_b;
     uint32_t delay;
@@ -1864,7 +1884,7 @@ fetch_rrti_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a)
 
     vb_b = (vb_a > 0) ? (vb_a - 1) : 0;
     do {
-        res = fetch_rrti_after_odx(op, DDPT_ARG_OUT, &r, vb_b);
+        res = do_rrti(op, DDPT_ARG_OUT, &r, vb_b);
         if (res)
             return res;
         if (SA_WR_USING_TOK != r.for_sa) {
@@ -2042,7 +2062,7 @@ odx_full_zero_copy(struct opts_t * op)
         if ((res = do_wut(op, local_rod_token, out_blk_off, num, 0, 0,
                           ! op->list_id_given, vb3)))
             return res;
-        if ((res = fetch_rrti_after_wut(op, &tc, vb3)))
+        if ((res = process_after_wut(op, &tc, vb3)))
             return res;
         if (tc != num) {
             pr2serr("%s: number requested differs from transfer count\n",
@@ -2127,7 +2147,7 @@ odx_read_into_rods(struct opts_t * op)
 
         if ((res = do_pop_tok(op, in_blk_off, num, ! op->list_id_given, vb3)))
             return res;
-        if ((res = fetch_rt_after_poptok(op, &tc_i, vb3)))
+        if ((res = process_after_poptok(op, &tc_i, vb3)))
             return res;
         if (tc_i != num) {
             pr2serr("%s: number requested (in) differs from transfer "
@@ -2239,7 +2259,7 @@ odx_write_from_rods(struct opts_t * op)
             num += rt[off + n];
         }
         o_num = num / (unsigned int)op->obs;
-        if (o_num > 0xffffffffff) {
+        if (o_num > 0xffffffffffLL) {
             pr2serr("%s: ROD size seems too large (%" PRIu64 " blocks "
                     "each %d bytes)\nTry again with conv=rtf_len\n", __func__,
                     o_num, op->obs);
@@ -2276,7 +2296,7 @@ odx_write_from_rods(struct opts_t * op)
                          (r_o_num < o_num), ! op->list_id_given, vb3);
             if (res)
                 return res;
-            if ((res = fetch_rrti_after_wut(op, &tc_o, vb3)))
+            if ((res = process_after_wut(op, &tc_o, vb3)))
                 return res;
             if (tc_o != r_o_num) {
                 pr2serr("%s: number requested (out) differs from transfer "
@@ -2476,7 +2496,7 @@ odx_full_copy(struct opts_t * op)
 
         if ((res = do_pop_tok(op, in_blk_off, num, ! op->list_id_given, vb3)))
             return res;
-        if ((res = fetch_rt_after_poptok(op, &tc_i, vb3)))
+        if ((res = process_after_poptok(op, &tc_i, vb3)))
             return res;
         if (tc_i != num) {
             pr2serr("%s: number requested (in) differs from transfer "
@@ -2505,7 +2525,7 @@ odx_full_copy(struct opts_t * op)
                          (r_o_num < o_num), ! op->list_id_given, vb3);
             if (res)
                 return res;
-            if ((res = fetch_rrti_after_wut(op, &tc_o, vb3)))
+            if ((res = process_after_wut(op, &tc_o, vb3)))
                 return res;
             if (tc_o != r_o_num) {
                 pr2serr("%s: number requested (out) differs from transfer "
@@ -2530,7 +2550,8 @@ odx_setup_and_run(struct opts_t * op, int * whop)
         *whop = 0;
     req = op->odx_request;
     if (! op->list_id_given)
-        op->list_id = (ODX_WRITE_FROM_RODS == req) ? 0x102 : 0x101;
+        op->list_id = (ODX_WRITE_FROM_RODS == req) ?
+                      DEF_LID4_WR_LID : DEF_LID4_LID;
     if ((ODX_READ_INTO_RODS == req) ||
         ((ODX_COPY == req) && (RODT_BLK_ZERO != op->rod_type))) {
         fd = pt_open_if(op, NULL);

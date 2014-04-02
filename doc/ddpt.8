@@ -1,4 +1,4 @@
-.TH DDPT "8" "March 2014" "ddpt\-0.94" DDPT
+.TH DDPT "8" "April 2014" "ddpt\-0.94" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -811,9 +811,9 @@ not support ODX.
 .PP
 There a four variants of ODX supported by ddpt:
 .br
-  \fBfull copy\fR : ddpt if=/dev/sg3 of=/dev/sg4 bs=512 \-\-odx
+  \fBfull copy\fR : ddpt \-\-odx if=/dev/sg3 bs=512 of=/dev/sg4
 .br
-  \fBzero output blocks\fR : ddpt if=/dev/null of=/dev/sg4 bs=512 rtype=zero
+  \fBzero output blocks\fR : ddpt if=/dev/null rtype=zero bs=512 of=/dev/sg4
 .br
   \fBread to tokens\fR : ddpt if=/dev/sg3 bs=512 skip=@gath.lst rtf=a.rt
 .br
