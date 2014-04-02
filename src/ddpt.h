@@ -96,6 +96,8 @@ extern "C" {
 #define WRITE_SAME16_TIMEOUT 180  /* 3 minutes */
 
 #define DEF_GROUP_NUM 0
+#define DEF_LID4_LID 257        /* just above the LID1 highest of 255 */
+#define DEF_LID4_WR_LID 258
 
 #ifdef SG_LIB_LINUX
 #ifndef RAW_MAJOR
@@ -428,15 +430,16 @@ struct val_str_t {
     const char * name;
 };
 
+/* This data is from the parameter data found in data-in of RRTI command */
 struct rrti_resp_t {
     uint8_t for_sa;     /* response to service action */
     uint8_t cstat;      /* copy operation status */
     uint8_t xc_cstatus; /* extended copy completion status */
-    uint8_t sense_len;  /* sense data length */
+    uint8_t sense_len;  /* (parameter data, actual) sense data length */
     uint32_t esu_del;   /* estimated status update delay (ms) */
     uint64_t tc;        /* transfer count (blocks) */
     uint32_t rt_len;    /* might differ from 512, 0 if no ROD token */
-    unsigned char rod_tok[512];
+    unsigned char rod_tok[512]; /* (perhaps truncate to) ODX ROD Token */
 };
 
 struct sg_simple_inquiry_resp;
@@ -522,13 +525,14 @@ int print_3pc_vpd(struct opts_t * op, int to_stderr);
 int do_xcopy_lid1(struct opts_t * op);
 int do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
                int walk_list_id, int vb_a);
-int fetch_rrti_after_odx(struct opts_t * op, int in0_out1,
-                         struct rrti_resp_t * rrp, int verb);
-int fetch_rt_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a);
+int do_rrti(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp,
+            int verb);
+void get_local_rod_tok(unsigned char * tokp, int max_tok_len);
+int process_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a);
 int do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
            uint32_t num_blks, uint64_t oir, int more_left, int walk_list_id,
            int vb_a);
-int fetch_rrti_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a);
+int process_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a);
 int do_odx(struct opts_t * op);
 
 /* defined in ddpt_cl.c */
