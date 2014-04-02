@@ -65,7 +65,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.94 20140330 [svn: r275]";
+const char * ddptctl_version_str = "0.94 20140401 [svn: r276]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -379,7 +379,7 @@ skip_to_bytes_rep:
         lbppbe = rth[102] & 0xf;
         printf("    Logical blocks per physical block exponent=%d\n", lbppbe);
         if (lbppbe > 0)
-            printf("      [so physical block length=%u bytes]\n",
+            printf("      [so physical block length=%" PRIu32 " bytes]\n",
                    bs * (1 << lbppbe));
         printf("    Lowest aligned logical block address=%d\n",
                ((rth[102] & 0x3f) << 8) + rth[103]);
@@ -461,7 +461,8 @@ write_to_rtf(struct opts_t * op, const struct rrti_resp_t * rp)
         res = open_rtf(op);
         if (res)
             return SG_LIB_FILE_ERROR;
-    }
+    } else
+        cp = op->rtf;
     len = (rp->rt_len > 512) ? 512 : rp->rt_len;
     res = write(op->rtf_fd, rp->rod_tok, len);
     if (res < 0) {
@@ -562,6 +563,7 @@ main(int argc, char * argv[])
     state_init(&ops, &iflag, &oflag, &ids, &ods, &o2ds);
     op = &ops;
     memset(&sir, 0, sizeof(sir));
+    memset(&rrti_rsp, 0, sizeof(rrti_rsp));
 
     while (1) {
         int option_index = 0;
@@ -760,9 +762,13 @@ main(int argc, char * argv[])
                 "--pt=)\n");
         return SG_LIB_SYNTAX_ERROR;
     }
-    if ((1 == k) && ('\0' == op->idip->fn[0])) {
-        pr2serr("need a DEVICE (e.g. /dev/sg3) to send command to\n");
-        return SG_LIB_SYNTAX_ERROR;
+    if (1 == k) {
+        if ('\0' == op->idip->fn[0]) {
+            pr2serr("need a DEVICE (e.g. /dev/sg3) to send command to\n");
+            return SG_LIB_SYNTAX_ERROR;
+        }
+        if (! (req_all_toks || op->list_id_given))
+            op->list_id = DEF_LID4_LID;
     }
     if (op->rtf[0]) {
         if (do_info) {
@@ -837,11 +843,8 @@ main(int argc, char * argv[])
         if (ret)
             goto clean_up;
     } else if (do_poll) {
-        if (! op->list_id_given)
-            op->list_id = 0x101;
         do {
-            ret = fetch_rrti_after_odx(op, DDPT_ARG_IN, &rrti_rsp,
-                                       op->verbose);
+            ret = do_rrti(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
             if (ret)
                 goto clean_up;
             cont = ((rrti_rsp.cstat >= 0x10) && (rrti_rsp.cstat <= 0x12));
@@ -864,6 +867,8 @@ main(int argc, char * argv[])
                               (int)sizeof(b), b);
         printf("RRTI for %s: %s\n", b,
                cpy_op_status_str(rrti_rsp.cstat, bb, sizeof(bb)));
+        printf("  transfer count of %" PRIu64 " [0x%" PRIx64 "]\n",
+               rrti_rsp.tc, rrti_rsp.tc);
         if ((SA_POP_TOK == rrti_rsp.for_sa) && (rrti_rsp.rt_len > 0)) {
             ret = write_to_rtf(op, &rrti_rsp);
             if (ret)
@@ -871,28 +876,34 @@ main(int argc, char * argv[])
         }
     } else if (req_pt) {
         op->odx_request = ODX_READ_INTO_RODS;
-        if (! op->list_id_given)
-            op->list_id = 0x101;
         num_blks = count_sgl_blocks(op->in_sgl, op->in_sgl_elems);
         if ((ret = do_pop_tok(op, 0, num_blks, 0, op->verbose)))
             goto clean_up;
         else if (op->iflagp->immed)
             goto clean_up;
-        if ((ret = fetch_rt_after_poptok(op, &tc, op->verbose)))
+        if ((ret = process_after_poptok(op, &tc, op->verbose)))
             goto clean_up;
-        printf("PT completes with transfer count %" PRIu64 " [0x%" PRIx64
-               "]\n", tc, tc);
+        printf("PT completes with a transfer count of %" PRIu64 " [0x%"
+               PRIx64 "]\n", tc, tc);
+        if (op->rtf_fd < 0) {   /* ROD Token not sent to file, so ... */
+            /* dummy up rrti_rsp object and write to DEF_ROD_TOK_FILE */
+            rrti_rsp.rt_len = 512;
+            get_local_rod_tok(rrti_rsp.rod_tok, rrti_rsp.rt_len);
+            ret = write_to_rtf(op, &rrti_rsp);
+            if (ret)
+                goto clean_up;
+        }
         goto clean_up;
     } else if (do_receive) {
-        if (! op->list_id_given)
-            op->list_id = 0x101;
-        ret = fetch_rrti_after_odx(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
+        ret = do_rrti(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
         if (ret)
             goto clean_up;
         sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, rrti_rsp.for_sa, 0,
                               (int)sizeof(b), b);
         printf("RRTI for %s: %s\n", b,
                cpy_op_status_str(rrti_rsp.cstat, bb, sizeof(bb)));
+        printf("  transfer count of %" PRIu64 " [0x%" PRIx64 "]\n",
+               rrti_rsp.tc, rrti_rsp.tc);
         if ((SA_POP_TOK == rrti_rsp.for_sa) && (rrti_rsp.rt_len > 0)) {
             ret = write_to_rtf(op, &rrti_rsp);
             if (ret)
@@ -922,18 +933,16 @@ main(int argc, char * argv[])
                 pr2serr("unable to read %d bytes from '%s', only got %d "
                         "bytes\n", (int)sizeof(rt), op->rtf, ret);
         }
-        if (! op->list_id_given)
-            op->list_id = 0x101;
         num_blks = count_sgl_blocks(op->out_sgl, op->out_sgl_elems);
         if ((ret = do_wut(op, rt, 0, num_blks, op->offset_in_rod,
                           1 /* assume more left */, 0, op->verbose)))
             goto clean_up;
         else if (op->oflagp->immed)
             goto clean_up;
-        if ((ret = fetch_rrti_after_wut(op, &tc, op->verbose)))
+        if ((ret = process_after_wut(op, &tc, op->verbose)))
             goto clean_up;
-        printf("WUT completes with transfer count %" PRIu64 " [0x%" PRIx64
-               "]\n", tc, tc);
+        printf("WUT completes with a transfer count of %" PRIu64 " [0x%"
+               PRIx64 "]\n", tc, tc);
     } else if (do_info || do_size) {
         if (op->idip->d_type & FT_PT) {
             ret = pt_read_capacity(op, DDPT_ARG_IN, &num_blks, &blk_sz);
@@ -957,7 +966,7 @@ main(int argc, char * argv[])
                 if (0x8 & sir.byte_5) {
                     printf("3PC (third party copy) bit set in standard "
                            "INQUIRY response\n");
-                    printf("  Print Third Party Copy VPD page:\n");
+                    printf(" Third Party Copy VPD page:\n");
                     print_3pc_vpd(op, 0);
                 } else {
                     printf("3PC (third party copy) bit clear in standard "
@@ -982,9 +991,10 @@ main(int argc, char * argv[])
 clean_up:
     if ((req_pt || req_wut) && op->iflagp->immed && (0 == ret))
         pr2serr("Started ODX %s command in immediate mode.\nUser may need "
-                "--list_id=%d on following invocation with --receive or\n"
-                "--poll for completion\n", (req_pt ? "Populate Token" :
-                                 "Write Using Token"), op->list_id);
+                "--list_id=%" PRIu32 " on following invocation with "
+                "--receive or\n--poll for completion\n",
+                (req_pt ? "Populate Token" : "Write Using Token"),
+                op->list_id);
     if (op->idip->fd >= 0) {
         if (op->idip->d_type & FT_PT)
             pt_close(op->idip->fd);

@@ -1233,6 +1233,39 @@ signals_process_delay(struct opts_t * op, int delay_type)
     }
 }
 
+static const char * assoc_arr[] =
+{
+    "addressed logical unit",
+    "target port",      /* that received request; unless SCSI ports VPD */
+    "target device that contains addressed lu",
+    "reserved [0x3]",
+};
+
+static const char * code_set_arr[] =
+{
+    "Reserved [0x0]",
+    "Binary",
+    "ASCII",
+    "UTF-8",
+    "[0x4]", "[0x5]", "[0x6]", "[0x7]", "[0x8]", "[0x9]", "[0xa]", "[0xb]",
+    "[0xc]", "[0xd]", "[0xe]", "[0xf]",
+};
+
+static const char * desig_type_arr[] =
+{
+    "vendor specific [0x0]", /* SCSI_IDENT_DEVICE_VENDOR */
+    "T10 vendor identification", /* SCSI_IDENT_DEVICE_T10 */
+    "EUI-64 based", /* SCSI_IDENT_DEVICE_EUI64 */
+    "NAA", /* SCSI_IDENT_DEVICE_NAA */
+    "Relative target port", /* SCSI_IDENT_PORT_RELATIVE */
+    "Target port group", /* SCSI_IDENT_PORT_TP_GROUP */
+    "Logical unit group", /* SCSI_IDENT_PORT_LU_GROUP */
+    "MD5 logical unit identifier", /* SCSI_IDENT_DEVICE_MD5 */
+    "SCSI name string", /* SCSI_IDENT_DEVICE_SCSINAME */
+    "Protocol specific port identifier",        /* spc4r36 */
+    "[0xa]", "[0xb]", "[0xc]", "[0xd]", "[0xe]", "[0xf]",
+};
+
 void
 decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
                               int to_stderr, int verb)
@@ -1254,7 +1287,9 @@ decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
     piv = ((ucp[1] & 0x80) ? 1 : 0);
     assoc = ((ucp[1] >> 4) & 0x3);
     desig_type = (ucp[1] & 0xf);
-    print_p("    designator type: %d,  code set: %d\n", desig_type, c_set);
+    print_p("    designator_type: %s,  code_set: %s\n",
+            desig_type_arr[desig_type], code_set_arr[c_set]);
+    print_p("    associated with the %s\n", assoc_arr[assoc]);
     if (piv && ((1 == assoc) || (2 == assoc)))
         print_p("     transport: %s\n",
                 sg_get_trans_proto_str(p_id, sizeof(b), b));
