@@ -271,7 +271,7 @@ tertiary_help:
             "  fdatasync      same as oflag=fdatasync\n"
             "  fsync          same as oflag=fsync\n"
             "  no_del_tkn     same as oflag=no_del_tkn\n"
-            "  noerror        same as iflag=coe\n"
+            "  noerror        similar to iflag=coe\n"
             "  notrunc        does nothing because this is default action "
             "of ddpt\n"
             "  null           does nothing, place holder\n"
