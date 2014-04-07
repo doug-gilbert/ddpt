@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.94 20140401 [svn: r276]";
+static const char * ddpt_version_str = "0.94 20140407 [svn: r277]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -1743,7 +1743,6 @@ do_rw_copy(struct opts_t * op)
     int ibpt, obpt, res, n, sparse_skip, sparing_skip, continual_read;
     int ret = 0;
     int first_time = 1;
-    int could_be_last = 0;
     int id_type = op->idip->d_type;
     int od_type = op->odip->d_type;
     struct cp_state_t cp_st;
@@ -1860,8 +1859,6 @@ do_rw_copy(struct opts_t * op)
         }
 
         /* Start of writing section */
-        if ((! continual_read) && (csp->icbpt >= op->dd_count))
-            could_be_last = 1;
         if (sparing_skip || sparse_skip) {
             op->out_sparse += csp->ocbpt;
             if (csp->partial_write_bytes > 0)
@@ -1876,6 +1873,10 @@ do_rw_copy(struct opts_t * op)
                         break;
                 } else if (FT_TAPE & od_type) {
 #ifdef SG_LIB_LINUX
+                    int could_be_last;
+
+                    could_be_last = ((! continual_read) &&
+                                     (csp->icbpt >= op->dd_count));
                     if ((ret = cp_write_tape(op, csp, wPos, could_be_last)))
                         break;
 #else
@@ -2440,8 +2441,8 @@ chk_sgl_for_non_offload(struct opts_t * op)
 {
     if (op->in_sgl) {
         if (op->in_sgl_elems > 1) {
-            pr2serr("Don't accept multiple element (scatter-)gather lists "
-                    "for IFILE currently\n");
+            pr2serr("Only accept a multiple element skip= (gather) list for "
+                    "%s with odx\n", op->idip->fn[0] ? op->idip->fn : "?");
             return SG_LIB_SYNTAX_ERROR;
         }
         if ((op->dd_count >= 0) && (op->dd_count != op->in_sgl[0].num)) {
@@ -2454,8 +2455,8 @@ chk_sgl_for_non_offload(struct opts_t * op)
     }
     if (op->out_sgl) {
         if (op->out_sgl_elems > 1) {
-            pr2serr("Don't accept multiple element scatter(-gather) lists "
-                    "for OFILE currently\n");
+            pr2serr("Only accept a multiple element seek= (scatter) list for "
+                    "%s with odx\n", op->odip->fn[0] ? op->odip->fn : "?");
             return SG_LIB_SYNTAX_ERROR;
         }
         /* assuming ibs==obs, revisit xxxxxxx */

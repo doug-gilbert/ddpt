@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006-2013 Douglas Gilbert.
+ * Copyright (c) 2006-2014 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -45,8 +45,10 @@
 
 #include "sg_lib.h"
 
+#ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0602
 /* claim its W8 */
+#endif
 
 #include "sg_pt_win32.h"
 

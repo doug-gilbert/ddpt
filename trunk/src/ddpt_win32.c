@@ -53,7 +53,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
-#include "ddpt.h"	/* includes <signal.h> */
+#include "ddpt.h"       /* includes <signal.h> */
 
 #include <windows.h>
 #include <winioctl.h>
@@ -547,7 +547,7 @@ win32_block_write(struct opts_t * op, const unsigned char * bp,
  * block device using num_sect pointer. Win32 version. */
 int
 win32_get_blkdev_capacity(struct opts_t * op, int which_arg,
-			  int64_t * num_sect, int * sect_sz)
+                          int64_t * num_sect, int * sect_sz)
 {
     DISK_GEOMETRY g;
     GET_LENGTH_INFORMATION gli;
@@ -595,7 +595,7 @@ win32_get_blkdev_capacity(struct opts_t * op, int which_arg,
     }
     if ((fname_len < 4) || (fname_len > (int)sizeof(dirName))) {
         pr2serr("win32_get_blkdev_capacity: unable to process %s into "
-		"directory name\n", fname);
+                "directory name\n", fname);
         *num_sect = 0;
         return -1;
     }

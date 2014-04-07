@@ -226,19 +226,22 @@ scsi_encode_seg_desc(struct opts_t * op, unsigned char *seg_desc,
 }
 
 static int
-scsi_extended_copy(struct opts_t * op, unsigned char *src_desc,
-                   int src_desc_len, unsigned char *dst_desc,
-                   int dst_desc_len, int seg_desc_type, int64_t num_blk)
+a_xcopy_lid1_cmd(struct opts_t * op, unsigned char *src_desc,
+                 int src_desc_len, unsigned char *dst_desc, int dst_desc_len,
+                 int seg_desc_type, int64_t num_blk)
 {
     unsigned char xcopyBuff[256];
     int desc_offset = 16;
-    int seg_desc_len, verb, fd, tmout;
+    int seg_desc_len, verb, err_vb, fd, tmout;
     uint64_t src_lba = op->skip;
     uint64_t dst_lba = op->seek;
 
     fd = (op->iflagp->xcopy) ? op->idip->fd : op->odip->fd;
     verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
-
+    if (op->verbose > 0)
+        err_vb = (verb > 1) ? verb : 1;
+    else
+        err_vb = 0;
     memset(xcopyBuff, 0, 256);
     xcopyBuff[0] = op->list_id;
     xcopyBuff[1] = (op->id_usage << 3) | op->prio;
@@ -254,9 +257,11 @@ scsi_extended_copy(struct opts_t * op, unsigned char *src_desc,
     xcopyBuff[11] = seg_desc_len; /* One segment descriptor */
     desc_offset += seg_desc_len;
     tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
+    if (verb)
+        pr2serr("xcopy(LID1) cmd; src_lba=0x%" PRIx64 ", num_blks=%" PRId64
+                "\n", src_lba, num_blk);
     return pt_3party_copy_out(fd, SA_XCOPY_LID1, op->list_id, DEF_GROUP_NUM,
-                              tmout, xcopyBuff, desc_offset, 1, verb,
-                              op->verbose);
+                              tmout, xcopyBuff, desc_offset, 1, verb, err_vb);
 }
 
 /* Returns target descriptor variety encoded into an int. There may be
@@ -568,6 +573,7 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
     return td_list;
 }
 
+/* build xcopy(lid1) CSCD descriptor using device id VPD page */
 static int
 desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
                  int is_dest)
@@ -815,11 +821,11 @@ do_xcopy_lid1(struct opts_t * op)
         blocks = (op->dd_count > ibpt) ? ibpt : op->dd_count;
         oblocks = bs_same ? blocks : ((op->ibs * blocks) / op->obs);
 
-        res = scsi_extended_copy(op, src_desc, src_desc_len, dst_desc,
-                                 dst_desc_len, seg_desc_type, blocks);
+        res = a_xcopy_lid1_cmd(op, src_desc, src_desc_len, dst_desc,
+                               dst_desc_len, seg_desc_type, blocks);
         if (res != 0) {
             if ((op->verbose > 0) && (op->verbose < 3)) {
-                pr2serr("scsi_extended_copy: ");
+                pr2serr("a_xcopy_lid1_cmd: ");
                 switch (res) {
                 case SG_LIB_CAT_INVALID_OP:
                     pr2serr("invalid opcode\n");
@@ -1420,16 +1426,21 @@ int
 do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
            int walk_list_id, int vb_a)
 {
-    int res, k, j, n, vb_b, len, fd, tmout, sz_bdrd, elems, pl_sz;
+    int res, k, j, n, len, fd, tmout, sz_bdrd, elems, pl_sz, err_vb;
     uint64_t lba, sg0_off;
     uint32_t num;
     const struct scat_gath_elem * sglp;
     unsigned char * pl;
 
-    vb_b = (vb_a > 0) ? (vb_a - 1) : 0;
     if (vb_a)
         pr2serr("%s: blk_off=%" PRIu64 ", num_blks=%"  PRIu32 "\n", __func__,
                 blk_off, num_blks);
+    if (op->verbose == vb_a)
+        err_vb = op->verbose;
+    else if (op->verbose > 0)
+        err_vb = (vb_a > 0) ? vb_a : 1;
+    else
+        err_vb = 0;
     fd = op->idip->fd;
     if (op->in_sgl) {
         sg0_off = blk_off;
@@ -1532,12 +1543,12 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
 
     tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
     res = pt_3party_copy_out(fd, SA_POP_TOK, op->list_id, DEF_GROUP_NUM,
-                             tmout, pl, len, 1, vb_b, op->verbose);
+                             tmout, pl, len, 1, vb_a - 1, err_vb);
     if ((DDPT_CAT_OP_IN_PROGRESS == res) && walk_list_id) {
         for (j = 0; j < MAX_IN_PROGRESS; ++j) {
             res = pt_3party_copy_out(fd, SA_POP_TOK, ++op->list_id,
-                                     DEF_GROUP_NUM, tmout, pl, len, 1, vb_b,
-                                     op->verbose);
+                                     DEF_GROUP_NUM, tmout, pl, len, 1,
+                                     vb_a - 1, err_vb);
             if (DDPT_CAT_OP_IN_PROGRESS != res)
                 break;
         }
@@ -1553,17 +1564,22 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
 int
 do_rrti(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp, int verb)
 {
-    int j, res, fd, off;
+    int j, res, fd, off, err_vb;
     uint32_t len, rtdl;
     unsigned char rsp[1024];
     char b[400];
     char bb[80];
     const char * cp;
 
+    /* want to suppress 'pass-through requested n bytes ...' messages with
+     * 'ddpt verbose=2 ...' */
+    err_vb = op->verbose;
+    if ((verb != op->verbose) && (err_vb > 1))
+        --err_vb;
     fd = in0_out1 ? op->odip->fd : op->idip->fd;
     res = pt_3party_copy_in(fd, SA_ROD_TOK_INFO, op->list_id,
                             DEF_3PC_IN_TIMEOUT, rsp, sizeof(rsp), 1, verb,
-                            op->verbose);
+                            err_vb);
     if (res)
         return res;
 
@@ -1636,7 +1652,10 @@ process_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a)
     char b[400];
     unsigned char uc[8];
 
-    vb_b = (vb_a > 0) ? (vb_a - 1) : 0;
+    if (op->verbose == vb_a)
+        vb_b = op->verbose;
+    else
+        vb_b = (vb_a > 0) ? (vb_a - 1) : 0;
     do {
         res = do_rrti(op, DDPT_ARG_IN, &r, vb_b);
         if (res)
@@ -1734,8 +1753,8 @@ do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
        uint32_t num_blks, uint64_t oir, int more_left, int walk_list_id,
        int vb_a)
 {
-    int vb_b, len, k, j, n, fd, res, tmout, sz_bdrd, elems, pl_sz;
-    int rodt_blk_zero;
+    int len, k, j, n, fd, res, tmout, sz_bdrd, elems, pl_sz, rodt_blk_zero;
+    int err_vb = 0;
     struct flags_t * flp;
     uint64_t lba, sg0_off;
     uint32_t num;
@@ -1743,7 +1762,10 @@ do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
     unsigned char * pl;
     // unsigned char rt[512];
 
-    vb_b = (vb_a > 0) ? (vb_a - 1) : 0;
+    if (op->verbose == vb_a)
+        err_vb = op->verbose;
+    else if (op->verbose > 0)
+        err_vb = (vb_a > 0) ? vb_a : 1;
     if (vb_a)
         pr2serr("%s: enter; blk_off=%" PRIu64 ", num_blks=%"  PRIu32 ", "
                 " oir=0x%" PRIx64 "\n", __func__, blk_off, num_blks, oir);
@@ -1856,12 +1878,12 @@ do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
 
     tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
     res = pt_3party_copy_out(fd, SA_WR_USING_TOK, op->list_id, DEF_GROUP_NUM,
-                             tmout, pl, len, 1, vb_b, op->verbose);
+                             tmout, pl, len, 1, vb_a - 1, err_vb);
     if ((DDPT_CAT_OP_IN_PROGRESS == res) && walk_list_id) {
         for (j = 0; j < MAX_IN_PROGRESS; ++j) {
             res = pt_3party_copy_out(fd, SA_WR_USING_TOK, ++op->list_id,
-                                     DEF_GROUP_NUM, tmout, pl, len, 1, vb_b,
-                                     op->verbose);
+                                     DEF_GROUP_NUM, tmout, pl, len, 1,
+                                     vb_a - 1, err_vb);
             if (DDPT_CAT_OP_IN_PROGRESS != res)
                 break;
         }
@@ -1882,7 +1904,10 @@ process_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a)
     struct rrti_resp_t r;
     char b[80];
 
-    vb_b = (vb_a > 0) ? (vb_a - 1) : 0;
+    if (op->verbose == vb_a)
+        vb_b = op->verbose;
+    else
+        vb_b = (vb_a > 0) ? (vb_a - 1) : 0;
     do {
         res = do_rrti(op, DDPT_ARG_OUT, &r, vb_b);
         if (res)
