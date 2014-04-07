@@ -1,12 +1,25 @@
 Introduction
 ------------
-ddpt is a utility for copying files like its namesake the Unix dd command.
+ddpt is a utility for copying files like its namesake, the Unix dd command.
 ddpt is specialized for files that are actually block devices. And if
 those block devices understand SCSI commands then the copy can be done by
 using either SCSI READ or WRITE commands (or both). This latter facility
 is done using a pass-through interface that bypasses the normal operating
 system block handling. This can give very fine-grained control over the
 copy process.
+
+ddpt also supports two forms of offloaded copies, one based on the EXTENDED
+COPY command introduced in T10's SPC-2 standard. EXTENDED COPY is often
+abbreviated to XCOPY or xcopy. As new forms of offloaded copy have been
+added (especially in SPC-4) the original XCOPY is now called XCOPY(LID1)
+with lot of new feature added to XCOPY(LID4). A subset of XCOPY(LID4) which
+only supports disk to disk, token based copies, has the market name of ODX.
+So ddpt supports the original XCOPY(LID1) and uses the term "xcopy" to
+refer to it. ddpt now also supports ODX and uses the term "odx" to refer
+to it.
+
+ddptctl is a helper/auxiliary for the ddpt utility. ddptctl mainly supplies
+extra functionality for ODX.
 
 This utility was originally written for Linux. It has been ported to FreeBSD
 and Windows.
@@ -26,7 +39,7 @@ distinctive dd command command line syntax. Note that the dd command line
 syntax is unlike any other Unix command (probably imported from some IBM
 OS many years ago).
 
-This package shares code with sg3_utils (version 1.37). With the subversion
+This package shares code with sg3_utils (version 1.38). With the subversion
 revision control system this is done by having ddpt's "include/" and "lib/"
 sub-directories pointing to the correspondingly named directories in the
 sg3_utils package using the "svn:externals" property. These two "external"
@@ -119,4 +132,4 @@ See README.win32
 
 
 Douglas Gilbert
-18th March 2014
+7th April 2014

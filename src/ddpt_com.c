@@ -46,6 +46,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
+#define __STDC_LIMIT_MACROS 1   /* for UINT64_MAX, UINT32_MAX, etc */
 #include <limits.h>
 #include <sys/types.h>
 #include <sys/stat.h>

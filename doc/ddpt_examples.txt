@@ -249,11 +249,10 @@ $ ddpt if=/dev/sg1 skip=$((0xfff + 1)) count=1
 
 # xcopy is an abbreviation of the SCSI EXTENDED COPY command and facility.
 # There are two variants: "LID1" (List Identifier length of 1 byte)
-# and "LID4". ddpt only supports the LID1 variant. xcopy is a performance
-# win when disks (LUs) are remote or disks have better bandwidth to a
-# storage switch (e.g. a SAS expander) than they do to server machines.
-# Some xcopy implementations use the term "remote copy". This example
-# copies the contents of /dev/sdc to /dev/sdd
+# and "LID4". xcopy is a performance win when disks (LUs) are remote or
+# disks have better bandwidth to a storage switch (e.g. a SAS expander)
+# than they do to server machines. Some xcopy implementations use the term
+# "remote copy". This example copies the contents of /dev/sdc to /dev/sdd
 $ ddpt if=/dev/sdc iflag=xcopy bs=512 of=/dev/sdd
 204800+0 records in
 204800+0 records out
@@ -268,5 +267,36 @@ time to transfer data: 0.162026 secs at 647.17 MB/sec
 # performance, with the xcopy version being faster, possibly much faster,
 # with essentially no load on the machine issuing the xcopy.
 
+# A subset of xcopy(LID4) that does disk to disk, token based copies and has
+# the market name ODX is supported. A full disk to disk copy looks like this:
+$ ddpt --odx if=/dev/sg3 of=/dev/sg4 bs=512
+20971520+0 records in
+20971520+0 records out
+time to transfer data: 38.994866 secs at 275.35 MB/sec
+# ODX also has a facility to zero out blocks:
+$ ddpt rtype=zero if=/dev/null of=/dev/sg4 bs=512
+20971520+0 records out
+time to transfer data: 25.348843 secs at 423.59 MB/sec
+# The ROD type of "zero" has a special, static ROD Token associated with it.
 
-# Douglas Gilbert 20131007
+# Network copies can be done by exposing a ROD Token (512 bytes long) or a
+# sequence of them. In the following example both mach_a and mach_b can "see"
+# the same storage array. One of that array's targets contains two LUs:
+# /dev/sg3 and /dev/sg4. In the first step, one or more RODs are populated
+# with 1m blocks starting at LBA 0x1234 from /dev/sg3. Those ROD Tokens are
+# passed back to mach_a which places them in a file called "my.tk". A
+# network copy ("scp") is used to copy "my.tk" to mach_b. mach_b then uses
+# those 1m blocks of data represented by the ROD Tokens in "my.tk" to write
+# to /dev/sg4, starting at LBA 0 (since no seek= option is given):
+mach_a $ ddpt if=/dev/sg3 bs=512 skip=0x1234,1m rtf=my.tk
+1048576+0 records in
+time to transfer data: 0.002217 secs at 242160.99 MB/sec
+
+mach_a $ scp -p my.tk user@mach_b:/tmp
+
+mach_b $ ddpt rtf=/tmp/my.tk bs=512 of=/dev/sg4 count=1m
+1048576+0 records out
+time to transfer data: 0.747828 secs at 717.91 MB/sec
+
+
+# Douglas Gilbert 20140407
