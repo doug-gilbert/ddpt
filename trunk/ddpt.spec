@@ -1,5 +1,5 @@
 %define	name	ddpt
-%define	version	0.94
+%define	version	0.95
 %define	release	1
 
 Summary:	Copy files (like dd) especially SCSI/storage devices
@@ -50,6 +50,9 @@ fi
 %{_mandir}/man8/*
 
 %changelog
+* Tue Apr 08 2014 - dgilbert at interlog dot com
+- xxxxxxxxx
+  * ddpt-0.95
 * Mon Apr 07 2014 - dgilbert at interlog dot com
 - add ODX (subset xcopy(LID4)) support
   * ddpt-0.94
