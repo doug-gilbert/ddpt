@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.95 20140408 [svn: r278]";
+static const char * ddpt_version_str = "0.95 20140422 [svn: r279]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -2547,6 +2547,7 @@ main(int argc, char * argv[])
         details_pre_copy_print(op);
 
     op->read1_or_transfer = !! (FT_DEV_NULL & op->odip->d_type);
+    op->dd_count_start = op->dd_count;
     if (op->read1_or_transfer && (! op->outf_given) &&
         ((op->dd_count > 0) || op->reading_fifo))
         pr2serr("Output file not specified so no copy, just reading input\n");

@@ -2059,6 +2059,7 @@ odx_full_zero_copy(struct opts_t * op)
     }
     out_blk_off = 0;
     op->dd_count = out_num_blks;
+    op->dd_count_start = op->dd_count;
 
     /* Build fixed format ROD Token Block Zero; specified by SBC-3 */
     memset(local_rod_token, 0, sizeof(local_rod_token));
@@ -2148,6 +2149,7 @@ odx_read_into_rods(struct opts_t * op)
 
     in_blk_off = 0;
     op->dd_count = in_num_blks;
+    op->dd_count_start = op->dd_count;
     if (op->verbose > 1)
         pr2serr("%s: about to read %" PRIi64 " blocks\n", __func__,
                 in_num_blks);
@@ -2230,6 +2232,7 @@ odx_write_from_rods(struct opts_t * op)
 
     out_blk_off = 0;
     op->dd_count = out_num_blks;
+    op->dd_count_start = op->dd_count;
     if (op->verbose > 1)
         pr2serr("%s: about to write %" PRIi64 " blocks (seen from output)\n",
                     __func__, out_num_blks);
@@ -2477,6 +2480,7 @@ odx_full_copy(struct opts_t * op)
     in_blk_off = 0;
     out_blk_off = 0;
     op->dd_count = in_num_blks;
+    op->dd_count_start = op->dd_count;
     if (op->verbose > 1)
         pr2serr("%s: about to copy %" PRIi64 " blocks (seen from input)\n",
                     __func__, in_num_blks);

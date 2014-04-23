@@ -65,7 +65,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.95 20140408 [svn: r278]";
+const char * ddptctl_version_str = "0.95 20140422 [svn: r279]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -110,8 +110,9 @@ const char * ddptctl_version_str = "0.95 20140408 [svn: r278]";
 #include "sg_cmds_basic.h"
 
 
-#define DEF_3PC_OUT_TIMEOUT (10 * 60)   /* is 10 minutes enough? */
+#define DEF_3PC_OUT_TIMEOUT (10 * 60)   /* 10 minutes not enough, use IMMED */
 #define DEF_3PC_IN_TIMEOUT 60           /* these should be fast */
+#define MAX_NUM_MAN_TOKS 32
 
 #define DEF_ROD_TOK_FILE "ddptctl_rod_tok.bin"
 
@@ -124,6 +125,7 @@ static struct option long_options[] = {
         {"block", no_argument, 0, 'b'},
         {"del_tkn", no_argument, 0, 'D'},
         {"help", no_argument, 0, 'h'},
+        {"hex", no_argument, 0, 'H'},
         {"info", no_argument, 0, 'i'},
         {"immed", no_argument, 0, 'I'},
         {"list_id", required_argument, 0, 'l'},
@@ -148,10 +150,11 @@ usage()
 {
     pr2serr("Usage: "
             "ddptctl [--abort] [--all_toks] [--block] [--del_tkn] [--help] "
-            "[-immed]\n"
-            "               [--info] [--list_id=LID] [--oir=OIR] [--poll] "
-            "[--pt=GL]\n"
-            "               [--receive] [--rtf=RTF] [rtype=RTYPE] [--size]\n"
+            "[--hex]\n"
+            "               [-immed] [--info] [--list_id=LID] [--oir=OIR] "
+            "[--poll]\n"
+            "               [--pt=GL] [--receive] [--rtf=RTF] [rtype=RTYPE] "
+            "[--size]\n"
             "               [--timeout=ITO[,CMD]] [--verbose] [--version] "
             "[--wut=SL]\n"
             "               [DEVICE]\n"
@@ -162,6 +165,7 @@ usage()
             "SCSI commands)\n"
             "    --del_tkn|-D          set DEL_TKN bit in WUT command\n"
             "    --help|-h             print out usage message\n"
+            "    --hex|-H              print response in ASCII hexadecimal\n"
             "    --immed|-I            set IMMED bit in PT or WUT, exit "
             "prior to\n"
             "                          data transfer completion (then use "
@@ -206,20 +210,147 @@ usage()
             );
 }
 
+/* If len==96 then assume it is a management ROD Token. Returns 0 if okay. */
 static int
-odx_rt_info(const struct opts_t * op)
+odx_print_rod_tok(const struct opts_t * op, unsigned char * rth, int len)
 {
-    int res, fd, err, m, prot_en, p_type, lbppbe, vendor, desig_type;
-    int all_0, all_1, k, num, bp_chunk;
+    int vendor, all_0, all_1, m, prot_en, p_type, desig_type, lbppbe;
     int target_dev_desc = 0;
-    int got_rtf_len = 0;
-    int a_err = 0;
     uint64_t bc;
     uint32_t rod_t, bs;
     uint16_t rtl;
-    unsigned char uc;
-    unsigned char rth[520];
     char b[128];
+    unsigned char uc;
+
+    rod_t = (rth[0] << 24) + (rth[1] << 16) + (rth[2] << 8) + rth[3];
+    printf("  ROD type: %s\n", rod_type_str(rod_t, b, sizeof(b)));
+    if (rod_t >= 0xfffffff0) {
+        printf("    Since ROD type is vendor specific, the following may "
+               "not be relevant\n");
+        vendor = 1;
+    } else {
+        vendor = 0;
+        target_dev_desc = (RODT_ACCESS_ON_REF == rod_t) ||
+                  (RODT_PIT_DEF == rod_t) || (RODT_PIT_VULN == rod_t) ||
+                  (RODT_PIT_PERS == rod_t);
+    }
+    rtl = (rth[6] << 8) + rth[7];
+    if (rtl < ODX_ROD_TOK_LEN_FLD) {
+        pr2serr(">>> ROD Token length field is too short, should be at "
+                "least\n    %d bytes (0x%x), got 0x%" PRIx16 "\n",
+                ODX_ROD_TOK_LEN_FLD, ODX_ROD_TOK_LEN_FLD, rtl);
+        if (! vendor)
+            return SG_LIB_CAT_OTHER;
+    }
+    printf("  Copy manager ROD Token identifier: %s\n",
+           rt_cm_id_str(rth, rtl + 8, b, sizeof(b)));
+    printf("  Creator Logical Unit descriptor:\n");
+    /* should make smaller version of following that outputs to stdout */
+    if (0xe4 != rth[16]) {
+        pr2serr(">>> Expected Identification descriptor (0xe4) got 0x%x\n",
+                rth[16]);
+        if (! vendor)
+            return SG_LIB_CAT_OTHER;
+    }
+    printf("    Peripheral Device type: 0x%x\n", rth[17] & 0x1f);
+    printf("    Relative initiator port identifier: 0x%x\n",
+           (rth[18] << 8) + rth[19]);
+    desig_type = rth[20 + 1] & 0xf;
+    if ((0x2 == desig_type) || (0x3 == desig_type))
+        decode_designation_descriptor(rth + 20, 32 - 4, 0, op->verbose);
+    else
+        printf("      Expected designator type of EUI-64 or NAA, got "
+               "0x%x\n", desig_type);
+
+    /* A 16 byte integer worth of bytes! Seems like overkill. */
+    /* Look for all 0s or all 1s in the top 8 bytes */
+    all_0 = (0x0 == rth[48]);
+    if (all_0)
+        all_1 = 0;
+    else if (0xff == rth[48])
+        all_1 = 1;
+    else {
+        all_1 = 0;
+        printf("  Number of bytes represented: strange, bypass\n");
+        goto skip_to_bytes_rep;
+    }
+    for (m = 1; m < 8; m++) {
+        uc = rth[48 + m];
+        if (! (((0xff == uc) && all_1) || ((0 == uc) && all_0)))
+            break;
+    }
+    if (m < 8) {
+        printf("  Number of bytes represented: strange, bypass\n");
+        goto skip_to_bytes_rep;
+    }
+    bc = 0;
+    for (m = 0; m < 8; m++) {
+        if (m > 0)
+            bc <<= 8;
+        bc |= rth[56 + m];
+    }
+    if ((UINT64_MAX == bc) && all_1)
+        printf("  Number of bytes represented: unknown or too large\n");
+    else if (all_0)
+        printf("  Number of bytes represented: %" PRIu64 " [0x%" PRIx64
+               "]\n", bc, bc);
+    else
+        printf("  Number of bytes represented: strange (top 8 bytes "
+               "0xff)\n");
+
+skip_to_bytes_rep:
+    if (len <= 96)
+        return 0;
+    bs = ((rth[96] << 24) + (rth[97] << 16) + (rth[98] << 8) + rth[99]);
+    if (0 == bs) {
+        printf("  Device type specific data (for disk) has block size of "
+               "0; unlikely so skip\n");
+        goto skip_to_target_dev_desc;
+    }
+    printf("  Assume pdt=0 (e.g. disk) and decode device type specific "
+           "data:\n");
+    printf("    block size: %" PRIu32 " [0x%" PRIx32 "] bytes\n", bs, bs);
+    prot_en = !!(rth[100] & 0x1);
+    p_type = ((rth[100] >> 1) & 0x7);
+    printf("    Protection: prot_en=%d, p_type=%d, p_i_exponent=%d",
+           prot_en, p_type, ((rth[101] >> 4) & 0xf));
+    if (prot_en)
+        printf(" [type %d protection]\n", p_type + 1);
+    else
+        printf("\n");
+    printf("    Logical block provisioning: lbpme=%d, lbprz=%d\n",
+                   !!(rth[102] & 0x80), !!(rth[102] & 0x40));
+    lbppbe = rth[102] & 0xf;
+    printf("    Logical blocks per physical block exponent=%d\n", lbppbe);
+    if (lbppbe > 0)
+        printf("      [so physical block length=%" PRIu32 " bytes]\n",
+               bs * (1 << lbppbe));
+    printf("    Lowest aligned logical block address=%d\n",
+           ((rth[102] & 0x3f) << 8) + rth[103]);
+
+skip_to_target_dev_desc:
+    if (target_dev_desc) {
+        desig_type = rth[128 + 1] & 0xf;
+        if ((0x2 == desig_type) || (0x3 == desig_type) ||
+            (0x8 == desig_type) || op->verbose) {
+            printf("  Target device descriptor:\n");
+            decode_designation_descriptor(rth + 128, 128 - 4, 0,
+                                          op->verbose);
+        } else
+            printf("  Target device descriptor: unexpected designator "
+                   "type [0x%x]\n", desig_type);
+    }
+    return 0;
+}
+
+static int
+odx_rt_info(const struct opts_t * op)
+{
+    int res, fd, err, k, m, bp_chunk, num;
+    int got_rtf_len = 0;
+    int a_err = 0;
+    uint64_t bc;
+    unsigned char rth[520];
     struct stat st;
 
     if ('\0' == op->rtf[0]) {
@@ -276,127 +407,10 @@ odx_rt_info(const struct opts_t * op)
         else
             printf("Decoding information from ROD Token:\n");
 
-        rod_t = (rth[0] << 24) + (rth[1] << 16) + (rth[2] << 8) + rth[3];
-        printf("  ROD type: %s\n", rod_type_str(rod_t, b, sizeof(b)));
-        if (rod_t >= 0xfffffff0) {
-            printf("    Since ROD type is vendor specific, the following may "
-                   "not be relevant\n");
-            vendor = 1;
-        } else {
-            vendor = 0;
-            target_dev_desc = (RODT_ACCESS_ON_REF == rod_t) ||
-                      (RODT_PIT_DEF == rod_t) || (RODT_PIT_VULN == rod_t) ||
-                      (RODT_PIT_PERS == rod_t);
-        }
-        rtl = (rth[6] << 8) + rth[7];
-        if (rtl < ODX_ROD_TOK_LEN_FLD) {
-            pr2serr(">>> ROD Token length field is too short, should be at "
-                    "least\n    %d bytes (0x%x), got 0x%" PRIx16 "\n",
-                    ODX_ROD_TOK_LEN_FLD, ODX_ROD_TOK_LEN_FLD, rtl);
-            if (! vendor) {
-                a_err = SG_LIB_CAT_OTHER;
-                goto skip_to_num_bytes;
-            }
-        }
-        printf("  Copy manager ROD Token identifier: %s\n",
-               rt_cm_id_str(rth, rtl + 8, b, sizeof(b)));
-        printf("  Creator Logical Unit descriptor:\n");
-        /* should make smaller version of following that outputs to stdout */
-        if (0xe4 != rth[16]) {
-            pr2serr(">>> Expected Identification descriptor (0xe4) got 0x%x\n",
-                    rth[16]);
-            if (! vendor) {
-                a_err = SG_LIB_CAT_OTHER;
-                goto skip_to_num_bytes;
-            }
-        }
-        printf("    Peripheral Device type: 0x%x\n", rth[17] & 0x1f);
-        printf("    Relative initiator port identifier: 0x%x\n",
-               (rth[18] << 8) + rth[19]);
-        desig_type = rth[20 + 1] & 0xf;
-        if ((0x2 == desig_type) || (0x3 == desig_type))
-            decode_designation_descriptor(rth + 20, 32 - 4, 0, op->verbose);
-        else
-            printf("      Expected designator type of EUI-64 or NAA, got "
-                   "0x%x\n", desig_type);
+        res = odx_print_rod_tok(op, rth, 512);
+        if (res && (0 == a_err))
+            a_err = res;
 
-        /* A 16 byte integer worth of bytes! Seems like overkill. */
-        /* Look for all 0s or all 1s in the top 8 bytes */
-        all_0 = (0x0 == rth[48]);
-        if (all_0)
-            all_1 = 0;
-        else if (0xff == rth[48])
-            all_1 = 1;
-        else {
-            all_1 = 0;
-            printf("  Number of bytes represented: strange, bypass\n");
-            goto skip_to_bytes_rep;
-        }
-        for (m = 1; m < 8; m++) {
-            uc = rth[48 + m];
-            if (! (((0xff == uc) && all_1) || ((0 == uc) && all_0)))
-                break;
-        }
-        if (m < 8) {
-            printf("  Number of bytes represented: strange, bypass\n");
-            goto skip_to_bytes_rep;
-        }
-        bc = 0;
-        for (m = 0; m < 8; m++) {
-            if (m > 0)
-                bc <<= 8;
-            bc |= rth[56 + m];
-        }
-        if ((UINT64_MAX == bc) && all_1)
-            printf("  Number of bytes represented: unknown or too large\n");
-        else if (all_0)
-            printf("  Number of bytes represented: %" PRIu64 " [0x%" PRIx64
-                   "]\n", bc, bc);
-        else
-            printf("  Number of bytes represented: strange (top 8 bytes "
-                   "0xff)\n");
-
-skip_to_bytes_rep:
-        bs = ((rth[96] << 24) + (rth[97] << 16) + (rth[98] << 8) + rth[99]);
-        if (0 == bs) {
-            printf("  Device type specific data (for disk) has block size of "
-                   "0; unlikely so skip\n");
-            goto skip_to_target_dev_desc;
-        }
-        printf("  Assume pdt=0 (e.g. disk) and decode device type specific "
-               "data:\n");
-        printf("    block size: %" PRIu32 " [0x%" PRIx32 "] bytes\n", bs, bs);
-        prot_en = !!(rth[100] & 0x1);
-        p_type = ((rth[100] >> 1) & 0x7);
-        printf("    Protection: prot_en=%d, p_type=%d, p_i_exponent=%d",
-               prot_en, p_type, ((rth[101] >> 4) & 0xf));
-        if (prot_en)
-            printf(" [type %d protection]\n", p_type + 1);
-        else
-            printf("\n");
-        printf("    Logical block provisioning: lbpme=%d, lbprz=%d\n",
-                       !!(rth[102] & 0x80), !!(rth[102] & 0x40));
-        lbppbe = rth[102] & 0xf;
-        printf("    Logical blocks per physical block exponent=%d\n", lbppbe);
-        if (lbppbe > 0)
-            printf("      [so physical block length=%" PRIu32 " bytes]\n",
-                   bs * (1 << lbppbe));
-        printf("    Lowest aligned logical block address=%d\n",
-               ((rth[102] & 0x3f) << 8) + rth[103]);
-
-skip_to_target_dev_desc:
-        if (target_dev_desc) {
-            desig_type = rth[128 + 1] & 0xf;
-            if ((0x2 == desig_type) || (0x3 == desig_type) ||
-                (0x8 == desig_type) || op->verbose) {
-                printf("  Target device descriptor:\n");
-                decode_designation_descriptor(rth + 128, 128 - 4, 0,
-                                              op->verbose);
-            } else
-                printf("  Target device descriptor: unexpected designator "
-                       "type [0x%x]\n", desig_type);
-        }
-skip_to_num_bytes:
         if (got_rtf_len) {
             for (m = 0, bc = 0; m < 8; ++m) {
                 if (m > 0)
@@ -419,12 +433,15 @@ do_copy_abort(struct opts_t * op)
                               op->verbose, op->verbose);
 }
 
+
 static int
-report_all_toks(struct opts_t * op, struct dev_info_t * dip)
+report_all_toks(struct opts_t * op, struct dev_info_t * dip, int do_hex)
 {
-    int res, fd;
-    unsigned int len;
-    unsigned char rsp[2048];
+    int res, fd, k;
+    int a_err = 0;
+    unsigned int len, num_mtoks;
+    unsigned char rsp[8 + (MAX_NUM_MAN_TOKS * 96)];
+    unsigned char * ucp;
 
     fd = dip->fd;
     res = pt_3party_copy_in(fd, SA_ALL_ROD_TOKS, op->list_id,
@@ -434,17 +451,47 @@ report_all_toks(struct opts_t * op, struct dev_info_t * dip)
         return res;
 
     len = ((rsp[0] << 24) | (rsp[1] << 16) | (rsp[2] << 8) | rsp[3]) + 4;
-    if (len > sizeof(rsp)) {
-        pr2serr("  ROD Tokens too long for internal buffer, output "
-                "truncated\n");
-        len = sizeof(rsp);
+    if (len <= 8) {
+        printf("No management ROD Tokens reported\n");
+        if ((len < 8) && op->verbose)
+            pr2serr("  somewhat strange available_data=%u\n", len - 4);
+        return 0;
     }
-    if (op->verbose > 2) {
-        pr2serr("\nReport all ROD tokens response in hex:\n");
-        dStrHexErr((const char *)rsp, len, 1);
+    num_mtoks = (len - 8) / 96;
+    if ((0 != ((len - 8) % 96)) && op->verbose)
+        pr2serr("  available_data=%u implies non-integral number of "
+                "management tokens\n", len - 4);
+    if (num_mtoks > MAX_NUM_MAN_TOKS) {
+        pr2serr("  %u management ROD Tokens available, can only display "
+                "first %d\n", num_mtoks, MAX_NUM_MAN_TOKS);
+        num_mtoks = MAX_NUM_MAN_TOKS;
     }
-    // Hmmm, not supported on HP 3 PAR (and not required for ODX)
-    return 0;
+    if (do_hex) {
+        if (do_hex > 1) {
+            dStrHex((const char *)rsp, ((len < 8) ? len : 8), 1);
+            for (k = 0, ucp = rsp + 8; k < (int)num_mtoks; ++k, ucp += 96) {
+                printf("\n");
+                dStrHex((const char *)ucp, 96, 1);
+            }
+        } else  {
+            if (len > sizeof(rsp))
+                len = sizeof(rsp);
+            dStrHex((const char *)rsp, len , 1);
+        }
+        return 0;
+    }
+    printf("Number of managed ROD Token headers returned: %u\n",
+           (len - 8) / 96);
+    if (num_mtoks < ((len - 8) / 96))
+        printf("  Number displayed: %u\n", num_mtoks);
+    for (k = 0, ucp = rsp + 8; k < (int)num_mtoks; ++k, ucp += 96) {
+        printf("\n ROD Token header %d\n", k + 1);
+
+        res = odx_print_rod_tok(op, ucp, 96);
+        if (res && (0 == a_err))
+            a_err = res;
+    }
+    return a_err;
 }
 
 static int
@@ -541,6 +588,7 @@ main(int argc, char * argv[])
     int req_abort = 0;
     int req_all_toks = 0;
     int do_block = 0;
+    int do_hex = 0;
     int do_info = 0;
     int do_poll = 0;
     int req_pt = 0;
@@ -568,8 +616,8 @@ main(int argc, char * argv[])
     while (1) {
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "AaBDhiIl:O:pP:r:Rst:T:vVw:", long_options,
-                        &option_index);
+        c = getopt_long(argc, argv, "AaBDhHiIl:O:pP:r:Rst:T:vVw:",
+                        long_options, &option_index);
         if (c == -1)
             break;
 
@@ -590,6 +638,9 @@ main(int argc, char * argv[])
         case '?':
             usage();
             return 0;
+        case 'H':
+            ++do_hex;
+            break;
         case 'i':
             ++do_info;
             break;
@@ -839,7 +890,7 @@ main(int argc, char * argv[])
         if (ret)
             goto clean_up;
     } else if (req_all_toks) {
-        ret = report_all_toks(op, op->idip);
+        ret = report_all_toks(op, op->idip, do_hex);
         if (ret)
             goto clean_up;
     } else if (do_poll) {
