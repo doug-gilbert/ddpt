@@ -641,9 +641,8 @@ will clear the DEL_TKN bit on the last WRITE USING TOKEN command of each ROD
 Token in a odx full copy. In a large odx full copy several ROD Tokens may
 be used (one after the other). The default action is to set the DEL_TKN bit
 on the last WUT command of each ROD. Either way it should not make much
-difference because the copy manager deletes a ROD Token after a copy is
-completed. The copy manager will also delete/invalidate a ROD Token if the
-inactivity timeout is reached.
+difference because the copy manager deletes a ROD Token when its inactivity
+time-out occurs.
 .TP
 nofm [o] [tape]
 no File Mark (FM) on close when writing to tape. See TAPE section.
@@ -733,12 +732,16 @@ the default \fIIBS\fR * \fIBPT\fR byte segment with the the \fIOBPC\fR value
 given to the "bpt=" option. The finest granularity is when \fIOBPC\fR is 1
 which implies \fIOBS\fR bytes.
 .TP
-sparse [o] [reg,blk,pt]
+sparse [io] [reg,blk,pt]
 after each \fIIBS\fR * \fIBPT\fR byte segment is read from \fIIFILE\fR, it
 is checked to see if it is all zeros. If so, that segment is not written to
 \fIOFILE\fR. See the section on SPARSE WRITES below. The granularity of
 the zero comparison can be reduced from the default \fIIBS\fR * \fIBPT\fR
 byte segment with the \fIOBPC\fR value given to the "bpt=" option.
+.br
+The sparse flag may be used on input when a file is only being read (e.g.
+when \fIof=OFILE\fR is not given or \fIOFILE\fR is /dev/null) to determine
+how many blocks are contained in sparse segments of \fIIFILE\fR.
 .TP
 ssync [o] [pt]
 if \fIOFILE\fR is in "pt" mode then the SCSI SYNCHRONIZE CACHE command is

@@ -53,10 +53,9 @@ pass\-through device.
 .TP
 \fB\-D\fR, \fB\-\-del_tkn\fR
 set the DEL_TKN bit in a WUT command (default: clear the DEL_TKN bit).
-Since an ODX copy manager deletes the ROD Token after is has been
-fully copied from (once), this option is typically not needed. It may
-be useful for long\-lived ROD Tokens that have only been partially
-written from (or not used at all) and are no longer needed.
+Since an ODX copy manager deletes the ROD Token when its inactivity
+time-out is reached, this option is typically not needed. It may
+be useful for long\-lived ROD Tokens that are no longer needed.
 .br
 To delete an unused ROD Token a degenerate scatter list seems to be
 acceptable (e.g. '\-\-wut=0,0 \-\-del_tkn').

@@ -221,8 +221,18 @@ print_stats(const char * str, struct opts_t * op, int who)
     print_tape_summary(op, 0, str);
 #endif
 
-    if ((op->dd_count > 0) && (! op->reading_fifo))
-        pr2serr("  remaining block count=%" PRId64 "\n", op->dd_count);
+    if ((op->dd_count > 0) && (! op->reading_fifo)) {
+        pr2serr("  remaining block count=%" PRId64, op->dd_count);
+        if ((who < 2) && (op->in_full <= op->dd_count_start) &&
+            (op->dd_count_start >= 4196)) {
+            /* with ints will overflow around 8 TB for bs=1 */
+            int num = (int)((op->in_full * 100) / 4196);
+            int den = (int)(op->dd_count_start / 4196);  /* will be >= 1 */
+
+            pr2serr("   %d%% completed\n", num / den);
+        } else
+            pr2serr("\n");
+    }
     if (who < 2)
         pr2serr("%s%" PRId64 "+%d records in\n", str, op->in_full,
                 op->in_partial);

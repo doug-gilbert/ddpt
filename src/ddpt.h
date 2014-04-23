@@ -354,8 +354,10 @@ struct opts_t {
     struct dev_info_t * o2dip;
     /* working variables and statistics */
     int64_t dd_count;   /* -1 for not specified, 0 for no blocks to copy */
-    int64_t in_full;
-    int64_t out_full;
+                        /* after copy/read starts, decrements to 0 */
+    int64_t dd_count_start;     /* dd_count prior to start of copy/read */
+    int64_t in_full;    /* full blocks read from IFILE so far */
+    int64_t out_full;   /* full blocks written to OFILE so far */
     int64_t out_sparse; /* used for sparse, sparing + trim */
     int64_t lowest_unrecovered;         /* on reads */
     int64_t highest_unrecovered;        /* on reads */
