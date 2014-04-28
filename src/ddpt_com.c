@@ -228,8 +228,12 @@ print_stats(const char * str, struct opts_t * op, int who)
             /* with ints will overflow around 8 TB for bs=1 */
             int num = (int)((op->in_full * 100) / 4196);
             int den = (int)(op->dd_count_start / 4196);  /* will be >= 1 */
+            int percent;
 
-            pr2serr("   %d%% completed\n", num / den);
+            percent = num / den;
+            if ((100 == percent) && (op->in_full < op->dd_count_start))
+                --percent;      /* don't want rounding to 100 % */
+            pr2serr("   %d%% completed\n", percent);
         } else
             pr2serr("\n");
     }
@@ -1766,7 +1770,7 @@ cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr,
         pr2serr("'--lba' cannot be read from stdin\n");
         return 1;
     } else {        /* list of numbers (default decimal) on command line */
-        k = strspn(inp, "0123456789aAbBcCdDeEfFhHxXbBdDiIkKmMgGtTpP, ");
+        k = strspn(inp, "0123456789aAbBcCdDeEfFhHxXiIkKmMgGtTpP, ");
         if (in_len != k) {
             pr2serr("cl_to_sgl: error at pos %d\n", k + 1);
             return 1;
