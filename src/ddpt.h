@@ -185,6 +185,7 @@ extern "C" {
 #define XCOPY_TO_DST "XCOPY_TO_DST"
 #define DEF_XCOPY_SRC0_DST1 1
 #define ODX_RTF_LEN "ODX_RTF_LEN"     /* append 8 byte ROD size to token */
+#define DDPT_DEF_BS "DDPT_DEF_BS" /* default default block size: 512 bytes */
 
 /* ODX: length field inside ROD Token constant, implies 512 byte ROD Token */
 #define ODX_ROD_TOK_LEN_FLD 504       /* 0x1f8 */
