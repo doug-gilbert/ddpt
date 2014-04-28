@@ -283,6 +283,8 @@ tertiary_help:
             "for coe\n"
             "  trunc          same as oflag=trunc\n\n"
             "ENVIRONMENT VARIABLES:\n"
+            "  DDPT_DEF_BS    its value replaces the default block size of "
+            "512 bytes\n"
             "  ODX_RTF_LEN    append ROD size (8 byte big-endian) to token "
             "in RTF\n"
             "  XCOPY_TO_DST   send XCOPY command to OFILE (destination) "
@@ -562,25 +564,38 @@ default_bpt_i(int ibs)
 static int
 cl_sanity_defaults(struct opts_t * op)
 {
+    int def_bs = DEF_BLOCK_SIZE;
     const char * cp;
     char * csp;
     char * cdp;
     char b[80];
 
+    cp = getenv(DDPT_DEF_BS);
+    if (cp) {
+        if (op->verbose)
+            pr2serr("  %s=%s environment variable detected, modifying block "
+                    "size default\n", DDPT_DEF_BS, cp);
+        if ((1 == sscanf(cp, "%d", &def_bs)) && (def_bs > 0))
+            ;
+        else
+            def_bs = DEF_BLOCK_SIZE;
+    } else
+        def_bs = DEF_BLOCK_SIZE;
+
     if ((0 == op->ibs) && (0 == op->obs)) {
-        op->ibs = DEF_BLOCK_SIZE;
-        op->obs = DEF_BLOCK_SIZE;
+        op->ibs = def_bs;
+        op->obs = def_bs;
         if (op->idip->fn[0])
             pr2serr("Assume block size of %d bytes for both input and "
-                    "output\n", DEF_BLOCK_SIZE);
+                    "output\n", def_bs);
     } else if (0 == op->obs) {
-        op->obs = DEF_BLOCK_SIZE;
-        if ((op->ibs != DEF_BLOCK_SIZE) && op->odip->fn[0])
+        op->obs = def_bs;
+        if ((op->ibs != def_bs) && op->odip->fn[0])
             pr2serr("Neither obs nor bs given so set obs=%d (default "
                     "block size)\n", op->obs);
     } else if (0 == op->ibs) {
-        op->ibs = DEF_BLOCK_SIZE;
-        if (op->obs != DEF_BLOCK_SIZE)
+        op->ibs = def_bs;
+        if (op->obs != def_bs)
             pr2serr("Neither ibs nor bs given so set ibs=%d (default "
                     "block size)\n", op->ibs);
     }

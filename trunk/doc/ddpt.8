@@ -121,7 +121,8 @@ is placed in \fIIBS\fR and \fIOBS\fR.
 If \fIIFILE\fR or \fIOFILE\fR is a "pt" device then \fIBS\fR
 .B must
 be the logical block size of the device. See the DD DIFFERENCES section
-below. The default is 512 bytes; note that newer disks use 4096 byte blocks
+below. The default is 512 bytes unless overridden by the DDPT_DEF_BS
+environment variable. Note that newer disks use 4096 byte blocks
 with perhaps larger block sizes coming in the future. CD/DVD/BD media use
 a logical block size of 2048 bytes.
 .TP
@@ -1258,6 +1259,12 @@ big endian 8 byte integer following each ROD Token in the \fIRTF\fR file. The
 option on each read to tokens and write from tokens invocation can be a
 nuisance. Setting the environment variable ODX_RTF_LEN will cause this
 utility to act as if the \fIconv=rtf_len\fR option has been given.
+.PP
+Sometimes the default block size of 512 can be a nuisance. This can be
+overridden by the value associated with the DDPT_DEF_BS environment
+variable. If the environment variable is not found, the value cannot
+be decoded or is zero or less, then the default block size remains
+at 512 bytes.
 .SH EXIT STATUS
 To aid scripts that call ddpt, the exit status is set to indicate
 success (0) or failure (1 or more). Note that some of the lower values
