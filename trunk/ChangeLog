@@ -2,10 +2,11 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.95 [20140424] [svn: r279]
+Changelog for ddpt-0.95 [20140513] [svn: r281]
   - show percent completed
   - add DDPT_DEF_BS environment variable
-  - ddptctl: add --hex option
+  - ddptctl: add --hex and --readonly options
+  - win32: ddpt --wscan fixes
   - point svn:externals to rev 571 of sg3_utils
 
 Changelog for ddpt-0.94 [20140407] [svn: r277]

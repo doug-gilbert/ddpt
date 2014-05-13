@@ -1,14 +1,14 @@
-.TH DDPTCTL "8" "April 2014" "ddpt\-0.95" DDPT
+.TH DDPTCTL "8" "May 2014" "ddpt\-0.95" DDPT
 .SH NAME
 ddptctl \- helper/auxiliary utility for ddpt
 .SH SYNOPSIS
 .B ddptctl
 [\fI\-\-abort\fR] [\fI\-\-all_toks\fR] [\fI\-\-block\fR] [\fI\-\-del_tkn\fR]
 [\fI\-\-help\fR] [\fI\-\-immed\fR] [\fI\-\-info\fR] [\fI\-\-list_id=LID\fR]
-[\fI\-\-oir=OIR\fR] [\fI\-\-poll\fR] [\fI\-\-pt=GL\fR] [\fI\-\-receive\fR]
-[\fI\-\-rtf=RTF\fR] [\fI\-\-rtype=RTYPE\fR] [\fI\-\-size\fR]
-[\fI\-\-timeout=ITO[,CMD]\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR]
-[\fI\-\-wut=SL\fR] [\fIDEVICE\fR]
+[\fI\-\-oir=OIR\fR] [\fI\-\-poll\fR] [\fI\-\-pt=GL\fR] [\fI\-\-readonly\fR]
+[\fI\-\-receive\fR] [\fI\-\-rtf=RTF\fR] [\fI\-\-rtype=RTYPE\fR]
+[\fI\-\-size\fR] [\fI\-\-timeout=ITO[,CMD]\fR] [\fI\-\-verbose\fR]
+[\fI\-\-version\fR] [\fI\-\-wut=SL\fR] [\fIDEVICE\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
@@ -133,6 +133,10 @@ ddptctl_rod_tok.bin in the current directory.
 If the \fI\-\-immed\fR option is given this utility will exit after the
 PT command finishes. To complete the operation this utility should be
 invoked again with the \fI\-\-poll\fR option and the same \fIDEVICE\fR.
+.TP
+\fB\-y\fR, \fB\-\-readonly\fR
+open the \fIDEVICE\fR read\-only (e.g. in Unix with the O_RDONLY flag).
+The default is to open it read\-write.
 .TP
 \fB\-R\fR, \fB\-\-receive\fR
 send the RECEIVE ROD TOKEN INFORMATION SCSI command (RRTI) to the \fIDEVICE\fR
