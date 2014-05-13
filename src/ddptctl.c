@@ -65,7 +65,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.95 20140422 [svn: r279]";
+const char * ddptctl_version_str = "0.95 20140512 [svn: r281]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -132,6 +132,7 @@ static struct option long_options[] = {
         {"oir", required_argument, 0, 'O'},
         {"poll", no_argument, 0, 'p'},
         {"pt", required_argument, 0, 'P'},
+        {"readonly", no_argument, 0, 'y'},
         {"receive", no_argument, 0, 'R'},
         {"rtf", required_argument, 0, 'r'},
         {"rtype", required_argument, 0, 't'},
@@ -153,11 +154,11 @@ usage()
             "[--hex]\n"
             "               [-immed] [--info] [--list_id=LID] [--oir=OIR] "
             "[--poll]\n"
-            "               [--pt=GL] [--receive] [--rtf=RTF] [rtype=RTYPE] "
-            "[--size]\n"
-            "               [--timeout=ITO[,CMD]] [--verbose] [--version] "
-            "[--wut=SL]\n"
-            "               [DEVICE]\n"
+            "               [--pt=GL] [--readonly] [--receive] [--rtf=RTF] "
+            "[rtype=RTYPE]\n"
+            "               [--size] [--timeout=ITO[,CMD]] [--verbose] "
+            "[--version]\n"
+            "               [--wut=SL] [DEVICE]\n"
             "  where:\n"
             "    --abort|-A            call COPY OPERATION ABORT command\n"
             "    --all_toks|-a         call REPORT ALL ROD TOKENS command\n"
@@ -182,6 +183,8 @@ usage()
             "    --pt=GL|-P GL         call PT with gather list GL. GL's "
             "format is\n"
             "                          LBA1,NUM1[,LBA2,NUM2...]\n"
+            "    --readonly|-y         open DEVICE read-only (def: "
+            "read-write)\n"
             "    --receive|-R          call RRTI once\n"
             "    --rtf=RTF|-r RTF      ROD Token file for analysis (--info); "
             "output by\n"
@@ -616,7 +619,7 @@ main(int argc, char * argv[])
     while (1) {
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "AaBDhHiIl:O:pP:r:Rst:T:vVw:",
+        c = getopt_long(argc, argv, "AaBDhHiIl:O:pP:r:Rst:T:vVw:y",
                         long_options, &option_index);
         if (c == -1)
             break;
@@ -753,6 +756,9 @@ main(int argc, char * argv[])
             }
             ++req_wut;
             sglp = optarg;
+            break;
+        case 'y':
+            ++op->o_readonly;
             break;
         default:
             pr2serr("unrecognised option code 0x%x ??\n", c);

@@ -147,18 +147,28 @@ pt_open_if(struct opts_t * op, struct sg_simple_inquiry_resp * sirp)
         flags |= O_EXCL;
     if (fp->sync)
         flags |= O_SYNC;
-    fl = O_RDWR;
+    fl = op->o_readonly ? O_RDONLY : O_RDWR;
     if ((fd = scsi_pt_open_flags(fn, (fl | flags), op->verbose)) < 0) {
         if (-EBUSY == fd) {
             pr2serr("open %s for pass-through reports BUSY,\n"
                     "  use iflag=block to wait until ready\n", fn);
             return -1;
         }
-        fl = O_RDONLY;
-        if ((fd = scsi_pt_open_flags(fn, (fl | flags), op->verbose)) < 0) {
-            pr2serr("could not open %s for pass-through: %s\n", fn,
-                    safe_strerror(-fd));
+        if (op->o_readonly) {
+            pr2serr("could not open %s ro as pass-through: %s\n", fn,
+                        safe_strerror(-fd));
             return -1;
+        } else {
+            fl = O_RDONLY;
+            if (op->verbose)
+                pr2serr("could not open %s read-write so try read-only\n",
+                        fn);
+            if ((fd = scsi_pt_open_flags(fn, (fl | flags), op->verbose))
+                < 0) {
+                pr2serr("could not open %s [rw or ro] as pass-through: %s\n",
+                        fn, safe_strerror(-fd));
+                return -1;
+            }
         }
     }
     if (sg_simple_inquiry(fd, &sir, 0, verb)) {

@@ -389,6 +389,7 @@ struct opts_t {
     int reading_fifo;
     int read1_or_transfer; /* 1 when of=/dev/null or similar */
     int ibs_hold;
+    int o_readonly;
     unsigned char * wrkBuff;
     unsigned char * wrkPos;
     unsigned char * wrkBuff2;
