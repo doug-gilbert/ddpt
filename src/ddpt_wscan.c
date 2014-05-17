@@ -660,12 +660,12 @@ do_wscan(char letter, int show_bt, int scsi_scan)
                     printf("%s", sp->qp_descriptor.raw + j);
                 printf("\n");
                 if (verbose > 2)
-                    dStrHexErr(sp->qp_descriptor.raw, 144, 0);
+                    dStrHex(sp->qp_descriptor.raw, 144, 0);
             } else
                 printf("\n");
             if ((verbose > 3) && sp->qp_uid_valid) {
-                pr2serr("UID valid, in hex:\n");
-                dStrHexErr(sp->qp_uid.raw, sizeof(sp->qp_uid.raw), 1);
+                printf("  UID valid, in hex:\n");
+                dStrHex(sp->qp_uid.raw, sizeof(sp->qp_uid.raw), 1);
             }
         }
     }

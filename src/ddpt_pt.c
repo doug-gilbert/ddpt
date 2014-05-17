@@ -89,8 +89,6 @@
 #define ASQ_TARGET_UNDERRUN 0x4
 #define ASQ_TARGET_OVERRUN 0x5
 
-#define ASC_PROTECTION_INFO_BAD 0x10
-
 #define ASC_PARAM_LST_LEN_ERR 0x1a      /* only asq=00 defined */
 
 #define ASC_INVALID_TOKOP 0x23
@@ -446,10 +444,9 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
 
 /* Read using the pass-through. No retries or remedial work here.
  * 0 -> successful, SG_LIB_SYNTAX_ERROR -> unable to build cdb,
- * SG_LIB_CAT_UNIT_ATTENTION -> try again,
  * SG_LIB_CAT_MEDIUM_HARD_WITH_INFO -> 'io_addrp' written to,
  * SG_LIB_CAT_MEDIUM_HARD -> no info field,
- * SG_LIB_CAT_NOT_READY, SG_LIB_CAT_ABORTED_COMMAND,
+ * plus various other SG_LIB_CAT_* positive values,
  * -2 -> ENOMEM
  * -1 other errors */
 static int
@@ -507,21 +504,19 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
         switch (sense_cat) {
         case SG_LIB_CAT_NOT_READY:
         case SG_LIB_CAT_INVALID_OP:
+        case SG_LIB_CAT_RES_CONFLICT:
+        case SG_LIB_CAT_DATA_PROTECT:
+        case SG_LIB_CAT_ABORTED_COMMAND:
             ++op->unrecovered_errs;
             break;
         case SG_LIB_CAT_UNIT_ATTENTION:
             break;
-        case SG_LIB_CAT_ABORTED_COMMAND:
-            if (sg_scsi_normalize_sense(sense_b, slen, &ssh) &&
-                (ASC_PROTECTION_INFO_BAD == ssh.asc)) {
-                /* Protection problem, so no retry */
-                ++op->unrecovered_errs;
-                info_valid = sg_get_sense_info_fld(sense_b, slen, io_addrp);
-                if (info_valid)
-                    ret = SG_LIB_CAT_PROTECTION_WITH_INFO;
-                else
-                    ret = SG_LIB_CAT_PROTECTION;
-            }
+        case SG_LIB_CAT_PROTECTION:
+            /* no retry, might have INFO field */
+            ++op->unrecovered_errs;
+            info_valid = sg_get_sense_info_fld(sense_b, slen, io_addrp);
+            if (info_valid)
+                ret = SG_LIB_CAT_PROTECTION_WITH_INFO;
             break;
         case SG_LIB_CAT_RECOVERED:
             ++op->recovered_errs;
@@ -680,6 +675,9 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
             if (0 == retries_tmp)
                 errblk_put_range(lba, blks, op);
             /* fall through */
+        case SG_LIB_CAT_RES_CONFLICT:
+        case SG_LIB_CAT_DATA_PROTECT:
+        case SG_LIB_CAT_PROTECTION:
         default:
             if (retries_tmp > 0) {
                 pr2serr(">>> retrying pt read: starting lba=%" PRId64 " [0x%"
@@ -826,7 +824,6 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
     uint64_t io_addr = 0;
     struct sg_pt_base * ptvp = op->odip->ptvp;
     const struct flags_t * fp = op->oflagp;
-    struct sg_scsi_sense_hdr ssh;
 
     if (pt_build_scsi_cdb(wrCmd, fp->cdbsz, blocks, to_block, 1, fp,
                           op->wrprotect)) {
@@ -875,19 +872,15 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
                         PRIx64 ", num=%d\n", to_block, blocks);
             break;
         case SG_LIB_CAT_ABORTED_COMMAND:
-            if (sg_scsi_normalize_sense(sense_b, slen, &ssh) &&
-                (ASC_PROTECTION_INFO_BAD == ssh.asc)) {
-                /* Protection problem, so no retry */
-                ++op->wr_unrecovered_errs;
-                ret = SG_LIB_CAT_PROTECTION;
-            }
-            break;
         case SG_LIB_CAT_UNIT_ATTENTION:
             break;
         case SG_LIB_CAT_NOT_READY:
         case SG_LIB_CAT_ILLEGAL_REQ:
         case SG_LIB_CAT_INVALID_OP:
         case SG_LIB_CAT_SENSE:
+        case SG_LIB_CAT_RES_CONFLICT:
+        case SG_LIB_CAT_DATA_PROTECT:
+        case SG_LIB_CAT_PROTECTION:
             ++op->wr_unrecovered_errs;
             break;
         case SG_LIB_CAT_MEDIUM_HARD:
@@ -1018,13 +1011,6 @@ pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
         ;
     else if (-2 == ret) {
         switch (sense_cat) {
-        case SG_LIB_CAT_NOT_READY:
-        case SG_LIB_CAT_UNIT_ATTENTION:
-        case SG_LIB_CAT_INVALID_OP:
-        case SG_LIB_CAT_ILLEGAL_REQ:
-        case SG_LIB_CAT_ABORTED_COMMAND:
-            ret = sense_cat;
-            break;
         case SG_LIB_CAT_RECOVERED:
         case SG_LIB_CAT_NO_SENSE:
             ret = 0;
@@ -1043,7 +1029,7 @@ pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
             ret = sense_cat;
             break;
         default:
-            ret = -1;
+            ret = sense_cat;
             break;
         }
     } else
@@ -1079,12 +1065,6 @@ pt_tpc_process_res(int cp_ret, int sense_cat, const unsigned char * sense_b,
 
         sb_ok = sg_scsi_normalize_sense(sense_b, sense_len, &ssh);
         switch (sense_cat) {
-        case SG_LIB_CAT_NOT_READY:
-        case SG_LIB_CAT_INVALID_OP:
-        case SG_LIB_CAT_UNIT_ATTENTION:
-        case SG_LIB_CAT_ABORTED_COMMAND:
-            ret = sense_cat;
-            break;
         case SG_LIB_CAT_ILLEGAL_REQ:
             if (sb_ok) {
                 if ((ASC_GENERAL_0 == ssh.asc) &&
@@ -1120,23 +1100,12 @@ pt_tpc_process_res(int cp_ret, int sense_cat, const unsigned char * sense_b,
             } else
                 ret = sense_cat;
             break;
-        case SG_LIB_CAT_SENSE:
-            if (sb_ok) {
-                if (SPC_SK_DATA_PROTECT == ssh.sense_key)
-                    ret = DDPT_CAT_SK_DATA_PROTECT;
-                else if (SPC_SK_COPY_ABORTED == ssh.sense_key)
-                    ret = DDPT_CAT_SK_COPY_ABORTED;
-                else
-                    ret = sense_cat;
-            } else
-                ret = -1;
-            break;
         case SG_LIB_CAT_RECOVERED:
         case SG_LIB_CAT_NO_SENSE:
             ret = 0;
             break;
         default:
-            ret = -1;
+            ret = sense_cat;
             break;
         }
     } else
@@ -1242,7 +1211,7 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
     if ((-1 == ret) &&
         (SCSI_PT_RESULT_STATUS == get_scsi_pt_result_category(ptvp)) &&
         (SAM_STAT_RESERVATION_CONFLICT == get_scsi_pt_status_response(ptvp)))
-        ret = DDPT_CAT_RESERVATION_CONFLICT;
+        ret = SG_LIB_CAT_RES_CONFLICT;
     else
         ret = pt_tpc_process_res(ret, sense_cat, sense_b,
                                  get_scsi_pt_sense_len(ptvp));
@@ -1302,7 +1271,7 @@ pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
     if ((-1 == ret) &&
         (SCSI_PT_RESULT_STATUS == get_scsi_pt_result_category(ptvp)) &&
         (SAM_STAT_RESERVATION_CONFLICT == get_scsi_pt_status_response(ptvp)))
-        ret = DDPT_CAT_RESERVATION_CONFLICT;
+        ret = SG_LIB_CAT_RES_CONFLICT;
     else
         ret = pt_tpc_process_res(ret, sense_cat, sense_b,
                                  get_scsi_pt_sense_len(ptvp));
