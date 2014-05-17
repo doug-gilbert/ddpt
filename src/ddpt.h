@@ -167,7 +167,6 @@ extern "C" {
 #define SG_LIB_CAT_PROTECTION_WITH_INFO 41
 #endif
 
-#define DDPT_CAT_RESERVATION_CONFLICT 30
 #define DDPT_CAT_PARAM_LST_LEN_ERR 50
 #define DDPT_CAT_INVALID_FLD_IN_PARAM 51
 #define DDPT_CAT_TOO_MANY_SEGS_IN_PARAM 52
@@ -178,8 +177,6 @@ extern "C" {
 #define DDPT_CAT_INSUFF_RES_CREATE_RODTOK 57
 #define DDPT_CAT_CMDS_CLEARED_BY_DEV_SVR 58
 #define DDPT_CAT_TOKOP_BASE 70        /* assume less than 20 above this */
-#define DDPT_CAT_SK_DATA_PROTECT 7    /* same as sense key code */
-#define DDPT_CAT_SK_COPY_ABORTED 10   /* same as sense key code */
 
 #define XCOPY_TO_SRC "XCOPY_TO_SRC"
 #define XCOPY_TO_DST "XCOPY_TO_DST"

@@ -1619,13 +1619,13 @@ print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr)
     case SG_LIB_CAT_UNIT_ATTENTION:   /* 6 */
         print_p("%sunit attention\n", b);
         break;
-    case DDPT_CAT_SK_DATA_PROTECT:   /* 7 */
+    case SG_LIB_CAT_DATA_PROTECT:   /* 7 */
         print_p("%sdata protect\n", b);
         break;
     case SG_LIB_CAT_INVALID_OP:   /* 9 */
         print_p("%sinvalid opcode\n", b);
         break;
-    case DDPT_CAT_SK_COPY_ABORTED:   /* 10 */
+    case SG_LIB_CAT_COPY_ABORTED:   /* 10 */
         print_p("%scopy aborted\n", b);
         break;
     case SG_LIB_CAT_ABORTED_COMMAND:   /* 11 */
@@ -1643,11 +1643,11 @@ print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr)
     case SG_LIB_CAT_RECOVERED:   /* 21 */
         print_p("%srecovered error (possible future errors)\n", b);
         break;
-    case DDPT_CAT_RESERVATION_CONFLICT:   /* 30 */
-        print_p("%sSCSI command timeout\n", b);
+    case SG_LIB_CAT_RES_CONFLICT:   /* 24 */
+        print_p("%sSCSI status: reservation conflict\n", b);
         break;
     case SG_LIB_CAT_TIMEOUT:   /* 33 */
-        print_p("%sSCSI status: reservation conflict\n", b);
+        print_p("%sSCSI command timeout\n", b);
         break;
     case SG_LIB_CAT_PROTECTION:   /* 40 */
         print_p("%sprotection error\n", b);
