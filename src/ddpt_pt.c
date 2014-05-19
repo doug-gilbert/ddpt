@@ -846,6 +846,9 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
     set_scsi_pt_cdb(ptvp, wrCmd, fp->cdbsz);
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_out(ptvp, buff, bs * blocks);
+#ifdef SCSI_PT_FLAGS_FUNCTION
+    set_scsi_pt_flags(ptvp, SCSI_PT_FLAGS_QUEUE_AT_TAIL);
+#endif
     vt = (op->verbose ? (op->verbose - 1) : 0);
     while (((res = do_scsi_pt(ptvp, sg_fd, DEF_RW_TIMEOUT, vt)) < 0) &&
            (-EINTR == res))
