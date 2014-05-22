@@ -74,6 +74,7 @@
 #define DDPT_WRITE10_OC 0x2a
 #define DDPT_WRITE12_OC 0xaa
 #define DDPT_WRITE16_OC 0x8a
+#define DDPT_WRITE_ATOMIC16_OC 0x9c     /* sbc4r02 */
 #define DDPT_VARIABLE_LEN_OC 0x7f
 #define DDPT_READ32_SA 0x9
 #define DDPT_WRITE32_SA 0xb
@@ -326,6 +327,10 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
         pr2serr("cdb_sz too small\n");
         return 1;
     }
+    if (write_true && fp->atomic && (16 != cdb_sz)) {
+        pr2serr("atomic flag only for WRITE_ATOMIC(16)\n");
+        return 1;
+    }
     if (cdb_sz > 6) {
         if (fp->dpo)
             options_byte |= 0x10;
@@ -397,8 +402,11 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
         break;
     case 16:
         sz_ind = 3;
-        cdbp[0] = (unsigned char)(write_true ? wr_opcode[sz_ind] :
-                                               rd_opcode[sz_ind]);
+        if (fp->atomic && write_true)
+            cdbp[0] = (unsigned char)DDPT_WRITE_ATOMIC16_OC;
+        else
+            cdbp[0] = (unsigned char)(write_true ? wr_opcode[sz_ind] :
+                                                   rd_opcode[sz_ind]);
         cdbp[1] = (unsigned char)options_byte;
         cdbp[2] = (unsigned char)((start_block >> 56) & 0xff);
         cdbp[3] = (unsigned char)((start_block >> 48) & 0xff);
@@ -832,7 +840,8 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
         return SG_LIB_SYNTAX_ERROR;
     }
     if (op->verbose > 2) {
-        pr2serr("    WRITE cdb: ");
+        pr2serr("    WRITE %scdb: ",
+                ((DDPT_WRITE_ATOMIC16_OC == wrCmd[0]) ? "ATOMIC(16) " : ""));
         for (k = 0; k < fp->cdbsz; ++k)
             pr2serr("%02x ", wrCmd[k]);
         pr2serr("\n");
