@@ -198,6 +198,7 @@ secondary_help:
     pr2serr("FLAGS: (arguments to oflag= and oflag=; may be comma "
             "separated)\n"
             "  append (o)     append (part of) IFILE to end of OFILE\n"
+            "  atomic (o,pt)  use WRITE ATOMIC(16) on OFILE\n"
             "  block (pt)     pt opens are non blocking by default\n"
             "  cat (xcopy)    set CAT bit in segment descriptor header\n"
             "  coe            continue on (read) error\n"
@@ -450,6 +451,8 @@ flags_process(const char * arg, struct flags_t * fp)
             *np++ = '\0';
         if (0 == strcmp(cp, "append"))
             ++fp->append;
+        else if (0 == strcmp(cp, "atomic"))
+            ++fp->atomic;
         else if (0 == strcmp(cp, "block"))
             ++fp->block;
         else if (0 == strcmp(cp, "cat"))
@@ -569,6 +572,8 @@ cl_sanity_defaults(struct opts_t * op)
     char * csp;
     char * cdp;
     char b[80];
+    struct flags_t * ifp = op->iflagp;
+    struct flags_t * ofp = op->oflagp;
 
     cp = getenv(DDPT_DEF_BS);
     if (cp) {
@@ -617,7 +622,7 @@ cl_sanity_defaults(struct opts_t * op)
         pr2serr("neither skip nor seek can be negative\n");
         return SG_LIB_SYNTAX_ERROR;
     }
-    if ((op->oflagp->append > 0) && (op->seek > 0)) {
+    if ((ofp->append > 0) && (op->seek > 0)) {
         pr2serr("Can't use both append and seek switches\n");
         return SG_LIB_SYNTAX_ERROR;
     }
@@ -625,40 +630,40 @@ cl_sanity_defaults(struct opts_t * op)
         pr2serr("internal BPT value 0, cannot continue\n");
         return SG_LIB_SYNTAX_ERROR;
     }
-    if (op->iflagp->append)
+    if (ifp->append)
         pr2serr("append flag ignored on input\n");
-    if (op->iflagp->ignoreew)
+    if (ifp->ignoreew)
         pr2serr("ignoreew flag ignored on input\n");
-    if (op->iflagp->nofm)
+    if (ifp->nofm)
         pr2serr("nofm flag ignored on input\n");
-    if (op->iflagp->prealloc)
+    if (ifp->prealloc)
         pr2serr("pre-alloc flag ignored on input\n");
-    if (op->iflagp->sparing)
+    if (ifp->sparing)
         pr2serr("sparing flag ignored on input\n");
-    if (op->iflagp->ssync)
+    if (ifp->ssync)
         pr2serr("ssync flag ignored on input\n");
-    if (op->oflagp->trunc) {
-        if (op->oflagp->resume) {
-            op->oflagp->trunc = 0;
+    if (ofp->trunc) {
+        if (ofp->resume) {
+            ofp->trunc = 0;
             if (op->verbose)
                 pr2serr("trunc ignored due to resume flag, "
                         "otherwise open_of() truncates too early\n");
-        } else if (op->oflagp->append) {
-            op->oflagp->trunc = 0;
+        } else if (ofp->append) {
+            ofp->trunc = 0;
             pr2serr("trunc ignored due to append flag\n");
-        } else if (op->oflagp->sparing) {
+        } else if (ofp->sparing) {
             pr2serr("trunc flag conflicts with sparing\n");
             return SG_LIB_SYNTAX_ERROR;
         }
     }
-    if (op->iflagp->self || op->oflagp->self) {
-        if (! op->oflagp->self)
-            ++op->oflagp->self;
-        if (op->iflagp->wsame16 || op->oflagp->wsame16) {
-            if (! op->oflagp->wsame16)
-                ++op->oflagp->wsame16;
-            if (! op->oflagp->nowrite)
-                ++op->oflagp->nowrite;
+    if (ifp->self || ofp->self) {
+        if (! ofp->self)
+            ++ofp->self;
+        if (ifp->wsame16 || ofp->wsame16) {
+            if (! ofp->wsame16)
+                ++ofp->wsame16;
+            if (! ofp->nowrite)
+                ++ofp->nowrite;
         }
         if ('\0' == op->odip->fn[0])
             strcpy(op->odip->fn, op->idip->fn);
@@ -680,39 +685,39 @@ cl_sanity_defaults(struct opts_t * op)
                 pr2serr("self: set seek=%" PRId64 "\n", op->seek);
         }
     }
-    if (op->oflagp->wsame16)
-        op->oflagp->sparse += 2;
-    if (op->oflagp->strunc && (0 == op->oflagp->sparse))
-        ++op->oflagp->sparse;
+    if (ofp->wsame16)
+        ofp->sparse += 2;
+    if (ofp->strunc && (0 == ofp->sparse))
+        ++ofp->sparse;
 
-    if (op->iflagp->xcopy || op->oflagp->xcopy)
+    if (ifp->xcopy || ofp->xcopy)
         ++op->has_xcopy;
     if (op->has_xcopy) {
-        if ((!! op->iflagp->xcopy) == (!! op->oflagp->xcopy)) {
+        if ((!! ifp->xcopy) == (!! ofp->xcopy)) {
             csp = getenv(XCOPY_TO_SRC);
             cdp = getenv(XCOPY_TO_DST);
             if ((!! csp) == (!! cdp)) {
 #if DEF_XCOPY_SRC0_DST1 == 0
-                if (! op->iflagp->xcopy)
-                    op->iflagp->xcopy = 1;
-                op->oflagp->xcopy = 0;
+                if (! ifp->xcopy)
+                    ifp->xcopy = 1;
+                ofp->xcopy = 0;
 #else
-                op->iflagp->xcopy = 0;
-                if (! op->oflagp->xcopy)
-                    op->oflagp->xcopy = 1;
+                ifp->xcopy = 0;
+                if (! ofp->xcopy)
+                    ofp->xcopy = 1;
 #endif
                 if (op->verbose > 1)
                     pr2serr("Default dictates which device to send xcopy "
                             "command to:\n");
             } else {
                 if (csp) {
-                    if (! op->iflagp->xcopy)
-                        op->iflagp->xcopy = 1;
-                    op->oflagp->xcopy = 0;
+                    if (! ifp->xcopy)
+                        ifp->xcopy = 1;
+                    ofp->xcopy = 0;
                 } else {
-                    op->iflagp->xcopy = 0;
-                    if (! op->oflagp->xcopy)
-                        op->oflagp->xcopy = 1;
+                    ifp->xcopy = 0;
+                    if (! ofp->xcopy)
+                        ofp->xcopy = 1;
                 }
                 if (op->verbose > 1)
                     pr2serr("%s dictates which device to send xcopy "
@@ -724,30 +729,30 @@ cl_sanity_defaults(struct opts_t * op)
             if (op->verbose > 1)
                 pr2serr("  ");
             pr2serr("Will send xcopy command to %s [%s=%s]\n",
-                    (op->iflagp->xcopy ? "src" : "dst"),
-                    (op->iflagp->xcopy ? "if" : "of"),
-                    (op->iflagp->xcopy ? op->idip->fn : op->odip->fn));
+                    (ifp->xcopy ? "src" : "dst"),
+                    (ifp->xcopy ? "if" : "of"),
+                    (ifp->xcopy ? op->idip->fn : op->odip->fn));
         }
-        op->xc_dc = (op->iflagp->dc || op->oflagp->dc);
-        op->xc_cat = (op->iflagp->cat || op->oflagp->cat);
-        if (op->iflagp->xcopy) {
-            if (! op->iflagp->pt) {
-                op->iflagp->pt = 1;
+        op->xc_dc = (ifp->dc || ofp->dc);
+        op->xc_cat = (ifp->cat || ofp->cat);
+        if (ifp->xcopy) {
+            if (! ifp->pt) {
+                ifp->pt = 1;
                 if (op->verbose > 3)
                     pr2serr("Setting pt (pass-through) on IFILE for "
                             "xcopy\n");
 
             }
         } else {
-            if (! op->oflagp->pt) {
-                op->oflagp->pt = 1;
+            if (! ofp->pt) {
+                ofp->pt = 1;
                 if (op->verbose > 3)
                     pr2serr("Setting pt (pass-through) on OFILE for "
                             "xcopy\n");
             }
         }
     }
-    if (op->iflagp->odx || op->iflagp->odx || op->rtf[0] ||
+    if (ifp->odx || ofp->odx || op->rtf[0] ||
         op->rod_type_given)
         op->has_odx = op->has_odx ? op->has_odx : 1;
     if (op->has_odx) {
@@ -798,28 +803,30 @@ cl_sanity_defaults(struct opts_t * op)
     }
     if (op->verbose) {      /* report flags used but not supported */
 #ifndef SG_LIB_LINUX
-        if (op->iflagp->flock || op->oflagp->flock)
+        if (ifp->flock || ofp->flock)
             pr2serr("warning: 'flock' flag not supported on this "
                     "platform\n");
 #endif
 
 #ifndef HAVE_POSIX_FADVISE
-        if (op->iflagp->nocache || op->oflagp->nocache)
+        if (ifp->nocache || ofp->nocache)
             pr2serr("warning: 'nocache' flag not supported on this "
                     "platform\n");
 #endif
 
 #if O_SYNC == 0
-        if (op->iflagp->sync || op->oflagp->sync)
+        if (ifp->sync || ofp->sync)
             pr2serr("warning: 'sync' flag (O_SYNC) not supported on "
                     "this platform\n");
 #endif
 #if O_DIRECT == 0
-        if (op->iflagp->direct || op->oflagp->direct)
+        if (ifp->direct || ofp->direct)
             pr2serr("warning: 'direct' flag (O_DIRECT) not supported "
                     "on this platform\n");
 #endif
     }
+    if (ofp->atomic)
+        ofp->cdbsz = 16;        /* only WRITE ATOMIC(16) supported for now */
     return 0;
 }
 
@@ -835,6 +842,8 @@ cl_process(struct opts_t * op, int argc, char * argv[],
     char * cp;
     int k, n, keylen, res;
     int64_t i64;
+    struct flags_t * ifp = op->iflagp;
+    struct flags_t * ofp = op->oflagp;
 
     for (k = 1; k < argc; ++k) {
         if (argv[k]) {
@@ -890,12 +899,12 @@ cl_process(struct opts_t * op, int argc, char * argv[],
         } else if (0 == strcmp(key, "cbs"))
             pr2serr("the cbs= option is ignored\n");
         else if (0 == strcmp(key, "cdbsz")) {
-            op->iflagp->cdbsz = sg_get_num(buf);
-            op->oflagp->cdbsz = op->iflagp->cdbsz;
+            ifp->cdbsz = sg_get_num(buf);
+            ofp->cdbsz = ifp->cdbsz;
             op->cdbsz_given = 1;
         } else if (0 == strcmp(key, "coe")) {
-            op->iflagp->coe = sg_get_num(buf);
-            op->oflagp->coe = op->iflagp->coe;
+            ifp->coe = sg_get_num(buf);
+            ofp->coe = ifp->coe;
         } else if (0 == strcmp(key, "coe_limit")) {
             op->coe_limit = sg_get_num(buf);
             if (-1 == op->coe_limit) {
@@ -903,7 +912,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strcmp(key, "conv")) {
-            if (conv_process(buf, op->iflagp, op->oflagp)) {
+            if (conv_process(buf, ifp, ofp)) {
                 pr2serr("bad argument to 'conv='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
@@ -972,7 +981,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
             } else
                 strncpy(op->idip->fn, buf, INOUTF_SZ - 1);
         } else if (0 == strcmp(key, "iflag")) {
-            if (flags_process(buf, op->iflagp)) {
+            if (flags_process(buf, ifp)) {
                 pr2serr("bad argument to 'iflag='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
@@ -1028,7 +1037,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
             } else
                 strncpy(op->o2dip->fn, buf, INOUTF_SZ - 1);
         } else if (0 == strcmp(key, "oflag")) {
-            if (flags_process(buf, op->oflagp)) {
+            if (flags_process(buf, ofp)) {
                 pr2serr("bad argument to 'oflag='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
@@ -1062,9 +1071,9 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 op->wrprotect = n;
             }
         } else if (0 == strcmp(key, "retries")) {
-            op->iflagp->retries = sg_get_num(buf);
-            op->oflagp->retries = op->iflagp->retries;
-            if (-1 == op->iflagp->retries) {
+            ifp->retries = sg_get_num(buf);
+            ofp->retries = ifp->retries;
+            if (-1 == ifp->retries) {
                 pr2serr("bad argument to 'retries='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }

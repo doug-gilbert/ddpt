@@ -507,6 +507,12 @@ file and this utility wants to write to \fIRTF\fR then new ROD Tokens are
 appended to \fIRTF\fR. The default action is to truncate \fIRTF\fR before
 new ROD Tokens are written to it.
 .TP
+atomic [o] [pt]
+this flag changes the pass\-through SCSI WRITE command to the SCSI WRITE
+ATOMIC(16) command on \fIOFILE\fR (and the \fIcdbsz=\fR{6|10|12|16|32}
+option is ignored for \fIOFILE\fR). If this flag is applied to \fIIFILE\fR
+or to a non pass\-through file then it is ignored.
+.TP
 block [io] [pt]
 pass\-through file opens are non\-blocking by default and may report the
 pt device is busy. Use this flag to open blocking so utility may wait until
@@ -1298,10 +1304,19 @@ device reset) potentially before the current SCSI command was sent. The
 requested command has not been executed by the device. Note that unit
 attention conditions are usually only reported once by a device.
 .TP
+.B 7
+the device reports a "data protect" sense key. This implies some
+mechanism has blocked writes (or possibly all access to the media).
+.TP
 .B 9
 the device reports an illegal request with an additional sense code
 of "invalid operation code" which means that it doesn't support the
 requested command.
+.TP
+.B 10
+the device reports a "copy aborted". This implies another command or
+device problem has stopped and copy operation. The EXTENDED COPY family of
+commands (including WRITE USING TOKEN) may return this sense key.
 .TP
 .B 11
 the device reports an aborted command. In some cases aborted commands can
@@ -1322,9 +1337,23 @@ the device reports a "recovered error". The requested command was successful.
 Most likely a utility will report a recovered error to stderr and continue,
 probably leaving the utility with an exit status of 0 .
 .TP
+.B 24
+the device reports a SCSI status of "reservation conflict". This
+means access to the device with the current command has been blocked
+because another machine (HBA or SCSI "initiator") holds a reservation on
+this device. On modern SCSI systems this is related to the use of
+the PERSISTENT RESERVATION family of commands.
+.TP
 .B 33
 the command sent to device has timed out. This occurs in Linux only; in
 other ports a command timeout will appear as a transport (or OS) error.
+.TP
+.B 40
+the command sent to a device has received an "aborted command" sense
+key with an additional sense code of 0x10. This group is related to
+problems with protection information (PI or DIF). For example this error
+may occur when reading a block on a drive that has never been written (or
+is unmapped) if that drive was formatted with type 1, 2 or 3 protection.
 .TP
 .B 51
 a command received 'illegal field in parameter list'. This may occur with an

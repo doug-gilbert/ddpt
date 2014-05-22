@@ -230,6 +230,7 @@ struct block_rodtok_vpd {
  * General or for disk unless otherwise marked. */
 struct flags_t {
     int append;
+    int atomic;
     int block;          /* only for pt, non blocking default */
     int cat;            /* xcopy(lid1) related */
     int cdbsz;
