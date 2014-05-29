@@ -832,6 +832,7 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
     uint64_t io_addr = 0;
     struct sg_pt_base * ptvp = op->odip->ptvp;
     const struct flags_t * fp = op->oflagp;
+    const char * desc;
 
     if (pt_build_scsi_cdb(wrCmd, fp->cdbsz, blocks, to_block, 1, fp,
                           op->wrprotect)) {
@@ -839,9 +840,10 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
                 to_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
     }
+    desc = (DDPT_WRITE_ATOMIC16_OC == wrCmd[0]) ? "WRITE ATOMIC(16)" :
+                                                  "WRITE";
     if (op->verbose > 2) {
-        pr2serr("    WRITE %scdb: ",
-                ((DDPT_WRITE_ATOMIC16_OC == wrCmd[0]) ? "ATOMIC(16) " : ""));
+        pr2serr("    %s cdb: ", desc);
         for (k = 0; k < fp->cdbsz; ++k)
             pr2serr("%02x ", wrCmd[k]);
         pr2serr("\n");
@@ -864,7 +866,7 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
         ++op->interrupted_retries; /* resubmit if interrupted system call */
 
     vt = ((op->verbose > 1) ? (op->verbose - 1) : op->verbose);
-    ret = sg_cmds_process_resp(ptvp, "WRITE", res, bs * blocks, sense_b,
+    ret = sg_cmds_process_resp(ptvp, desc, res, bs * blocks, sense_b,
                                0 /* noisy */, vt, &sense_cat);
     if (-1 == ret)
         ;

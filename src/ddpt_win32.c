@@ -230,6 +230,10 @@ win32_adjust_fns_pt(struct opts_t * op)
             b[j] = toupper((int)cp[j]);
         b[len] = '\0';
         if (is_win_blk_dev(b)) {
+            if (0 == k)
+                ++op->iflagp->pt;
+            else
+                ++op->oflagp->pt;
             if (0 == strncmp(b, "PD", 2)) {
                 strcpy(cp, "\\\\.\\PHYSICALDRIVE");
                 if (b[2])
