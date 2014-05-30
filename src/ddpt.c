@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.95 20140529 [svn: r285]";
+static const char * ddpt_version_str = "0.95 20140530 [svn: r286]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -400,6 +400,7 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
                 }
             }
         }
+#ifndef SG_LIB_WIN32
         if ((FT_BLOCK & in_type) && (0 == op->iflagp->force) &&
             (0 == get_blkdev_capacity(op, DDPT_ARG_IN, &num_blks,
                                       &blk_sz))) {
@@ -412,6 +413,7 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
                 return -1;
             }
         }
+#endif
     } else if ((op->dd_count > 0) && (0 == op->oflagp->resume))
         return 0;
     else if (FT_BLOCK & in_type) {
@@ -504,6 +506,7 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
                 }
             }
         }
+#ifndef SG_LIB_WIN32
         if ((FT_BLOCK & out_type) && (0 == op->oflagp->force) &&
              (0 == get_blkdev_capacity(op, DDPT_ARG_OUT, &num_blks,
                                        &blk_sz))) {
@@ -516,6 +519,7 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
                 return -1;
             }
         }
+#endif
     } else if ((op->dd_count > 0) && (0 == op->oflagp->resume))
         return 0;
     if (FT_BLOCK & out_type) {
