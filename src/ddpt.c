@@ -349,8 +349,11 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
 {
     int res;
     struct stat st;
+    int in_blk_sz, in_type;
+#ifndef SG_LIB_WIN32
     int64_t num_blks, t;
-    int in_blk_sz, blk_sz, in_type;
+    int blk_sz;
+#endif
     const char * ifn = op->idip->fn;
 
     *in_num_blksp = -1;
@@ -455,8 +458,11 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
 {
     int res;
     struct stat st;
+    int out_blk_sz, out_type;
+#ifndef SG_LIB_WIN32
     int64_t num_blks, t;
-    int out_blk_sz, blk_sz, out_type;
+    int blk_sz;
+#endif
     const char * ofn = op->odip->fn;
 
     *out_num_blksp = -1;

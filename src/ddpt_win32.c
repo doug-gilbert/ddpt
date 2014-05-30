@@ -121,10 +121,10 @@ win32_errmsg(int errnum, char * b, int blen)
                       0,
                       (LPTSTR)&err_txt,
                       0,
-                      NULL) == 0)
+                      NULL) == 0) {
         snprintf(b, blen, "FormatMessage(errnum=%d) failed", errnum);
         return b;
-    else {
+    } else {
         len = strlen(err_txt);
         if (len) {
             if ('\n' == err_txt[len - 1]) {
