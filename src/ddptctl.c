@@ -65,7 +65,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.95 20140603 [svn: r288]";
+const char * ddptctl_version_str = "0.95 20140606 [svn: r289]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
