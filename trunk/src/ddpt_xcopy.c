@@ -305,8 +305,8 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
     len = ((rcBuff[0] << 24) | (rcBuff[1] << 16) | (rcBuff[2] << 8) |
            rcBuff[3]) + 4;
     if (len > rcBuffLen) {
-        pr2serr("  <<report too long for internal buffer, output "
-                "truncated\n");
+        pr2serr("  <<report len %d > %d too long for internal buffer, output "
+                "truncated\n", len, rcBuffLen);
     }
     if (op->verbose > 2) {
         pr2serr("\nOutput %s response in hex:\n", rec_copy_op_params_str);
