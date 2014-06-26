@@ -2,13 +2,13 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.95 [20140608] [svn: r289]
+Changelog for ddpt-0.95 [20140625] [svn: r290]
   - show percent completed
   - add DDPT_DEF_BS environment variable
   - ddptctl: add --hex and --readonly options
   - add atomic flag for WRITE ATOMIC(16) command on OFILE
   - win32: ddpt --wscan fixes
-  - point svn:externals to rev 587 of sg3_utils
+  - point svn:externals to rev 589 of sg3_utils
   - upgrade automake to version 1.14.1
 
 Changelog for ddpt-0.94 [20140407] [svn: r277]
