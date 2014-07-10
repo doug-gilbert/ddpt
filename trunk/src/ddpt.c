@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.95 20140625 [svn: r290]";
+static const char * ddpt_version_str = "0.95 20140709 [svn: r291]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -190,8 +190,8 @@ open_if(struct opts_t * op)
 
                 rt = posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
                 if (rt)
-                    pr2serr("open_if: posix_fadvise(SEQUENTIAL), err=%d\n",
-                            rt);
+                    pr2serr("%s: posix_fadvise(SEQUENTIAL), err=%d\n",
+                            __func__, rt);
             }
 #endif
         }
@@ -976,8 +976,8 @@ cp_read_fifo(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
 
     if (offset != csp->if_filepos) {
         if (op->verbose > 2)
-            pr2serr("fifo: _not_ moving IFILE filepos to %" PRId64 "\n",
-                    (int64_t)offset);
+            pr2serr("%s: _not_ moving IFILE filepos to %" PRId64 "\n",
+                    __func__, (int64_t)offset);
         csp->if_filepos = offset;
     }
 
@@ -988,10 +988,10 @@ cp_read_fifo(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
 
         err = errno;
         if (op->verbose > 2)
-            pr2serr("read(fifo): requested bytes=%d, res=%d\n",
-                    numbytes, res);
+            pr2serr("%s: requested bytes=%d, res=%d\n", __func__, numbytes,
+                    res);
         if (res < 0) {
-            pr2serr("read(fifo), skip=%" PRId64 " : %s\n", op->skip,
+            pr2serr("%s: skip=%" PRId64 " : %s\n", __func__, op->skip,
                     safe_strerror(err));
             return SG_LIB_CAT_OTHER;
         } else if (0 == res) {
@@ -1179,15 +1179,15 @@ cp_write_pt(struct opts_t * op, struct cp_state_t * csp, int seek_delta,
             if (res > numbytes)
                 memset(ncbp + numbytes, 0, res - numbytes);
             if (op->verbose > 1)
-                pr2serr("pt_write: padding probable final write at "
-                        "seek=%" PRId64 "\n", aseek);
+                pr2serr("%s: padding probable final write at seek=%" PRId64
+                        "\n", __func__, aseek);
         } else
             pr2serr(">>> ignore partial write of %d bytes to pt "
                     "(unless oflag=pad given)\n", csp->partial_write_bytes);
     }
     res = pt_write(op, bp, blks, aseek);
     if (0 != res) {
-        pr2serr("pt_write failed,%s seek=%" PRId64 "\n",
+        pr2serr("%s: failed,%s seek=%" PRId64 "\n", __func__,
                 ((-2 == res) ? " try reducing bpt," : ""), aseek);
         return res;
     } else
@@ -1463,7 +1463,7 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
 static void
 cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
 {
-    int64_t offset = op->seek * op->obs;
+    int64_t offset = (op->seek * op->obs) + csp->partial_write_bytes;
     struct stat a_st;
 
     if (offset > csp->of_filepos) {
@@ -1474,18 +1474,18 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
             return;
         }
         if (fstat(op->odip->fd, &a_st) < 0) {
-            pr2serr("cp_sparse_cleanup: fstat: %s\n", safe_strerror(errno));
+            pr2serr("%s: fstat: %s\n", __func__, safe_strerror(errno));
             return;
         }
         if (offset == a_st.st_size) {
             if (op->verbose > 1)
-                pr2serr("cp_sparse_cleanup: OFILE already correct length\n");
+                pr2serr("%s: OFILE already correct length\n", __func__);
             return;
         }
         if (offset < a_st.st_size) {
             if (op->verbose > 1)
-                pr2serr("cp_sparse_cleanup: OFILE longer than required, do "
-                        "nothing\n");
+                pr2serr("%s: OFILE longer than required, do nothing\n",
+                        __func__);
             return;
         }
         if (op->oflagp->strunc) {
@@ -1508,7 +1508,8 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
             else
                 --op->out_sparse;
         }
-    }
+    } else if (op->verbose > 1)
+        pr2serr("%s: bypass as output_offset <= output_filepos\n", __func__);
 }
 
 /* Main copy loop's finer grain comparison and possible write (to OFILE)
