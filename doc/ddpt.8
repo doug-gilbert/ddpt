@@ -1,4 +1,4 @@
-.TH DDPT "8" "June 2014" "ddpt\-0.95" DDPT
+.TH DDPT "8" "July 2014" "ddpt\-0.95" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -756,8 +756,9 @@ sent to \fIOFILE\fR at the end of the copy.
 .TP
 strunc [o] [reg]
 perform a sparse copy with a ftruncate system call to extend the length
-of the \fIOFILE\fR if required. See the sparse flag and the section on
-SPARSE WRITES below.
+of the \fIOFILE\fR if required. Sets the sparse flag internally if this
+has not been specified on the command line. See the sparse flag and the
+section on SPARSE WRITES below.
 .TP
 sync [io] [reg,blk]
 causes the O_SYNC flag to be added to the open of \fIIFILE\fR and/or
