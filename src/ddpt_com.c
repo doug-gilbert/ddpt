@@ -1208,9 +1208,20 @@ signals_process_delay(struct opts_t * op, int delay_type)
             /* Don't show next message if using oflag=pre-alloc and we didn't
              * use FALLOC_FL_KEEP_SIZE */
             if ((0 == op->reading_fifo) && (FT_REG & op->odip->d_type_hold)
-                 && (0 == op->oflagp->prealloc))
+                 && (0 == op->oflagp->prealloc)) {
+		if (op->oflagp->strunc) {
+		    int64_t osize = (op->seek * op->obs) +
+				    (op->dd_count * op->ibs);
+
+		    pr2serr(">> Did not perform: "
+			    "'truncate --size=%" PRId64 " %s'\n",
+			    osize, op->odip->fn);
+		    pr2serr(">> User should check and perform by hand if "
+			    "necessary\n");
+		}
                 pr2serr("To resume, invoke with same arguments plus "
                         "oflag=resume\n");
+	    }
             ; // >>>>>>>>>>>>> cleanup ();
         } else {
             pr2serr("Progress report:\n");
