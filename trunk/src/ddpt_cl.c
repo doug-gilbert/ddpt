@@ -211,6 +211,7 @@ secondary_help:
             "  excl           set O_EXCL flag in open() of IFILE and/or "
             "OFILE\n"
             "  fdatasync (o)  flushes data to OFILE at the end of copy\n"
+            "  ff (i)         input will be all 0xff bytes\n"
             "  flock          use advisory exclusive lock [flock()] on "
             "IFILE/OFILE\n"
             "  force          override inconsistent information that would "
@@ -292,6 +293,26 @@ tertiary_help:
             "if no other\n"
             "                 indication\n"
             "  XCOPY_TO_SRC   send XCOPY command to IFILE (source)\n");
+}
+
+
+// enum { kMaxArgs = 64 };
+// static char *argv[kMaxArgs];
+
+static int
+argcargv(char * cmd_line, char ** argv, int max_args)
+{
+    int argc = 0;
+    char * p2;
+
+    if ((p2 = strchr(cmd_line, '#')))
+        *p2 = '\0';     /* bad luck if in quotes */
+    p2 = strtok(cmd_line, " ");
+    while (p2 && (argc < max_args)) {
+            argv[argc++] = p2;
+        p2 = strtok(0, " ");
+    }
+    return argc;
 }
 
 /* Returns the number of times 'ch' is found in string 's' given the
@@ -455,6 +476,8 @@ flags_process(const char * arg, struct flags_t * fp)
             ++fp->atomic;
         else if (0 == strcmp(cp, "block"))
             ++fp->block;
+        else if (0 == strcmp(cp, "bytchk"))
+            ++fp->bytchk;
         else if (0 == strcmp(cp, "cat"))
             ++fp->cat;
         else if (0 == strcmp(cp, "coe"))
@@ -471,6 +494,8 @@ flags_process(const char * arg, struct flags_t * fp)
             ++fp->excl;
         else if (0 == strcmp(cp, "fdatasync"))
             ++fp->fdatasync;
+        else if (0 == strcmp(cp, "ff"))
+            ++fp->ff;
         else if (0 == strcmp(cp, "flock"))
             ++fp->flock;
         else if (0 == strcmp(cp, "force"))
@@ -530,6 +555,8 @@ flags_process(const char * arg, struct flags_t * fp)
             ++fp->wsame16;
         } else if (0 == strcmp(cp, "trunc"))
             ++fp->trunc;
+        else if (0 == strcmp(cp, "verify"))
+            ++fp->verify;
         else if (0 == strcmp(cp, "xcopy"))
             ++fp->xcopy;
         else {
@@ -827,20 +854,93 @@ cl_sanity_defaults(struct opts_t * op)
     }
     if (ofp->atomic)
         ofp->cdbsz = 16;        /* only WRITE ATOMIC(16) supported for now */
+    if (ofp->ff) {
+        pr2serr("oflag=ff disallowed, can only be used for input\n");
+        return SG_LIB_SYNTAX_ERROR;
+    }
     return 0;
+}
+
+#define MAX_ARGS_PER_LINE 16
+
+static int
+jf_process(struct opts_t * op, const char * jf_name, const char * version_str,
+           int jf_depth)
+{
+    FILE * fp;
+    char b[4096];
+    char bb[256];
+    int k, len, off, rlen, argc;
+    int ret = 0;
+    char * cp;
+    char * argv[MAX_ARGS_PER_LINE];
+
+    ++jf_depth;
+    if (jf_depth > DDPT_MAX_JF_DEPTH) {
+        pr2serr("error parsing job_file: %s, depth=%d too great\n", jf_name,
+                jf_depth);
+        return SG_LIB_FILE_ERROR;
+    }
+    if (op->verbose)
+        pr2serr("parsing job_file: %s, depth=%d\n", jf_name, jf_depth);
+
+    if (NULL == (fp = fopen(jf_name, "r"))) {
+        pr2serr("fopen %s (depth=%d) failed: %s\n", jf_name, jf_depth,
+                strerror(errno));
+        return SG_LIB_FILE_ERROR;
+    }
+    rlen = sizeof(b);
+    for (off = 0, k = 0; (rlen > 0) && ((cp = fgets(b + off, rlen, fp)));
+         rlen -= len, off += len, ++k) {
+        len = strlen(b + off);
+        if (0 == len)
+            continue;
+        else if ('\n' == b[off + len - 1]) {
+            b[off + len - 1] = '\0';
+            --len;
+            if (0 == len)
+                continue;
+            else if ('\r' == b[off + len - 1]) {
+                b[off + len - 1] = '\0';
+                --len;
+                if (0 == len)
+                    continue;
+            }
+        }
+        snprintf(bb, sizeof(bb), "%s (depth=%d) line %d", jf_name, jf_depth,
+                 k + 1);
+        argv[0] = bb;
+        argc = argcargv(b + off, argv + 1, MAX_ARGS_PER_LINE - 1);
+        ++argc;
+        ret = cl_process(op, argc, argv, version_str, jf_depth);
+        if (ret) {
+            pr2serr("failed parsing job file %s (depth=%d) at line %d\n",
+                    jf_name, jf_depth, k + 1);
+            break;
+        }
+    }
+    if (rlen < 1) {
+        pr2serr("job file %s (depth=%d) too large\n", jf_name, jf_depth);
+        ret = SG_LIB_FILE_ERROR;
+    } else if (ferror(fp)) {
+        pr2serr("job file %s (depth=%d) read error\n", jf_name, jf_depth);
+        ret = SG_LIB_FILE_ERROR;
+    }
+    fclose(fp);
+    return ret;
 }
 
 /* Process options on the command line. Returns 0 if successful, > 0 for
  * (syntax) error and -1 for early exit (e.g. after '--help') */
 int
 cl_process(struct opts_t * op, int argc, char * argv[],
-           const char * version_str)
+           const char * version_str, int jf_depth)
 {
     char str[STR_SZ];
     char * key;
     char * buf;
     char * cp;
-    int k, n, keylen, res;
+    int k, n, keylen, res, orig_strlen;
     int64_t i64;
     struct flags_t * ifp = op->iflagp;
     struct flags_t * ofp = op->oflagp;
@@ -851,11 +951,14 @@ cl_process(struct opts_t * op, int argc, char * argv[],
             str[STR_SZ - 1] = '\0';
         } else
             continue;
+        orig_strlen = strlen(str);
         // replace '=' with null and set buf pointer to following char
-        for (key = str, buf = key; *buf && *buf != '=';)
+        for (key = str, buf = key; *buf && ('=' != *buf); )
             ++buf;
         if (*buf)
             *buf++ = '\0';
+        // If ('\0' == *buf) then there is no '=' in the option/argument
+        //   or '=' is the trailing character.
         keylen = (int)strlen(key);
         // check for option names, in alphabetical order
         if (0 == strcmp(key, "bpt")) {
@@ -1153,7 +1256,16 @@ cl_process(struct opts_t * op, int argc, char * argv[],
         /* look for long options that start with '--' */
         else if (0 == strncmp(key, "--help", 6))
             ++op->do_help;
-        else if (0 == strncmp(key, "--odx", 5))
+        else if (0 == strncmp(key, "--job", 5)) {
+            if (strlen(buf) > 0) {
+                res = jf_process(op, buf, version_str, jf_depth);
+                if (res)
+                    return res;
+            } else {
+                pr2serr("'job=' expects a file name\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (0 == strncmp(key, "--odx", 5))
             ++op->has_odx;
         else if (0 == strncmp(key, "--verb", 6))
             ++op->verbose;
@@ -1198,9 +1310,14 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 if (0 == op->do_help)
                     return -1;
             }
+        } else if (('\0' == *buf) && (orig_strlen == (int)strlen(str))) {
+            res = jf_process(op, str, version_str, jf_depth);
+            if (res)
+                return res;
         } else {
             pr2serr("Unrecognized option '%s'\n", key);
-            pr2serr("For more information use '--help'\n");
+            if (0 == jf_depth)
+                pr2serr("For more information use '--help'\n");
             return SG_LIB_SYNTAX_ERROR;
         }
     }

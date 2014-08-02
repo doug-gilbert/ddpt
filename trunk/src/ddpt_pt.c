@@ -75,6 +75,8 @@
 #define DDPT_WRITE12_OC 0xaa
 #define DDPT_WRITE16_OC 0x8a
 #define DDPT_WRITE_ATOMIC16_OC 0x9c     /* sbc4r02 */
+#define DDPT_WRITE_VERIFY10_OC 0x2e
+#define DDPT_WRITE_VERIFY16_OC 0x8e
 #define DDPT_VARIABLE_LEN_OC 0x7f
 #define DDPT_READ32_SA 0x9
 #define DDPT_WRITE32_SA 0xb
@@ -319,37 +321,64 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
                        DDPT_READ16_OC, DDPT_READ32_SA};
     int wr_opcode[] = {DDPT_WRITE6_OC, DDPT_WRITE10_OC, DDPT_WRITE12_OC,
                        DDPT_WRITE16_OC, DDPT_WRITE32_SA};
-    int sz_ind, options_byte, rw_sa;
+    int opcode_sa, options_byte, rw_sa;
+    int * opc_arr;
 
-    memset(cdbp, 0, cdb_sz);
-    options_byte = 0;
     if (cdb_sz < 6) {
         pr2serr("cdb_sz too small\n");
         return 1;
     }
-    if (write_true && fp->atomic && (16 != cdb_sz)) {
-        pr2serr("atomic flag only for WRITE_ATOMIC(16)\n");
-        return 1;
+    memset(cdbp, 0, cdb_sz);
+    opcode_sa = 0;
+    options_byte = 0;
+    opc_arr = NULL;
+
+    if (write_true) {
+        if (fp->atomic) {
+            if (16 == cdb_sz)
+                opcode_sa = DDPT_WRITE_ATOMIC16_OC;
+            else {
+                pr2serr("atomic flag only for WRITE_ATOMIC(16)\n");
+                return 1;
+            }
+        } else if (fp->verify) {
+            if (10 == cdb_sz)
+                opcode_sa = DDPT_WRITE_VERIFY10_OC;
+            else if (16 == cdb_sz)
+                opcode_sa = DDPT_WRITE_VERIFY16_OC;
+            else {
+                pr2serr("verify flag for WRITE AND VERIFY (10 or 16) only\n");
+                return 1;
+            }
+        } else
+            opc_arr = wr_opcode;
+    } else {    /* a READ */
+        opc_arr = rd_opcode;
+        if (fp->rarc)
+            options_byte |= 0x4;
     }
+
     if (cdb_sz > 6) {
         if (fp->dpo)
             options_byte |= 0x10;
-        if (fp->fua)
-            options_byte |= 0x8;
-        if (fp->fua_nv)
-            options_byte |= 0x2;
+        if (fp->verify && write_true) {
+            if (fp->bytchk)
+                options_byte |= ((fp->bytchk & 0x3) << 1);
+        } else {
+            if (fp->fua)
+                options_byte |= 0x8;
+            if (fp->fua_nv)
+                options_byte |= 0x2;
+        }
         if (protect)
             options_byte |= ((protect & 0x7) << 5);
     }
-    if ((! write_true) && fp->rarc)
-        options_byte |= 0x4;
 
     switch (cdb_sz) {
     case 6:
-        sz_ind = 0;
-        cdbp[0] = (unsigned char)(write_true ? wr_opcode[sz_ind] :
-                                               rd_opcode[sz_ind]);
-        /* Overwrite fua, fua_nv and dpo settings, n/a for 6 byte variants */
+        if (0 == opcode_sa)
+            opcode_sa = opc_arr[0];
+        cdbp[0] = (unsigned char)opcode_sa;
         cdbp[1] = (unsigned char)((start_block >> 16) & 0x1f);
         cdbp[2] = (unsigned char)((start_block >> 8) & 0xff);
         cdbp[3] = (unsigned char)(start_block & 0xff);
@@ -370,9 +399,9 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
         }
         break;
     case 10:
-        sz_ind = 1;
-        cdbp[0] = (unsigned char)(write_true ? wr_opcode[sz_ind] :
-                                               rd_opcode[sz_ind]);
+        if (0 == opcode_sa)
+            opcode_sa = opc_arr[1];
+        cdbp[0] = (unsigned char)opcode_sa;
         cdbp[1] = (unsigned char)options_byte;
         cdbp[2] = (unsigned char)((start_block >> 24) & 0xff);
         cdbp[3] = (unsigned char)((start_block >> 16) & 0xff);
@@ -387,9 +416,9 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
         }
         break;
     case 12:
-        sz_ind = 2;
-        cdbp[0] = (unsigned char)(write_true ? wr_opcode[sz_ind] :
-                                               rd_opcode[sz_ind]);
+        if (0 == opcode_sa)
+            opcode_sa = opc_arr[2];
+        cdbp[0] = (unsigned char)opcode_sa;
         cdbp[1] = (unsigned char)options_byte;
         cdbp[2] = (unsigned char)((start_block >> 24) & 0xff);
         cdbp[3] = (unsigned char)((start_block >> 16) & 0xff);
@@ -401,12 +430,9 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
         cdbp[9] = (unsigned char)(blocks & 0xff);
         break;
     case 16:
-        sz_ind = 3;
-        if (fp->atomic && write_true)
-            cdbp[0] = (unsigned char)DDPT_WRITE_ATOMIC16_OC;
-        else
-            cdbp[0] = (unsigned char)(write_true ? wr_opcode[sz_ind] :
-                                                   rd_opcode[sz_ind]);
+        if (0 == opcode_sa)
+            opcode_sa = opc_arr[3];
+        cdbp[0] = (unsigned char)opcode_sa;
         cdbp[1] = (unsigned char)options_byte;
         cdbp[2] = (unsigned char)((start_block >> 56) & 0xff);
         cdbp[3] = (unsigned char)((start_block >> 48) & 0xff);
@@ -422,10 +448,11 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
         cdbp[13] = (unsigned char)(blocks & 0xff);
         break;
     case 32:
-        sz_ind = 4;
+        if (0 == opcode_sa)
+            opcode_sa = opc_arr[4];
         cdbp[0] = (unsigned char)DDPT_VARIABLE_LEN_OC;
         cdbp[7] = (unsigned char)0x18;  /* additional length=>32 byte cdb */
-        rw_sa = write_true ? wr_opcode[sz_ind] : rd_opcode[sz_ind];
+        rw_sa = opcode_sa;
         cdbp[8] = (unsigned char)((rw_sa >> 8) & 0xff);
         cdbp[9] = (unsigned char)(rw_sa & 0xff);
         cdbp[10] = (unsigned char)options_byte;
@@ -840,8 +867,12 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
                 to_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
     }
-    desc = (DDPT_WRITE_ATOMIC16_OC == wrCmd[0]) ? "WRITE ATOMIC(16)" :
-                                                  "WRITE";
+    if (DDPT_WRITE_ATOMIC16_OC == wrCmd[0])
+        desc = "WRITE ATOMIC(16)";
+    else if (0xe == (0xf & wrCmd[0]))
+        desc = "WRITE AND VERIFY";
+    else
+        desc = "WRITE";
     if (op->verbose > 2) {
         pr2serr("    %s cdb: ", desc);
         for (k = 0; k < fp->cdbsz; ++k)
@@ -909,7 +940,6 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
         }
     } else
         ret = 0;
-
     return ret;
 }
 
