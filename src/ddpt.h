@@ -84,6 +84,7 @@ extern "C" {
 #define MAX_XC_BPT_POW2 32768  /* BPT maximum that is power of 2 */
 #define DEF_SCSI_CDBSZ 10
 #define MAX_SCSI_CDBSZ 32
+#define DDPT_MAX_JF_DEPTH 4
 
 #define VPD_DEVICE_ID 0x83
 #define VPD_3PARTY_COPY 0x8f
@@ -119,6 +120,7 @@ extern "C" {
 #define FT_FIFO 64              /* fifo (named or unnamed pipe (stdout)) */
 #define FT_CHAR 128             /* char dev, doesn't fit another category */
 #define FT_ERROR 256            /* couldn't "stat" file */
+#define FT_ALL_FF 512           /* iflag=ff so input will be 0xff bytes */
 
 /* ODX type requested */
 #define ODX_REQ_NONE 0          /* some other type of copy */
@@ -232,6 +234,7 @@ struct flags_t {
     int append;
     int atomic;
     int block;          /* only for pt, non blocking default */
+    int bytchk;         /* set field in WRITE AND VERIFY */
     int cat;            /* xcopy(lid1) related */
     int cdbsz;
     int coe;
@@ -242,6 +245,7 @@ struct flags_t {
     int errblk;
     int excl;
     int fdatasync;
+    int ff;             /* iflag=ff makes input all 0xff bytes */
     int flock;
     int force;
     int fsync;
@@ -270,6 +274,7 @@ struct flags_t {
     int strunc;
     int sync;
     int trunc;
+    int verify;         /* oflag with pt, turns WRITE into WRITE AND VERIFY */
     int wsame16;
     int xcopy;          /* xcopy(LID1) */
 };
@@ -539,7 +544,7 @@ int do_odx(struct opts_t * op);
 
 /* defined in ddpt_cl.c */
 int cl_process(struct opts_t * op, int argc, char * argv[],
-               const char * version_str);
+               const char * version_str, int jf_depth);
 void ddpt_usage(int help);
 
 
