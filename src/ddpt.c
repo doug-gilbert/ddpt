@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.95 20140709 [svn: r291]";
+static const char * ddpt_version_str = "0.95 20140801 [svn: r292]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -1754,6 +1754,7 @@ do_rw_copy(struct opts_t * op)
     int ibpt, obpt, res, n, sparse_skip, sparing_skip, continual_read;
     int ret = 0;
     int first_time = 1;
+    int first_time_ff = 1;
     int id_type = op->idip->d_type;
     int od_type = op->odip->d_type;
     struct cp_state_t cp_st;
@@ -1818,6 +1819,12 @@ do_rw_copy(struct opts_t * op)
             ret = SG_LIB_CAT_OTHER;
             break;
 #endif
+        } else if (FT_ALL_FF) {
+            if (first_time_ff) {
+                first_time_ff = 0;
+                memset(wPos, 0xff, op->ibs * ibpt);
+                op->in_full += csp->icbpt;
+            }
         } else {
              if ((ret = cp_read_block_reg(op, csp, wPos)))
                 break;
@@ -2032,6 +2039,9 @@ open_files_devices(struct opts_t * op)
                 return -fd;
         }
         idip->fd = fd;
+    } else if (op->iflagp->ff) {
+        idip->d_type = FT_ALL_FF;
+        idip->fd = 9999;        /* unlikely file descriptor */
     } else {
         pr2serr("'if=IFILE' option must be given. For stdin as input use "
                 "'if=-'\n");
@@ -2490,6 +2500,7 @@ main(int argc, char * argv[])
 {
     int ret = 0;
     int started_copy = 0;
+    int jf_depth = 0;
     struct opts_t ops;
     struct flags_t iflag, oflag;
     struct dev_info_t ids, ods, o2ds;
@@ -2497,7 +2508,7 @@ main(int argc, char * argv[])
 
     state_init(&ops, &iflag, &oflag, &ids, &ods, &o2ds);
     op = &ops;
-    ret = cl_process(op, argc, argv, ddpt_version_str);
+    ret = cl_process(op, argc, argv, ddpt_version_str, jf_depth);
     if (op->do_help > 0) {
         ddpt_usage(op->do_help);
         return 0;

@@ -366,7 +366,7 @@ enum_scsi_adapters(void)
     BYTE bus;
     BOOL success;
     char adapter_name[64];
-    char inqDataBuff[2048];
+    char inqDataBuff[8192];
     PSCSI_ADAPTER_BUS_INFO  ai;
     char b[256];
 
