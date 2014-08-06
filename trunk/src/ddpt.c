@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.95 20140801 [svn: r292]";
+static const char * ddpt_version_str = "0.95 20140806 [svn: r293]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -786,6 +786,9 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
     int numbytes = csp->icbpt * op->ibs_pi;
     int ibs = op->ibs_pi;
 
+    if (op->verbose > 4)
+        pr2serr("%s: offset=0x%" PRIx64 ", numbytes=%d\n", __func__, offset,
+                numbytes);
     in_type = op->idip->d_type;
 #ifdef SG_LIB_WIN32
     if (FT_BLOCK & in_type) {
@@ -1819,12 +1822,12 @@ do_rw_copy(struct opts_t * op)
             ret = SG_LIB_CAT_OTHER;
             break;
 #endif
-        } else if (FT_ALL_FF) {
+        } else if (FT_ALL_FF & id_type) {
             if (first_time_ff) {
                 first_time_ff = 0;
                 memset(wPos, 0xff, op->ibs * ibpt);
-                op->in_full += csp->icbpt;
             }
+            op->in_full += csp->icbpt;
         } else {
              if ((ret = cp_read_block_reg(op, csp, wPos)))
                 break;
