@@ -1209,20 +1209,19 @@ signals_process_delay(struct opts_t * op, int delay_type)
              * use FALLOC_FL_KEEP_SIZE */
             if ((0 == op->reading_fifo) && (FT_REG & op->odip->d_type_hold)
                  && (0 == op->oflagp->prealloc)) {
-		if (op->oflagp->strunc) {
-		    int64_t osize = (op->seek * op->obs) +
-				    (op->dd_count * op->ibs);
+                if (op->oflagp->strunc) {
+                    int64_t osize = (op->seek * op->obs);
 
-		    pr2serr(">> Did not perform: "
-			    "'truncate --size=%" PRId64 " %s'\n",
-			    osize, op->odip->fn);
-		    pr2serr(">> User should check and perform by hand if "
-			    "necessary\n");
-		}
+                    pr2serr(">> Did not perform: "
+                            "'truncate --size=%" PRId64 " %s'\n",
+                            osize, op->odip->fn);
+                    pr2serr(">> User should check and perform by hand if "
+                            "necessary\n");
+                }
                 pr2serr("To resume, invoke with same arguments plus "
                         "oflag=resume\n");
-	    }
-            ; // >>>>>>>>>>>>> cleanup ();
+            }
+            // Could more cleanup or suggestions be made here?
         } else {
             pr2serr("Progress report:\n");
             print_stats("  ", op, 0);

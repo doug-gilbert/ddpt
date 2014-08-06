@@ -1,7 +1,7 @@
 bin_PROGRAMS = ddpt ddptctl
 
 # for C++/clang testing
-## CC = g++
+## CC = gcc
 ## CC = g++
 ## CC = clang
 ## CC = clang++
