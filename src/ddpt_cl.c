@@ -28,7 +28,7 @@
  */
 
 /*
- * This file contains command line helper functions for ddpt.
+ * This file contains command line (hence '_cl') helper functions for ddpt.
  */
 
 /* Was needed for posix_fadvise() */
@@ -885,8 +885,8 @@ jf_process(struct opts_t * op, const char * jf_name, const char * version_str,
         pr2serr("parsing job_file: %s, depth=%d\n", jf_name, jf_depth);
 
     if (NULL == (fp = fopen(jf_name, "r"))) {
-        pr2serr("fopen %s (depth=%d) failed: %s\n", jf_name, jf_depth,
-                strerror(errno));
+        pr2serr("open of job_file: %s (depth=%d) failed: %s\n", jf_name,
+                jf_depth, strerror(errno));
         return SG_LIB_FILE_ERROR;
     }
     rlen = sizeof(b);
