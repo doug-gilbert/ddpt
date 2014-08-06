@@ -376,7 +376,8 @@ this section. The options within the file are processed in the order
 they are found (i.e. parsing left to right) and options may accumulate. For
 example '\-v' on the command line followed by a job file containing '\-\-v'
 will result in a verbosity level of '\-\-\-v' during the copy phase. Job
-files can recurse (i.e. call each other) up to a depth of 5.
+files can recurse (i.e. call each other) up to a depth of 5. Empty lines
+and anything from and including a '#' in a job file line are ignored.
 .TP
 \fB\-o\fR, \fB\-\-odx\fR
 indicates to this utility that one of the four odx variants is requested.
