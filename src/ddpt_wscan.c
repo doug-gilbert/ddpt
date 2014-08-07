@@ -170,7 +170,7 @@ union STORAGE_DEVICE_DESCRIPTOR_DATA {
 
 union STORAGE_DEVICE_UID_DATA {
     STORAGE_DEVICE_UNIQUE_IDENTIFIER desc;
-    char raw[512];
+    char raw[1060];
 };
 
 struct storage_elem {
@@ -301,18 +301,35 @@ query_dev_uid(HANDLE hdevice,
                                     PropertyStandardQuery, {0} };
 
     memset(data, 0, sizeof(*data));
+    num_out = 0;
+    query.QueryType = PropertyExistsQuery;
+    if (! DeviceIoControl(hdevice, IOCTL_STORAGE_QUERY_PROPERTY,
+                          &query, sizeof(query), NULL, 0, &num_out, NULL)) {
+        if (verbose > 2) {
+            err = GetLastError();
+            fprintf(stderr, "  IOCTL_STORAGE_QUERY_PROPERTY(DevUid(exists)) "
+                    "failed, Error=%ld %s\n", err,
+                    get_err_str(err, sizeof(b), b));
+        }
+        if (verbose > 3)
+            fprintf(stderr, "      num_out=%ld\n", num_out);
+        /* interpret any error to mean this property doesn't exist */
+        return 0;
+    }
+
+    query.QueryType = PropertyStandardQuery;
     if (! DeviceIoControl(hdevice, IOCTL_STORAGE_QUERY_PROPERTY,
                           &query, sizeof(query), data, sizeof(*data),
                           &num_out, NULL)) {
         if (verbose > 2) {
             err = GetLastError();
-            pr2serr("  IOCTL_STORAGE_QUERY_PROPERTY(DevUid) failed, "
+            fprintf(stderr, "  IOCTL_STORAGE_QUERY_PROPERTY(DevUid) failed, "
                     "Error=%ld %s\n", err, get_err_str(err, sizeof(b), b));
         }
         return -ENOSYS;
     }
     if (verbose > 3)
-        pr2serr("  IOCTL_STORAGE_QUERY_PROPERTY(DevUid) num_out=%ld\n",
+        fprintf(stderr, "  IOCTL_STORAGE_QUERY_PROPERTY(DevUid) num_out=%ld\n",
                 num_out);
     return 0;
 }
@@ -379,7 +396,7 @@ enum_scsi_adapters(void)
             hole_count = 0;
             success = DeviceIoControl(fh, IOCTL_SCSI_GET_INQUIRY_DATA,
                                       NULL, 0, inqDataBuff,
-                                      sizeof(inqDataBuff), &dummy, FALSE);
+                                      sizeof(inqDataBuff), &dummy, NULL);
             if (success) {
                 PSCSI_BUS_DATA pbd;
                 PSCSI_INQUIRY_DATA pid;
@@ -418,11 +435,13 @@ enum_scsi_adapters(void)
             }
             CloseHandle(fh);
         } else {
-            if (verbose > 3) {
-                err = GetLastError();
+            err = GetLastError();
+            if (ERROR_SHARING_VIOLATION == err)
+                fprintf(stderr, "%s: in use by other process (sharing "
+                        "violation [34])\n", adapter_name);
+            else if (verbose > 3)
                 pr2serr("%s: CreateFile failed err=%lu\n\t%s", adapter_name,
                         err, get_err_str(err, sizeof(b), b));
-            }
             if (++hole_count >= MAX_HOLE_COUNT)
                 break;
         }
@@ -500,11 +519,13 @@ enum_pds(void)
             memcpy(&storage_arr[next_unused_elem++], &tmp_se, sizeof(tmp_se));
             CloseHandle(fh);
         } else {
-            if (verbose > 3) {
-                err = GetLastError();
+            err = GetLastError();
+            if (ERROR_SHARING_VIOLATION == err)
+                fprintf(stderr, "%s: in use by other process (sharing "
+                        "violation [34])\n", adapter_name);
+            else if (verbose > 3)
                 pr2serr("%s: CreateFile failed err=%lu\n\t%s", adapter_name,
                         err, get_err_str(err, sizeof(b), b));
-            }
             if (++hole_count >= MAX_HOLE_COUNT)
                 break;
         }
@@ -546,11 +567,13 @@ enum_cdroms(void)
             memcpy(&storage_arr[next_unused_elem++], &tmp_se, sizeof(tmp_se));
             CloseHandle(fh);
         } else {
-            if (verbose > 3) {
-                err = GetLastError();
+            err = GetLastError();
+            if (ERROR_SHARING_VIOLATION == err)
+                fprintf(stderr, "%s: in use by other process (sharing "
+                        "violation [34])\n", adapter_name);
+            else if (verbose > 3)
                 pr2serr("%s: CreateFile failed err=%lu\n\t%s", adapter_name,
                         err, get_err_str(err, sizeof(b), b));
-            }
             if (++hole_count >= MAX_HOLE_COUNT)
                 break;
         }
@@ -592,11 +615,13 @@ enum_tapes(void)
             memcpy(&storage_arr[next_unused_elem++], &tmp_se, sizeof(tmp_se));
             CloseHandle(fh);
         } else {
-            if (verbose > 3) {
-                err = GetLastError();
+            err = GetLastError();
+            if (ERROR_SHARING_VIOLATION == err)
+                fprintf(stderr, "%s: in use by other process (sharing "
+                        "violation [34])\n", adapter_name);
+            else if (verbose > 3)
                 pr2serr("%s: CreateFile failed err=%lu\n\t%s", adapter_name,
                         err, get_err_str(err, sizeof(b), b));
-            }
             if (++hole_count >= MAX_HOLE_COUNT)
                 break;
         }
@@ -660,12 +685,12 @@ do_wscan(char letter, int show_bt, int scsi_scan)
                     printf("%s", sp->qp_descriptor.raw + j);
                 printf("\n");
                 if (verbose > 2)
-                    dStrHex(sp->qp_descriptor.raw, 144, 0);
+                    dStrHexErr(sp->qp_descriptor.raw, 144, 0);
             } else
                 printf("\n");
             if ((verbose > 3) && sp->qp_uid_valid) {
                 printf("  UID valid, in hex:\n");
-                dStrHex(sp->qp_uid.raw, sizeof(sp->qp_uid.raw), 1);
+                dStrHexErr(sp->qp_uid.raw, sizeof(sp->qp_uid.raw), 1);
             }
         }
     }
