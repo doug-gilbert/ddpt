@@ -1081,6 +1081,9 @@ cl_process(struct opts_t * op, int argc, char * argv[],
             if ('\0' != op->idip->fn[0]) {
                 pr2serr("Second IFILE argument??\n");
                 return SG_LIB_SYNTAX_ERROR;
+            } else if (0 == strlen(buf)) {
+                pr2serr("expected if=IFILE but no IFILE argument\n");
+                return SG_LIB_SYNTAX_ERROR;
             } else
                 strncpy(op->idip->fn, buf, INOUTF_SZ - 1);
         } else if (0 == strcmp(key, "iflag")) {
@@ -1129,6 +1132,9 @@ cl_process(struct opts_t * op, int argc, char * argv[],
         } else if (strcmp(key, "of") == 0) {
             if ('\0' != op->odip->fn[0]) {
                 pr2serr("Second OFILE argument??\n");
+                return SG_LIB_SYNTAX_ERROR;
+            } else if (0 == strlen(buf)) {
+                pr2serr("expected of=OFILE but no OFILE argument\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
             strncpy(op->odip->fn, buf, INOUTF_SZ - 1);
