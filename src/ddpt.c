@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.95 20140807 [svn: r296]";
+static const char * ddpt_version_str = "0.95 20140828 [svn: r297]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -2193,7 +2193,7 @@ tape_cleanup_of(struct opts_t * op)
     /* Before closing OFILE, if writing to tape handle suppressing the
      * writing of a filemark and/or flushing the drive buffer which the
      * Linux st driver normally does when tape file is closed after writing.
-     * Possibilities depend on oflags:
+     * Possibilities depend on oflag arguments:
      * nofm:         MTWEOFI 0 if possible (kernel 2.6.37+), else MTBSR 0
      * nofm & fsync: MTWEOF 0
      * fsync:        Do nothing; st writes filemark & flushes buffer on close.
