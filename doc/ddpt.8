@@ -1,4 +1,4 @@
-.TH DDPT "8" "August 2014" "ddpt\-0.95" DDPT
+.TH DDPT "8" "September 2014" "ddpt\-0.95" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -374,8 +374,8 @@ reports usage message then exits.
 where \fIJF\fR is a file name. That file can contain options listed in
 this section. The options within the file are processed in the order
 they are found (i.e. parsing left to right) and options may accumulate. For
-example '\-v' on the command line followed by a job file containing '\-\-v'
-will result in a verbosity level of '\-\-\-v' during the copy phase. Job
+example '\-v' on the command line followed by a job file containing '\-vv'
+will result in a verbosity level of '\-vvv' during the copy phase. Job
 files can recurse (i.e. call each other) up to a depth of 5. Empty lines
 and anything from and including a '#' in a job file line are ignored.
 .TP
