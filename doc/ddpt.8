@@ -1128,6 +1128,14 @@ an error is reported. Usually negative numbers are not permitted
 but "count=-1" is a special case and means "all available"; "verbose=-1"
 is another special case.
 .SH NOTES
+Copying data behind an Operating System's back can cause problems. In the
+case of Linux, users should look at this link:
+http://linux\-mm.org/Drop_Caches
+.br
+This command sequence may be useful:
+.br
+  sync; echo 3 > /proc/sys/vm/drop_caches
+.PP
 A partial write is a write to the \fIOFILE\fR of less than \fIOBS\fR
 bytes. This typically occurs at the end of a copy. dd can do partial
 writes. ddpt does partial writes to regular files and fifos (including

@@ -63,6 +63,7 @@
 
 #include "sg_lib.h"
 #include "sg_cmds_basic.h"
+#include "sg_unaligned.h"
 
 
 #define DEF_3PC_OUT_TIMEOUT (10 * 60)   /* is 10 minutes enough? */
@@ -961,94 +962,137 @@ cpy_op_status_str(int cos, char * b, int blen)
 /* This is xcopy(LID4) related: "ROD" == Representation Of Data
  * Used by VPD_3PARTY_COPY */
 static void
-decode_rod_descriptor(const unsigned char * buff, int len)
+decode_rod_descriptor(const unsigned char * buff, int len, int to_stderr)
 {
     const unsigned char * ucp = buff;
-    int k, bump, j;
-    uint64_t ull;
+    int k, bump;
+    int (*print_p)(const char *, ...);
 
+    print_p = to_stderr ? pr2serr : printf;
     for (k = 0; k < len; k += bump, ucp += bump) {
-        bump = (ucp[2] << 8) + ucp[3] + 4;
+        bump = sg_get_unaligned_be16(ucp + 2) + 4;
         switch (ucp[0]) {
             case 0:
                 /* Block ROD device type specific descriptor */
-                pr2serr("   Optimal block ROD length granularity: %d\n",
-                        (ucp[6] << 8) + ucp[7]);
-                ull = 0;
-                for (j = 0; j < 8; j++) {
-                    if (j > 0)
-                        ull <<= 8;
-                    ull |= ucp[8 + j];
-                }
-                pr2serr("  Maximum Bytes in block ROD: %" PRIu64 "\n", ull);
-                ull = 0;
-                for (j = 0; j < 8; j++) {
-                    if (j > 0)
-                        ull <<= 8;
-                    ull |= ucp[16 + j];
-                }
-                pr2serr("  Optimal Bytes in block ROD transfer: %" PRIu64
-                        "\n", ull);
-                ull = 0;
-                for (j = 0; j < 8; j++) {
-                    if (j > 0)
-                        ull <<= 8;
-                    ull |= ucp[24 + j];
-                }
-                pr2serr("  Optimal Bytes to token per segment: %" PRIu64 "\n",
-                        ull);
-                ull = 0;
-                for (j = 0; j < 8; j++) {
-                    if (j > 0)
-                        ull <<= 8;
-                    ull |= ucp[32 + j];
-                }
-                pr2serr("  Optimal Bytes from token per segment: %" PRIu64
-                        "\n", ull);
+                print_p("   Optimal block ROD length granularity: %d\n",
+                        sg_get_unaligned_be16(ucp + 6));
+                print_p("  Maximum Bytes in block ROD: %" PRIu64 "\n",
+                        sg_get_unaligned_be64(ucp + 8));
+                print_p("  Optimal Bytes in block ROD transfer: %" PRIu64 "\n",
+                        sg_get_unaligned_be64(ucp + 16));
+                print_p("  Optimal Bytes to token per segment: %" PRIu64 "\n",
+                        sg_get_unaligned_be64(ucp + 24));
+                print_p("  Optimal Bytes from token per segment:"
+                        " %" PRIu64 "\n", sg_get_unaligned_be64(ucp + 32));
                 break;
             case 1:
                 /* Stream ROD device type specific descriptor */
-                ull = 0;
-                for (j = 0; j < 8; j++) {
-                    if (j > 0)
-                        ull <<= 8;
-                    ull |= ucp[8 + j];
-                }
-                pr2serr("  Maximum Bytes in stream ROD: %" PRIu64 "\n", ull);
-                ull = 0;
-                for (j = 0; j < 8; j++) {
-                    if (j > 0)
-                        ull <<= 8;
-                    ull |= ucp[16 + j];
-                }
-                pr2serr("  Optimal Bytes in stream ROD transfer: %" PRIu64
-                        "\n", ull);
+                print_p("  Maximum Bytes in stream ROD: %" PRIu64 "\n",
+                        sg_get_unaligned_be64(ucp + 8));
+                print_p("  Optimal Bytes in stream ROD transfer:"
+                        " %" PRIu64 "\n", sg_get_unaligned_be64(ucp + 16));
                 break;
             case 3:
                 /* Copy manager ROD device type specific descriptor */
-                ull = 0;
-                for (j = 0; j < 8; j++) {
-                    if (j > 0)
-                        ull <<= 8;
-                    ull |= ucp[8 + j];
-                }
-                pr2serr("  Maximum Bytes in processor ROD: %" PRIu64 "\n",
-                        ull);
-                ull = 0;
-                for (j = 0; j < 8; j++) {
-                    if (j > 0)
-                        ull <<= 8;
-                    ull |= ucp[16 + j];
-                }
-                pr2serr("  Optimal Bytes in processor ROD transfer: %" PRIu64
-                        "\n", ull);
+                print_p("  Maximum Bytes in processor ROD: %" PRIu64 "\n",
+                        sg_get_unaligned_be64(ucp + 8));
+                print_p("  Optimal Bytes in processor ROD transfer:"
+                        " %" PRIu64 "\n", sg_get_unaligned_be64(ucp + 16));
                 break;
             default:
-                pr2serr("  Unhandled descriptor (format %d, device type "
-                        "%d)\n", ucp[0] >> 5, ucp[0] & 0x1F);
+                print_p("  Unhandled descriptor (format %d, device type %d)\n",
+                        ucp[0] >> 5, ucp[0] & 0x1F);
                 break;
         }
     }
+}
+
+struct tpc_desc_type {
+    unsigned char code;
+    const char * name;
+};
+
+static struct tpc_desc_type tpc_desc_arr[] = {
+    {0x0, "block -> stream"},
+    {0x1, "stream -> block"},
+    {0x2, "block -> block"},
+    {0x3, "stream -> stream"},
+    {0x4, "inline -> stream"},
+    {0x5, "embedded -> stream"},
+    {0x6, "stream -> discard"},
+    {0x7, "verify CSCD"},
+    {0x8, "block<o> -> stream"},
+    {0x9, "stream -> block<o>"},
+    {0xa, "block<o> -> block<o>"},
+    {0xb, "block -> stream & application_client"},
+    {0xc, "stream -> block & application_client"},
+    {0xd, "block -> block & application_client"},
+    {0xe, "stream -> stream&application_client"},
+    {0xf, "stream -> discard&application_client"},
+    {0x10, "filemark -> tape"},
+    {0x11, "space -> tape"},
+    {0x12, "locate -> tape"},
+    {0x13, "<i>tape -> <i>tape"},
+    {0x14, "register persistent reservation key"},
+    {0x15, "third party persistent reservation source I_T nexus"},
+    {0x16, "<i>block -> <i>block"},
+    {0xbe, "ROD <- block range(n)"},
+    {0xbf, "ROD <- block range(1)"},
+    {0xe0, "CSCD: FC N_Port_Name"},
+    {0xe1, "CSCD: FC N_Port_ID"},
+    {0xe2, "CSCD: FC N_Port_ID with N_Port_Name, checking"},
+    {0xe3, "CSCD: Parallel interface: I_T"},
+    {0xe4, "CSCD: Identification Descriptor"},
+    {0xe5, "CSCD: IPv4"},
+    {0xe6, "CSCD: Alias"},
+    {0xe7, "CSCD: RDMA"},
+    {0xe8, "CSCD: IEEE 1394 EUI-64"},
+    {0xe9, "CSCD: SAS SSP"},
+    {0xea, "CSCD: IPv6"},
+    {0xeb, "CSCD: IP copy service"},
+    {0xfe, "CSCD: ROD"},
+    {0xff, "CSCD: extension"},
+    {0x0, NULL},
+};
+
+static const char *
+get_tpc_desc_name(unsigned char code)
+{
+    const struct tpc_desc_type * dtp;
+
+    for (dtp = tpc_desc_arr; dtp->name; ++dtp) {
+        if (code == dtp->code)
+            return dtp->name;
+    }
+    return "";
+}
+
+struct tpc_rod_type {
+    uint32_t type;
+    const char * name;
+};
+
+static struct tpc_rod_type tpc_rod_arr[] = {
+    {0x0, "copy manager internal"},
+    {0x10000, "access upon reference"},
+    {0x800000, "point in time copy - default"},
+    {0x800001, "point in time copy - change vulnerable"},
+    {0x800002, "point in time copy - persistent"},
+    {0x80ffff, "point in time copy - any"},
+    {0xffff0001, "block device zero"},
+    {0x0, NULL},
+};
+
+static const char *
+get_tpc_rod_name(uint32_t rod_type)
+{
+    const struct tpc_rod_type * rtp;
+
+    for (rtp = tpc_rod_arr; rtp->name; ++rtp) {
+        if (rod_type == rtp->type)
+            return rtp->name;
+    }
+    return "";
 }
 
 /* VPD_3PARTY_COPY [3PC, third party copy] */
@@ -1059,6 +1103,7 @@ decode_3party_copy_vpd(unsigned char * buff, int len, int to_stderr,
     int k, j, m, bump, desc_type, desc_len, sa_len;
     unsigned int u;
     const unsigned char * ucp;
+    const char * cp;
     uint64_t ull;
     char b[80];
     int (*print_p)(const char *, ...);
@@ -1071,8 +1116,8 @@ decode_3party_copy_vpd(unsigned char * buff, int len, int to_stderr,
     len -= 4;
     ucp = buff + 4;
     for (k = 0; k < len; k += bump, ucp += bump) {
-        desc_type = (ucp[0] << 8) + ucp[1];
-        desc_len = (ucp[2] << 8) + ucp[3];
+        desc_type = sg_get_unaligned_be16(ucp);
+        desc_len = sg_get_unaligned_be16(ucp + 2);
         if (verbose)
             print_p("Descriptor type=%d, len=%d\n", desc_type, desc_len);
         bump = 4 + desc_len;
@@ -1087,26 +1132,14 @@ decode_3party_copy_vpd(unsigned char * buff, int len, int to_stderr,
         case 0x0000:    /* Required if POPULATE TOKEN (or friend) used */
             print_p(" Block Device ROD Token Limits:\n");
             print_p("  Maximum Range Descriptors: %d\n",
-                   (ucp[10] << 8) + ucp[11]);
-            u = (ucp[12] << 24) | (ucp[13] << 16) | (ucp[14] << 8) |
-                ucp[15];
+                    sg_get_unaligned_be16(ucp + 10));
+            u = sg_get_unaligned_be32(ucp + 12);
             print_p("  Maximum Inactivity Timeout: %u seconds\n", u);
-            u = (ucp[16] << 24) | (ucp[17] << 16) | (ucp[18] << 8) |
-                ucp[19];
+            u = sg_get_unaligned_be32(ucp + 16);
             print_p("  Default Inactivity Timeout: %u seconds\n", u);
-            ull = 0;
-            for (j = 0; j < 8; j++) {
-                if (j > 0)
-                    ull <<= 8;
-                ull |= ucp[20 + j];
-            }
+            ull = sg_get_unaligned_be64(ucp + 20);
             print_p("  Maximum Token Transfer Size: %" PRIu64 "\n", ull);
-            ull = 0;
-            for (j = 0; j < 8; j++) {
-                if (j > 0)
-                    ull <<= 8;
-                ull |= ucp[28 + j];
-            }
+            ull = sg_get_unaligned_be64(ucp + 28);
             print_p("  Optimal Transfer Count: %" PRIu64 "\n", ull);
             break;
         case 0x0001:    /* Mandatory (SPC-4) */
@@ -1125,85 +1158,84 @@ decode_3party_copy_vpd(unsigned char * buff, int len, int to_stderr,
         case 0x0004:
             print_p(" Parameter Data:\n");
             print_p("  Maximum CSCD Descriptor Count: %d\n",
-                   (ucp[8] << 8) + ucp[9]);
+                    sg_get_unaligned_be16(ucp + 8));;
             print_p("  Maximum Segment Descriptor Count: %d\n",
-                   (ucp[10] << 8) + ucp[11]);
-            u = (ucp[12] << 24) | (ucp[13] << 16) | (ucp[14] << 8) |
-                ucp[15];
+                    sg_get_unaligned_be16(ucp + 10));
+            u = sg_get_unaligned_be32(ucp + 12);
             print_p("  Maximum Descriptor List Length: %u\n", u);
-            u = (ucp[16] << 24) | (ucp[17] << 16) | (ucp[18] << 8) |
-                ucp[19];
+            u = sg_get_unaligned_be32(ucp + 16);
             print_p("  Maximum Inline Data Length: %u\n", u);
             break;
         case 0x0008:
             print_p(" Supported Descriptors:\n");
             for (j = 0; j < ucp[4]; j++) {
-                print_p("  0x%x\n", ucp[5 + j]);
+                cp = get_tpc_desc_name(ucp[5 + j]);
+                if (strlen(cp) > 0)
+                    printf("  %s [0x%x]\n", cp, ucp[5 + j]);
+                else
+                    printf("  0x%x\n", ucp[5 + j]);
             }
             break;
         case 0x000C:
             print_p(" Supported CSCD IDs:\n");
             for (j = 0; j < (ucp[4] << 8) + ucp[5]; j += 2) {
-                u = (ucp[6 + j] << 8) | ucp[7 + j];
+                u = sg_get_unaligned_be16(ucp + 6 + j);
                 print_p("  0x%04x\n", u);
             }
             break;
         case 0x0106:
             print_p(" ROD Token Features:\n");
             print_p("  Remote Tokens: %d\n", ucp[4] & 0x0f);
-            u = (ucp[16] << 24) | (ucp[17] << 16) | (ucp[18] << 8) |
-                ucp[19];
+            u = sg_get_unaligned_be32(ucp + 16);
             print_p("  Minimum Token Lifetime: %u seconds\n", u);
-            u = (ucp[20] << 24) | (ucp[21] << 16) | (ucp[22] << 8) |
-                ucp[23];
+            u = sg_get_unaligned_be32(ucp + 20);
             print_p("  Maximum Token Lifetime: %u seconds\n", u);
-            u = (ucp[24] << 24) | (ucp[25] << 16) | (ucp[26] << 8) |
-                ucp[27];
+            u = sg_get_unaligned_be32(ucp + 24);
             print_p("  Maximum Token inactivity timeout: %d\n", u);
-            decode_rod_descriptor(&ucp[48], (ucp[46] << 8) + ucp[47]);
+            decode_rod_descriptor(ucp + 48,
+                                  sg_get_unaligned_be16(ucp + 46), to_stderr);
             break;
         case 0x0108:
             print_p(" Supported ROD Token and ROD Types:\n");
-            for (j = 0; j < (ucp[6] << 8) + ucp[7]; j+= 64) {
-                u = (ucp[8 + j] << 24) | (ucp[8 + j + 1] << 16) |
-                    (ucp[8 + j + 2] << 8) | ucp[8 + j + 3];
-                print_p("  ROD Type %u:\n", u);
+            for (j = 0; j < sg_get_unaligned_be16(ucp + 6); j+= 64) {
+                u = sg_get_unaligned_be32(ucp + 8 + j);
+                cp = get_tpc_rod_name(u);
+                if (strlen(cp) > 0)
+                    printf("  ROD Type: %s [0x%x]\n", cp, u);
+                else
+                   printf("  ROD Type: 0x%x\n", u);
+                print_p("  ROD Type 0x%x:\n", u);
                 print_p("    Internal: %s\n",
                         ucp[8 + j + 4] & 0x80 ? "yes" : "no");
                 print_p("    Token In: %s\n",
                         ucp[8 + j + 4] & 0x02 ? "yes" : "no");
                 print_p("    Token Out: %s\n",
-                       ucp[8 + j + 4] & 0x01 ? "yes" : "no");
+                        ucp[8 + j + 4] & 0x01 ? "yes" : "no");
                 print_p("    Preference: %d\n",
-                       (ucp[8 + j + 6] << 8) + ucp[8 + j + 7]);
+                        sg_get_unaligned_be16(ucp + 8 + j + 6));
             }
             break;
         case 0x8001:    /* Mandatory (SPC-4) */
             print_p(" General Copy Operations:\n");
-            u = (ucp[4] << 24) | (ucp[5] << 16) | (ucp[6] << 8) |
-                ucp[7];
+            u = sg_get_unaligned_be32(ucp + 4);
             print_p("  Total Concurrent Copies: %u\n", u);
-            u = (ucp[8] << 24) | (ucp[9] << 16) | (ucp[10] << 8) |
-                ucp[11];
+            u = sg_get_unaligned_be32(ucp + 8);
             print_p("  Maximum Identified Concurrent Copies: %u\n", u);
-            u = (ucp[12] << 24) | (ucp[13] << 16) | (ucp[14] << 8) |
-                ucp[15];
+            u = sg_get_unaligned_be32(ucp + 12);
             print_p("  Maximum Segment Length: %u\n", u);
-            ull = (1 << ucp[16]);
+            ull = (1 << ucp[16]);       /* field is power of 2 */
             print_p("  Data Segment Granularity: %" PRIu64 "\n", ull);
             ull = (1 << ucp[17]);
             print_p("  Inline Data Granularity: %" PRIu64 "\n", ull);
             break;
         case 0x9101:
             print_p(" Stream Copy Operations:\n");
-            u = (ucp[4] << 24) | (ucp[5] << 16) | (ucp[6] << 8) |
-                ucp[7];
+            u = sg_get_unaligned_be32(ucp + 4);
             print_p("  Maximum Stream Device Transfer Size: %u\n", u);
             break;
         case 0xC001:
             print_p(" Held Data:\n");
-            u = (ucp[4] << 24) | (ucp[5] << 16) | (ucp[6] << 8) |
-                ucp[7];
+            u = sg_get_unaligned_be32(ucp + 4);
             print_p("  Held Data Limit: %u\n", u);
             ull = (1 << ucp[8]);
             print_p("  Held Data Granularity: %" PRIu64 "\n", ull);
