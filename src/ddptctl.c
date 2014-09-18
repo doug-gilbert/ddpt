@@ -65,7 +65,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.95 20140911 [svn: r298]";
+const char * ddptctl_version_str = "0.95 20140918 [svn: r300]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -250,8 +250,8 @@ odx_print_rod_tok(const struct opts_t * op, unsigned char * rth, int len)
     printf("  Creator Logical Unit descriptor:\n");
     /* should make smaller version of following that outputs to stdout */
     if (0xe4 != rth[16]) {
-        pr2serr(">>> Expected Identification descriptor (0xe4) got 0x%x\n",
-                rth[16]);
+        pr2serr(">>> Expected Identification descriptor CSCD (0xe4) got "
+                "0x%x\n", rth[16]);
         if (! vendor)
             return SG_LIB_CAT_OTHER;
     }

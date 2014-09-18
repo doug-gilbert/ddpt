@@ -50,7 +50,7 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Thu Sep 11 2014 - dgilbert at interlog dot com
+* Thu Sep 18 2014 - dgilbert at interlog dot com
 - show percent completed
   * ddpt-0.95
 * Mon Apr 07 2014 - dgilbert at interlog dot com
