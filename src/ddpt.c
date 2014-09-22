@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.95 20140918 [svn: r300]";
+static const char * ddpt_version_str = "0.95 20140921 [svn: r301]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
