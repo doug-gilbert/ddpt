@@ -974,7 +974,7 @@ decode_rod_descriptor(const unsigned char * buff, int len, int to_stderr)
         switch (ucp[0]) {
             case 0:
                 /* Block ROD device type specific descriptor */
-                print_p("   Optimal block ROD length granularity: %d\n",
+                print_p("  Optimal block ROD length granularity: %d\n",
                         sg_get_unaligned_be16(ucp + 6));
                 print_p("  Maximum Bytes in block ROD: %" PRIu64 "\n",
                         sg_get_unaligned_be64(ucp + 8));
@@ -1150,7 +1150,7 @@ decode_3party_copy_vpd(unsigned char * buff, int len, int to_stderr,
                 for (m = 0; m < sa_len; ++m) {
                     sg_get_opcode_sa_name(ucp[5 + j], ucp[7 + j + m],
                                           0, sizeof(b), b);
-                    print_p("   %s\n", b);
+                    print_p("  %s\n", b);
                 }
                 j += sa_len + 2;
             }
@@ -1204,7 +1204,6 @@ decode_3party_copy_vpd(unsigned char * buff, int len, int to_stderr,
                     printf("  ROD Type: %s [0x%x]\n", cp, u);
                 else
                    printf("  ROD Type: 0x%x\n", u);
-                print_p("  ROD Type 0x%x:\n", u);
                 print_p("    Internal: %s\n",
                         ucp[8 + j + 4] & 0x80 ? "yes" : "no");
                 print_p("    Token In: %s\n",
