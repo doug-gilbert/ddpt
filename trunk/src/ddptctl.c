@@ -65,7 +65,7 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.95 20140921 [svn: r301]";
+const char * ddptctl_version_str = "0.95 20141007 [svn: r303]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -260,7 +260,7 @@ odx_print_rod_tok(const struct opts_t * op, unsigned char * rth, int len)
            (rth[18] << 8) + rth[19]);
     desig_type = rth[20 + 1] & 0xf;
     if ((0x2 == desig_type) || (0x3 == desig_type))
-        decode_designation_descriptor(rth + 20, 32 - 4, 0, op->verbose);
+        decode_designation_descriptor(rth + 20, rth[23], 0, op->verbose);
     else
         printf("      Expected designator type of EUI-64 or NAA, got "
                "0x%x\n", desig_type);
@@ -337,7 +337,7 @@ skip_to_target_dev_desc:
         if ((0x2 == desig_type) || (0x3 == desig_type) ||
             (0x8 == desig_type) || op->verbose) {
             printf("  Target device descriptor:\n");
-            decode_designation_descriptor(rth + 128, 128 - 4, 0,
+            decode_designation_descriptor(rth + 128, rth[131], 0,
                                           op->verbose);
         } else
             printf("  Target device descriptor: unexpected designator "
@@ -1043,7 +1043,7 @@ main(int argc, char * argv[])
             printf("unable to print capacity information about device\n");
         }
     } else
-        printf("Has something been forgotten\n");
+        printf("Expecting to see an option; try again with '-h'\n");
 
 clean_up:
     if ((req_pt || req_wut) && op->iflagp->immed && (0 == ret))
