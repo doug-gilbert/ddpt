@@ -1385,7 +1385,7 @@ decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
         case 3:         /* NAA: Locally assigned */
         case 5:         /* NAA: IEEE Registered */
             if (8 != i_len) {
-                print_p("      << unexpected NAA 5 identifier length: "
+                print_p("      << unexpected NAA 3 or 5 identifier length: "
                         "0x%x>>\n", i_len);
                 dStrHexp((const char *)ip, i_len, -1);
                 break;
