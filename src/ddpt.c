@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.95 20141007 [svn: r303]";
+static const char * ddpt_version_str = "0.95 20141019 [svn: r304]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -2509,8 +2509,8 @@ main(int argc, char * argv[])
     struct dev_info_t ids, ods, o2ds;
     struct opts_t * op;
 
-    state_init(&ops, &iflag, &oflag, &ids, &ods, &o2ds);
     op = &ops;
+    state_init(op, &iflag, &oflag, &ids, &ods, &o2ds);
     ret = cl_process(op, argc, argv, ddpt_version_str, jf_depth);
     if (op->do_help > 0) {
         ddpt_usage(op->do_help);
@@ -2568,7 +2568,7 @@ main(int argc, char * argv[])
     if ((ret = wrk_buffers_init(op)))
         goto cleanup;
 
-    if (ops.verbose)
+    if (op->verbose)
         details_pre_copy_print(op);
 
     op->read1_or_transfer = !! (FT_DEV_NULL & op->odip->d_type);
@@ -2622,9 +2622,13 @@ cleanup:
             pr2serr("Early termination, EOF on input?\n");
         else if (ret > 0)
             print_exit_status_msg("Early termination", ret, 1);
-        else
-            pr2serr("Early termination: some error occurred; try again with "
-                    "'-vv'\n");
+        else {
+            if (op->verbose < 2)
+                pr2serr("Early termination: some error occurred; try again "
+                        "with '-vv'\n");
+            else
+                pr2serr("Early termination: some error occurred\n");
+        }
     }
     return (ret >= 0) ? ret : SG_LIB_CAT_OTHER;
 }
