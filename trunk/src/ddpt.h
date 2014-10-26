@@ -85,6 +85,8 @@ extern "C" {
 #define DEF_SCSI_CDBSZ 10
 #define MAX_SCSI_CDBSZ 32
 #define DDPT_MAX_JF_DEPTH 4
+#define DDPT_MAX_JF_LINES 1000
+#define DDPT_MAX_JF_ARGS_PER_LINE 16
 
 #define VPD_DEVICE_ID 0x83
 #define VPD_3PARTY_COPY 0x8f

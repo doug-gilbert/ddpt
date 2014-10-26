@@ -295,10 +295,10 @@ tertiary_help:
             "  XCOPY_TO_SRC   send XCOPY command to IFILE (source)\n");
 }
 
-
-// enum { kMaxArgs = 64 };
-// static char *argv[kMaxArgs];
-
+/* Crude attempt to carve a command line into an argv array of pointers
+ * to arguments/options and returns argc. No more than max_args elements
+ * placed in argv. Modifies given cmd_line! Everything after the first
+ * found '#' is ignored. Uses strtok to carve up cmd_line. */
 static int
 argcargv(char * cmd_line, char ** argv, int max_args)
 {
@@ -861,8 +861,6 @@ cl_sanity_defaults(struct opts_t * op)
     return 0;
 }
 
-#define MAX_ARGS_PER_LINE 16
-
 static int
 jf_process(struct opts_t * op, const char * jf_name, const char * version_str,
            int jf_depth)
@@ -870,10 +868,10 @@ jf_process(struct opts_t * op, const char * jf_name, const char * version_str,
     FILE * fp;
     char b[4096];
     char bb[256];
-    int k, len, off, rlen, argc;
+    int k, len, off, rlen, argc, first_real;
     int ret = 0;
     char * cp;
-    char * argv[MAX_ARGS_PER_LINE];
+    char * argv[DDPT_MAX_JF_ARGS_PER_LINE];
 
     ++jf_depth;
     if (jf_depth > DDPT_MAX_JF_DEPTH) {
@@ -890,12 +888,29 @@ jf_process(struct opts_t * op, const char * jf_name, const char * version_str,
         return SG_LIB_FILE_ERROR;
     }
     rlen = sizeof(b);
-    for (off = 0, k = 0; (rlen > 0) && ((cp = fgets(b + off, rlen, fp)));
+    for (off = 0, k = 0, first_real = 1;
+         (rlen > 0) && ((cp = fgets(b + off, rlen, fp)) &&
+         (k < DDPT_MAX_JF_LINES));
          rlen -= len, off += len, ++k) {
         len = strlen(b + off);
         if (0 == len)
             continue;
-        else if ('\n' == b[off + len - 1]) {
+        if (first_real) {
+            first_real = 0;
+            if ((0 == op->iflagp->force) && (0 == op->oflagp->force)) {
+                /* in absence of iflag=force or oflag-force, check if job
+                 * file seems to be binary */
+                if ((b[0] > 0x7e) || ((len > 1) && (b[1] > 0x7e)) ||
+                    ((len > 2) && (b[2] > 0x7e)) ||
+                    ((len > 3) && (b[3] > 0x7e))) {
+                        pr2serr("job_file: %s might be binary so exit; use\n"
+                                "iflag=force or oflag=force prior to job "
+                                "file to override\n", jf_name);
+                        return SG_LIB_FILE_ERROR;
+                }
+            }
+        }
+        if ('\n' == b[off + len - 1]) {
             b[off + len - 1] = '\0';
             --len;
             if (0 == len)
@@ -910,7 +925,7 @@ jf_process(struct opts_t * op, const char * jf_name, const char * version_str,
         snprintf(bb, sizeof(bb), "%s (depth=%d) line %d", jf_name, jf_depth,
                  k + 1);
         argv[0] = bb;
-        argc = argcargv(b + off, argv + 1, MAX_ARGS_PER_LINE - 1);
+        argc = argcargv(b + off, argv + 1, DDPT_MAX_JF_ARGS_PER_LINE - 1);
         ++argc;
         ret = cl_process(op, argc, argv, version_str, jf_depth);
         if (ret) {
@@ -924,6 +939,10 @@ jf_process(struct opts_t * op, const char * jf_name, const char * version_str,
         ret = SG_LIB_FILE_ERROR;
     } else if (ferror(fp)) {
         pr2serr("job file %s (depth=%d) read error\n", jf_name, jf_depth);
+        ret = SG_LIB_FILE_ERROR;
+    } else if (k >= DDPT_MAX_JF_LINES) {
+        pr2serr("job file %s (depth=%d) more than %d lines\n", jf_name,
+	        jf_depth, DDPT_MAX_JF_LINES);
         ret = SG_LIB_FILE_ERROR;
     }
     fclose(fp);
