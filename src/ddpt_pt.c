@@ -634,17 +634,20 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
     int retries_tmp;
     int ret = 0;
     int may_coe = 0;
+    const char * iop;
 
     if (in0_out1) {
         from_block = op->seek;
         bs = op->obs_pi;
         pi_len = op->obs_pi - op->obs;
         fp = op->oflagp;
+        iop = "ofile";
     } else {
         from_block = op->skip;
         bs = op->ibs_pi;
         pi_len = op->ibs_pi - op->ibs;
         fp = op->iflagp;
+        iop = "ifile";
     }
     retries_tmp = fp->retries;
     for (xferred = 0, blks = blocks, lba = from_block, bp = buff;
@@ -663,21 +666,25 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
         case -2:        /* ENOMEM */
             return res;
         case SG_LIB_CAT_NOT_READY:
-            pr2serr("Device (r) not ready\n");
+            pr2serr("%s: Device not ready [%s]\n", __func__, iop);
             return res;
         case SG_LIB_CAT_ABORTED_COMMAND:
             if (--op->max_aborted > 0)
-                pr2serr("Aborted command, continuing (r)\n");
+                pr2serr("%s: Aborted command, continuing [%s]\n", __func__,
+                        iop);
             else {
-                pr2serr("Aborted command, too many (r)\n");
+                pr2serr("%s: Aborted command, too many [%s]\n", __func__,
+                        iop);
                 return res;
             }
             break;
         case SG_LIB_CAT_UNIT_ATTENTION:
             if (--op->max_uas > 0)
-                pr2serr("Unit attention, continuing (r)\n");
+                pr2serr("%s: Unit attention, continuing [%s]\n", __func__,
+                        iop);
             else {
-                pr2serr("Unit attention, too many (r)\n");
+                pr2serr("%s: Unit attention, too many [%s]\n", __func__,
+                        iop);
                 return res;
             }
             break;
@@ -764,16 +771,18 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
                 ret = res;
                 goto err_out;
             case -2:
-                pr2serr("ENOMEM again, unexpected (r)\n");
+                pr2serr("%s: ENOMEM again, unexpected [%s]\n", __func__, iop);
                 return -1;
             case SG_LIB_CAT_NOT_READY:
-                pr2serr("device (r) not ready\n");
+                pr2serr("%s: device not ready [%s]\n", __func__, iop);
                 return res;
             case SG_LIB_CAT_UNIT_ATTENTION:
-                pr2serr("Unit attention, unexpected (r)\n");
+                pr2serr("%s: Unit attention, unexpected [%s]\n", __func__,
+                        iop);
                 return res;
             case SG_LIB_CAT_ABORTED_COMMAND:
-                pr2serr("Aborted command, unexpected (r)\n");
+                pr2serr("%s: Aborted command, unexpected [%s]\n", __func__,
+                        iop);
                 return res;
             case SG_LIB_CAT_MEDIUM_HARD_WITH_INFO:
             case SG_LIB_CAT_MEDIUM_HARD:
@@ -785,8 +794,8 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
                 goto err_out;
             case SG_LIB_SYNTAX_ERROR:
             default:
-                pr2serr(">> unexpected result=%d from pt_low_read() 2\n",
-                        res);
+                pr2serr(">> unexpected result=%d from pt_low_read() 2 [%s]\n",
+                        res, iop);
                 ret = res;
                 goto err_out;
             }
