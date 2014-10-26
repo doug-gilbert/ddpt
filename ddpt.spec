@@ -50,8 +50,8 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Thu Sep 18 2014 - dgilbert at interlog dot com
-- show percent completed
+* Sun Oct 26 2014 - dgilbert at interlog dot com
+- show percent completed, job file
   * ddpt-0.95
 * Mon Apr 07 2014 - dgilbert at interlog dot com
 - add ODX (subset xcopy(LID4)) support
