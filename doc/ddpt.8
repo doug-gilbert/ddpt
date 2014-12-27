@@ -373,11 +373,12 @@ reports usage message then exits.
 \fB\-\-job\fR=\fIJF\fR
 where \fIJF\fR is a file name. That file can contain options listed in
 this section. The options within the file are processed in the order
-they are found (i.e. parsing left to right) and options may accumulate. For
-example '\-v' on the command line followed by a job file containing '\-vv'
-will result in a verbosity level of '\-vvv' during the copy phase. Job
-files can recurse (i.e. call each other) up to a depth of 5. Empty lines
-and anything from and including a '#' in a job file line are ignored.
+they are found (i.e. parsing left to right, top (of file) to bottom) and
+options may override earlier ones or accumulate. For example '\-v' on the
+command line followed by a job file containing '\-vv' will result in a
+verbosity level of '\-vvv' during the copy phase. Job files can
+recurse (i.e. call another or the same job file) up to a depth of 5. Empty
+lines and anything from and including a '#' in a job file line is ignored.
 .TP
 \fB\-o\fR, \fB\-\-odx\fR
 indicates to this utility that one of the four odx variants is requested.
@@ -405,10 +406,13 @@ the absence of another indication the xcopy command will be sent to the
 destination (i.e. \fIOFILE\fR). See the section on ENVIRONMENT VARIABLES
 below.
 .TP
-\fB\JF\fR
+\fBJF\fR
 a command line element that does not contain a '=' (i.e. a dd style option)
-and does not start with '\-' is treated as a job file. See the entry on
-\fI\-\-job=JF\fR above.
+and does not start with '\-' is treated as a job file (i.e. \fIJF\fR). See
+the entry on \fI\-\-job=JF\fR above. For sanity \fIJF\fR is checked to make
+sure it is "regular" (i.e. not a device file like /dev/sdc) and for non
+ASCII characters lest it be a binary file by accident. Failing those checks
+may be overridden by 'iflag=force' or 'oflag=force'.
 .SH COUNT
 When the \fIcount=COUNT\fR option is not given (or \fICOUNT\fR is '\-1')
 then an attempt is made to deduce \fICOUNT\fR as follows.
