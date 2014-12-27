@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.95 20141220 [svn: r306]";
+static const char * ddpt_version_str = "0.95 20141226 [svn: r307]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -2387,8 +2387,8 @@ wrk_buffers_init(struct opts_t * op)
             pr2serr("Not enough user memory for aligned usage\n");
             return SG_LIB_CAT_OTHER;
         }
-        op->wrkPos = (unsigned char *)(((unsigned long)op->wrkBuff + psz - 1) &
-                                       (~(psz - 1)));
+        op->wrkPos = (unsigned char *)(((uintptr_t)op->wrkBuff + psz - 1) &
+                                       (~((uintptr_t)psz - 1)));
         if (op->oflagp->sparing) {
             op->wrkBuff2 = (unsigned char*)calloc(len + psz, 1);
             if (0 == op->wrkBuff2) {
@@ -2396,7 +2396,8 @@ wrk_buffers_init(struct opts_t * op)
                 return SG_LIB_CAT_OTHER;
             }
             op->wrkPos2 = (unsigned char *)
-                    (((unsigned long)op->wrkBuff2 + psz - 1) & (~(psz - 1)));
+                           (((uintptr_t)op->wrkBuff2 + psz - 1) &
+                            (~((uintptr_t)psz - 1)));
         }
 #endif  /* HAVE_POSIX_MEMALIGN */
     } else {

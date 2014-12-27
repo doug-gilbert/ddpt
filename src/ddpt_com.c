@@ -317,12 +317,12 @@ find_bsg_major(int verbose)
         return;
     }
     while ((cp = fgets(b, sizeof(b), fp))) {
-        if ((1 == sscanf(b, "%s", a)) &&
+        if ((1 == sscanf(b, "%126s", a)) &&
             (0 == memcmp(a, "Character", 9)))
             break;
     }
     while (cp && (cp = fgets(b, sizeof(b), fp))) {
-        if (2 == sscanf(b, "%d %s", &n, a)) {
+        if (2 == sscanf(b, "%d %126s", &n, a)) {
             if (0 == strcmp("bsg", a)) {
                 bsg_major = n;
                 break;

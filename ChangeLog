@@ -2,7 +2,7 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.95 [20141220] [svn: r306]
+Changelog for ddpt-0.95 [20141226] [svn: r307]
   - add oflag=verify[,bytchk] to write using the SCSI
     WRITE AND VERIFY command
   - add job file that holds options; specified either
