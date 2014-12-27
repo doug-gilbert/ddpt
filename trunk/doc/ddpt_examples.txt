@@ -343,6 +343,6 @@ time to read data: 0.051909 secs at 9863.41 MB/sec
 # line is considered a comment. Blanks lines are permitted and ignored.
 # Job files can invoke other job files, to a level of 4 deep. Some checks
 # are made that a file assumed to contain text and ddpt options is not
-# actually binary, but that is imperfect.
+# actually binary, but that is error prone.
 
-# Douglas Gilbert 20141026
+# Douglas Gilbert 20141226

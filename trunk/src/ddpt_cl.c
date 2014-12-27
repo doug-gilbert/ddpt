@@ -103,6 +103,7 @@ primary_help:
 #else
            "             [--help] [--odx] [--verbose] [--version] [--xcopy]\n"
 #endif
+           "             [JF]\n"
            "  where the main options are:\n"
            "    bpt         input Blocks Per Transfer (BPT) (def: 128 when "
            "IBS is 512)\n"
@@ -113,8 +114,6 @@ primary_help:
     pr2serr(
            "    coe         0->exit on error (def), 1->continue on "
            "error (zero fill)\n"
-           "    conv        conversions, comma separated list of CONVS "
-           "(see '-hhh')\n"
            "    count       number of input blocks to copy (def: "
            "(remaining)\n"
            "                device/file size)\n"
@@ -130,8 +129,6 @@ primary_help:
     pr2serr(
            "    oflag       output flags, comma separated list from FLAGS "
            "(see below)\n"
-           "    retries     retry pass-through errors RETR times "
-           "(def: 0)\n"
            "    seek        block position to start writing in OFILE\n"
            "    skip        block position to start reading from IFILE\n"
            "    status      'noxfer' suppresses throughput calculation; "
@@ -142,6 +139,7 @@ primary_help:
            "etc\n"
            "                -1->quiet (stderr->/dev/null)\n"
            "    --help      print out this usage message then exit\n"
+           "    --job=JF    JF is job file containing options\n"
            "    --odx       do ODX copy rather than normal rw copy\n"
            "    --verbose   equivalent to verbose=1\n"
            "    --version   print version information then exit\n"
@@ -149,6 +147,9 @@ primary_help:
            "    --wscan     windows scan for device names and volumes\n"
 #endif
            "    --xcopy     do xcopy(LID1) rather than normal rw copy\n"
+           "    JF          job file: a file containing options; can not "
+           "start\n"
+           "                with '-' or contain '='. Parsed when seen\n"
            "\nCopy all or part of IFILE to OFILE, IBS*BPT bytes at a time. "
            "Similar to\n"
            "dd command. Support for block devices, especially those "
@@ -164,6 +165,8 @@ secondary_help:
            "    coe_limit   limit consecutive 'bad' blocks on reads to CL "
            "times\n"
            "                when coe=1 (default: 0 which is no limit)\n"
+           "    conv        conversions, comma separated list of CONVS "
+           "(see '-hhh')\n"
            "    delay       wait MS milliseconds between each copy segment "
            "(def: 0)\n"
            "                wait W_MS milliseconds prior to each write "
@@ -188,6 +191,8 @@ secondary_help:
            "    prio        xcopy: set priority field to PRIO (def: 1)\n"
            "    protect     set rdprotect and/or wrprotect fields on "
            "pt commands\n"
+           "    retries     retry pass-through errors RETR times "
+           "(def: 0)\n"
            "    rtf         ROD Token filename (odx)\n"
            "    rtype       ROD type (odx), can be pit-any, pit-def, "
            "pit-pers,\n"
@@ -942,7 +947,7 @@ jf_process(struct opts_t * op, const char * jf_name, const char * version_str,
         ret = SG_LIB_FILE_ERROR;
     } else if (k >= DDPT_MAX_JF_LINES) {
         pr2serr("job file %s (depth=%d) more than %d lines\n", jf_name,
-	        jf_depth, DDPT_MAX_JF_LINES);
+                jf_depth, DDPT_MAX_JF_LINES);
         ret = SG_LIB_FILE_ERROR;
     }
     fclose(fp);
