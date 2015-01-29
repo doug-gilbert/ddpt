@@ -284,6 +284,10 @@ print_stats(const char * str, struct opts_t * op, int who)
         pr2serr("%s%d %s after interrupted system call(s)\n",
                 str, op->interrupted_retries,
                 ((1 == op->interrupted_retries) ? "retry" : "retries"));
+    if (op->io_eagains > 0)
+        pr2serr("%s%d %s after EAGAIN error(s) during IO\n",
+                str, op->io_eagains,
+                ((1 == op->io_eagains) ? "retry" : "retries"));
     if (op->has_xcopy)
         pr2serr("%s%" PRId64 " xcopy command%s done\n", str, op->num_xcopy,
                 ((1 == op->num_xcopy) ? "" : "s"));
