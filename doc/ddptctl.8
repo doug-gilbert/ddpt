@@ -89,14 +89,14 @@ file length which should either be a multiple of 512 or 520 bytes.
 \fB\-l\fR, \fB\-\-list_id\fR=\fILID\fR
 \fILID\fR is a list identifier which is used to associate an originating
 xcopy command (e.g. PT or WUT) with a follow\-up command that retrieves
-information or aborts the operation. T10 requires active \fILID\fRs to be
-unique on a given I\-T nexus. An I\-T nexus is the current machine (more
-precisely a HBA if a machine has two or more) and a specific target which
-will contain one or more logical units (LUs) of which \fIDEVICE\fR is one.
-If the \fIDEVICE\fR's copy manager feels that rather complex condition has
-not been met then an error is generated with sense data that decodes
-to "operation in progress". Rather than try to work out who is doing
-what elsewhere, try another \fILID\fR value.
+associated information or aborts the operation. T10 requires each active
+\fILID\fR to be unique on a given I\-T nexus. An I\-T nexus is the current
+machine (more precisely a HBA if a machine has two or more) and a specific
+target which will contain one or more logical units (LUs) of which
+\fIDEVICE\fR is one. If the \fIDEVICE\fR's copy manager feels that rather
+complex condition has not been met then an error is generated with sense
+data that decodes to "operation in progress". Rather than try to work out
+who is doing what elsewhere, try another \fILID\fR value.
 .br
 The default value for \fILID\fR is 257.
 .TP
