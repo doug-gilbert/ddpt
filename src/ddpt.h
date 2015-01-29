@@ -390,6 +390,7 @@ struct opts_t {
     int num_retries;
     int sum_of_resids;
     int interrupted_retries;
+    int io_eagains;
     int err_to_report;
     int reading_fifo;
     int read1_or_transfer; /* 1 when of=/dev/null or similar */

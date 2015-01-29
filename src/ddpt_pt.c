@@ -524,8 +524,13 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
 #endif
     vt = (op->verbose ? (op->verbose - 1) : 0);
     while (((res = do_scsi_pt(ptvp, dip->fd, DEF_RW_TIMEOUT, vt)) < 0) &&
-           (-EINTR == res))
-        ++op->interrupted_retries; /* resubmit if interrupted system call */
+           ((-EINTR == res) || (-EAGAIN == res))) {
+        /* resubmit in these cases */
+        if (-EINTR == res)
+            ++op->interrupted_retries;
+        else
+            ++op->io_eagains;
+    }
 
     vt = ((op->verbose > 1) ? (op->verbose - 1) : op->verbose);
     ret = sg_cmds_process_resp(ptvp, "READ", res, bs * blocks, sense_b,
@@ -902,8 +907,13 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
 #endif
     vt = (op->verbose ? (op->verbose - 1) : 0);
     while (((res = do_scsi_pt(ptvp, sg_fd, DEF_RW_TIMEOUT, vt)) < 0) &&
-           (-EINTR == res))
-        ++op->interrupted_retries; /* resubmit if interrupted system call */
+           ((-EINTR == res) || (-EAGAIN == res))) {
+        /* resubmit in these cases */
+        if (-EINTR == res)
+            ++op->interrupted_retries;
+        else
+            ++op->io_eagains;
+    }
 
     vt = ((op->verbose > 1) ? (op->verbose - 1) : op->verbose);
     ret = sg_cmds_process_resp(ptvp, desc, res, bs * blocks, sense_b,
@@ -1056,8 +1066,13 @@ pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
     set_scsi_pt_data_out(ptvp, buff, bs);
     vt = ((op->verbose > 1) ? (op->verbose - 1) : 0);
     while (((res = do_scsi_pt(ptvp, sg_fd, WRITE_SAME16_TIMEOUT, vt)) < 0) &&
-           (-EINTR == res))
-        ++op->interrupted_retries; /* resubmit if interrupted system call */
+           ((-EINTR == res) || (-EAGAIN == res))) {
+        /* resubmit in these cases */
+        if (-EINTR == res)
+            ++op->interrupted_retries;
+        else
+            ++op->io_eagains;
+    }
     ret = sg_cmds_process_resp(ptvp, "Write same(16)", res, 0, sense_b,
                                1 /*noisy */, vt, &sense_cat);
     if (-1 == ret)
