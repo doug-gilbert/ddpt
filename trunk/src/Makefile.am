@@ -58,7 +58,7 @@ ddptctl_SOURCES +=	ddpt_win32.c \
 endif
 
 if HAVE_SGUTILS
-INCLUDES = -I/usr/include/scsi
+INCLUDES = -I/scsi
 ddpt_LDADD = @os_libs@ @rt_libs@ @SGUTILS_LIBS@
 else
 INCLUDES = -I$(top_srcdir)/include
@@ -77,7 +77,7 @@ EXTRA_ddpt_SOURCES =	../lib/sg_pt_linux.c	\
 
 
 if HAVE_SGUTILS
-INCLUDES = -I/usr/include/scsi
+INCLUDES = -I/scsi
 ddptctl_LDADD = @os_libs@ @rt_libs@ @SGUTILS_LIBS@
 else
 INCLUDES = -I$(top_srcdir)/include
