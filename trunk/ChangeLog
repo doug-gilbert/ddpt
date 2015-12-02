@@ -2,8 +2,8 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.96 [20151117] [svn: r312]
-  - point svn:externals to rev 647 of sg3_utils
+Changelog for ddpt-0.96 [20151201] [svn: r313]
+  - point svn:externals to rev 652 of sg3_utils
   - resubmit IOs if EAGAIN, report count if > 0
 
 Changelog for ddpt-0.95 [20141226] [svn: r307]
