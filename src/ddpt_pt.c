@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2014 Douglas Gilbert.
+ * Copyright (c) 2008-2015 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -65,6 +65,7 @@
 #include "sg_cmds_basic.h"
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
+#include "sg_unaligned.h"
 
 #define DDPT_READ6_OC 0x8
 #define DDPT_READ10_OC 0x28
@@ -253,7 +254,7 @@ int
 pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_blks,
                  int * blk_sz)
 {
-    int k, res;
+    int res;
     unsigned int ui;
     unsigned char rcBuff[RCAP16_REPLY_LEN];
     int verb;
@@ -282,13 +283,9 @@ pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_blks,
                                verb);
         if (0 != res)
             return res;
-        for (k = 0, ls = 0; k < 8; ++k) {
-            ls <<= 8;
-            ls |= rcBuff[k];
-        }
+        ls = sg_get_unaligned_be64(rcBuff + 0);
         *num_blks = ls + 1;
-        *blk_sz = (rcBuff[8] << 24) | (rcBuff[9] << 16) |
-                   (rcBuff[10] << 8) | rcBuff[11];
+        *blk_sz = sg_get_unaligned_be32(rcBuff + 8);
         if (rcBuff[12] & 0x1) {         /* PROT_EN */
             prot_typ = ((rcBuff[12] >> 1) & 0x7) + 1;
             p_i_exp = ((rcBuff[13] >> 4) & 0xf);
@@ -301,12 +298,10 @@ pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_blks,
             op->idip->p_i_exp = p_i_exp;
         }
     } else {
-        ui = ((rcBuff[0] << 24) | (rcBuff[1] << 16) | (rcBuff[2] << 8) |
-              rcBuff[3]);
+        ui = sg_get_unaligned_be32(rcBuff + 0);
         /* take care not to sign extend values > 0x7fffffff */
         *num_blks = (int64_t)ui + 1;
-        *blk_sz = (rcBuff[4] << 24) | (rcBuff[5] << 16) |
-                   (rcBuff[6] << 8) | rcBuff[7];
+        *blk_sz = sg_get_unaligned_be32(rcBuff + 4);
     }
     return 0;
 }
@@ -379,9 +374,7 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
         if (0 == opcode_sa)
             opcode_sa = opc_arr[0];
         cdbp[0] = (unsigned char)opcode_sa;
-        cdbp[1] = (unsigned char)((start_block >> 16) & 0x1f);
-        cdbp[2] = (unsigned char)((start_block >> 8) & 0xff);
-        cdbp[3] = (unsigned char)(start_block & 0xff);
+        sg_put_unaligned_be24((uint32_t)(0x1fffff & start_block), cdbp + 1);
         cdbp[4] = (256 == blocks) ? 0 : (unsigned char)blocks;
         if (blocks > 256) {
             pr2serr("for 6 byte commands, maximum number of blocks is 256\n");
@@ -403,12 +396,8 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
             opcode_sa = opc_arr[1];
         cdbp[0] = (unsigned char)opcode_sa;
         cdbp[1] = (unsigned char)options_byte;
-        cdbp[2] = (unsigned char)((start_block >> 24) & 0xff);
-        cdbp[3] = (unsigned char)((start_block >> 16) & 0xff);
-        cdbp[4] = (unsigned char)((start_block >> 8) & 0xff);
-        cdbp[5] = (unsigned char)(start_block & 0xff);
-        cdbp[7] = (unsigned char)((blocks >> 8) & 0xff);
-        cdbp[8] = (unsigned char)(blocks & 0xff);
+        sg_put_unaligned_be32((uint32_t)start_block, cdbp + 2);
+        sg_put_unaligned_be16((uint16_t)blocks, cdbp + 7);
         if (blocks & (~0xffff)) {
             pr2serr("for 10 byte commands, maximum number of blocks is %d\n",
                     0xffff);
@@ -420,32 +409,16 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
             opcode_sa = opc_arr[2];
         cdbp[0] = (unsigned char)opcode_sa;
         cdbp[1] = (unsigned char)options_byte;
-        cdbp[2] = (unsigned char)((start_block >> 24) & 0xff);
-        cdbp[3] = (unsigned char)((start_block >> 16) & 0xff);
-        cdbp[4] = (unsigned char)((start_block >> 8) & 0xff);
-        cdbp[5] = (unsigned char)(start_block & 0xff);
-        cdbp[6] = (unsigned char)((blocks >> 24) & 0xff);
-        cdbp[7] = (unsigned char)((blocks >> 16) & 0xff);
-        cdbp[8] = (unsigned char)((blocks >> 8) & 0xff);
-        cdbp[9] = (unsigned char)(blocks & 0xff);
+        sg_put_unaligned_be32((uint32_t)start_block, cdbp + 2);
+        sg_put_unaligned_be32((uint32_t)blocks, cdbp + 6);
         break;
     case 16:
         if (0 == opcode_sa)
             opcode_sa = opc_arr[3];
         cdbp[0] = (unsigned char)opcode_sa;
         cdbp[1] = (unsigned char)options_byte;
-        cdbp[2] = (unsigned char)((start_block >> 56) & 0xff);
-        cdbp[3] = (unsigned char)((start_block >> 48) & 0xff);
-        cdbp[4] = (unsigned char)((start_block >> 40) & 0xff);
-        cdbp[5] = (unsigned char)((start_block >> 32) & 0xff);
-        cdbp[6] = (unsigned char)((start_block >> 24) & 0xff);
-        cdbp[7] = (unsigned char)((start_block >> 16) & 0xff);
-        cdbp[8] = (unsigned char)((start_block >> 8) & 0xff);
-        cdbp[9] = (unsigned char)(start_block & 0xff);
-        cdbp[10] = (unsigned char)((blocks >> 24) & 0xff);
-        cdbp[11] = (unsigned char)((blocks >> 16) & 0xff);
-        cdbp[12] = (unsigned char)((blocks >> 8) & 0xff);
-        cdbp[13] = (unsigned char)(blocks & 0xff);
+        sg_put_unaligned_be64(start_block, cdbp + 2);
+        sg_put_unaligned_be32((uint32_t)blocks, cdbp + 10);
         break;
     case 32:
         if (0 == opcode_sa)
@@ -453,21 +426,10 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
         cdbp[0] = (unsigned char)DDPT_VARIABLE_LEN_OC;
         cdbp[7] = (unsigned char)0x18;  /* additional length=>32 byte cdb */
         rw_sa = opcode_sa;
-        cdbp[8] = (unsigned char)((rw_sa >> 8) & 0xff);
-        cdbp[9] = (unsigned char)(rw_sa & 0xff);
+        sg_put_unaligned_be16((uint16_t)rw_sa, cdbp + 8);
         cdbp[10] = (unsigned char)options_byte;
-        cdbp[12] = (unsigned char)((start_block >> 56) & 0xff);
-        cdbp[13] = (unsigned char)((start_block >> 48) & 0xff);
-        cdbp[14] = (unsigned char)((start_block >> 40) & 0xff);
-        cdbp[15] = (unsigned char)((start_block >> 32) & 0xff);
-        cdbp[16] = (unsigned char)((start_block >> 24) & 0xff);
-        cdbp[17] = (unsigned char)((start_block >> 16) & 0xff);
-        cdbp[18] = (unsigned char)((start_block >> 8) & 0xff);
-        cdbp[19] = (unsigned char)(start_block & 0xff);
-        cdbp[28] = (unsigned char)((blocks >> 24) & 0xff);
-        cdbp[29] = (unsigned char)((blocks >> 16) & 0xff);
-        cdbp[30] = (unsigned char)((blocks >> 8) & 0xff);
-        cdbp[31] = (unsigned char)(blocks & 0xff);
+        sg_put_unaligned_be64(start_block, cdbp + 12);
+        sg_put_unaligned_be32((uint32_t)blocks, cdbp + 28);
         break;
     default:
         pr2serr("expected cdb size of 6, 10, 12, 16 or 32 but got %d\n",
@@ -1038,15 +1000,9 @@ pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
     /* set UNMAP; clear wrprotect, anchor, pbdata, lbdata */
     wsCmdBlk[1] = 0x8;
     llba = start_block;
-    for (k = 7; k >= 0; --k) {
-        wsCmdBlk[2 + k] = (llba & 0xff);
-        llba >>= 8;
-    }
+    sg_put_unaligned_be64(llba, wsCmdBlk + 2);
     unum = blocks;
-    for (k = 3; k >= 0; --k) {
-        wsCmdBlk[10 + k] = (unum & 0xff);
-        unum >>= 8;
-    }
+    sg_put_unaligned_be32(unum, wsCmdBlk + 10);
     if (op->verbose > 2) {
         pr2serr("    WRITE SAME(16) cdb: ");
         for (k = 0; k < (int)sizeof(wsCmdBlk); ++k)
@@ -1211,30 +1167,18 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
     switch (sa) {
     case 0x0:   /* XCOPY(LID1) */
     case 0x1:   /* XCOPY(LID4) */
-        xcopyCmdBlk[10] = (unsigned char)((param_len >> 24) & 0xff);
-        xcopyCmdBlk[11] = (unsigned char)((param_len >> 16) & 0xff);
-        xcopyCmdBlk[12] = (unsigned char)((param_len >> 8) & 0xff);
-        xcopyCmdBlk[13] = (unsigned char)(param_len & 0xff);
+        sg_put_unaligned_be32((uint32_t)param_len, xcopyCmdBlk + 10);
         has_lid = 0;
         break;
     case 0x10:  /* POPULATE TOKEN (SBC-3) */
     case 0x11:  /* WRITE USING TOKEN (SBC-3) */
-        xcopyCmdBlk[6] = (unsigned char)((list_id >> 24) & 0xff);
-        xcopyCmdBlk[7] = (unsigned char)((list_id >> 16) & 0xff);
-        xcopyCmdBlk[8] = (unsigned char)((list_id >> 8) & 0xff);
-        xcopyCmdBlk[9] = (unsigned char)(list_id & 0xff);
+        sg_put_unaligned_be32(list_id, xcopyCmdBlk + 6);
         has_lid = 1;
-        xcopyCmdBlk[10] = (unsigned char)((param_len >> 24) & 0xff);
-        xcopyCmdBlk[11] = (unsigned char)((param_len >> 16) & 0xff);
-        xcopyCmdBlk[12] = (unsigned char)((param_len >> 8) & 0xff);
-        xcopyCmdBlk[13] = (unsigned char)(param_len & 0xff);
+        sg_put_unaligned_be32((uint32_t)param_len, xcopyCmdBlk + 10);
         xcopyCmdBlk[14] = (unsigned char)(group_num & 0x1f);
         break;
     case 0x1c:  /* COPY OPERATION ABORT */
-        xcopyCmdBlk[2] = (unsigned char)((list_id >> 24) & 0xff);
-        xcopyCmdBlk[3] = (unsigned char)((list_id >> 16) & 0xff);
-        xcopyCmdBlk[4] = (unsigned char)((list_id >> 8) & 0xff);
-        xcopyCmdBlk[5] = (unsigned char)(list_id & 0xff);
+        sg_put_unaligned_be32(list_id, xcopyCmdBlk + 2);
         has_lid = 1;
         break;
     default:
@@ -1306,16 +1250,9 @@ pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
     rcvcopyresCmdBlk[1] = (unsigned char)(sa & 0x1f);
     if (sa <= 4)        /* LID1 variants */
         rcvcopyresCmdBlk[2] = (unsigned char)(list_id);
-    else if ((sa >= 5) && (sa <= 7)) {  /* LID4 variants */
-        rcvcopyresCmdBlk[2] = (unsigned char)((list_id >> 24) & 0xff);
-        rcvcopyresCmdBlk[3] = (unsigned char)((list_id >> 16) & 0xff);
-        rcvcopyresCmdBlk[4] = (unsigned char)((list_id >> 8) & 0xff);
-        rcvcopyresCmdBlk[5] = (unsigned char)(list_id & 0xff);
-    }
-    rcvcopyresCmdBlk[10] = (unsigned char)((mx_resp_len >> 24) & 0xff);
-    rcvcopyresCmdBlk[11] = (unsigned char)((mx_resp_len >> 16) & 0xff);
-    rcvcopyresCmdBlk[12] = (unsigned char)((mx_resp_len >> 8) & 0xff);
-    rcvcopyresCmdBlk[13] = (unsigned char)(mx_resp_len & 0xff);
+    else if ((sa >= 5) && (sa <= 7))    /* LID4 variants */
+        sg_put_unaligned_be32(list_id, rcvcopyresCmdBlk + 2);
+    sg_put_unaligned_be32((uint32_t)mx_resp_len, rcvcopyresCmdBlk + 10);
     tmout = (timeout_secs > 0) ? timeout_secs : DEF_PT_TIMEOUT;
 
     if (vb > 1) {
