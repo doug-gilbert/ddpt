@@ -108,6 +108,7 @@ const char * ddptctl_version_str = "0.96 20151210 [svn: r314]";
 
 #include "sg_lib.h"
 #include "sg_cmds_basic.h"
+#include "sg_pr2serr.h"
 
 
 #define DEF_3PC_OUT_TIMEOUT (10 * 60)   /* 10 minutes not enough, use IMMED */

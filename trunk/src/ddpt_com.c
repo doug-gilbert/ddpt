@@ -115,6 +115,7 @@
 #endif  /* end SG_LIB_WIN32 */
 
 #include "sg_lib.h"
+#include "sg_pr2serr.h"
 
 
 static const char * errblk_file = "errblk.txt";
@@ -139,19 +140,6 @@ my_snprintf(char * cp, int cp_max_len, const char * fmt, ...)
     n = vsnprintf(cp, cp_max_len, fmt, args);
     va_end(args);
     return (n < cp_max_len) ? n : (cp_max_len - 1);
-}
-
-/* Abbreviation of fprintf(stderr, ...) */
-int     /* Global function */
-pr2serr(const char * fmt, ...)
-{
-    va_list args;
-    int n;
-
-    va_start(args, fmt);
-    n = vfprintf(stderr, fmt, args);
-    va_end(args);
-    return n;
 }
 
 void
