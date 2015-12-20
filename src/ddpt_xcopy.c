@@ -64,6 +64,7 @@
 #include "sg_lib.h"
 #include "sg_cmds_basic.h"
 #include "sg_unaligned.h"
+#include "sg_pr2serr.h"
 
 
 #define DEF_3PC_OUT_TIMEOUT (10 * 60)   /* is 10 minutes enough? */
