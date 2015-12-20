@@ -461,11 +461,6 @@ struct sg_simple_inquiry_resp;
 /* No global function defined in ddpt.c apart from main() */
 
 /* defined in ddpt_com.c */
-#ifdef __GNUC__
-int pr2serr(const char * fmt, ...) __attribute__ ((format (printf, 1, 2)));
-#else
-int pr2serr(const char * fmt, ...);
-#endif
 void sleep_ms(int millisecs);
 void state_init(struct opts_t * op, struct flags_t * ifp,
                 struct flags_t * ofp, struct dev_info_t * idip,

@@ -66,6 +66,7 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 #include "sg_unaligned.h"
+#include "sg_pr2serr.h"
 
 #define DDPT_READ6_OC 0x8
 #define DDPT_READ10_OC 0x28

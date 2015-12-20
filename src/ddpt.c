@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.96 20151210 [svn: r314]";
+static const char * ddpt_version_str = "0.96 20151220 [svn: r315]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -111,6 +111,7 @@ static const char * ddpt_version_str = "0.96 20151210 [svn: r314]";
 
 #include "ddpt.h"
 #include "sg_lib.h"
+#include "sg_pr2serr.h"
 
 #ifndef EREMOTEIO
 #define EREMOTEIO EIO
