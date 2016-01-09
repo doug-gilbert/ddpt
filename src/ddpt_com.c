@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2014 Douglas Gilbert.
+ * Copyright (c) 2013-2016 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -1280,7 +1280,8 @@ static const char * desig_type_arr[] =
     "MD5 logical unit identifier", /* SCSI_IDENT_DEVICE_MD5 */
     "SCSI name string", /* SCSI_IDENT_DEVICE_SCSINAME */
     "Protocol specific port identifier",        /* spc4r36 */
-    "[0xa]", "[0xb]", "[0xc]", "[0xd]", "[0xe]", "[0xf]",
+    "UUID identifier",                          /* 15-267r2 */
+    "[0xb]", "[0xc]", "[0xd]", "[0xe]", "[0xf]",
 };
 
 void
@@ -1492,6 +1493,26 @@ decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
             print_p("      >>>> unexpected protocol indentifier: 0x%x\n"
                     "           with Protocol specific port "
                     "identifier\n", p_id);
+        break;
+    case 0xa: /* UUID identifier */
+        if (1 != c_set) {
+            pr2serr("      << expected binary code_set >>\n");
+            dStrHexErr((const char *)ip, i_len, 0);
+            break;
+        }
+        if ((1 != ((ip[0] >> 4) & 0xf)) || (18 != i_len)) {
+            pr2serr("      << expected locally assigned UUID, 16 bytes long "
+                    ">>\n");
+            dStrHexErr((const char *)ip, i_len, 0);
+            break;
+        }
+        printf("      Locally assigned UUID: ");
+        for (m = 0; m < 16; ++m) {
+            if ((4 == m) || (6 == m) || (8 == m) || (10 == m))
+                printf("-");
+            printf("%02x", (unsigned int)ip[2 + m]);
+        }
+        printf("\n");
         break;
     default: /* reserved */
         print_p("      reserved designator=0x%x\n", desig_type);

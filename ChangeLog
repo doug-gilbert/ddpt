@@ -2,8 +2,10 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.96 [20151220] [svn: r315]
-  - point svn:externals to rev 654 of sg3_utils
+Changelog for ddpt-0.96 [20160109] [svn: r316]
+  - point svn:externals to rev 656 of sg3_utils
+  - add support for locally assigned UUIDs in VPD page
+    0x83 (15-267r2)
   - resubmit IOs if EAGAIN, report count if > 0
   - rework pr2serr() handling
 
