@@ -40,7 +40,7 @@
 
 /* Need _GNU_SOURCE for O_DIRECT */
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE
+#define _GNU_SOURCE 1
 #endif
 
 #include <unistd.h>
@@ -65,7 +65,8 @@
 
 #include "ddpt.h"
 
-const char * ddptctl_version_str = "0.96 20160109 [svn: r316]";
+
+const char * ddptctl_version_str = "0.96 20160201 [svn: r317]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -109,6 +110,7 @@ const char * ddptctl_version_str = "0.96 20160109 [svn: r316]";
 #include "sg_lib.h"
 #include "sg_cmds_basic.h"
 #include "sg_pr2serr.h"
+#include "sg_unaligned.h"
 
 
 #define DEF_3PC_OUT_TIMEOUT (10 * 60)   /* 10 minutes not enough, use IMMED */
@@ -226,7 +228,7 @@ odx_print_rod_tok(const struct opts_t * op, unsigned char * rth, int len)
     char b[128];
     unsigned char uc;
 
-    rod_t = (rth[0] << 24) + (rth[1] << 16) + (rth[2] << 8) + rth[3];
+    rod_t = sg_get_unaligned_be32(rth + 0);
     printf("  ROD type: %s\n", rod_type_str(rod_t, b, sizeof(b)));
     if (rod_t >= 0xfffffff0) {
         printf("    Since ROD type is vendor specific, the following may "
@@ -238,7 +240,7 @@ odx_print_rod_tok(const struct opts_t * op, unsigned char * rth, int len)
                   (RODT_PIT_DEF == rod_t) || (RODT_PIT_VULN == rod_t) ||
                   (RODT_PIT_PERS == rod_t);
     }
-    rtl = (rth[6] << 8) + rth[7];
+    rtl = sg_get_unaligned_be16(rth + 6);
     if (rtl < ODX_ROD_TOK_LEN_FLD) {
         pr2serr(">>> ROD Token length field is too short, should be at "
                 "least\n    %d bytes (0x%x), got 0x%" PRIx16 "\n",
@@ -258,7 +260,7 @@ odx_print_rod_tok(const struct opts_t * op, unsigned char * rth, int len)
     }
     printf("    Peripheral Device type: 0x%x\n", rth[17] & 0x1f);
     printf("    Relative initiator port identifier: 0x%x\n",
-           (rth[18] << 8) + rth[19]);
+           sg_get_unaligned_be16(rth + 18));
     desig_type = rth[20 + 1] & 0xf;
     if ((0x2 == desig_type) || (0x3 == desig_type))
         decode_designation_descriptor(rth + 20, rth[23], 0, op->verbose);
@@ -287,12 +289,7 @@ odx_print_rod_tok(const struct opts_t * op, unsigned char * rth, int len)
         printf("  Number of bytes represented: strange, bypass\n");
         goto skip_to_bytes_rep;
     }
-    bc = 0;
-    for (m = 0; m < 8; m++) {
-        if (m > 0)
-            bc <<= 8;
-        bc |= rth[56 + m];
-    }
+    bc = sg_get_unaligned_be64(rth + 56);
     if ((UINT64_MAX == bc) && all_1)
         printf("  Number of bytes represented: unknown or too large\n");
     else if (all_0)
@@ -305,7 +302,7 @@ odx_print_rod_tok(const struct opts_t * op, unsigned char * rth, int len)
 skip_to_bytes_rep:
     if (len <= 96)
         return 0;
-    bs = ((rth[96] << 24) + (rth[97] << 16) + (rth[98] << 8) + rth[99]);
+    bs = sg_get_unaligned_be32(rth + 96);
     if (0 == bs) {
         printf("  Device type specific data (for disk) has block size of "
                "0; unlikely so skip\n");
@@ -330,7 +327,7 @@ skip_to_bytes_rep:
         printf("      [so physical block length=%" PRIu32 " bytes]\n",
                bs * (1 << lbppbe));
     printf("    Lowest aligned logical block address=%d\n",
-           ((rth[102] & 0x3f) << 8) + rth[103]);
+           0x3fff & sg_get_unaligned_be16(rth + 102));
 
 skip_to_target_dev_desc:
     if (target_dev_desc) {
@@ -350,7 +347,7 @@ skip_to_target_dev_desc:
 static int
 odx_rt_info(const struct opts_t * op)
 {
-    int res, fd, err, k, m, bp_chunk, num;
+    int res, fd, err, k, bp_chunk, num;
     int got_rtf_len = 0;
     int a_err = 0;
     uint64_t bc;
@@ -416,11 +413,7 @@ odx_rt_info(const struct opts_t * op)
             a_err = res;
 
         if (got_rtf_len) {
-            for (m = 0, bc = 0; m < 8; ++m) {
-                if (m > 0)
-                    bc <<= 8;
-                bc += rth[512 + m];
-            }
+            bc = sg_get_unaligned_be64(rth + 512);
             printf("  Number of bytes represented: %" PRIu64 " [0x%" PRIx64
                    "] (appended to token)\n", bc, bc);
         }
@@ -454,7 +447,7 @@ report_all_toks(struct opts_t * op, struct dev_info_t * dip, int do_hex)
     if (res)
         return res;
 
-    len = ((rsp[0] << 24) | (rsp[1] << 16) | (rsp[2] << 8) | rsp[3]) + 4;
+    len = sg_get_unaligned_be32(rsp + 0) + 4;
     if (len <= 8) {
         printf("No management ROD Tokens reported\n");
         if ((len < 8) && op->verbose)
@@ -973,12 +966,8 @@ main(int argc, char * argv[])
         if (RODT_BLK_ZERO == op->rod_type) {
             if (op->verbose > 1)
                 pr2serr("  configure for block device zero ROD Token\n");
-            rt[0] = (unsigned char)((RODT_BLK_ZERO >> 24) & 0xff);
-            rt[1] = (unsigned char)((RODT_BLK_ZERO >> 16) & 0xff);
-            rt[2] = (unsigned char)((RODT_BLK_ZERO >> 8) & 0xff);
-            rt[3] = (unsigned char)(RODT_BLK_ZERO & 0xff);
-            rt[6] = (unsigned char)((ODX_ROD_TOK_LEN_FLD >> 8) & 0xff);
-            rt[7] = (unsigned char)(ODX_ROD_TOK_LEN_FLD & 0xff);
+            sg_put_unaligned_be32(RODT_BLK_ZERO, rt + 0);
+            sg_put_unaligned_be16(ODX_ROD_TOK_LEN_FLD, rt + 6);
         } else {
             ret = read(op->rtf_fd, rt, sizeof(rt));
             if (ret < 0) {
