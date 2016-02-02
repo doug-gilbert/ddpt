@@ -36,13 +36,14 @@
 
 /* Need _GNU_SOURCE for O_DIRECT */
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE
+#define _GNU_SOURCE 1
 #endif
 
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
@@ -511,7 +512,7 @@ fbsd_get_blkdev_capacity(struct opts_t * op, int which_arg,
     blk_fd = (DDPT_ARG_IN == which_arg) ? op->idip->fd : op->odip->fd;
     fname = (DDPT_ARG_IN == which_arg) ? op->idip->fn : op->odip->fn;
     if (op->verbose > 2)
-        pr2serr("fbsd_get_blkdev_capacity: for %s\n", fname);
+        pr2serr("%s: for %s\n", __func__, fname);
 
     /* For FreeBSD post suggests that /usr/sbin/diskinfo uses
      * ioctl(fd, DIOCGMEDIASIZE, &mediasize), where mediasize is an off_t.
@@ -545,7 +546,7 @@ sol_get_blkdev_capacity(struct opts_t * op, int which_arg,
     blk_fd = (DDPT_ARG_IN == which_arg) ? op->idip->fd : op->odip->fd;
     fname = (DDPT_ARG_IN == which_arg) ? op->idip->fn : op->odip->fn;
     if (op->verbose > 2)
-        pr2serr("sol_get_blkdev_capacity: for %s\n", fname);
+        pr2serr("%s: for %s\n", __func__, fname);
 
     /* this works on "char" block devs (e.g. in /dev/rdsk) but not /dev/dsk */
     if (ioctl(blk_fd, DKIOCGMEDIAINFO , &info) < 0) {
@@ -1250,275 +1251,17 @@ signals_process_delay(struct opts_t * op, int delay_type)
     }
 }
 
-static const char * assoc_arr[] =
-{
-    "addressed logical unit",
-    "target port",      /* that received request; unless SCSI ports VPD */
-    "target device that contains addressed lu",
-    "reserved [0x3]",
-};
-
-static const char * code_set_arr[] =
-{
-    "Reserved [0x0]",
-    "Binary",
-    "ASCII",
-    "UTF-8",
-    "[0x4]", "[0x5]", "[0x6]", "[0x7]", "[0x8]", "[0x9]", "[0xa]", "[0xb]",
-    "[0xc]", "[0xd]", "[0xe]", "[0xf]",
-};
-
-static const char * desig_type_arr[] =
-{
-    "vendor specific [0x0]", /* SCSI_IDENT_DEVICE_VENDOR */
-    "T10 vendor identification", /* SCSI_IDENT_DEVICE_T10 */
-    "EUI-64 based", /* SCSI_IDENT_DEVICE_EUI64 */
-    "NAA", /* SCSI_IDENT_DEVICE_NAA */
-    "Relative target port", /* SCSI_IDENT_PORT_RELATIVE */
-    "Target port group", /* SCSI_IDENT_PORT_TP_GROUP */
-    "Logical unit group", /* SCSI_IDENT_PORT_LU_GROUP */
-    "MD5 logical unit identifier", /* SCSI_IDENT_DEVICE_MD5 */
-    "SCSI name string", /* SCSI_IDENT_DEVICE_SCSINAME */
-    "Protocol specific port identifier",        /* spc4r36 */
-    "UUID identifier",                          /* 15-267r2 */
-    "[0xb]", "[0xc]", "[0xd]", "[0xe]", "[0xf]",
-};
-
 void
 decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
                               int to_stderr, int verb)
 {
-    int m, p_id, piv, c_set, assoc, desig_type, d_id, naa, i_len;
-    int k;
-    const unsigned char * ip;
-    uint64_t vsei;
-    char b[80];
     int (*print_p)(const char *, ...);
-    void (*dStrHexp)(const char *, int, int);
+    char b[2048];
 
     print_p = to_stderr ? pr2serr : printf;
-    dStrHexp = to_stderr ? dStrHexErr : dStrHex;
-    ip = ucp + 4;
-    i_len = len_less_4;         /* valid ucp length is (len_less_4 + 4) */
-    p_id = ((ucp[0] >> 4) & 0xf);
-    c_set = (ucp[0] & 0xf);
-    piv = ((ucp[1] & 0x80) ? 1 : 0);
-    assoc = ((ucp[1] >> 4) & 0x3);
-    desig_type = (ucp[1] & 0xf);
-    print_p("    designator_type: %s,  code_set: %s\n",
-            desig_type_arr[desig_type], code_set_arr[c_set]);
-    print_p("    associated with the %s\n", assoc_arr[assoc]);
-    if (piv && ((1 == assoc) || (2 == assoc)))
-        print_p("     transport: %s\n",
-                sg_get_trans_proto_str(p_id, sizeof(b), b));
-
-    switch (desig_type) {
-    case 0: /* vendor specific */
-        k = 0;
-        if ((1 == c_set) || (2 == c_set)) { /* ASCII or UTF-8 */
-            for (k = 0; (k < i_len) && isprint(ip[k]); ++k)
-                ;
-            if (k >= i_len)
-                k = 1;
-        }
-        if (k)
-            print_p("      vendor specific: %.*s\n", i_len, ip);
-        else {
-            print_p("      vendor specific:\n");
-            dStrHexp((const char *)ip, i_len, -1);
-        }
-        break;
-    case 1: /* T10 vendor identification */
-        print_p("      vendor id: %.8s\n", ip);
-        if (i_len > 8)
-            print_p("      vendor specific: %.*s\n", i_len - 8, ip + 8);
-        break;
-    case 2: /* EUI-64 based */
-        if ((8 != i_len) && (12 != i_len) && (16 != i_len)) {
-            print_p("      << expect 8, 12 and 16 byte EUI, got %d>>\n",
-                    i_len);
-            dStrHexp((const char *)ip, i_len, 0);
-            break;
-        }
-        print_p("      0x");
-        for (m = 0; m < i_len; ++m)
-            print_p("%02x", (unsigned int)ip[m]);
-        print_p("\n");
-        break;
-    case 3: /* NAA */
-        naa = (ip[0] >> 4) & 0xff;
-        if (1 != c_set) {
-            print_p("      << expected binary code set (1), got %d for "
-                    "NAA=%d>>\n", c_set, naa);
-            dStrHexp((const char *)ip, i_len, -1);
-            break;
-        }
-        if ((5 == naa) && (0x10 == i_len)) {
-            if (verb > 2)
-                print_p("      << unexpected NAA 5 len 16, assuming NAA 6 "
-                        ">>\n");
-            naa = 6;
-        }
-        switch (naa) {
-        case 2:         /* NAA: IEEE extended */
-            if (8 != i_len) {
-                print_p("      << unexpected NAA 2 identifier length: "
-                        "0x%x>>\n", i_len);
-                dStrHexp((const char *)ip, i_len, -1);
-                break;
-            }
-            d_id = (((ip[0] & 0xf) << 8) | ip[1]);
-            /* c_id = ((ip[2] << 16) | (ip[3] << 8) | ip[4]); */
-            /* vsi = ((ip[5] << 16) | (ip[6] << 8) | ip[7]); */
-            print_p("      0x");
-            for (m = 0; m < 8; ++m)
-                print_p("%02x", (unsigned int)ip[m]);
-            print_p("\n");
-            break;
-        case 3:         /* NAA: Locally assigned */
-        case 5:         /* NAA: IEEE Registered */
-            if (8 != i_len) {
-                print_p("      << unexpected NAA 3 or 5 identifier length: "
-                        "0x%x>>\n", i_len);
-                dStrHexp((const char *)ip, i_len, -1);
-                break;
-            }
-            /* c_id = (((ip[0] & 0xf) << 20) | (ip[1] << 12) | */
-                    /* (ip[2] << 4) | ((ip[3] & 0xf0) >> 4)); */
-            vsei = ip[3] & 0xf;
-            for (m = 1; m < 5; ++m) {
-                vsei <<= 8;
-                vsei |= ip[3 + m];
-            }
-            print_p("      0x");
-            for (m = 0; m < 8; ++m)
-                print_p("%02x", (unsigned int)ip[m]);
-            print_p("\n");
-            break;
-        case 6:         /* NAA IEEE registered extended */
-            if (16 != i_len) {
-                print_p("      << unexpected NAA 6 identifier length: "
-                        "0x%x>>\n", i_len);
-                dStrHexp((const char *)ip, i_len, -1);
-                break;
-            }
-            /* c_id = (((ip[0] & 0xf) << 20) | (ip[1] << 12) | */
-                    /* (ip[2] << 4) | ((ip[3] & 0xf0) >> 4)); */
-            vsei = ip[3] & 0xf;
-            for (m = 1; m < 5; ++m) {
-                vsei <<= 8;
-                vsei |= ip[3 + m];
-            }
-            print_p("      0x");
-            for (m = 0; m < 16; ++m)
-                print_p("%02x", (unsigned int)ip[m]);
-            print_p("\n");
-            break;
-        default:
-            print_p("      << expected NAA nibble of 2, 3, 5 or 6, got "
-                    "%d>>\n", naa);
-            dStrHexp((const char *)ip, i_len, -1);
-            break;
-        }
-        break;
-    case 4: /* Relative target port */
-        if ((1 != c_set) || (1 != assoc) || (4 != i_len)) {
-            print_p("      << expected binary code_set, target port "
-                    "association, length 4>>\n");
-            dStrHexp((const char *)ip, i_len, 0);
-            break;
-        }
-        d_id = ((ip[2] << 8) | ip[3]);
-        print_p("      Relative target port: 0x%x\n", d_id);
-        break;
-    case 5: /* (primary) Target port group */
-        if ((1 != c_set) || (1 != assoc) || (4 != i_len)) {
-            print_p("      << expected binary code_set, target port "
-                    "association, length 4>>\n");
-            dStrHexp((const char *)ip, i_len, 0);
-            break;
-        }
-        d_id = ((ip[2] << 8) | ip[3]);
-        print_p("      Target port group: 0x%x\n", d_id);
-        break;
-    case 6: /* Logical unit group */
-        if ((1 != c_set) || (0 != assoc) || (4 != i_len)) {
-            print_p("      << expected binary code_set, logical unit "
-                    "association, length 4>>\n");
-            dStrHexp((const char *)ip, i_len, 0);
-            break;
-        }
-        d_id = ((ip[2] << 8) | ip[3]);
-        print_p("      Logical unit group: 0x%x\n", d_id);
-        break;
-    case 7: /* MD5 logical unit identifier */
-        if ((1 != c_set) || (0 != assoc)) {
-            print_p("      << expected binary code_set, logical unit "
-                    "association>>\n");
-            dStrHexp((const char *)ip, i_len, 0);
-            break;
-        }
-        print_p("      MD5 logical unit identifier:\n");
-        dStrHexp((const char *)ip, i_len, 0);
-        break;
-    case 8: /* SCSI name string */
-        if (3 != c_set) {
-            print_p("      << expected UTF-8 code_set>>\n");
-            dStrHexp((const char *)ip, i_len, 0);
-            break;
-        }
-        print_p("      SCSI name string:\n");
-        /* does %s print out UTF-8 ok??
-         * Seems to depend on the locale. Looks ok here with my
-         * locale setting: en_AU.UTF-8
-         */
-        print_p("      %s\n", (const char *)ip);
-        break;
-    case 9: /* Protocol specific port identifier */
-        /* added in spc4r36, PIV must be set, proto_id indicates */
-        /* whether UAS (USB) or SOP (PCIe) or ... */
-        if (! piv)
-            print_p("      >>>> Protocol specific port identifier "
-                    "expects protocol\n"
-                    "           identifier to be valid and it is not\n");
-        if (TPROTO_UAS == p_id) {
-            print_p("      USB device address: 0x%x\n", 0x7f & ip[0]);
-            print_p("      USB interface number: 0x%x\n", ip[2]);
-        } else if (TPROTO_SOP == p_id) {
-            print_p("      PCIe routing ID, bus number: 0x%x\n", ip[0]);
-            print_p("          function number: 0x%x\n", ip[1]);
-            print_p("          [or device number: 0x%x, function number: "
-                    "0x%x]\n", (0x1f & (ip[1] >> 3)), 0x7 & ip[1]);
-        } else
-            print_p("      >>>> unexpected protocol indentifier: 0x%x\n"
-                    "           with Protocol specific port "
-                    "identifier\n", p_id);
-        break;
-    case 0xa: /* UUID identifier */
-        if (1 != c_set) {
-            pr2serr("      << expected binary code_set >>\n");
-            dStrHexErr((const char *)ip, i_len, 0);
-            break;
-        }
-        if ((1 != ((ip[0] >> 4) & 0xf)) || (18 != i_len)) {
-            pr2serr("      << expected locally assigned UUID, 16 bytes long "
-                    ">>\n");
-            dStrHexErr((const char *)ip, i_len, 0);
-            break;
-        }
-        printf("      Locally assigned UUID: ");
-        for (m = 0; m < 16; ++m) {
-            if ((4 == m) || (6 == m) || (8 == m) || (10 == m))
-                printf("-");
-            printf("%02x", (unsigned int)ip[2 + m]);
-        }
-        printf("\n");
-        break;
-    default: /* reserved */
-        print_p("      reserved designator=0x%x\n", desig_type);
-        dStrHexp((const char *)ip, i_len, 0);
-        break;
-    }
+    sg_get_designation_descriptor_str(NULL, ucp, len_less_4 + 4, verb,
+                                      verb, sizeof(b), b);
+    print_p("%s", b);
 }
 
 /* Helper for case when EIO or EREMOTE errno suggests the equivalent
@@ -1773,8 +1516,8 @@ print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr)
  * by '0x', '0X' or contains trailing 'h' or 'H' (which indicate hex).
  * Returns 0 if ok, or 1 if error. */
 int
-cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr,
-              int * arr_len, int max_arr_len)
+cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr, int * arr_len,
+          int max_arr_len)
 {
     int in_len, k;
     const char * lcp;
@@ -1795,7 +1538,7 @@ cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr,
     } else {        /* list of numbers (default decimal) on command line */
         k = strspn(inp, "0123456789aAbBcCdDeEfFhHxXiIkKmMgGtTpP, ");
         if (in_len != k) {
-            pr2serr("cl_to_sgl: error at pos %d\n", k + 1);
+            pr2serr("%s: error at pos %d\n", __func__, k + 1);
             return 1;
         }
         for (k = 0; k < max_arr_len; ++k) {
@@ -1813,14 +1556,15 @@ cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr,
                     cp = c2p;
                 lcp = cp + 1;
             } else {
-                pr2serr("cl_to_sgl: error at pos %d\n", (int)(lcp - inp + 1));
+                pr2serr("%s: error at pos %d\n", __func__,
+                        (int)(lcp - inp + 1));
                 return 1;
             }
             ll = sg_get_llnum(lcp);
             if (-1 != ll) {
                 if (ll > UINT32_MAX) {
-                    pr2serr("cl_to_sgl: number exceeds 32 bits at pos %d\n",
-                            (int)(lcp - inp + 1));
+                    pr2serr("%s: number exceeds 32 bits at pos %d\n",
+                            __func__, (int)(lcp - inp + 1));
                     return 1;
                 }
                 sgl_arr[k].num = (uint32_t)ll;
@@ -1835,13 +1579,14 @@ cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr,
                     cp = c2p;
                 lcp = cp + 1;
             } else {
-                pr2serr("cl_to_sgl: error at pos %d\n", (int)(lcp - inp + 1));
+                pr2serr("%s: error at pos %d\n", __func__,
+                        (int)(lcp - inp + 1));
                 return 1;
             }
         }
         *arr_len = k + 1;
         if (k == max_arr_len) {
-            pr2serr("cl_to_sgl: array length exceeded\n");
+            pr2serr("%s: array length exceeded\n", __func__);
             return 1;
         }
     }
@@ -1858,7 +1603,8 @@ file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
 {
     char line[1024];
     int off = 0;
-    int in_len, k, j, m, have_stdin, ind, bit0;
+    int in_len, k, j, m, ind, bit0, res;
+    bool have_stdin;
     char * lcp;
     FILE * fp;
     int64_t ll;
@@ -1869,11 +1615,12 @@ file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
     else {
         fp = fopen(file_name, "r");
         if (NULL == fp) {
-            pr2serr("file_to_sgl: unable to open %s\n", file_name);
+            pr2serr("%s: unable to open %s\n", __func__, file_name);
             return 1;
         }
     }
 
+    res = 1;
     for (j = 0; j < 512; ++j) {
         if (NULL == fgets(line, sizeof(line), fp))
             break;
@@ -1885,9 +1632,9 @@ file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
                 line[in_len] = '\0';
             }
             else {
-                pr2serr("file_to_sgl: line too long, max %d bytes\n",
+                pr2serr("%s: line too long, max %d bytes\n", __func__,
                         (int)(sizeof(line) - 1));
-                return 1;
+                goto the_end;
             }
         }
         if (in_len < 1)
@@ -1902,9 +1649,9 @@ file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
             continue;
         k = strspn(lcp, "0123456789aAbBcCdDeEfFhHxXbBdDiIkKmMgGtTpP, \t");
         if ((k < in_len) && ('#' != lcp[k])) {
-            pr2serr("file_to_sgl: syntax error at line %d, pos %d\n", j + 1,
+            pr2serr("%s: syntax error at line %d, pos %d\n", __func__, j + 1,
                     m + k + 1);
-            return 1;
+            goto the_end;
         }
         for (k = 0; k < 1024; ++k) {
             ll = sg_get_llnum(lcp);
@@ -1912,15 +1659,15 @@ file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
                 ind = ((off + k) >> 1);
                 bit0 = 0x1 & (off + k);
                 if (ind >= max_arr_len) {
-                    pr2serr("file_to_sgl: array length exceeded\n");
-                    return 1;
+                    pr2serr("%s: array length exceeded\n", __func__);
+                    goto the_end;
                 }
                 if (bit0) {
                     if (ll > UINT32_MAX) {
-                        pr2serr("file_to_sgl: number exceeds 32 bits in "
-                                "line %d, at pos %d\n", j + 1,
+                        pr2serr("%s: number exceeds 32 bits in line %d, at "
+                                "pos %d\n", __func__, j + 1,
                                 (int)(lcp - line + 1));
-                        return 1;
+                        goto the_end;
                     }
                     sgl_arr[ind].num = (uint32_t)ll;
                 } else
@@ -1936,18 +1683,23 @@ file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
                     --k;
                     break;
                 }
-                pr2serr("file_to_sgl: error in line %d, at pos %d\n", j + 1,
-                        (int)(lcp - line + 1));
-                return 1;
+                pr2serr("%s: error in line %d, at pos %d\n", __func__,
+                        j + 1, (int)(lcp - line + 1));
+                goto the_end;
             }
         }
         off += (k + 1);
     }
     if (0x1 & off) {
-        pr2serr("file_to_sgl: expect LBA,NUM pairs but decoded odd number\n"
-                "  from %s\n", have_stdin ? "stdin" : file_name);
-        return 1;
+        pr2serr("%s: expect LBA,NUM pairs but decoded odd number\n  from "
+                "%s\n", __func__, have_stdin ? "stdin" : file_name);
+        goto the_end;
     }
     *arr_len = off >> 1;
-    return 0;
+    res = 0;
+
+the_end:
+    if (! have_stdin)
+        fclose(fp);
+    return res;
 }

@@ -46,7 +46,7 @@
 
 /* Need _GNU_SOURCE for O_DIRECT */
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE
+#define _GNU_SOURCE 1
 #endif
 
 #include <unistd.h>
@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.96 20160109 [svn: r316]";
+static const char * ddpt_version_str = "0.96 20160201 [svn: r317]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
