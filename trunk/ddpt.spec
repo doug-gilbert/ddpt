@@ -50,7 +50,7 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Mon Feb 01 2016 - dgilbert at interlog dot com
+* Tue Feb 09 2016 - dgilbert at interlog dot com
 - bump version
   * ddpt-0.96
 * Fri Dec 26 2014 - dgilbert at interlog dot com
