@@ -1,0 +1,135 @@
+Introduction
+------------
+ddpt is a utility for copying files like its namesake, the Unix dd command.
+ddpt is specialized for files that are actually block devices. And if
+those block devices understand SCSI commands then the copy can be done by
+using either SCSI READ or WRITE commands (or both). This latter facility
+is done using a pass-through interface that bypasses the normal operating
+system block handling. This can give very fine-grained control over the
+copy process.
+
+ddpt also supports two forms of offloaded copies, one based on the EXTENDED
+COPY command introduced in T10's SPC-2 standard. EXTENDED COPY is often
+abbreviated to XCOPY or xcopy. As new forms of offloaded copy have been
+added (especially in SPC-4) the original XCOPY is now called XCOPY(LID1)
+with lot of new feature added to XCOPY(LID4). A subset of XCOPY(LID4) which
+only supports disk to disk, token based copies, has the market name of ODX.
+So ddpt supports the original XCOPY(LID1) and uses the term "xcopy" to
+refer to it. ddpt now also supports ODX and uses the term "odx" to refer
+to it.
+
+ddptctl is a helper/auxiliary for the ddpt utility. ddptctl mainly supplies
+extra functionality for ODX.
+
+This utility was originally written for Linux. It has been ported to FreeBSD
+and Windows.
+
+Relationship to sg3_utils
+-------------------------
+The sg3_utils (version 1.33) package contains several utilities that mimic
+the standard Unix dd command. Currently those utilities are sg_dd, sgm_dd,
+sgp_dd and sg_xcopy. Even though most of the other utilities in the
+sg3_utils package are ported to other operating systems, sg_dd and friends
+are not ported since they are too tightly bound to Linux and some of the
+idiosyncrasies of its SCSI generic (sg) and bsg drivers and the associated
+SG_IO ioctl. So the ddpt utility drops some Linux specific features while
+adding some more general features (e.g. write sparing). An attempt has also
+been made to simplify the command line syntax which is still based on the
+distinctive dd command command line syntax. Note that the dd command line
+syntax is unlike any other Unix command (probably imported from some IBM
+OS many years ago).
+
+This package shares code with sg3_utils (version 1.38). With the subversion
+revision control system this is done by having ddpt's "include/" and "lib/"
+sub-directories pointing to the correspondingly named directories in the
+sg3_utils package using the "svn:externals" property. These two "external"
+directories include more files than ddpt uses. The excess files include
+"lib/Makefile.am" and "lib/Makefile.in". The "Makefile.am" in ddpt's "src/"
+directory does the main part of the build. When the tarball is generated
+for this utility, various files are "exported" out of the subversion
+repository and "svn:externals" redirection is no longer visible (but the
+unused files are visible).
+
+The ddpt executable may or may not be built depending on the libsgutils
+(shared) library. Currently the ./configure rules are looking for a library
+called libsgutils2.a or libsgutils2.so . In Debian those libraries are found
+only in the libsgutils2-dev package, not the libsgutils2 package. If one of
+those libraries is detected then ddpt will be built depending on libsgutils
+(check 'ldd ddpt'). If neither of those libraries is detected at build time,
+then the ddpt executable built will compile and link the relevant code from
+its "include/" and "lib/" subdirectories.
+
+Documentation
+-------------
+The utility outputs a usage message when the "--help" (or '-?') option is
+given. Many syntax errors also result in the usage message being printed.
+There is also a man page which is in section 8 (administration and privileged
+commands). It can be accessed with "man ddpt" once this package is installed.
+Prior to installation the man page can be viewed from this package's main
+directory with "man doc/ddpt.8".
+
+There is a web page at http://sg.danny.cz/sg/ddpt.html and a copy of that
+html file is placed in the "doc" directory.
+
+Build infrastructure
+--------------------
+This packages uses the automake and autoconf tools. The generating files
+(scripts) are configure.ac, Makefile.am, doc/Makefile.am, src/Makefile.am and
+autogen.sh .  The autogen.sh script only needs to be executed if one of the
+other generating files in the above list is changed.
+
+There is a rpm "spec" file in the main directory: ddpt.spec . There are Debian
+build files in the "debian" directory and a script called build_debian.sh in
+the main directory. Amongst other things debian builds are sensitive to the
+value in the debian/compat file. If it contains "7" then it works on lenny and
+gives warning on squeeze (but fails on the earlier etch).
+
+The ./configure script supports these extra options:
+  - '--disable-libsgutils' stops the build using the libsgutils library
+    if it is found. Instead the copy of those files found under the
+    include and lib directories is used.
+  - '--disable-linuxbsg' drops Linux bsg driver support. This is only
+    for testing and should no longer be necessary.
+  - '--disable-scsistrings' excludes the asc/ascq and command name strings
+    (defined by SCSI/T10) in an attempt to reduce the size of executables.
+
+License
+-------
+This utility is covered by a FreeBSD license also known as the BSD 3-clause
+license (see Wikipedia). The intention of the author is that both open
+source and commercial entities can re-use this code. Naturally attribution
+and improvement/bug feedback are encouraged.
+
+Notes
+-----
+Generic information about building this package (i.e. './configure ; make;
+make install') can be found in the INSTALL file. The contents of COPYING is a
+FreeBSD license (rather than the GPL v2 found in the usual template).
+
+Linux port
+----------
+The utility can be used on any storage device.
+
+To use the "pt" interface the device needs to support the SG_IO ioctl. In
+the Linux 2.4 series that is only the scsi generic (i.e. /dev/sg* )
+device nodes. In the Linux 2.6 and 3 series the supported device nodes have
+expanded to all other SCSI device nodes (e.g. /dev/sd* and /dev/sr*)
+plus block devices such as /dev/hdc when the associated device is a
+DVD drive. The man page and sg.danny.cz/sg/ddpt.html web page examples use
+Linux device node names.
+
+FreeBSD port
+------------
+See README.freebsd
+
+Solaris port
+------------
+See README.solaris
+
+Win32 port
+----------
+See README.win32
+
+
+Douglas Gilbert
+7th April 2014
