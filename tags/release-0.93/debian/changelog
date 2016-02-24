@@ -1,0 +1,32 @@
+ddpt (0.93-0.1) unstable; urgency=low
+
+  * see ChangeLog
+
+ -- Douglas Gilbert <dgilbert@interlog.org>  Wed, 13 Nov 2013 21:00:00 -0500
+
+ddpt (0.92-0.1) unstable; urgency=low
+
+  * ddpt
+
+ -- Douglas Gilbert <dgilbert@interlog.org>  Thu, 17 Feb 2011 11:00:00 -0500
+
+ddpt (0.91-1) unstable; urgency=low
+
+  * New upstream release
+  * Changed compat level from 4 to 8
+  * Updated Standards-Version to 3.9.1
+
+ -- Tomas Fasth <tomfa@debian.org>  Wed, 01 Dec 2010 00:51:01 +0000
+
+ddpt (0.91-0.1) unstable; urgency=low
+
+  * ddpt
+
+ -- Douglas Gilbert <dgilbert@interlog.org>  Fri, 13 Aug 2010 18:00:00 -0400
+
+ddpt (0.90-0.1) unstable; urgency=low
+
+  * ddpt initial version
+
+ -- Douglas Gilbert <dgilbert@interlog.org>  Sat, 08 May 2010 18:00:00 -0400
+

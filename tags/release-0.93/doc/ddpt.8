@@ -1,0 +1,1184 @@
+.TH DDPT "8" "November 2013" "ddpt\-0.93" DDPT
+.SH NAME
+ddpt \- copies data between files and storage devices. Support for
+devices that understand the SCSI command set.
+.SH SYNOPSIS
+.B ddpt
+[\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fR{6|10|12|16|32}]
+[\fIcoe=\fR{0|1}] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
+[\fIdelay=MS[,W_MS]\fR] [\fIibs=IBS\fR] [\fIid_usage=LIU\fR] \fIif=IFILE\fR
+[\fIiflag=FLAGS\fR] [\fIintio=\fR{0|1}] [\fIiseek=SKIP\fR]
+[\fIlist_id=LID\fR] [\fIobs=OBS\fR] [\fIof=OFILE\fR] [\fIof2=OFILE2\fR]
+[\fIoflag=FLAGS\fR] [\fIoseek=SEEK\fR] [\fIprio=PRIO\fR]
+[\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR] [\fIseek=SEEK\fR]
+[\fIskip=SKIP\fR] [\fIstatus=STAT\fR] [\fIverbose=VERB\fR] [\fI\-\-help\fR]
+[\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR] [\fI\-\-xcopy\fR]
+.PP
+For comparison here is the synopsis for GNU's dd command:
+.PP
+.B dd
+[\fIbs=BS\fR] [\fIcbs=CBS\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
+[\fIibs=IBS\fR] [\fIif=IFILE\fR] [\fIiflag=FLAGS\fR] [\fIobs=OBS\fR]
+[\fIof=OFILE\fR] [\fIoflag=FLAGS\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR]
+[\fIstatus=STAT\fR] [\fI\-\-help\fR] [\fI\-\-version\fR]
+.SH DESCRIPTION
+.\" Add any additional description here
+.PP
+Copy data between files or read data from a file. Specialized for "files"
+that are storage devices, especially those that can use the SCSI command
+sets (e.g. SATA and SAS disks, plus DVD drives). Can issue SCSI commands
+in pass\-through ("pt") mode. Similar syntax and semantics to the Unix
+.B dd(1)
+command.
+.PP
+For comparison, the SYNOPSIS section above shows both the
+.B ddpt
+command line options followed by GNU's
+.B dd(1)
+command line options. Broadly speaking ddpt can be considered a super\-set
+of dd. See the section on DD DIFFERENCES for significant differences
+between ddpt and dd.
+.PP
+ddpt does a segmented copy, first reading in \fIBPT*IBS\fR bytes from
+\fIIFILE\fR (or less if near the end of the copy) into a copy buffer. In the
+absence of the various options and conditions that bypass the write
+operation, the copy buffer is then written out to \fIOFILE\fR. The copy
+process continues working its way along \fIIFILE\fR and \fIOFILE\fR until
+either \fICOUNT\fR is exhausted, an end of file is detected, or an error
+occurs. If \fIIBS\fR and \fIOBS\fR are different, ddpt restricts the value
+of \fIOBS\fR such that the copy buffer is an integral number of output
+blocks (i.e. (((\fIIBS*BPT\fR) % \fIOBS\fR) == 0) ). In the following
+descriptions, "segment" refers to all or part of a copy buffer.
+.PP
+The term "pt device" is used for a pass\-through device to which SCSI
+commands like READ(10) and WRITE(10) may be sent. A pt device may only be
+able to process SCSI commands in which case the "pt" flag is assumed. The
+ability to recognize such a pt only device may vary depending on the
+operating system (e.g. in Linux '/dev/sg2' and /dev/bsg/3:0:1:0 are
+recognized). However if a device can process either normal UNIX read()/
+rite() calls or pass\-through SCSI commands then the default is to use
+UNIX read()/write() calls. That default can be overridden by using the "pt"
+flag (e.g. "if=/dev/sdc iflag=pt"). When pt access is specified any
+partition information is
+.B ignored.
+So "if=/dev/sdc2 iflag=pt skip=3" will start at logical block address 3
+of '/dev/sdc'. As a protection measure in version 0.92 ddpt will only
+accept that if the force flag is given in addition to pt.
+.PP
+Using the SCSI pass\-through this utility supports the EXTENDED COPY (LID1)
+command. LID1 stands for List IDentifier length of 1 byte which is found
+in SPC\-4, SPC\-3 and earlier standards. Recent SPC\-4 drafts have added
+the EXTENDED COPY (LID4) command which is not yet supported by this utility.
+EXTENDED COPY is often shortened to XCOPY and the lower case form: xcopy,
+is used below to indicate EXTENDED COPY specific options, flags and related
+information. See the section on XCOPY below for more information.
+.SH OPTIONS
+.TP
+\fBbpt\fR=\fIBPT[,OBPC]\fR
+where \fIBPT\fR is Blocks Per Transfer. The copy is made up of multiple
+transfers, each first reading \fIBPT\fR input blocks (i.e. \fIBPT*IBS\fR
+bytes) from \fIIFILE\fR into the copy buffer and then from that copy buffer
+writing \fIBPT*IBS/OBS\fR output blocks to \fIOFILE\fR. This continues
+until the copy is finished, with the last transfer being potentially
+shorter. The default \fIBPT\fR value varies depending on \fIIBS\fR. When
+\fIIBS\fR < 8, \fIBPT\fR is 8192; when \fIIBS\fR < 64, \fIBPT\fR is 1024;
+when \fIIBS\fR < 1024, \fIBPT\fR is 128; when \fIIBS\fR < 8192, \fIBPT\fR
+is 16; when \fIIBS\fR < 32768, \fIBPT\fR is 4; else \fIBPT\fR defaults
+to 1. If \fIBPT\fR is given as 0 it is treated as the default value.
+For "bs=512", \fIBPT\fR defaults to 128 so that 64 KiB (or less) is read
+from \fIIFILE\fR into the copy buffer.
+.br
+The optional \fIOBPC\fR (Output Blocks Per Check) argument controls
+controls the granularity of sparse writes, write sparing and trim checks.
+The default granularity is the size of the copy buffer (i.e. \fIBPT*IBS\fR
+bytes). That can be reduced by specifying \fIOBPC\fR. The finest
+granularity is when \fIOBPC\fR is 1 which implies the unit of each check
+is \fIOBS\fR bytes. When \fIOBPC\fR is 0, or not given, the default
+granularity is used. Large \fIOBPC\fR values are rounded down so that
+\fIOBPC*OBS\fR does not exceed the size of the copy buffer.
+.TP
+\fBbs\fR=\fIBS\fR
+where \fIBS\fR is the \fIIFILE\fR and \fIOFILE\fR block size in bytes.
+Conflicts with either "ibs=" or "obs=" options. The value of \fIBS\fR
+is placed in \fIIBS\fR and \fIOBS\fR.
+If \fIIFILE\fR or \fIOFILE\fR is a "pt" device then \fIBS\fR
+.B must
+be the logical block size of the device. See the DD DIFFERENCES section
+below. Default is 512 which to date has been correct for hard disks.
+Other logical block sizes are 2048 bytes for DVDs and 4096 bytes for
+the coming generation of hard disks.
+.TP
+\fBcdbsz\fR={6|10|12|16|32}
+size of SCSI READ and/or WRITE commands issued on pt devices.
+Default is 10 byte SCSI command blocks (unless calculations indicate
+that a 4 byte block number may be exceeded or \fIBPT\fR is greater than
+16 bits (65535), in which case it defaults to 16 byte SCSI commands).
+.TP
+\fBcoe\fR={0|1}
+set to 1 for continue on error. Applies to errors on input and output pt
+devices plus input from block devices or regular files. Errors on other
+files will stop ddpt. Default is 0 which implies stop on any error. See
+the 'coe' flag for more information.
+.TP
+\fBcoe_limit\fR=\fICL\fR
+where \fICL\fR is the maximum number of consecutive bad blocks stepped
+over (due to "coe=1") on reads before the copy terminates. The default
+is 0 which is interpreted as no limit. This option is meant to stop the
+copy soon after unrecorded media is detected while still
+offering "continue on error" capability.
+.TP
+\fBconv\fR=\fICONVS\fR
+see the CONVERSIONS section below.
+.TP
+\fBcount\fR=\fICOUNT\fR
+copy \fICOUNT\fR input blocks from \fIIFILE\fR to \fIOFILE\fR. If this
+option is not given (or \fICOUNT\fR is '\-1') then the \fICOUNT\fR may be
+deduced from either \fIIFILE\fR or \fIOFILE\fR. See the COUNT section below.
+.TP
+\fBdelay\fR=\fIMS[,W_MS]\fR
+after each segment is copied (typically every (\fIIBS\fR * \fIBPT\fR) bytes)
+a delay (sleep) of \fIMS\fR milliseconds is performed. The default value for
+\fIMS\fR is 0 which implies no delay. If \fIW_MS\fR is given and greater than
+0 (its default value) then there is an additional delay of \fIW_MS\fR
+milliseconds associated with each actual write operation that is performed.
+If \fIMS\fR is greater than 0 then there is not a delay before the first copy
+segment (or after the last); if \fIW_MS\fR is greater than 0 then there is
+not a delay before the first write segment. These delays can be used for a
+bandwidth limiting.
+.TP
+\fBibs\fR=\fIIBS\fR
+where \fIIBS\fR is the \fIIFILE\fR block size in bytes. The default value
+is \fIBS\fR or its default (512). Conflicts the "bs=" option (e.g. giving
+both "bs=512 ibs=512" is considered a syntax error).
+.TP
+\fBid_usage\fR=\fILIU\fR
+xcopy: SCSI EXTENDED COPY parameter list LIST ID USAGE field is set to
+\fILIU\fR. The default value is 0 or 2 . \fILIU\fR can be a number between
+0 and 3 inclusive or a string. The strings can be either: 'hold' for
+0, 'discard' for 2 or 'disable' for 3.
+.TP
+\fBif\fR=\fIIFILE\fR
+read from \fIIFILE\fR. This option must be given (i.e. it is mandatory). If
+\fIIFILE\fR is '\-' then stdin is read. Starts reading at the beginning of
+\fIIFILE\fR unless \fISKIP\fR is given.
+.TP
+\fBiflag\fR=\fIFLAGS\fR
+where \fIFLAGS\fR is a comma separated list of one or more flags outlined
+in the FLAGS section below.  These flags are associated with \fIIFILE\fR and
+are ignored when \fIIFILE\fR is stdin.
+.TP
+\fBintio\fR={0|1}
+set to 1 for allow signals (SIGINT, SIGPIPE and SIGUSR1 (or SIGINFO)) to be
+received during IO from \fIIFILE\fR or IO to \fIOFILE\fR or \fIOFILE2\fR.
+Default is 0 and these signals are masked during IO operations with a check
+prior IO.
+.TP
+\fBiseek\fR=\fISKIP\fR
+start reading \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of
+\fIIFILE\fR. Default is block 0 (i.e. start of file). This option is a
+synonym for "skip=".
+.TP
+\fBlist_id\fR=\fILID\fR
+xcopy: SCSI EXTENDED COPY parameter list LIST IDENTIFIER field is set to
+\fILID\fR. The default value is 1 or, if id_usage=disable, 0 .
+.TP
+\fBobs\fR=\fIOBS\fR
+where \fIOBS\fR is the \fIOFILE\fR block size in bytes. The default value
+is \fIBS\fR or its default (512). Conflicts the "bs=" option (e.g. giving
+both "bs=512 obs=512" is considered a syntax error).
+If \fIOBS\fR is given then it has the following restriction: the integer
+expression (((\fIIBS\fR * \fIBPT\fR) % \fIOBS\fR) == 0) must be true.
+Stated another way: the copy buffer size must be an integral multiple of
+\fIOBS\fR. If \fIof2=OFILE2\fR is given then \fIOBS\fR is its block size
+as well.
+.TP
+\fBof\fR=\fIOFILE\fR
+write to \fIOFILE\fR. The default value is /dev/null . If \fIOFILE\fR is '\-'
+then writes to stdout. If \fIOFILE\fR is /dev/null then no actual writes are
+performed. If \fIOFILE\fR is '.' (period) then it is treated the same way as
+/dev/null . If \fIOFILE\fR exists then it is _not_ truncated
+unless "oflag=trunc" is given. See section on DD DIFFERENCES.
+.TP
+\fBof2\fR=\fIOFILE2\fR
+write output to \fIOFILE2\fR. The default action is not to do this additional
+write (i.e. when this option is not given). \fIOFILE2\fR is assumed to be
+a regular file or a fifo (i.e. a named pipe). \fIOFILE2\fR is opened for
+writing and is created if necessary. If \fIOFILE2\fR is a fifo (named pipe)
+then some other command should be consuming that data (e.g. 'md5sum OFILE2'),
+otherwise this utility will block. The write to \fIOFILE2\fR occurs before
+the write to \fIOFILE\fR and prior to sparse writing and write sparing
+logic. So everything read is written to \fIOFILE2\fR.
+.TP
+\fBoflag\fR=\fIFLAGS\fR
+where \fIFLAGS\fR is a comma separated list of one or more flags outlined
+in the FLAGS section. These flags are associated with \fIOFILE\fR and are
+ignored when \fIOFILE\fR is /dev/null, '.' (period), or stdout.
+.TP
+\fBoseek\fR=\fISEEK\fR
+start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
+\fIOFILE\fR. Default is block 0 (i.e. start of file). This option is a
+synonym for "seek=".
+.TP
+\fBprio\fR=\fIPRIO\fR
+xcopy: SCSI EXTENDED COPY parameter list PRIORITY field is set to \fIPRIO\fR.
+The default value is 1 .
+.TP
+\fBprotect\fR=\fIRDP[,WRP]\fR
+where \fIRDP\fR is the RDPROTECT field in SCSI READ commands and \fIWRP\fR
+is the WRPROTECT field in SCSI WRITE commands. The default value for both
+is 0 which implies no additional protection information will be transferred.
+Both \fIRDP\fR and \fIWRP\fR can be from 0 to 7. If \fIRDP\fR is greater
+than 0 then \fIIFILE\fR must be a pt device. If \fIWRP\fR is greater than 0
+then \fIOFILE\fR must be a pt device. See the PROTECTION section below.
+.TP
+\fBretries\fR=\fIRETR\fR
+sometimes retries at the host are useful, for example when there is a
+transport error. When \fIRETR\fR is greater than zero then SCSI READs and
+WRITEs are retried on error, \fIRETR\fR times. Default value is zero.
+Only applies to errors on pt devices.
+.TP
+\fBseek\fR=\fISEEK\fR
+start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
+\fIOFILE\fR. Default is block 0 (i.e. start of file). The \fISEEK\fR value
+may exceed the number of \fIOBS\fR\-sized blocks in \fIOFILE\fR.
+.TP
+\fBskip\fR=\fISKIP\fR
+start reading \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of
+\fIIFILE\fR. Default is block 0 (i.e. start of file). The \fISKIP\fR value
+must be less than or equal to the number of \fIIBS\fR\-sized blocks in
+\fIIFILE\fR.
+.TP
+\fBstatus\fR=\fISTAT\fR
+the \fISTAT\fR value of 'noxfer' suppresses the throughput speed and the
+copy time reporting at the end of the copy. The "status=noxfer" option was
+recently introduced to GNU's dd command. The default action of ddpt is to
+show the throughput (in megabytes per second) and the time taken to do the
+copy after the "records in" and "records out" lines at the end of the copy.
+As a convenience the value 'null' is accepted for \fISTAT\fR and does nothing.
+.TP
+\fBverbose\fR=\fIVERB\fR
+as \fIVERB\fR increases so does the amount of debug reporting sent to stderr.
+Default value is zero which yields the minimum amount of debug reporting.
+A value of 1 reports extra information that is not repetitive. A value
+2 reports cdbs and responses for SCSI commands that are not repetitive
+(i.e. other that READ and WRITE). Error processing is not considered
+repetitive. Values of 3 and 4 yield reporting for all SCSI commands, plus
+Unix read() and write() calls, so there can be a lot of output.
+If \fIVERB\fR is "\-1" then reporting otherwise sent to stderr is redirected
+to /dev/null .
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+reports usage message then exits.
+.TP
+\fB\-v\fR, \fB\-\-verbose\fR
+equivalent of \fIverbose=1\fR. If \fI\-\-verbose\fR appears twice then
+that is equivalent to \fIverbose=2\fR. Also \fI\-vv\fR is equivalent to
+\fIverbose=2\fR.
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+reports version number information then exits.
+.TP
+\fB\-w\fR, \fB\-\-wscan\fR
+this option is available in Windows only. It lists storage device names
+and the corresponding volumes, if any. When used twice it adds the "bus
+type" of the closest transport (e.g. a SATA disk in a USB connected
+enclosure has bus type USB). When used three times a SCSI adapter scan
+is added. When used four times only a SCSI adapter scan is shown.
+See EXAMPLES section below and the README.win32 file.
+.TP
+\fB\-x\fR, \fB\-\-xcopy\fR
+this option will attempt to call the SCSI EXTENDED COPY command. In the
+absence of "oflags=xcopy" the xcopy command will be sent to the
+source (i.e. \fIIFILE\fR). If "oflags=xcopy" is given and "iflags=xcopy"
+is not given then the xcopy command will be sent to the
+destination (i.e. \fIOFILE\fR).
+.SH COUNT
+When the \fIcount=COUNT\fR option is not given (or \fICOUNT\fR is '\-1')
+then an attempt is made to deduce \fICOUNT\fR as follows.
+.PP
+When both or either \fIIFILE\fR and \fIOFILE\fR are block devices, then
+the minimum size, expressed in units of input blocks, is used. When both
+or either \fIIFILE\fR and \fIOFILE\fR are pass\-through devices, then the
+minimum size, expressed in units of input blocks, is used.
+.PP
+If a regular file is used as input, its size, expressed in units of input
+blocks (and rounded up if necessary) is used. Note that the rounding up
+of the deduced \fICOUNT\fR may result in a partial read of the last input
+block and a corresponding partial write to \fIOFILE\fR if it is a regular
+file.
+.PP
+The size of pt devices is deduced from the SCSI READ CAPACITY command.
+Block device sizes (or their partition sizes) are obtained from the
+operating system, if available.
+.PP
+If \fIskip=SKIP\fR or \fIskip=SEEK\fR are given and the \fICOUNT\fR is
+deduced (i.e. not explicitly given) then that size is scaled back so
+that the copy will not overrun the file or device.
+.PP
+If \fICOUNT\fR is not given and \fIIFILE\fR is a fifo (and stdin is
+treated as a fifo) then \fIIFILE\fR is read until an EOF is detected.
+If \fICOUNT\fR is not given and \fIIFILE\fR is a /dev/zero (or
+equivalent) then zeros are read until an error occurs (e.g. file
+system full).
+.PP
+If \fICOUNT\fR is not given and cannot be deduced then an error message
+is issued and no copy takes place.
+.SH CONVERSIONS
+One or more conversions can be given to the "conv=" option. If more than
+one is given, they should be comma separated. ddpt does not perform the
+traditional dd conversions (e.g. ASCII to EBCDIC). Recently added
+conversions overlap somewhat with the flags so some conversions are
+now supported by ddpt.
+.TP
+fdatasync
+equivalent to "oflag=fdatasync". Flushes data associated with the
+\fIOFILE\fR to storage at the end of the copy. This conversion is
+for compatibility with GNU's dd.
+.TP
+fsync
+equivalent to "oflag=fsync". Flushes data and meta\-data associated
+with the \fIOFILE\fR to storage at the end of the copy. This conversion
+is for compatibility with GNU's dd.
+.TP
+noerror
+this conversion is very close to "iflag=coe" and is treated as such. See
+the "coe" flag. Note that an error on \fIOFILE\fR will stop the copy.
+.TP
+notrunc
+this conversion is accepted for compatibility with dd and ignored since
+the default action of this utility is not to truncate \fIOFILE\fR.
+.TP
+null
+has no affect, just a placeholder.
+.TP
+resume
+See "resume" in the FLAGS sections for more information.
+.TP
+sparing
+See "sparing" in the FLAGS sections for more information.
+.TP
+sparse
+FreeBSD's dd supports "conv=sparse" and now GNU's dd does as well so the
+same syntax is supported in ddpt. See "sparse" in the FLAGS sections for
+more information.
+.TP
+sync
+is ignored by ddpt. With dd it means supply zero fill (rather than skip)
+and is typically used like this "conv=noerror,sync" to have the same
+functionality as ddpt's "iflag=coe".
+.TP
+trunc
+if \fIOFILE\fR is a regular file then truncate it prior to starting the
+copy. See "trunc" in the FLAGS section.
+.SH FLAGS
+A list of flags and their meanings follow. The flag name is followed
+by one or two indications in square brackets. The first indication is
+either "[i]", "[o]" or "[io]" indicating this flag is active for the
+\fIIFILE\fR, \fIOFILE\fR or both the \fIIFILE\fR and the \fIOFILE\fR. The
+second indication contains some combination of "reg", "blk" or "pt"
+indicating whether the flag applies to a regular file, a block
+device (accessed via Unix read() and write() commands) or a pass\-through
+device respectively. Other special file types that are sometimes referred
+to are "fifo" and "tape".
+.TP
+append [o] [reg]
+causes the O_APPEND flag to be added to the open of \fIOFILE\fR. For
+regular files this will lead to data appended to the end of any existing
+data. Conflicts the \fIseek=SEEK\fR option. The default action of this
+utility is to overwrite any existing data from the beginning of \fIOFILE\fR
+or, if \fISEEK\fR is given, starting at block \fISEEK\fR. Note that
+attempting to 'append' to a device file (e.g. a disk) will usually be
+ignored or may cause an error to be reported.
+.TP
+block [io] [pt]
+pass-through file opens are non-blocking by default and may report the
+pt device is busy. Use this flag to open blocking so utility may wait until
+another process locking (or with an exclusive open) is complete before
+continuing.
+.TP
+cat [io] [blk,pt]
+set CAT (residual data handling) bit in EXTENDED COPY (LID1) parameter list
+segment descriptor header. May appear in either flag list when xcopy is
+being used. See the XCOPY section below.
+.TP
+coe [io] [pt], [i] [reg,blk]
+continue on error. 'iflag=coe oflag=coe' and 'coe=1' are equivalent.
+Errors occurring on output regular or block files will stop ddpt.
+Error messages are sent to stderr. This flag is similar
+to 'conv=noerror,sync' in the
+.B dd(1)
+utility. Unrecovered errors are counted and reported in the summary at
+the end of the copy.
+.IP
+This paragraph concerns coe on pt devices. A medium, hardware or blank
+check error during a read operation will will cause the following: first
+re\-read blocks prior to the bad block, then try to recover the bad
+block (supplying zeros if that fails), and finally re\-read the blocks
+after the bad block. A medium, hardware or blank check error while writing
+is reported but otherwise ignored. SCSI disks may automatically try and
+remap faulty sectors (see the AWRE and ARRE in the read write error
+recovery mode page (the sdparm utility can access these attributes)). If
+bad LBAs are reported by the pass\-through then the LBA of the lowest and
+highest bad block is also reported.
+.IP
+This paragraph concerns coe on input regular files and block devices.
+When a EIO or EREMOTEIO error is detected on a normal segment read then
+the segment is re\-read one block (i.e. \fIIBS\fR bytes) at a time. Any
+block that yields a EIO or EREMOTEIO error is replaced by zeros. Any
+other error, a short read or an end of file will terminate the copy,
+usually after the data that has been read is written to the output file.
+.TP
+dc [io] [blk,pt]
+set DC (destination counter) bit in EXTENDED COPY (LID1) parameter list
+segment descriptor header. May appear in either flag list when xcopy is
+being used.
+.TP
+direct [io] [reg,blk]
+causes the O_DIRECT flag to be added to the open of \fIIFILE\fR and/or
+\fIOFILE\fR. This flag requires some memory alignment on IO. Hence user
+memory buffers are aligned to the page size. May have no effect on pt
+devices. This flag will bypass caching/buffering normally done by block
+layer. Beware of data coherency issues if the same locations have been
+recently accessed via the block layer in its normal mode (i.e.
+non\-direct). See open(2) man page.
+.TP
+dpo [io] [pt]
+set the DPO bit (disable page out) in SCSI READ and WRITE commands. Not
+supported for 6 byte cdb variants of READ and WRITE. Indicates that
+data is unlikely to be required to stay in device (e.g. disk) cache.
+May speed media copy and/or cause a media copy to have less impact
+on other device users.
+.TP
+errblk [i] [pt] [experimental]
+attempts to create or append to a file called "errblk.txt" in the current
+directory the logical block addresses of blocks that cannot be read. The
+first (appended) line is "# start <timestamp>". That is followed by the
+LBAs in hex (and prefixed with "0x") of any block that cannot be read,
+one LBA per line. If the sense data does not correctly identify the LBA of
+the first error in the range it was asked to read then a LBA range is
+reported in the form of the lowest and the highest LBA in the range
+separated by a "\-". At the end of the copy a line with "# stop <timestamp>"
+is appended to "errblk.txt". Typically used with "coe".
+.TP
+excl [io] [reg,blk]
+causes the O_EXCL flag to be added to the open of \fIIFILE\fR and/or
+\fIOFILE\fR. See open(2) man page.
+.TP
+fdatasync [o] [reg,blk]
+Flushes data associated with the \fIOFILE\fR to storage at the end of the
+copy.
+.TP
+flock [io] [reg,blk,pt]
+after opening the associated file (i.e. \fIIFILE\fR and/or \fIOFILE\fR)
+an attempt is made to get an advisory exclusive lock with the flock()
+system call. The flock arguments are "FLOCK_EX | FLOCK_NB" which will
+cause the lock to be taken if available else a "temporarily unavailable"
+error is generated. An exit status of 90 is produced in the latter case
+and no copy is done. See flock(2) man page.
+.TP
+force [io] [pt]
+override difference between given block size and the block size found
+by the SCSI READ CAPACITY command. Use the given block size. Without
+this flag the copy would not be performed. pt access to what appears
+to be a block partition is aborted in version 0.92; that can be overridden
+by the force flag. For related reasons the 'norcap' flag requires this
+flag when applied to a block device accessed via pt.
+.TP
+fsync [o] [reg,blk]
+Flushes data and metadata (describing the file) associated with the
+\fIOFILE\fR to storage at the end of the copy.
+.TP
+fua [io] [pt]
+causes the FUA (force unit access) bit to be set in SCSI READ and/or WRITE
+commands. The 6 byte variants of the SCSI READ and WRITE commands do not
+support the FUA bit.
+.TP
+fua_nv [io] [pt]
+causes the FUA_NV (force unit access non\-volatile cache) bit to be set in
+SCSI READ and/or WRITE commands. This only has an effect with pt devices.
+The 6 byte variants of the SCSI READ and WRITE commands do not support the
+FUA_NV bit. The FUA_NV bit was made obsolete in SBC\-3 revision 35d.
+.TP
+ignoreew [o] [tape]
+ignore the early warning indication (of end of tape) when writing to tape.
+See TAPE section.
+.TP
+nocache [io] [reg,blk]
+use posix_fadvise(POSIX_FADV_DONTNEED) to advise corresponding file there is
+no need to fill the file buffer with recently read or written blocks. If
+used with "iflag=" it will increase the read ahead on \fIIFILE\fR.
+.TP
+nofm [o] [tape]
+no File Mark (FM) on close when writing to tape. See TAPE section.
+.TP
+nopad [o] [tape]
+when the block to be written to a tape drive contains less than \fIOBS\fR
+bytes, then this option causes the partial block to be written as is. The
+default action for a tape in this case is to pad the block. See TAPE section.
+.TP
+norcap [io] [pt]
+do not perform SCSI READ CAPACITY command on the corresponding pt device.
+If used on block device accessed via pt then 'force' flag is also
+required. This is to warn about using pt access on what may be a block
+device partition.
+.TP
+nowrite [o] [reg,blk,pt]
+bypass writes to \fIOFILE\fR. The "records out" count is not incremented.
+\fIOFILE\fR is still opened but "oflag=trunc" if given is ignored. Also
+the ftruncate call associated with the sparse flag is ignored (i.e.
+bypassed). Commands such as trim and SCSI SYNCHRONIZE CACHE are still sent.
+.TP
+null [io]
+has no affect, just a placeholder.
+.TP
+pad [o] [reg,blk,pt]
+when the block to be written (typically the last block) contains less than
+\fIOBS\fR bytes, then this option causes the block to be padded with
+zeros (i.e. bytes of binary zero). The default action for a regular file
+and a fifo is to do a partial write. The default action of a block
+and a pt device is to ignore the partial write. The default action of
+a tape is to pad, so this flag is not needed (see the nopad flag).
+May be used when xcopy is active, if so see the XCOPY section below.
+.TP
+prealloc [o] [reg]
+use the fallocate() call prior to starting a copy to set \fIOFILE\fR to its
+expected size.
+.TP
+pt [io] [blk,pt]
+causes a device to be accessed in "pt" mode. In "pt" mode SCSI READ and
+WRITE commands are sent to access blocks rather than standard UNIX read()
+and write() commands. The "pt" mode may be implicit if the device is only
+capable of passing through SCSI commands (e.g. the /dev/sg* and
+some /dev/bsg/* devices in Linux). This flag is needed for device nodes
+that can be accessed both via standard UNIX read() and write() commands
+as well as SCSI commands. Such devices default standard UNIX read()
+and write() commands in the absence of this flag.
+.TP
+rarc [i] [pt]
+bit set in READ(10, 12, 16 and 32) to suppress RAID rebuild functions
+when a bad (or recovered after difficulties) block is detected.
+.TP
+resume [o] [reg]
+when a copy is interrupted (e.g. with Control\-C from the keyboard)
+then using the same invocation again with the addition of "oflag=resume"
+will attempt to restart the copy from the point of the interrupt (or
+just before that point). It is harmless to use "oflag=resume" when
+\fIOFILE\fR doesn't exist or is zero length. If the length of \fIOFILE\fR
+is greater than or equal to the length implied by a ddpt invocation that
+includes "oflag=resume" then no further data is copied.
+.TP
+self [io] [pt]
+used together with trim flag to do a self trim (trim of segments of a
+pt device that contain all zeros). If \fIOFILE\fR is not given, then
+it is set to the same as \fIIFILE\fR. If \fISEEK\fR is not given it
+set to the same value as \fISKIP\fR (possibly adjusted if \fIIBS\fR
+and \fIOBS\fR are different). Implicitly sets "nowrite" flag.
+.TP
+sparing [o] [reg,blk,pt]
+during the copy each \fIIBS\fR * \fIBPT\fR byte segment is read from
+\fIIFILE\fR into a buffer. Then, instead of writing that buffer to
+\fIOFILE\fR, the corresponding segment is read from \fIOFILE\fR into another
+buffer. If the two buffers are different, the former buffer is written to
+the \fIOFILE\fR. If the two buffers compare equal then the write to
+\fIOFILE\fR is not performed. Write sparing is useful when a write operation
+is significantly slower than a read. Under some conditions flash memory
+devices have slow writes plus an upper limit on the number of times the same
+cell can be rewritten. The granularity of the comparison can be reduced from
+the default \fIIBS\fR * \fIBPT\fR byte segment with the the \fIOBPC\fR value
+given to the "bpt=" option. The finest granularity is when \fIOBPC\fR is 1
+which implies \fIOBS\fR bytes.
+.TP
+sparse [o] [reg,blk,pt]
+after each \fIIBS\fR * \fIBPT\fR byte segment is read from \fIIFILE\fR, it
+is checked to see if it is all zeros. If so, that segment is not written to
+\fIOFILE\fR. See the section on SPARSE WRITES below. The granularity of
+the zero comparison can be reduced from the default \fIIBS\fR * \fIBPT\fR
+byte segment with the \fIOBPC\fR value given to the "bpt=" option.
+.TP
+ssync [o] [pt]
+if \fIOFILE\fR is in "pt" mode then the SCSI SYNCHRONIZE CACHE command is
+sent to \fIOFILE\fR at the end of the copy.
+.TP
+strunc [o] [reg]
+perform a sparse copy with a ftruncate system call to extend the length
+of the \fIOFILE\fR if required. See the sparse flag and the section on
+SPARSE WRITES below.
+.TP
+sync [io] [reg,blk]
+causes the O_SYNC flag to be added to the open of \fIIFILE\fR and/or
+\fIOFILE\fR. See open(2) man page.
+.TP
+trim [io] [pt] [experimental]
+similar logic to the "sparse" option. However instead of skipping segments
+that are full of zeros a "trim" command is sent to \fIOFILE\fR. Usually set
+as an oflag argument but for self trim can be used as an iflag
+argument (e.g. "iflag=self,trim"). Depending on the usage this may require
+the device to support "deterministic read zero after trim". See the
+TRIM, UNMAP AND WRITE SAME section below.
+.TP
+trunc [o] [reg]
+if \fIOFILE\fR is a regular file then it is truncated prior to starting the
+copy. If \fISEEK\fR is not given or 0 then \fIOFILE\fR is truncated to zero
+length; when \fISEEK\fR is larger than zero the truncation takes place at
+file byte pointer \fISEEK*OBS\fR.  Ignored if "oflag=append". Conflicts
+with "oflag=sparing".
+.TP
+unmap [io] [pt]
+same as the trim flag.
+.TP
+xcopy [io] [pt]
+invoke SCSI XCOPY logic and send the XCOPY command to the either IFILE or
+OFILE depending on which flag this called. If both are given (i.e. an
+invocation including 'iflag=xcopy  oflag=xcopy') then send XCOPY to IFILE.
+.SH SPARSE WRITES
+Bypassing writes of blocks full of zeros can save a lot of IO. However
+with regular files, bypassed writes at the end of the copy can lead
+to an \fIOFILE\fR which is shorter than it would have been without
+sparse writes. This can lead to integrity checking programs like md5sum
+and sha1sum generating different values.
+.PP
+This utility has two ways of handling this file length problem: writing
+the last block (even if it is full of zeros) or using the ftruncate
+system call. A third approach is to ignore the problem (i.e. leaving
+\fIOFILE\fR shorter). The ftruncate approach is used when "oflag=strunc"
+while the last block is written when "oflag=sparse". To ignore the
+file length issue use "oflag=sparse,sparse". Note that if \fIOFILE\fR's
+length is already correct or longer than required, no action is taken.
+.PP
+The support for sparse writing of regular files may depend on the OS, the
+file system and the settings of \fIOFILE\fR. POSIX makes few guarantees
+when the ftruncate system call is used to extend a file's length, as may
+occur when "oflag=strunc". Further, primitive file systems like VFAT may not
+accept sparse writes or simulate the effect by writing blocks of zeros. The
+latter approach will defeat any sparse writing performance gain.
+.SH TRIM, UNMAP AND WRITE SAME
+This is a new storage feature often associated with Solid State
+Disks (SSDs) or disk arrays with "thin provisioning". In the ATA command
+set (ACS\-2) the relevant command is DATA SET MANAGEMENT with the TRIM
+bit set. In the SCSI command set (SBC\-3) it is either the UNMAP or
+WRITE SAME command. Note there is no TRIM command however the term is
+frequently used in the technical press.
+.PP
+Trim is a way of telling a storage device that blocks are no longer needed.
+Keeping the pool of unwritten blocks large is important for the write
+performance of SSDs and the thrifty use of real storage in thin provisioned
+arrays. Currently file systems in recent OSes may issue trims associated
+with file deletes. The trim option in ddpt may be useful when a partition
+or a whole SSD is to be "deleted". Note that ddpt is bypassing file
+systems in that it only offers trim on pass\-through (pt) devices.
+.PP
+This utility issues SCSI commands to pt devices and for "trim" currently
+issues a SCSI WRITE SAME(16) command with the UNMAP bit set. If the pt
+device is a SSD with a ATA interface then recent versions of Linux
+will translate the SCSI WRITE SAME to the ATA DATA SET MANAGEMENT command
+with the TRIM bit set. The maximum size of each "trim" command sent
+is the size of the copy buffer (i.e. \fIIBS\fR * \fIBPT\fR bytes). And
+that maximum can be reduced with the \fIOBPC\fR argument of the "bpt="
+option.
+.PP
+The trim can be used various ways. One way is a copy where the copy
+buffer (or some part of it) is checked for zeros as is done by the
+sparse oflag. When a zero segment is found, a trim "command" is
+sent to the \fIOFILE\fR. For example:
+.PP
+   ddpt if=dsk.img bs=512 of=/dev/sdc oflag=pt,trim
+.PP
+The copy buffer is 64 KiB (since \fIBPT\fR and \fIOBPC\fR default to 128
+when "bs=512") and it is checked for all zeros. If it is all zeros then
+a trim command is sent to the corresponding location of /dev/sdc
+which is accessed via the pt interface. If it is not all zeros
+then a SCSI WRITE command is sent. Another way is to trim all or
+part of a disk. To trim a whole disk (i.e. deleting all its data):
+.PP
+    ddpt if=/dev/zero bs=512 of=/dev/sdc oflag=pt,trim
+.PP
+A third way is to "self\-trim" which is to only trim those parts
+of a disk that contain segments full of zeros:
+.PP
+    ddpt if=/dev/sdc skip=0x2300 bs=512 iflag=pt,self,trim count=0x1234f0
+.PP
+The "self" oflag automatically sets up the output side of the copy
+to send trim commands (if required) back the the same device (i.e. /dev/sdc).
+If this example was self\-trimming a partition then the partition would
+start at LBA 0x2300 and be 0x1234f0 blocks long.
+.PP
+Some random product examples: the Intel X25\-M G2 SSDs have trim with
+recent firmware and they do deterministic read zero after trim. The
+Seagate Pulsar SSD has an ATA interface which supports the deterministic
+reads of zero after the DATA SET MANAGEMENT command with the TRIM option.
+.SH DD DIFFERENCES
+dd defaults "if=" and "of=" to stdin and stdout respectively. This follows
+Unix filter conventions. However since dd and ddpt are often used to read
+binary data for timing purposes, having to supply "of=/dev/null" can
+be easily forgotten. Without it dd will potentially spew binary data on the
+console. So ddpt has changed its defaults: the "if=\fIIFILE\fR" is now
+mandatory and to read from stdin "if=\-" can be used; "of=\fIOFILE\fR"
+remains optional but its default changes to "/dev/null" (or "NUL" in
+Windows). To send output to stdout ddpt accepts "of=\-".
+.PP
+dd truncates \fIOFILE\fR unless "conv=notrunc" is given. When dd truncates,
+it truncates to zero length unless \fISEEK\fR is greater than zero. ddpt
+does not truncate \fIOFILE\fR by default. If \fIOFILE\fR exists it will be
+overwritten. The overwrite starts at block zero unless \fISEEK\fR
+or "oflag=append" is given. If \fIOFILE\fR is a regular file
+then "oflag=trunc" (or "conv=trunc") will truncate \fIOFILE\fR prior to the
+copy.
+.PP
+Numeric arguments to ddpt can be given in hexadecimal, either with a
+leading "0x" or "0X" or with a trailing "h". Note that dd accepts "0x123"
+but interprets it as "0 * 123" (i.e. zero). ddpt will also interpret "x"
+as multiplies unless the left operand is zero (e.g. "0x123"). So both
+dd and ddpt will interpret "skip=2x123" as "skip=246".
+.PP
+Terabyte size disks make it impractical to copy all the data into a buffer
+before writing it out. Therefore both dd and ddpt read a relatively small
+amount of data into a copy (or transfer) buffer then write it out to the
+destination, repeating this process until the \fICOUNT\fR is exhausted.
+.PP
+A major difference in ddpt is the addition of \fIBPT\fR to control the
+size of the copy buffer. With dd, \fIIBS\fR is the size of the copy buffer
+and the unit of \fISKIP\fR and \fICOUNT\fR. With ddpt, \fIIBS\fR * \fIBPT\fR
+is the size of the copy buffer and \fIIBS\fR is the unit of \fISKIP\fR
+and \fICOUNT\fR. This allows ddpt to have its \fIIBS\fR set to the logical
+block size of \fIIFILE\fR without unduly restricting the size of the copy
+buffer. And setting \fIIBS\fR (and \fIOBS\fR for \fIOFILE\fR) accurately
+is required when the pass\-through interface is used since with the SCSI
+READ and WRITE commands the logical block size is implicit.
+.PP
+The way dd handles its copy buffer (outlined in SUSv4 description of dd)
+is relatively complex, especially when \fIIBS\fR and \fIOBS\fR are different
+sizes. The restriction that ddpt places on \fIIBS\fR and \fIOBS\fR (
+i.e. (((\fIIBS*BPT\fR) % \fIOBS\fR) == 0) ) means that a single
+copy buffer can be used since its size is a multiple of both \fIIBS\fR and
+\fIOBS\fR. Being able to precisely define the copy buffer size in ddpt
+makes sparse writing, write sparing and trim operations simpler to
+define and the user to control.
+.PP
+ddpt does not support dd's "cbs=" option (conversion block size). If
+the "cbs=" option is given to ddpt then it is ignored.
+.SH PROTECTION
+This section is about protection information which is typically an extra 8
+bytes associated with each logical block. Those 8 byte are divided into 3
+fields: logical block guard (16 bit (2 byte) CRC), logical block application
+tag (2 bytes) and the logical block reference tag (4 bytes). The acronym
+DIF is sometimes used for protection information.
+.PP
+The feature to read and/or write protection information by using the
+\fIprotect=RDP[,WRP]\fR option is currently experimental. It should be used
+with care and may not "play well" with some other features such as write
+sparing and sparse writing. It should be used to copy user data plus the
+associated protection information to or from a regular file. It could also
+be used for a device to device copy assuming the "pt" interface is used
+for both. Also only modern SCSI disks support protection information.
+.PP
+When \fIRDP\fR or \fIWRP\fR is greater than 0 then a copy with associated
+protection information is active. In this state \fIIBS\fR and \fIOBS\fR
+must be the same and equal to the logical block size of the device(s)
+formatted with protection information. If a SCSI disk with 512 byte logical
+block size has protection information then the actual number of bytes
+transferred for each logical block is typically 520 bytes. For such a disk
+\fIBS=512\fR is required even when additional protection information is
+being transferred.
+.SH NOTES
+A partial write is a write to the \fIOFILE\fR of less than \fIOBS\fR
+bytes. This typically occurs at the end of a copy. dd can do partial
+writes. ddpt does partial writes to regular files and fifos (including
+stdout). However ddpt ignores partial writes when \fIOFILE\fR is a block
+device or a pt device. When ddpt ignores a partial write, it sends a
+warning to the console (stderr).
+.PP
+At the end of the copy two lines are reported to the console:
+.br
+   <in_full>+<in_partial> records in
+.br
+   <out_full>+<out_partial> records out
+.PP
+The "records in" line is the number of full input blocks (each of
+\fIIBS\fR bytes) that have been read plus the number of partial blocks (
+usually less than \fIIBS\fR bytes) that have been read. Following the lead
+of dd when 'iflag=coe' is active a block that cannot be read (and has zeros
+substituted for its output) is regarded as a partial read. The "records out"
+line is the number of full output blocks (each of \fIOBS\fR bytes) that
+have been written plus the number of partial blocks (usually less than
+\fIOBS\fR bytes) that have been written.
+.PP
+Block devices (e.g. /dev/sda and /dev/hda) can be given for \fIIFILE\fR.
+If neither 'iflag=direct' nor 'iflag=pt' is given then normal block IO
+involving buffering and caching is performed. If 'iflag=direct' is given
+then the buffering and caching is bypassed (this is applicable to both SCSI
+devices and ATA disks). When 'iflag=pt' is given SCSI commands are sent to
+the device which bypasses most of the actions performed by the block layer.
+The same applies for block devices given for \fIOFILE\fR.
+.PP
+\fIBPT\fR, \fIBS\fR, \fICOUNT\fR, \fIIBS\fR, \fIOBPC\fR, \fIOBS\fR,
+\fISKIP\fR and \fISEEK\fR may include one of these multiplicative suffixes:
+c C *1; w W *2; b B *512; k K KiB *1,024; KB *1,000; m M MiB *1,048,576;
+MB *1,000,000 . This pattern continues for "G", "T" and "P". The latter two
+suffixes can only be used for \fICOUNT\fR, \fISKIP\fR and \fISEEK\fR.
+Also a suffix of the form "x<n>" multiplies the leading number by <n>;
+however the combinations "0x" and "0X" are treated differently, see the
+next paragraph. These multiplicative suffixes are compatible with GNU's
+dd command (since 2002) which claims compliance with the SI and with
+IEC 60027\-2 standards.
+.PP
+Alternatively numerical values can be given in hexadecimal preceded by
+either "0x" or "0X" (or with a trailing "h" or "H"). When hex numbers are
+given, multipliers cannot be used.
+.PP
+The \fICOUNT\fR, \fISKIP\fR and \fISEEK\fR arguments can take 64 bit
+values (i.e. very big numbers). Other numerical values are limited to what
+can fit in a signed 32 bit number.
+.PP
+All informative, warning and error reports are sent to stderr so that
+dd's output file can be stdout and remain unpolluted. If no options
+are given, then no copying (nor reading) takes place and a brief message
+is sent to stderr inviting the user to invoke ddpt again but with '\-\-help'
+option to get the usage message.
+.PP
+Disk partition information can often be found with
+.B fdisk(8)
+[the "\-ul" argument is useful in this respect]. Also
+.B parted(8)
+can be used like this: 'parted /dev/sda unit s print' .
+.PP
+For pt devices this utility issues SCSI READ and WRITE (SBC) commands which
+are appropriate for disks and reading from CD/DVD/BD drives. Those
+commands are not formatted correctly for tape drives so ddpt cannot be
+used on tape drives via a pt device. If the largest block address of the
+requested transfer exceeds a 32 bit block number (i.e 0xffffffff) then a
+warning is issued and the pt device is accessed via SCSI READ(16) and
+WRITE(16) commands.
+.PP
+.B The attributes of a block device (e.g. partitions) are ignored when the
+.B pt flag is used.
+Hence the whole device is read (rather than just the second partition) by
+this invocation:
+.PP
+   ddpt if=/dev/sdb2 iflag=pt of=t bs=512
+.PP
+Assuming /dev/sdb and /dev/sg2 refer to the same device, then after the
+following two invocations, the contents of the files "t", "tt" and "ttt"
+should be same:
+.PP
+   ddpt if=/dev/sdb of=tt bs=512
+.PP
+   ddpt if=/dev/sg2 of=ttt bs=512
+.PP
+The SCSI READ(32) and WRITE(32) commands are restricted to media that is
+formatted with protection type 2. This is a T10 restriction.
+.SH SIGNALS
+The signal handling has been borrowed from GNU's dd: SIGINT, SIGQUIT and
+SIGPIPE report the number of remaining blocks to be transferred and the
+records in + out counts; then they have their default action. SIGUSR1 (or
+SIGINFO) causes the same information to be output and the copy continues.
+All output caused by signals is sent to stderr.
+.PP
+Like GNU's dd, ddpt respects the signal disposition of "ignored" (SIG_IGN)
+set by the shell, script or other program that invokes ddpt. So in that
+case it will ignore such signals. Further dd ignores SIGUSR1 if the
+environment variable POSIXLY_CORRECT is set because POSIX defines dd will
+only act on SIGINFO (and Linux has no such signal); ddpt ignores the
+POSIXLY_CORRECT environment variable. As recommended by Susv3, ddpt does
+not expect the signal (blocking) mask to be blocking SIGUSR1 (SIGINFO),
+SIGINT or SIGPIPE on entry.
+.PP
+Unix system calls that do IO can be interrupted by signal processing,
+typically returning an EINTR error number. The dd utility (and many other
+Unix utilities) restart the IO operation that was interrupted. While
+this will work most of the time for disk IO it is problematic for tape
+drives because the implicit position pointer on the tape may have moved.
+So the default (i.e. "intio=0") in this utility is to mask those signals
+during IO operations and only check them prior to starting an IO operation.
+Most low level IO (e.g. using SCSI command to write to a disk) will
+timeout if there is a low level error. However NFS (the Network File
+System) will potentially wait for a long time (e.g. expecting a network
+problem will soon be fixed) and in this case using "intio=1" may be
+best.
+.SH TAPE
+There is support for copies to and from tape drives in Linux. Only the st
+driver device names can be used (e.g. /dev/st0 and /dev/nst2). Hence use of
+Linux pass\-through device names (e.g. /dev/sg2) for tape drives is not
+supported. On Debian\-based distributions, it is suggested that the mt\-st
+package is installed as it provides a more fully\-featured version of
+the "mt" tape control program.
+.PP
+Tape drives can operate in fixed\- or variable\-length block modes. In
+variable\-block mode, each write to the tape writes a single block of that
+size. In fixed\-block mode, each write to the tape must be a multiple of the
+previously\-selected block size.
+.PP
+The block size/mode can be set with the mt command prior to invoking ddpt.
+For example:
+.br
+  # mt \-f /dev/nst0 setblk 0
+.br
+sets variable\-block mode, and
+.br
+  # mt \-f /dev/nst0 setblk 32768
+.br
+sets fixed\-block mode with block size 32768 bytes.
+.PP
+Note that some tape drives support only fixed\-block mode, and possibly
+even only one block size. (For example, QIC\-150 tapes use a fixed block
+size of 512 bytes.) There may also be restrictions on the block size, e.g.
+it may have to be even.
+.PP
+When using ddpt to write to tape, if the final read from the input is less
+than \fIOBS\fR, it is padded to \fIOBS\fR bytes before writing to tape to
+ensure that all blocks of the tape file are the same length. Having a
+shorter final block would fail if the drive is in fixed\-block mode, and
+could create interchange problems. It is common to expect all blocks in a
+file on tape to be the same length. However, to tell ddpt to not pad the
+final block, use 'oflag=nopad'.
+.PP
+The st tape driver normally writes a filemark when the file (e.g. /dev/nst0)
+is closed. To not have the filemark written, use 'oflag=nofm'. One use case
+for that might be if using ddpt several times in succession to append more
+data to the same file on tape. In that case it is probably desirable to
+write the filemark at the end of the sequence. So either omit 'oflag=nofm'
+on the last ddpt invocation, or manually write a filemark using mt after
+ddpt exits:
+.br
+  # mt \-f /dev/nst0 weof 1
+.PP
+For reading from an unknown tape where the block size(s) is not known, read
+in variable\-block mode specifying a large \fIIBS\fR. The st driver returns
+a smaller amount of data if the size of the block read is smaller. Thus a
+command like:
+.br
+  # ddpt if=/dev/nst0 of=output.bin bs=262144
+.br
+should read the file from tape regardless of the block size used (assuming
+no blocks are larger than 256KB). ddpt's verbose option will display what
+the actual block size(s) is.
+.SH XCOPY
+A device (logical unit (LU)) that supports XCOPY operations should set
+the 3PC field (3PC stands for Third Party Copy) in its standard INQUIRY
+response. That is not checked when this utility does an xcopy operation
+but if it fails, that is one thing that the user may want to check.
+.PP
+If the xcopy starts and fails while underway, then 'sg_copy_results \-s'
+may be useful to view the copy status. It might also be used from
+another I_T nexus (e.g. another machine with access to the "3PC"
+device) to check status during an xcopy operation.
+.PP
+The \fIpad\fR and \fIcat\fR flags control the handling of residual
+data. As the data can be specified either in terms of source or target
+block size and both might have different block sizes residual data is
+likely to happen in these cases.
+If both block sizes are identical these bits have no effect as
+residual data will not occur.
+.PP
+If neither of these flags are set, the EXTENDED COPY command will be
+aborted with additional sense 'UNEXPECTED INEXACT SEGMENT'.
+.PP
+If only the \fIcat\fR flag is set the residual data will be retained
+and made available for subsequent segment descriptors. Residual data
+will be discarded for the last segment descriptor.
+.PP
+If the \fIpad\fR flag is set for the source descriptor only, any
+residual data for both source or destination will be discarded.
+.PP
+If the \fIpad\fR flag is set for the target descriptor only any
+residual source data will be handled as if the \fIcat\fR flag is set,
+but any residual destination data will be padded to make a whole block
+transfer.
+.PP
+If the \fIpad\fR flag is set for both source and target any residual
+source data will be discarded, and any residual destination data will
+be padded.
+.SH EXIT STATUS
+To aid scripts that call ddpt, the exit status is set to indicate
+success (0) or failure (1 or more). Note that some of the lower values
+correspond to the SCSI sense key values. The exit status values are:
+.TP
+.B 0
+success
+.TP
+.B 1
+syntax error. Either illegal command line options, options with bad
+arguments or a combination of options that is not permitted.
+.TP
+.B 2
+the device reports that it is not ready for the operation requested.
+The device may be in the process of becoming ready (e.g.  spinning up but
+not at speed) so the utility may work after a wait.
+.TP
+.B 3
+the device reports a medium or hardware error (or a blank check). For example
+an attempt to read a corrupted block on a disk will yield this value.
+.TP
+.B 5
+the device reports an "illegal request" with an additional sense code other
+than "invalid operation code". This is often a supported command with a
+field set requesting an unsupported capability.
+.TP
+.B 6
+the device reports a "unit attention" condition. This usually indicates
+that something unrelated to the requested command has occurred (e.g. a
+device reset) potentially before the current SCSI command was sent. The
+requested command has not been executed by the device. Note that unit
+attention conditions are usually only reported once by a device.
+.TP
+.B 9
+the device reports an illegal request with an additional sense code
+of "invalid operation code" which means that it doesn't support the
+requested command.
+.TP
+.B 11
+the device reports an aborted command. In some cases aborted commands can
+be retried immediately (e.g. if the transport aborted the command due to
+congestion).
+.TP
+.B 15
+the utility is unable to open, close or use the given \fIIFILE\fR or
+\fIOFILE\fR. The given file name could be incorrect or there may be
+permission problems. Adding the \fI\-v\fR option may give more information.
+.TP
+.B 20
+the device reports it has a check condition but "no sense".
+It is unlikely that this value will occur as an exit status.
+.TP
+.B 21
+the device reports a "recovered error". The requested command was successful.
+Most likely a utility will report a recovered error to stderr and continue,
+probably leaving the utility with an exit status of 0 .
+.TP
+.B 33
+the command sent to device has timed out. This occurs in Linux only; in
+other ports a command timeout will appear as a transport (or OS) error.
+.TP
+.B 90
+the flock flag has been given on a device and some other process holds the
+advisory exclusive lock.
+.TP
+.B 97
+the response to a SCSI command failed sanity checks.
+.TP
+.B 98
+the device reports it has a check condition but the error doesn't fit into
+any of the above categories.
+.TP
+.B 99
+any errors that can't be categorized into values 1 to 98 may yield
+this value. This includes transport and operating system errors
+after the command has been sent to the device.
+.SH EXAMPLES
+The examples in this page use Linux device names. For suitable device
+names in other supported Operating Systems see this web page:
+http://sg.danny.cz/sg/device_name.html . The sg3_utils(8) man page
+in the sg3_utils package also covers device naming.
+.PP
+ddpt usage looks quite similar to dd:
+.PP
+   ddpt if=/dev/sg0 of=t bs=512 count=1MB
+.PP
+This will copy 1 million 512 byte blocks from the device associated with
+/dev/sg0 (which should have 512 byte blocks) to a file called t.
+Assuming /dev/sda and /dev/sg0 are the same device then the above is
+equivalent to:
+.PP
+   dd if=/dev/sda iflag=direct of=t bs=512 count=1000000
+.PP
+although dd's speed may improve if bs was larger and count was suitably
+reduced. The use of the 'iflag=direct' option bypasses the buffering and
+caching that is usually done on a block device.
+.PP
+The dd command's bs argument can be thought of as roughly equivalent to
+ddpt's bs*bpt . dd almost assumes buffering on a block device and will
+work as long as bs is a multiple of the actual logical block size.
+Since ddpt can work at a lower level in some cases the bs argument must be
+a disk's actual logical block size. Thus the bpt argument was introduced
+to make the copy more efficient. So these two invocations are roughly
+equivalent:
+.PP
+   dd if=/dev/sda of=t bs=8k count=64
+.br
+   ddpt if=/dev/sda of=t bs=512 bpt=16 count=1k
+.PP
+In both cases the total number of bytes moved is bs*count . And that will
+be done by reading 8k (8192 bytes) into a buffer then writing out that
+buffer to the file t. The read write sequence continues until the
+count is complete or an error occurs.
+.PP
+The 'of2=' option can save time when the input would otherwise need to be
+read twice. For example, to copy data and take a md5sum of it without
+needing to re\-read the data:
+.PP
+  mkfifo fif
+.br
+  md5sum fif &
+.br
+  ddpt if=/dev/sg3 iflag=coe of=sg3.img oflag=sparse of2=fif bs=512
+.PP
+This will image /dev/sg3 (e.g. an unmounted disk) and place the contents
+in the (sparse) file sg3.img . Without re\-reading the data it will also
+perform a md5sum calculation on the image.
+.PP
+Now we use sparse writing logic to get some idea of how many blocks
+on a disk are full of zeros. After a SCSI FORMAT UNIT command or an ATA
+SECURITY ERASE command a disk may be all zeros.
+.PP
+   ddpt if=/dev/sdc bs=512 oflag=sparse
+.PP
+Since no "of=" option is given, output goes to /dev/null so nothing
+is actually written so the "records out" will be zero. However there
+will be a count of "records in" and "bypassed records out". If /dev/sdc is
+full of zeros then "records in" and "bypassed records out" will be
+the same. Since the "bpt=" option is not given it defaults to "bpt=128,128"
+so the copy buffer will be 64 KiB and the sparse check for zeros will
+be done with 64 KiB (128 block) granularity.
+.PP
+For examples of the trim and self,trim options see the section above
+on TRIM, UNMAP AND WRITE SAME.
+.PP
+Following is an example run on a Windows OS using the '\-\-wscan' option
+which shows the available device names (e.g. PD1) and the associated volume
+name(s):
+.PP
+   ddpt \-w
+.br
+PD0     [C]     FUJITSU   MHY2160BH         0000
+.br
+PD1     [DF]    WD        2500BEV External  1.05  WD\-WXE90
+.br
+CDROM0  [E]     MATSHITA DVD/CDRW UJDA775  CB03
+.PP
+So, for example, volumes D: and F: reside on PhysicalDisk1 (abbreviated to
+"PD1") which is manufactured by WD (Western Digital).
+.PP
+Further examples can be found on this web page:
+http://sg.danny.cz/sg/ddpt.html . There is a text file containing examples
+called ddpt_examples.txt in the "doc" directory of this package's
+distribution tarball.
+.SH AUTHORS
+Written by Doug Gilbert
+.SH "REPORTING BUGS"
+Report bugs to <dgilbert at interlog dot com>.
+.SH COPYRIGHT
+Copyright \(co 2008\-2013 Douglas Gilbert
+.br
+This software is distributed under the GPL version 2. There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+.SH "SEE ALSO"
+There is a web page discussing ddpt at http://sg.danny.cz/sg/ddpt.html
+.PP
+The lmbench package contains
+.B lmdd
+which is also interesting. For moving data to and from tapes see
+.B dt
+which is found at http://www.scsifaq.org/RMiller_Tools/index.html
+.PP
+To change mode parameters that effect a SCSI device's caching and error
+recovery see
+.B sdparm(sdparm)
+.PP
+To verify the data on the media or to verify it against some other
+copy of the data see
+.B sg_verify(sg3_utils)
+.PP
+To scan and repair disk partitions see TestDisk (testdisk).
+.PP
+Additional references:
+.B dd(1), ddrescue(GNU), open(2), flock(2), sg_xcopy,sg_copy_results,
+.B sg_dd(sg3_utils)

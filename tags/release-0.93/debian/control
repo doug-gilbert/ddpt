@@ -1,0 +1,16 @@
+Source: ddpt
+Section: admin
+Priority: optional
+Maintainer: Tomas Fasth <tomfa@debian.org>
+Build-Depends: cdbs (>= 0.4.15), debhelper (>= 4.0.0), autotools-dev
+Standards-Version: 3.9.1
+
+Package: ddpt
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Copies disks, partitions and files.
+ Copies files. Is specialized for cases where the source and/or
+ destination is a storage device. Optionally can use a
+ pass-through interface to issue SCSI READ and WRITE commands.
+ Various sparse file and device handling options. Similar to
+ and an extension of the Unix dd command.
