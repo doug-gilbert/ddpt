@@ -1,0 +1,77 @@
+The version number is hard-coded into src/ddpt.c (in a C string);
+the rpm spec file: ddpt.spec ; the debian/changelog file;
+and the configure.ac file (in the AC_INIT item).
+
+Changelog for ddpt-0.92 [20110217] [svn: r157]
+  - when pt used on block device and discrepancy between size
+    of block device and read capacity size, require force flag
+  - add coe support for input block devices and regular files
+  - support conv=fdatasync, conv=fsync, oflag=fdatasync and
+    oflag=fsync; called at end of copy
+  - allow partial writes of trailing bytes when output is
+    regular file or fifo (stdout), ignore if block or pt device
+  - fix stdin, stdout and fifo handling problems
+  - if iflag=sparse and of=/dev/null (or not given) warn but
+    set oflag=sparse and continue
+  - treat unrecovered errors as partial (as dd does)
+  - win32: add '--wscan' option to scan for devices and volumes
+    - select SPT direct pt interface
+  - add estimate of remaining time in progress signal handler
+  - accept but ignore cbs= option
+  - error reporting clean up
+  - add AM_MAINTAINER_MODE to configure.ac to lessen build issues
+
+Changelog for ddpt-0.91 [20100920] [svn: r121]
+  - rework copy loop.
+  - extend bpt=BPT to bpt=BPR[,OBPC] spare+sparse granularity
+    - change BPT default to vary from 8192 to 1 depending on IBS
+  - add oflag=resume logic
+  - change oflag=sparse to extend regular OFILE with a final
+    block write, if required
+    - add oflag=strunc to also do sparse writes but to extend
+      regular OFILE with ftruncate, if required
+  - change 'bs=' option to set IBS and OBS; 'ibs=' and 'obs='
+    can coexist but not with 'bs='. [Closer to dd semantics]
+  - conv=noerror,null,resume,sparing,sparse,sync now permitted
+  - add oflag=trunc and conv=trunc (default: overwrite)
+    - quietly ignored if resume, needed due to sequence
+  - add oflag=trim for TRIM/UNMAP on pt OFILEs
+  - add iflag=self or oflag=self for self-trim
+  - add oflag=nowrite to bypass writes+truncates (does trims)
+  - add iflag=errblk to write bad LBAs to file
+    - if sense data deficient, write a LBA range to file
+  - add iflag=norcap or oflag=norcap to bypass the SCSI READ
+    CAPACITY command on pt devices
+  - discrepancies between ibs or obs and READ CAPACITY supplied
+    block lengths abort the copy. This can be overridden by
+    iflag=force or oflag=force on pt devices
+  - optical memory devices (pdt=7) added to cd/dvd readers (pdt=5)
+    that don't need sense valid=1 to accept info field (when > 0)
+  - rework short read logic for block and regular files
+  - treat linux bsg devices as implicit pt devices
+
+Changelog for ddpt-0.90 [20100508] [svn: r85]
+  - copied from sg_dd utility in sg3_utils package
+  - change name from sgdd to ddpt (package and utility name)
+  - ibs and obs can differ when ((ibs * bpt) % obs) == 0)
+  - change 'sg_io' flag to 'pt' (for pass-through)
+  - change 'dsync' flag to 'sync'; 'ssync' flag for SCSI
+    SYNCHRONIZE CACHE command; add 'nocache' flag
+  - 'if=IFILE' must be given, to read from stdin use 'if=-'
+  - 'of=OFILE' changed to default to /dev/null (was stdout)
+  - if 'nocache' flag call posix_fadvise(SEQUENTIAL) on
+    input fd and posix_fadvise(DONTNEED) during copy
+  - add 'fua_nv' flag
+  - when multiple unrecovered errors report lowest and
+    highest LBA
+  - call sg_set_binary_mode() on fds (for windows)
+  - resubmit pass-through reads and writes if interrupted
+  - drop Linux raw file support
+  - drop READ LONG logic (coe=2 and coe=3)
+  - add write sparing support (oflag=sparing)
+  - add linux bsg support
+  - sg_pt_win32: define WIN32_SPT_DIRECT via config.h
+  - calculate COUNT for regular files when required
+  - accept 'count=-1' to mean calculate COUNT
+  - accept '-V' as synonym for '--version'
+  - point svn:externals to rev 334 of sg3_utils

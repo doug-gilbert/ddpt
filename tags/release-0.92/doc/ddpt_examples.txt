@@ -1,0 +1,243 @@
+#             ddpt examples
+#             =============
+
+# Lines that start with "#", like this one, are comments.
+# Lines that start with "$" are commands entered by the user. Some
+# long commands are split over several lines with a trailing "\"
+# on all but the last line of the command.
+# Other non-blank lines are command output. Command output is shown
+# in only some cases.
+
+# dd "standard" regular file to regular file copy. 'stat -c %s <file>'
+# is a way of getting a file's length, in bytes.
+$ stat -c %s src
+6915
+$ dd if=src of=dst
+13+1 records in
+13+1 records out
+6915 bytes (6.9 kB) copied, 0.000128857 s, 53.7 MB/s
+
+# Now lets look at the ddpt equivalent. So we try the same options but
+# the ddst file exists and it is relatively large.
+$ stat -c %s ddst
+524800
+$ ddpt if=src of=ddst
+Assume block size of 512 bytes for both input and output
+13+1 records in
+13+1 records out
+time to transfer data: 0.000121 secs at 59.24 MB/sec
+$ stat -c %s dst
+524800
+
+# ddpt does not truncate ddst, it overwrites it. So if ddst's file length
+# is longer than src's file length then the output file needs to be
+# truncated:
+$ ddpt if=src of=ddst oflag=trunc
+Assume block size of 512 bytes for both input and output
+13+1 records in
+13+1 records out
+time to transfer data: 0.000243 secs at 29.50 MB/sec
+$ stat -c %s ddst
+6915
+
+# So now src is the same length as dst and ddst. And they all contain the
+# same data. The ddpt benefit of not truncating the output file by default
+# is with write sparing and the resume capability.
+
+# Both dd and ddpt default to a block size of 512 bytes (bs=512) as they
+# are designed to move disk data which up until recent times typically
+# had a block size of 512 bytes. However for copying regular (normal)
+# files bs=1 would be a clearer choice. dd is relatively inefficient when
+# bs=1 but ddpt should be faster. So we can do this:
+$ ddpt if=src bs=1 of=ddst oflag=trunc          
+6915+0 records in
+6915+0 records out
+time to transfer data: 0.000134 secs at 51.60 MB/sec
+# Notice that "records in" and "records out" are byte counts since "bs=1"
+
+# if the src file is large then
+$ dd if=src of=dst
+# can be quite inefficient because dd reads BS (argument to "bs=") or
+# IBS bytes at a time, then writes them to dst and continues until
+# all of src has been read (or the COUNT is exhausted). So something
+# like this is often suggested:
+$ dd if=src of=dst bs=64k
+
+# ddpt reads BPT*IBS bytes at a time from src before writing them to
+# ddst. The default value of BPT varies depending on IBS; for IBS=512
+# BPT defaults to 128. So for 512 byte blocks ddpt reads in chunks of
+# 64 KB. Hence this invocation of ddpt remains quite efficient:
+$ ddpt if=src ibs=512 of=ddst oflag=trunc obs=1
+# The advantage of keeping the IBS value low (and specifically equal to
+# the logical block size for block devices) is that the SKIP and COUNT
+# arguments are in units of IBS bytes:
+$ ddpt if=/dev/sda skip=0x4215cc bs=512 of=ddst.img count=1234560
+# There is no need to worry about short reads on a block device
+# so giving BS sets both IBS and OBS to the same value. So now
+# SKIP and COUNT are in 512 byte units (so SKIP is a Logical Block
+# Address (LBA)). Notice that SKIP is given in hexadecimal (dd only
+# accepts decimal arguments). Since the "bpt=" option is not given
+# BPT defaults to 128 and each read into the copy buffer is
+# 128*512 = 64 KB. The dd equivalent:
+$ dd if=/dev/sda skip=4330956 bs=512 of=dst.img count=1234560
+# will be slow since dd will read 512 bytes, write 512 bytes at a time.
+# Changing to "bs=64k" looks like it will help but now SKIP and COUNT
+# need to be divided by 128. However the SKIP value is not divisible by
+# 128. An efficient solution is not pretty.
+
+
+# When block sizes differ between the input and output devices, ddpt may
+# zero pad the last copy segment so an integral number of OBS sized blocks
+# are written. With this example the output (sent to stderr) is shown:
+$ ddpt if=/dev/sda ibs=512 of=/dev/sdc obs=4096 count=9
+9+0 records in
+2+0 records out
+time to transfer data: 0.000045 secs at 102.40 MB/sec
+# The COUNT implies a copy of 9*512 = 4608 bytes. That spills into the
+# second record (block) of /dev/sdc because its logical block size is 4096
+# bytes. ddpt pads with zeros which is what the last 3542 bytes of the
+# second block of /dev/sdc will contain after the copy.
+
+
+# Sparse writes can be used to count the number of blocks that contain
+# all zeros. sda1 is a half full 73 GB partition (on a SSD) and we check
+# for zero blocks 40 GB from its start and for a length of 5 GB:
+$ ddpt if=/dev/sda1 skip=80m bs=512 oflag=sparse count=10m
+Output file not specified so no copy, just reading input
+10485760+0 records in
+0+0 records out
+5672704 bypassed records out
+time to read data: 20.583461 secs at 260.83 MB/sec
+# Actually a copy buffer (64 KB) at a time is being checked for all
+# zeros so that count understates the true value. By setting OBPC to
+# 1, each block will be checked at a (slight) cost in execution time:
+$ ddpt if=/dev/sda1 skip=80m bs=512 oflag=sparse count=10m bpt=128,1
+Output file not specified so no copy, just reading input
+10485760+0 records in
+0+0 records out
+6317217 bypassed records out
+time to read data: 20.575803 secs at 260.92 MB/sec
+# Zero filled blocks are listed as "bypassed records out" (even though
+# nothing is actually written). When the granularity of the check for
+# zeros is 64 KB then 5672704 zero blocks are found. When the granularity
+# of the check is reduced to 512 bytes then 6317217 zero blocks are found. 
+
+
+# As an example of write sparing, assume the regular file t exists
+# and tt doesn't. Lets say the length of t is 524897 bytes:
+$ ddpt if=t bs=512 of=tt oflag=sparing
+1025+1 records in
+1025+1 records out
+0 bypassed records out
+time to transfer data: 0.001061 secs at 495.11 MB/sec
+# Now repeating the operation with oflag=sparing still set:
+$ ddpt if=t bs=512 of=tt oflag=sparing
+1025+1 records in
+0+0 records out
+1025+1 bypassed records out
+time to transfer data: 0.001680 secs at 312.69 MB/sec
+# Since t and tt should now contain the same data write sparing
+# has been able to bypass all writes to tt.
+#
+# The "time to transfer" line in the output can be removed by
+# the addition of the status=noxfer option:
+$ ddpt if=t bs=512 of=tt oflag=sparing status=noxfer
+1025+1 records in
+0+0 records out
+1025+1 bypassed records out
+
+
+# Imaging disks and partitions to a regular file can take a long
+# time. Sometimes the copy must be interrupted or there is
+# some failure (say power) which stops the copy. In such cases
+# oflag=resume may be helpful. In the case shown below a small
+# partition is being copied to a regular file and it is
+# interrupted with ^C from the keyboard:
+$ ddpt if=/dev/sda2 of=sda2.bin bs=512
+^CInterrupted by signal SIGINT,  remaining block count=1409601
+662784+0 records in
+662784+0 records out
+time to transfer data: 5.226487 secs at 64.93 MB/sec
+To resume, invoke with same arguments plus oflag=resume
+# Taking the advice from the last line:
+$ ddpt if=/dev/sda2 of=sda2.bin bs=512 oflag=resume
+resume adjusting skip=662784, seek=662784, and count=1409601
+1409601+0 records in
+1409601+0 records out
+time to transfer data: 10.543506 secs at 68.45 MB/sec
+# By checking the size of sda2.bin the resume logic has adjusted
+# the skip, seek and count options to complete the rest of the
+# copy. If the copy was finished then making the same invocation
+# is harmless: 
+$ ddpt if=/dev/sda2 of=sda2.bin bs=512 oflag=resume
+resume finds copy complete, exiting
+# And if sda2.bin was empty on did not exist then a full copy
+# would occur.
+
+
+# ddpt supports a trim operation on the output file when it is
+# accessed via the pt interface. Some SSDs support the trim
+# operation (also known as unmap) with "deterministic read
+# zero after trim". ddpt treats a trim like sparse, however
+# instead of bypassing a segment of zeros a trim command is sent.
+# In SCSI parlance trim is a WRITE SAME with the UNMAP bit set. 
+$ ddpt if=/dev/sdb1 bs=512 of=/dev/sg1 seek=73899000 oflag=trim          
+18314037+0 records in
+16970165+0 records out
+1343872 trimmed records out
+time to transfer data: 174.057264 secs at 53.87 MB/sec
+# To trim (zero) a large portion of a SSD use /dev/zero as the
+# input file. This will zero from logical block 73899000 until
+# the end of /dev/sg1 which is a SSD:
+$  ddpt if=/dev/zero bs=512 of=/dev/sg1 seek=73899000 oflag=trim
+Progress report:
+  remaining block count=38895160
+  43507456+0 records in
+  0+0 records out
+  43507328 trimmed records out
+  time to transfer data so far: 405.905942 secs at 54.88 MB/sec
+  continuing ...
+82402488+0 records in
+0+0 records out
+82402488 trimmed records out
+time to transfer data: 768.067647 secs at 54.93 MB/sec
+# Notice the "Progress report:" line and the indented lines
+# following it. What happened here was a SIGUSR1 signal was sent
+# to the process running ddpt with a 'kill -s SIGUSR1 <pid>'
+# command. The <pid> of a running ddpt can be found with the 'ps ax'
+# command. The progress report finished with "continuing ..."
+# line. The un-indented lines at the end of the output were
+# placed there at the completion of the ddpt copy.
+
+# self trim describes the technique of reading a block device
+# (accessed via a pt interface) and checking for segments of
+# zeros (64 KB of zeros in the first case). Segments full of
+# zeros are "trimmed".
+# In Linux /dev/sg* and /dev/bsg/* are pt devices.
+$ ddpt if=/dev/sg0 bs=512 skip=130045952 iflag=self,trim
+
+# The bpt option can be used to both increase the size of the
+# copy segment and reduce granularity on trim check to 1 output
+# block (i.e. 512 bytes at a time). This may result in a lot more
+# small "trim" commands being issued.
+$ ddpt if=/dev/sg0 bs=512 skip=130045952 iflag=self,trim bpt=1024,1
+
+# the self flag does some option juggling and transforms the previous
+# invocation into:
+$ ddpt if=/dev/sg0 bs=512 skip=130045952 of=/dev/sg0 seek=130045952 \
+oflag=trim,nowrite bpt=1024,1
+# which is now a "copy" back to the same file. Nasty things happen if
+# SKIP and SEEK are not the same. Best to stick with the simpler
+# "iflag=self,trim" form and avoid the pitfalls of replicated arguments.
+
+
+# If some command line arithmetic is required (e.g. with the skip, seek
+# and/or count arguments) then the bash shell offers the "$(( ))" syntax.
+# It is basically integer arithmetic, probably up to 64 bits precision,
+# with hex number accepted (leading 0x) but without multiplier suffixes
+# (e.g. $((1M + 1)) is not accepted). See the "ARITHMETIC EVALUATION"
+# section in the bash man page.
+$ ddpt if=/dev/sg1 skip=$((0xfff + 1)) count=1
+
+
+# Douglas Gilbert 20110121
