@@ -2,49 +2,6 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.96 [20160209] [svn: r318]
-  - add support for locally assigned UUIDs in VPD page
-    0x83 (15-267r2)
-  - improve device designator descriptor handling
-  - resubmit IOs if EAGAIN, report count if > 0
-  - rework pr2serr() handling
-  - point svn:externals to rev 661 of sg3_utils
-
-Changelog for ddpt-0.95 [20141226] [svn: r307]
-  - add oflag=verify[,bytchk] to write using the SCSI
-    WRITE AND VERIFY command
-  - add job file that holds options; specified either
-    freestanding on command line or after --job=
-  - show percent completed
-  - add DDPT_DEF_BS environment variable
-  - add iflag=ff to source 0xff bytes
-  - ddptctl: add --hex and --readonly options
-  - add atomic flag for WRITE ATOMIC(16) command on OFILE
-  - add warning when oflag=strunc copy interrupted
-  - win32: ddpt --wscan fixes
-  - point svn:externals to rev 620 of sg3_utils
-  - upgrade automake to version 1.14.1
-
-Changelog for ddpt-0.94 [20140407] [svn: r277]
-  - xcopy: change default to send xcopy command to dst
-    - add XCOPY_TO_SRC and XCOPY_TO_DST environment
-      variables to guide where to send xcopy command
-  - odx: add new offloaded copy technique, also known
-    as "xcopy v2, lite", that exposes ROD Tokens
-    - ddpt supports 4 odx variants: full copy, zero
-      output blocks, read to tokens and write from
-      tokens. Latter two facilitate network copies
-    - add scatter-gather list capability to seek=,
-      skip= to read from command line, file or stdin
-  - ddptctl: add odx helper utility
-    - can issue individual PT, WUT, RRTI, Report All
-      Rod Tokens, and Copy Operation Abort commands
-    - can decode T10 defined info in Rod Token
-  - improve CL handling of short options (e.g. '-vv')
-  - point svn:externals to rev 563 of sg3_utils
-  - configure: add --disable-libsgutils option so
-    build bypasses that library if present
-
 Changelog for ddpt-0.93 [20131113] [svn: r242]
   - add xcopy support, new flags: xcopy, cat, dc;
     new options: id_usage=, list_id=, prio=

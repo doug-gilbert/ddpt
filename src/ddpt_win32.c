@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2014 Douglas Gilbert.
+ * Copyright (c) 2010-2013 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,6 +41,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
@@ -53,7 +54,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
-#include "ddpt.h"       /* includes <signal.h> */
+#include "ddpt.h"
 
 #include <windows.h>
 #include <winioctl.h>
@@ -74,17 +75,6 @@
 #define HAVE_MS_SLEEP
 #endif
 
-
-#ifndef HAVE_SYSCONF
-size_t
-win32_pagesize(void)
-{
-    SYSTEM_INFO sys_info;
-
-    GetSystemInfo(&sys_info);
-    return sys_info.dwPageSize;
-}
-#endif
 
 void
 win32_sleep_ms(int millisecs)
@@ -107,7 +97,7 @@ win32_sleep_ms(int millisecs)
  * placing string in b not exceeding blen bytes. Returns
  * bytes placed in b (excluding trailing NULL) or -1 for
  * error. MS refers to them as "System Error Codes". */
-static const char *
+static int
 win32_errmsg(int errnum, char * b, int blen)
 {
     LPTSTR err_txt = 0;
@@ -115,16 +105,15 @@ win32_errmsg(int errnum, char * b, int blen)
     int len = 0;
 
     if (FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-                      FORMAT_MESSAGE_FROM_SYSTEM,
+                          FORMAT_MESSAGE_FROM_SYSTEM,
                       NULL,
                       errn,
                       0,
                       (LPTSTR)&err_txt,
                       0,
-                      NULL) == 0) {
-        snprintf(b, blen, "FormatMessage(errnum=%d) failed", errnum);
-        return b;
-    } else {
+                      NULL) == 0)
+        return -1;
+    else {
         len = strlen(err_txt);
         if (len) {
             if ('\n' == err_txt[len - 1]) {
@@ -146,9 +135,7 @@ win32_errmsg(int errnum, char * b, int blen)
     }
     if (err_txt)
         LocalFree(err_txt);
-    len = strlen(b);
-    snprintf(b + len, blen - len, " [%d]", errnum);
-    return b;
+    return len;
 }
 
 /* Return 1 for filenames starting with '\', or of the form '<letter>:'
@@ -190,7 +177,7 @@ is_win_blk_dev(const char * fn)
 }
 
 int
-win32_dd_filetype(const char * fn, int verbose)
+dd_filetype(const char * fn, int verbose)
 {
     size_t len = strlen(fn);
 
@@ -353,9 +340,7 @@ win32_open_if(struct opts_t * op, int flags, int verbose)
     DISK_GEOMETRY g;
     DWORD count, share_mode, err;
     char b[80];
-    int blen;
 
-    blen = sizeof(b);
     if (verbose)
         pr2serr("CreateFile(%s , in)\n", op->idip->fn);
     share_mode = (O_EXCL & flags) ? 0 : (FILE_SHARE_READ | FILE_SHARE_WRITE);
@@ -368,14 +353,22 @@ win32_open_if(struct opts_t * op, int flags, int verbose)
                               NULL);
     if (INVALID_HANDLE_VALUE == op->idip->fh) {
         err = GetLastError();
-        pr2serr("CreateFile(in) failed, %s\n", win32_errmsg(err, b, blen));
+        if (win32_errmsg(err, b, sizeof(b)) < 0)
+            pr2serr("CreateFile(in) failed, error=%ld [and win32_errmsg()] "
+                    "failed\n", err);
+        else
+            pr2serr("CreateFile(in) failed, %s [%ld]\n", b, err);
         return 1;
     }
     if (0 == DeviceIoControl(op->idip->fh, IOCTL_DISK_GET_DRIVE_GEOMETRY,
                              NULL, 0, &g, sizeof(g), &count, NULL)) {
         err = GetLastError();
-        pr2serr("DeviceIoControl(in, geometry) failed, %s\n",
-                win32_errmsg(err, b, blen));
+        if (win32_errmsg(err, b, sizeof(b)) < 0)
+            pr2serr("DeviceIoControl(in, geometry) failed, error=%ld [and "
+                    "win32_errmsg()] failed\n", err);
+        else
+            pr2serr("DeviceIoControl(in, geometry) failed, %s [%ld]\n", b,
+                    err);
         return 1;
     }
     if ((int)g.BytesPerSector != op->ibs) {
@@ -393,9 +386,7 @@ win32_open_of(struct opts_t * op, int flags, int verbose)
     DISK_GEOMETRY g;
     DWORD count, share_mode, err;
     char b[80];
-    int blen;
 
-    blen = sizeof(b);
     if (verbose)
         pr2serr("CreateFile(%s , out)\n", op->odip->fn);
     share_mode = (O_EXCL & flags) ? 0 : (FILE_SHARE_READ | FILE_SHARE_WRITE);
@@ -408,14 +399,16 @@ win32_open_of(struct opts_t * op, int flags, int verbose)
                               NULL);
     if (INVALID_HANDLE_VALUE == op->odip->fh) {
         err = GetLastError();
-        pr2serr("CreateFile(out) failed, %s\n", win32_errmsg(err, b, blen));
+        if (win32_errmsg(err, b, sizeof(b)) < 0)
+            pr2serr("CreateFile(out) failed, error=%ld [and win32_errmsg() "
+                    "failed]\n", err);
+        else
+            pr2serr("CreateFile(out) failed, %s [%ld]\n", b, err);
         return 1;
     }
     if (0 == DeviceIoControl(op->odip->fh, IOCTL_DISK_GET_DRIVE_GEOMETRY,
                              NULL, 0, &g, sizeof(g), &count, NULL)) {
-        err = GetLastError();
-        pr2serr("DeviceIoControl(out, geometry) failed, %s\n",
-                win32_errmsg(err, b, blen));
+        pr2serr("DeviceIoControl(out, geometry) error=%ld\n", GetLastError());
         return 1;
     }
     if ((int)g.BytesPerSector != op->obs) {
@@ -438,10 +431,7 @@ win32_set_file_pos(struct opts_t * op, int which_arg, int64_t pos,
     DWORD lo_ret;
     HANDLE fh;
     const char * cp;
-    char b[80];
-    int blen;
 
-    blen = sizeof(b);
     fh = (DDPT_ARG_IN == which_arg) ? op->idip->fh : op->odip->fh;
     cp = (DDPT_ARG_IN == which_arg) ? "in" : "out";
     if (verbose > 2)
@@ -450,8 +440,8 @@ win32_set_file_pos(struct opts_t * op, int which_arg, int64_t pos,
     if ((INVALID_SET_FILE_POINTER == lo_ret) &&
         (NO_ERROR != (err = GetLastError()))) {
         if (verbose)
-            pr2serr("SetFilePointer failed to set pos=[0x%" PRIx64 "], %s\n",
-                    pos, win32_errmsg(err, b, blen));
+            pr2serr("SetFilePointer failed to set pos=[0x%" PRIx64 "], "
+                    "error=%ld\n", pos, err);
         return 1;
     }
     return 0;
@@ -465,15 +455,18 @@ win32_block_read(struct opts_t * op, unsigned char * bp, int num_bytes,
     DWORD num = num_bytes;
     DWORD howMany, err;
     char b[80];
-    int blen;
 
-    blen = sizeof(b);
     if (verbose > 2)
         pr2serr("ReadFile(num=%d, in)\n", num_bytes);
     if (ReadFile(op->idip->fh, bp, num, &howMany, NULL) == 0) {
         err = GetLastError();
-        if (verbose)
-            pr2serr("ReadFile failed, %s\n", win32_errmsg(err, b, blen));
+        if (verbose) {
+            if (win32_errmsg(err, b, sizeof(b)) < 0)
+                pr2serr("ReadFile failed, error=%ld [and win32_errmsg() "
+                        "failed]\n", err);
+            else
+                pr2serr("ReadFile failed, %s [%ld]\n", b, err);
+        }
         if (23 == err)
             return -SG_LIB_CAT_MEDIUM_HARD;
         else
@@ -490,16 +483,18 @@ win32_block_read_from_of(struct opts_t * op, unsigned char * bp,
     DWORD num = num_bytes;
     DWORD howMany, err;
     char b[80];
-    int blen;
 
-    blen = sizeof(b);
     if (verbose > 2)
         pr2serr("ReadFile(num=%d, out)\n", num_bytes);
     if (ReadFile(op->odip->fh, bp, num, &howMany, NULL) == 0) {
         err = GetLastError();
-        if (verbose)
-            pr2serr("ReadFile(from_of) failed, %s\n",
-                    win32_errmsg(err, b, blen));
+        if (verbose) {
+            if (win32_errmsg(err, b, sizeof(b)) < 0)
+                pr2serr("ReadFile failed, error=%ld [and win32_errmsg() "
+                        "failed]\n", err);
+            else
+                pr2serr("ReadFile failed, %s [%ld]\n", b, err);
+        }
         if (23 == err)
             return -SG_LIB_CAT_MEDIUM_HARD;
         else
@@ -516,15 +511,18 @@ win32_block_write(struct opts_t * op, const unsigned char * bp,
     DWORD num = num_bytes;
     DWORD howMany, err;
     char b[80];
-    int blen;
 
-    blen = sizeof(b);
     if (verbose > 2)
         pr2serr("WriteFile(num=%d, out)\n", num_bytes);
     if (WriteFile(op->odip->fh, bp, num, &howMany, NULL) == 0) {
         err = GetLastError();
-        if (verbose)
-            pr2serr("WriteFile failed, %s\n", win32_errmsg(err, b, blen));
+        if (verbose) {
+            if (win32_errmsg(err, b, sizeof(b)) < 0)
+                pr2serr("WriteFile failed, error=%ld [and win32_errmsg() "
+                        "failed]\n", err);
+            else
+                pr2serr("WriteFile failed, %s [%ld]\n", b, err);
+        }
         if (23 == err)
             return -SG_LIB_CAT_MEDIUM_HARD;
         else
@@ -533,38 +531,33 @@ win32_block_write(struct opts_t * op, const unsigned char * bp,
     return (int)howMany;
 }
 
-/* win32_get_blkdev_capacity() returns 0 -> success or -1 -> failure. If
+/* get_blkdev_capacity() returns 0 -> success or -1 -> failure. If
  * successful writes back sector size (logical block size) using the sect_sz
  * pointer. Also writes back the number of sectors (logical blocks) on the
  * block device using num_sect pointer. Win32 version. */
 int
-win32_get_blkdev_capacity(struct opts_t * op, int which_arg,
-                          int64_t * num_sect, int * sect_sz)
+get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
+                    int * sect_sz)
 {
     DISK_GEOMETRY g;
     GET_LENGTH_INFORMATION gli;
     ULARGE_INTEGER total_bytes;
-    DWORD count, err;
+    DWORD count;
     HANDLE fh;
     const char * fname;
     int64_t byte_len, blks;
     int fname_len;
     char dirName[64];
-    char b[80];
-    int blen;
 
-    blen = sizeof(b);
     fh = (DDPT_ARG_IN == which_arg) ? op->idip->fh : op->odip->fh;
     fname = (DDPT_ARG_IN == which_arg) ? op->idip->fn : op->odip->fn;
     if (op->verbose > 2)
-        pr2serr("win32_get_blkdev_capacity: for %s\n", fname);
+        pr2serr("get_blkdev_capacity: for %s\n", fname);
     if (0 == DeviceIoControl(fh, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0, &g,
                              sizeof(g), &count, NULL)) {
-        if (op->verbose) {
-            err = GetLastError();
-            pr2serr("DeviceIoControl(blkdev, geometry) failed, %s\n",
-                    win32_errmsg(err, b, blen));
-        }
+        if (op->verbose)
+            pr2serr("DeviceIoControl(blkdev, geometry) error=%ld\n",
+                    GetLastError());
         *num_sect = 0;
         *sect_sz = 0;
         return -1;
@@ -577,11 +570,9 @@ win32_get_blkdev_capacity(struct opts_t * op, int which_arg,
         byte_len = gli.Length.QuadPart;
         *num_sect = byte_len / (int)g.BytesPerSector;
         return 0;
-    } else if (op->verbose > 2) {
-        err = GetLastError();
-        pr2serr("DeviceIoControl(blkdev, length_info) failed, %s\n",
-                win32_errmsg(err, b, blen));
-    }
+    } else if (op->verbose > 2)
+        pr2serr("DeviceIoControl(blkdev, length_info) error=%ld\n",
+                GetLastError());
 
     /* Assume if device name finishes in digit then its physical */
     fname_len = (int)strlen(fname);
@@ -593,8 +584,8 @@ win32_get_blkdev_capacity(struct opts_t * op, int which_arg,
         return 0;
     }
     if ((fname_len < 4) || (fname_len > (int)sizeof(dirName))) {
-        pr2serr("win32_get_blkdev_capacity: unable to process %s into "
-                "directory name\n", fname);
+        pr2serr("get_blkdev_capacity: unable to process %s into directory "
+                "name\n", fname);
         *num_sect = 0;
         return -1;
     }
@@ -605,12 +596,9 @@ win32_get_blkdev_capacity(struct opts_t * op, int which_arg,
     if (GetDiskFreeSpaceEx(dirName, NULL, &total_bytes, NULL)) {
         byte_len = total_bytes.QuadPart;
         *num_sect = byte_len / (int)g.BytesPerSector;
-    } else {
-        if (op->verbose > 1) {
-            err = GetLastError();
-            pr2serr("GetDiskFreeSpaceEx(%s) failed, %s\n", dirName,
-                    win32_errmsg(err, b, blen));
-        }
+    } else if (op->verbose > 1) {
+            pr2serr("GetDiskFreeSpaceEx(%s) error=%ld\n", dirName,
+                    GetLastError());
         *num_sect = 0;
         return -1;
     }

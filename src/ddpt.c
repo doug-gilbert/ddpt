@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2016 Douglas Gilbert.
+ * Copyright (c) 2008-2013 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,21 +41,30 @@
  *
  * Windows "block" devices, when _not_ accessed via the pass-through, don't
  * seem to work when POSIX/Unix like IO calls are used (e.g. write()).
- * So need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
+ * So may need CreateFile, ReadFile, WriteFile, SetFilePointer and friends.
  */
+
+static const char * version_str = "0.93 20131113 [svn: r242]";
+
+/* Was needed for posix_fadvise() */
+/* #define _XOPEN_SOURCE 600 */
 
 /* Need _GNU_SOURCE for O_DIRECT */
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
+#define _GNU_SOURCE
 #endif
 
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
+#include <signal.h>
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #define __STDC_FORMAT_MACROS 1
 #include <inttypes.h>
@@ -67,8 +76,18 @@
 #include "config.h"
 #endif
 
+#ifdef HAVE_NANOSLEEP
+#include <time.h>
+#endif
 
-static const char * ddpt_version_str = "0.96 20160209 [svn: r318]";
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+#include <time.h>
+#elif defined(HAVE_GETTIMEOFDAY)
+#include <time.h>
+#include <sys/time.h>
+#endif
+
+#include "ddpt.h"
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -107,11 +126,23 @@ static const char * ddpt_version_str = "0.96 20160209 [svn: r318]";
 /* cygwin */
 #include <sys/ioctl.h>
 #endif
+
+#ifndef HAVE_SYSCONF
+#include <windows.h>
+
+static size_t
+my_pagesize(void)
+{
+    SYSTEM_INFO sys_info;
+
+    GetSystemInfo(&sys_info);
+    return sys_info.dwPageSize;
+}
 #endif
 
-#include "ddpt.h"
+#endif  /* end SG_LIB_WIN32 */
+
 #include "sg_lib.h"
-#include "sg_pr2serr.h"
 
 #ifndef EREMOTEIO
 #define EREMOTEIO EIO
@@ -121,6 +152,1794 @@ static const char * ddpt_version_str = "0.96 20160209 [svn: r318]";
 #define PREALLOC_DEBUG 1
 
 
+/* The use of signals is borrowed from GNU's dd source code which is
+ * found in their coreutils package. If SA_NOCLDSTOP is non-zero then
+ * a modern Posix compliant version of signals is assumed. Still
+ * thinking about SIGHUP which will be delivered if the controlling
+ * process/terminal is terminated or receives SIGHUP. */
+
+/* If nonzero, the value of the pending fatal signal.  */
+static sig_atomic_t volatile interrupt_signal;
+
+/* A count of pending info(usr1) signals, decremented as processed */
+static sig_atomic_t volatile info_signals_pending;
+
+static const char * errblk_file = "errblk.txt";
+
+static struct signum_name_t signum_name_arr[] = {
+    {SIGINT, "SIGINT"},
+    {SIGQUIT, "SIGQUIT"},
+    {SIGPIPE, "SIGPIPE"},
+#if SIGINFO == SIGUSR1
+    {SIGUSR1, "SIGUSR1"},
+#else
+    {SIGINFO, "SIGINFO"},
+#endif
+#ifndef SG_LIB_WIN32
+    {SIGHUP, "SIGHUP"},
+#endif
+    {0, NULL},
+};
+
+static void calc_duration_throughput(const char * leadin, int contin,
+                                     struct opts_t * op);
+#ifdef SG_LIB_LINUX
+static void print_tape_summary(struct opts_t * op, int res, const char * str);
+static void print_tape_pos(const char * prefix, const char * postfix,
+                           struct opts_t * op);
+#endif
+
+
+static void
+usage(int help)
+{
+    if (help < 2)
+        goto primary_help;
+    else
+        goto secondary_help;
+
+primary_help:
+    pr2serr("Usage: "
+           "ddpt  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=6|10|12|16|32] [coe=0|1]\n"
+           "             [coe_limit=CL] [conv=CONVS] [count=COUNT] "
+           "[delay=MS[,W_MS]]\n"
+           "             [ibs=IBS] [id_usage=LIU] if=IFILE [iflag=FLAGS] "
+           "[intio=0|1]\n"
+           "             [iseek=SKIP] [list_id=LID] [obs=OBS] [of=OFILE] "
+           "[of2=OFILE2]\n"
+           "             [oflag=FLAGS] [oseek=SEEK] [prio=PRIO] "
+           "[protect=RDP[,WRP]]\n"
+           "             [retries=RETR] [seek=SEEK] [skip=SKIP] "
+           "[status=STAT]\n"
+           "             [verbose=VERB]\n"
+#ifdef SG_LIB_WIN32
+           "             [--help] [--verbose] [--version] [--wscan]\n"
+#else
+           "             [--help] [--verbose] [--version]\n"
+#endif
+           "  where:\n"
+           "    bpt         input Blocks Per Transfer (BPT) (def: 128 when "
+           "IBS is 512)\n"
+           "                Output Blocks Per Check (OBPC) (def: 0 implies "
+           "BPT*IBS/OBS)\n"
+           "    bs          block size for input and output (overrides "
+           "ibs and obs)\n");
+    pr2serr(
+           "    cdbsz       size of SCSI READ or WRITE cdb (default is "
+           "10)\n"
+           "    coe         0->exit on error (def), 1->continue on "
+           "error (zero fill)\n"
+           "    coe_limit   limit consecutive 'bad' blocks on reads to CL "
+           "times\n"
+           "                when coe=1 (default: 0 which is no limit)\n"
+           "    conv        conversions, comma separated list of CONVS "
+           "(see below)\n"
+           "    count       number of input blocks to copy (def: "
+           "(remaining)\n"
+           "                device/file size)\n"
+           "    delay       wait MS milliseconds between each copy segment "
+           "(def: 0)\n"
+           "                wait W_MS milliseconds prior to each write "
+           "(def: 0)\n"
+           "    ibs         input block size (default 512 bytes)\n"
+           "    id_usage    xcopy: set list_id_usage to hold (0), discard "
+           "(2),\n"
+           "                disable (3), or the given number (def: 0 or "
+           "2)\n"
+           "    if          file or device to read from (for stdin use "
+           "'-')\n"
+           "    iflag       input flags, comma separated list from FLAGS "
+           "(see below)\n"
+           "    intio       interrupt during IO; allow signals during reads "
+           "and writes\n"
+           "                (def: 0 causes signals to be masked during IO)\n"
+           "    iseek       block position to start reading from IFILE\n"
+           "    list_id     xcopy: list_id (def: 1 or 0)\n"
+           "    obs         output block size (def: 512). When IBS is "
+           "not equal to OBS\n"
+           "                then (((IBS * BPT) %% OBS) == 0) is required\n"
+           "    of          file or device to write to (def: /dev/null)\n");
+    pr2serr(
+           "    of2         additional output file (def: /dev/null), "
+           "OFILE2 should be\n"
+           "                regular file or pipe\n"
+           "    oflag       output flags, comma separated list from FLAGS "
+           "(see below)\n"
+           "    oseek       block position to start writing to OFILE\n"
+           "    prio        xcopy: set priority field to PRIO (def: 1)\n"
+           "    protect     set rdprotect and/or wrprotect fields on "
+           "pt commands\n"
+           "    retries     retry pass-through errors RETR times "
+           "(def: 0)\n"
+           "    seek        block position to start writing to OFILE\n"
+           "    skip        block position to start reading from IFILE\n"
+           "    status      'noxfer' suppresses throughput calculation; "
+           "'none'\n"
+           "                suppresses all trailing reports (apart from "
+           "errors)\n"
+           "    verbose     0->normal(def), 1->some noise, 2->more noise, "
+           "etc\n"
+           "                -1->quiet (stderr->/dev/null)\n"
+           "    --help      print out this usage message then exit\n"
+           "    --verbose   equivalent to verbose=1\n"
+           "    --version   print version information then exit\n"
+#ifdef SG_LIB_WIN32
+           "    --wscan     windows scan for device names and volumes\n"
+#endif
+           "    --xcopy     do xcopy rather than normal rw copy\n"
+           "\nCopy all or part of IFILE to OFILE, IBS*BPT bytes at a time. "
+           "Similar to\n"
+           "dd command. Support for block devices, especially those "
+           "accessed via\na SCSI pass-through. For list of FLAGS and CONVS "
+           "use '-hh' .\n");
+    return;
+
+secondary_help:
+    pr2serr("FLAGS:\n"
+            "  append (o)     append (part of) IFILE to end of OFILE\n"
+            "  block (pt)     pt opens are non blocking by default\n"
+            "  cat (xcopy)    set CAT bit in segment descriptor header\n"
+            "  coe            continue on (read) error\n"
+            "  dc (xcopy)     set DC bit in segment descriptor header\n"
+            "  direct         set O_DIRECT flag in open() of IFILE and/or "
+            "OFILE\n"
+            "  dpo            set disable page out (DPO) on pt READs and "
+            "WRITES\n"
+            "  errblk (i,pt)  write errored LBAs to errblk.txt file\n"
+            "  excl           set O_EXCL flag in open() of IFILE and/or "
+            "OFILE\n"
+            "  fdatasync (o)  flushes data to OFILE at the end of copy\n"
+            "  flock          use advisory exclusive lock [flock()] on "
+            "IFILE/OFILE\n"
+            "  force          override inconsistent information that would "
+            "stop copy\n"
+            "  fsync (o)      like fdatasync but flushes meta-data as well\n"
+            "  fua (pt)       force unit access on IFILE or OFILE\n"
+            "  fua_nv (pt)    force unit access, non-volatile (obsoleted by "
+            "T10)\n"
+            "  ignoreew (o)   ignore early warning (end of tape)\n"
+            "  nocache        use posix_fadvise(POSIX_FADV_DONTNEED)\n"
+            "  nofm (o)       no File Mark (FM) on close when writing to "
+            "tape\n"
+            "  nopad          inhibits tapes blocks less than OBS being "
+            "padded\n"
+            "  norcap (pt)    do not invoke SCSI READ CAPACITY command\n"
+            "  nowrite (o)    bypass all writes to OFILE\n"
+            "  null           does nothing, place holder\n"
+            "  pad (o)        pad blocks shorter than OBS with zeroes\n"
+            "  pre-alloc (o)  use fallocate() before copy to set OFILE to "
+            "its\n"
+            "                 expected size\n"
+            "  pt             instruct pass-through interface to be used\n"
+            "  rarc (i,pt)    set RARC (rebuild assist) bit in SCSI READs\n"
+            "  resume (o)     attempt to restart an interrupted copy\n"
+            "  self (pt)      used with trim; IFILE=OFILE; trim zero "
+            "segments\n"
+            "  sparing (o)    read OFILE prior to a write; don't write if "
+            "same\n"
+            "  sparse (o)     don't write blocks of zeroes; move file "
+            "pointer\n"
+            "                 or if OFILE is pt assume it contains zeroes "
+            "already\n"
+            "  ssync (o,pt)   at end of copy do SCSI SYNCHRONIZE CACHE\n"
+            "  strunc (o)     sparse copy using ftruncate to extend OFILE "
+            "as needed\n"
+            "  sync           set O_SYNC flag in open() of IFILE and/or "
+            "OFILE\n"
+            "  trim (pt)      use SCSI UNMAP (trim) on zero segments "
+            "instead of\n"
+            "                 writing them to OFILE\n"
+            "  trunc (o)      truncate a regular OFILE prior to copy (def: "
+            "overwrite)\n"
+            "  unmap (pt)     same as trim flag\n"
+            "  xcopy (pt)     invoke SCSI XCOPY; send to IFILE or OFILE.\n\n"
+            "CONVS:\n"
+            "  fdatasync      same as oflag=fdatasync\n"
+            "  fsync          same as oflag=fsync\n"
+            "  noerror        same as iflag=coe\n"
+            "  notrunc        does nothing because this is default action "
+            "of ddpt\n"
+            "  null           does nothing, place holder\n"
+            "  resume         same as oflag=resume\n"
+            "  sparing        same as oflag=sparing\n"
+            "  sparse         same as oflag=sparse\n"
+            "  sync           ignored to allow 'conv=noerror,sync' dd usage "
+            "for coe\n"
+            "  trunc          same as oflag=trunc\n");
+}
+
+/* Want safe, 'n += snprintf(b + n, blen - n, ...)' style sequence of
+ * functions. Returns number number of chars placed in cp excluding the
+ * trailing null char. So for cp_max_len > 0 the return value is always
+ * < cp_max_len; for cp_max_len <= 1 the return value is 0 and no chars
+ * are written to cp. Note this means that when cp_max_len = 1, this
+ * function assumes that cp[0] is the null character and does nothing
+ * (and returns 0).  */
+static int
+my_snprintf(char * cp, int cp_max_len, const char * fmt, ...)
+{
+    va_list args;
+    int n;
+
+    if (cp_max_len < 2)
+        return 0;
+    va_start(args, fmt);
+    n = vsnprintf(cp, cp_max_len, fmt, args);
+    va_end(args);
+    return (n < cp_max_len) ? n : (cp_max_len - 1);
+}
+
+/* Abbreviation of fprintf(stderr, ...) */
+int     /* Global function */
+pr2serr(const char * fmt, ...)
+{
+    va_list args;
+    int n;
+
+    va_start(args, fmt);
+    n = vfprintf(stderr, fmt, args);
+    va_end(args);
+    return n;
+}
+
+static void
+print_stats(const char * str, struct opts_t * op)
+{
+#ifdef SG_LIB_LINUX
+    /* Print tape read summary if necessary . */
+    print_tape_summary(op, 0, str);
+#endif
+
+    if ((0 != op->dd_count) && (! op->reading_fifo))
+        pr2serr("  remaining block count=%" PRId64 "\n", op->dd_count);
+    pr2serr("%s%" PRId64 "+%d records in\n", str, op->in_full,
+            op->in_partial);
+    pr2serr("%s%" PRId64 "+%d records out\n", str, op->out_full,
+            op->out_partial);
+    if (op->out_sparse_active || op->out_sparing_active) {
+        if (op->out_trim_active) {
+            const char * cp;
+
+            cp = op->trim_errs ? "attempted trim" : "trimmed";
+            if (op->out_sparse_partial > 0)
+                pr2serr("%s%" PRId64 "+%d %s records out\n", str,
+                        op->out_sparse, op->out_sparse_partial, cp);
+            else
+                pr2serr("%s%" PRId64 " %s records out\n", str,
+                        op->out_sparse, cp);
+        } else if (op->out_sparse_partial > 0)
+            pr2serr("%s%" PRId64 "+%d bypassed records out\n", str,
+                    op->out_sparse, op->out_sparse_partial);
+        else
+            pr2serr("%s%" PRId64 " bypassed records out\n", str,
+                    op->out_sparse);
+    }
+    if (op->recovered_errs > 0)
+        pr2serr("%s%d recovered read errors\n", str, op->recovered_errs);
+    if (op->num_retries > 0)
+        pr2serr("%s%d retries attempted\n", str, op->num_retries);
+    if (op->unrecovered_errs > 0)
+        pr2serr("%s%d unrecovered read error%s\n", str, op->unrecovered_errs,
+                ((1 == op->unrecovered_errs) ? "" : "s"));
+    if (op->unrecovered_errs && (op->highest_unrecovered >= 0))
+        pr2serr("lowest unrecovered read lba=%" PRId64 ", highest "
+                "unrecovered lba=%" PRId64 "\n", op->lowest_unrecovered,
+                op->highest_unrecovered);
+    if (op->wr_recovered_errs > 0)
+        pr2serr("%s%d recovered write errors\n", str, op->wr_recovered_errs);
+    if (op->wr_unrecovered_errs > 0)
+        pr2serr("%s%d unrecovered write error%s\n", str,
+                op->wr_unrecovered_errs,
+                ((1 == op->wr_unrecovered_errs) ? "" : "s"));
+    if (op->trim_errs)
+        pr2serr("%s%d trim errors\n", str, op->trim_errs);
+    if (op->interrupted_retries > 0)
+        pr2serr("%s%d %s after interrupted system call(s)\n",
+                str, op->interrupted_retries,
+                ((1 == op->interrupted_retries) ? "retry" : "retries"));
+    if (op->has_xcopy)
+        pr2serr("%s%" PRId64 " xcopy command%s done\n", str, op->num_xcopy,
+                ((1 == op->num_xcopy) ? "" : "s"));
+}
+
+/* Return signal name for signum if known, else return signum as a string. */
+static const char *
+get_signal_name(int signum, char * b, int blen)
+{
+    const struct signum_name_t * sp;
+
+    for (sp = signum_name_arr; sp->num; ++sp) {
+        if (signum == sp->num)
+            break;
+    }
+    if (blen < 1)
+        return b;
+    b[blen - 1] = '\0';
+    if (sp->num)
+        strncpy(b, sp->name, blen - 1);
+    else
+        snprintf(b, blen, "%d", signum);
+    return b;
+}
+
+/* An ordinary signal was received; arrange for the program to exit.  */
+static void
+interrupt_handler(int sig)
+{
+    if (! SA_RESETHAND)
+        signal(sig, SIG_DFL);
+    interrupt_signal = sig;
+}
+
+/* An info signal was received; arrange for the program to print status.  */
+static void
+siginfo_handler(int sig)
+{
+    if (! SA_NOCLDSTOP)
+        signal(sig, siginfo_handler);
+    ++info_signals_pending;
+}
+
+/* Install the signal handlers. We try to cope gracefully with signals whose
+ * disposition is 'ignored'. SUSv3 recommends that a process should start
+ * with no blocked signals; if needed unblock SIGINFO, SIGINT or SIGPIPE.  */
+static void
+install_signal_handlers(struct opts_t * op)
+{
+#if SIGINFO == SIGUSR1
+    const char * sname = "SIGUSR1";
+#else
+    const char * sname = "SIGINFO";
+#endif
+
+    if (op->verbose > 2)
+        pr2serr(" >> %s signal implementation assumed "
+                "[SA_NOCLDSTOP=%d], %smasking during IO\n",
+                (SA_NOCLDSTOP ? "modern" : "old"), SA_NOCLDSTOP,
+                (op->interrupt_io ? "not " : ""));
+#if SA_NOCLDSTOP
+    struct sigaction act;
+    sigset_t starting_mask;
+    int num_members = 0;
+    int unblock_starting_mask = 0;
+
+    sigemptyset(&op->caught_signals);
+    sigemptyset(&op->orig_mask);
+    sigaction(SIGINFO, NULL, &act);
+    if (act.sa_handler != SIG_IGN)
+        sigaddset(&op->caught_signals, SIGINFO);
+    else if (op->verbose)
+        pr2serr("%s ignored, progress reports not available\n", sname);
+    sigaction(SIGINT, NULL, &act);
+    if (act.sa_handler != SIG_IGN)
+        sigaddset(&op->caught_signals, SIGINT);
+    else if (op->verbose)
+        pr2serr("SIGINT ignored\n");
+    sigaction(SIGPIPE, NULL, &act);
+    if (act.sa_handler != SIG_IGN)
+        sigaddset(&op->caught_signals, SIGPIPE);
+    else if (op->verbose)
+        pr2serr("SIGPIPE ignored\n");
+
+    sigprocmask(SIG_UNBLOCK /* ignored */, NULL, &starting_mask);
+    if (sigismember(&starting_mask, SIGINFO)) {
+        if (op->verbose)
+            pr2serr("%s blocked on entry, unblock\n", sname);
+        ++unblock_starting_mask;
+    }
+    if (sigismember(&starting_mask, SIGINT)) {
+        if (op->verbose)
+            pr2serr("SIGINT blocked on entry, unblock\n");
+        ++unblock_starting_mask;
+    }
+    if (sigismember(&starting_mask, SIGPIPE)) {
+        if (op->verbose)
+            pr2serr("SIGPIPE blocked on entry, unblock\n");
+        ++unblock_starting_mask;
+    }
+    act.sa_mask = op->caught_signals;
+
+    if (sigismember(&op->caught_signals, SIGINFO)) {
+        act.sa_handler = siginfo_handler;
+        act.sa_flags = 0;
+        sigaction(SIGINFO, &act, NULL);
+        ++num_members;
+    }
+
+    if (sigismember(&op->caught_signals, SIGINT)) {
+        act.sa_handler = interrupt_handler;
+        act.sa_flags = SA_NODEFER | SA_RESETHAND;
+        sigaction(SIGINT, &act, NULL);
+        ++num_members;
+    }
+
+    if (sigismember(&op->caught_signals, SIGPIPE)) {
+        act.sa_handler = interrupt_handler;
+        act.sa_flags = SA_NODEFER | SA_RESETHAND;
+        sigaction(SIGPIPE, &act, NULL);
+        ++num_members;
+    }
+    if (unblock_starting_mask)
+        sigprocmask(SIG_UNBLOCK, &op->caught_signals, NULL);
+
+    if ((0 == op->interrupt_io) && (num_members > 0))
+        sigprocmask(SIG_BLOCK, &op->caught_signals, &op->orig_mask);
+#else   /* not SA_NOCLDSTOP */
+    if (op) { ; }    /* suppress warning */
+    if (signal(SIGINFO, SIG_IGN) != SIG_IGN) {
+        signal(SIGINFO, siginfo_handler);
+        siginterrupt(SIGINFO, 1);
+    } else if (op->verbose)
+        pr2serr("old %s ignored, progress report not available\n", sname);
+    if (signal(SIGINT, SIG_IGN) != SIG_IGN) {
+        signal(SIGINT, interrupt_handler);
+        siginterrupt(SIGINT, 1);
+    } else if (op->verbose)
+        pr2serr("old SIGINT ignored\n");
+#endif  /* SA_NOCLDSTOP */
+}
+
+static void
+sleep_ms(int millisecs)
+{
+#ifdef SG_LIB_WIN32
+    win32_sleep_ms(millisecs);
+#elif defined(HAVE_NANOSLEEP)
+    struct timespec request;
+
+    if (millisecs > 0) {
+        request.tv_sec = millisecs / 1000;
+        request.tv_nsec = (millisecs % 1000) * 1000000;
+        if ((nanosleep(&request, NULL) < 0) && (EINTR != errno))
+            perror("nanosleep");
+    }
+#endif
+}
+
+/* Process any pending signals and perhaps do delay. If signals are caught,
+ * this function should be called periodically.  Ideally there should never
+ * be an unbounded amount of time when signals are not being processed. */
+void    /* Global function, used by ddpt_xcopy.c */
+signals_process_delay(struct opts_t * op, int delay_type)
+{
+    char b[32];
+    int got_something = 0;
+    int delay = 0;
+
+#if SA_NOCLDSTOP
+    int found_pending = 0;
+
+    if ((0 == op->interrupt_io) &&
+        (sigismember(&op->caught_signals, SIGINT) ||
+         sigismember(&op->caught_signals, SIGPIPE) ||
+         sigismember(&op->caught_signals, SIGINFO))) {
+        sigset_t pending_set;
+
+        sigpending(&pending_set);
+        if (sigismember(&pending_set, SIGINT) ||
+            sigismember(&pending_set, SIGPIPE) ||
+            sigismember(&pending_set, SIGINFO)) {
+            /* Signal handler for a pending signal run during suspend */
+            sigsuspend(&op->orig_mask);
+            found_pending = 1;
+        } else {        /* nothing pending so perhaps delay */
+            if ((op->delay > 0) && (DELAY_COPY_SEGMENT == delay_type))
+                delay = op->delay;
+            else if ((op->wdelay > 0) && (DELAY_WRITE == delay_type)) {
+                if (op->subsequent_wdelay)
+                    delay = op->wdelay;
+                else
+                    op->subsequent_wdelay = 1;
+            }
+            if (delay) {
+                sigprocmask(SIG_SETMASK, &op->orig_mask, NULL);
+                if (op->verbose > 3)
+                    pr2serr("delay=%d milliseconds [%s]\n", delay,
+                            ((DELAY_WRITE == delay_type) ? "write" : "copy"));
+                sleep_ms(delay);
+                sigprocmask(SIG_BLOCK, &op->caught_signals, NULL);
+            }
+            if (! (interrupt_signal || info_signals_pending))
+                return;
+        }
+    }
+#endif
+
+    while (interrupt_signal || info_signals_pending) {
+        int interrupt;
+        int infos;
+
+        got_something = 1;
+#if SA_NOCLDSTOP
+        if (! found_pending)
+            sigprocmask(SIG_BLOCK, &op->caught_signals, NULL);
+#endif
+
+        /* Reload interrupt_signal and info_signals_pending, in case a new
+           signal was handled before sigprocmask took effect.  */
+        interrupt = interrupt_signal;
+        infos = info_signals_pending;
+
+        if (infos)
+            info_signals_pending = infos - 1;
+
+#if SA_NOCLDSTOP
+        if (! found_pending)
+            sigprocmask(SIG_SETMASK, &op->orig_mask, NULL);
+#endif
+
+        if (interrupt) {
+            pr2serr("Interrupted by signal %s\n",
+                    get_signal_name(interrupt, b, sizeof(b)));
+            print_stats("", op);
+            /* Don't show next message if using oflag=pre-alloc and we didn't
+             * use FALLOC_FL_KEEP_SIZE */
+            if ((0 == op->reading_fifo) && (FT_REG & op->odip->d_type_hold)
+                 && (0 == op->oflagp->prealloc))
+                pr2serr("To resume, invoke with same arguments plus "
+                        "oflag=resume\n");
+            ; // >>>>>>>>>>>>> cleanup ();
+        } else {
+            pr2serr("Progress report:\n");
+            print_stats("  ", op);
+            if (op->do_time)
+                calc_duration_throughput("  ", 1, op);
+            pr2serr("  continuing ...\n");
+        }
+        if (interrupt) {
+#if SA_NOCLDSTOP
+            if (found_pending) {
+                sigset_t int_set;
+
+                sigemptyset(&int_set);
+                sigaddset(&int_set, interrupt);
+                sigprocmask(SIG_UNBLOCK, &int_set, NULL);
+            }
+#endif
+            raise(interrupt);
+        }
+    }
+
+    if (! got_something) {
+        delay = 0;
+        if ((op->delay > 0) && (DELAY_COPY_SEGMENT == delay_type))
+            delay = op->delay;
+        else if ((op->wdelay > 0) && (DELAY_WRITE == delay_type)) {
+            if (op->subsequent_wdelay)
+                delay = op->wdelay;
+            else
+                op->subsequent_wdelay = 1;
+        }
+        if (delay)
+            sleep_ms(op->delay);
+    }
+}
+
+
+/* Create errblk file (see iflag=errblk) and if we have gettimeofday
+ * puts are start timestampl on the first line. */
+static void
+errblk_open(struct opts_t * op)
+{
+    op->errblk_fp = fopen(errblk_file, "a");        /* append */
+    if (NULL == op->errblk_fp)
+        pr2serr("unable to open or create %s\n", errblk_file);
+    else {
+#ifdef HAVE_GETTIMEOFDAY
+        {
+            time_t t;
+            char b[64];
+
+            t = time(NULL);
+            strftime(b, sizeof(b), "# start: %Y-%m-%d %H:%M:%S\n",
+                     localtime(&t));
+            fputs(b, op->errblk_fp);
+        }
+#else
+        fputs("# start\n", op->errblk_fp);
+#endif
+    }
+}
+
+void    /* Global function, used by ddpt_pt.c */
+errblk_put(uint64_t lba, struct opts_t * op)
+{
+    if (op->errblk_fp)
+        fprintf(op->errblk_fp, "0x%" PRIx64 "\n", lba);
+}
+
+void    /* Global function, used by ddpt_pt.c */
+errblk_put_range(uint64_t lba, int num, struct opts_t * op)
+{
+    if (op->errblk_fp) {
+        if (1 == num)
+            errblk_put(lba, op);
+        else if (num > 1)
+            fprintf(op->errblk_fp, "0x%" PRIx64 "-0x%" PRIx64 "\n", lba,
+                    lba + (num - 1));
+    }
+}
+
+static void
+errblk_close(struct opts_t * op)
+{
+    if (op->errblk_fp) {
+#ifdef HAVE_GETTIMEOFDAY
+        {
+            time_t t;
+            char b[64];
+
+            t = time(NULL);
+            strftime(b, sizeof(b), "# stop: %Y-%m-%d %H:%M:%S\n",
+                     localtime(&t));
+            fputs(b, op->errblk_fp);
+        }
+#else
+        fputs("# stop\n", op->errblk_fp);
+#endif
+        fclose(op->errblk_fp);
+        op->errblk_fp = NULL;
+    }
+}
+
+/* Process arguments given to 'conv=" option. Returns 0 on success,
+ * 1 on error. */
+static int
+conv_process(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
+{
+    char buff[256];
+    char * cp;
+    char * np;
+
+    strncpy(buff, arg, sizeof(buff));
+    buff[sizeof(buff) - 1] = '\0';
+    if ('\0' == buff[0]) {
+        pr2serr("no conversions found\n");
+        return 1;
+    }
+    cp = buff;
+    do {
+        np = strchr(cp, ',');
+        if (np)
+            *np++ = '\0';
+        if (0 == strcmp(cp, "fdatasync"))
+            ++ofp->fdatasync;
+        else if (0 == strcmp(cp, "fsync"))
+            ++ofp->fsync;
+        else if (0 == strcmp(cp, "noerror"))
+            ++ifp->coe;         /* will still fail on write error */
+        else if (0 == strcmp(cp, "notrunc"))
+            ;         /* this is the default action of ddpt so ignore */
+        else if (0 == strcmp(cp, "null"))
+            ;
+        else if (0 == strcmp(cp, "resume"))
+            ++ofp->resume;
+        else if (0 == strcmp(cp, "sparing"))
+            ++ofp->sparing;
+        else if (0 == strcmp(cp, "sparse"))
+            ++ofp->sparse;
+        else if (0 == strcmp(cp, "sync"))
+            ;   /* dd(susv4): pad errored block(s) with zeros but ddpt does
+                 * that by default. Typical dd use: 'conv=noerror,sync' */
+        else if (0 == strcmp(cp, "trunc"))
+            ++ofp->trunc;
+        else {
+            pr2serr("unrecognised flag: %s\n", cp);
+            return 1;
+        }
+        cp = np;
+    } while (cp);
+    return 0;
+}
+
+/* Process arguments given to 'iflag=" and 'oflag=" options. Returns 0
+ * on success, 1 on error. */
+static int
+flags_process(const char * arg, struct flags_t * fp)
+{
+    char buff[256];
+    char * cp;
+    char * np;
+
+    strncpy(buff, arg, sizeof(buff));
+    buff[sizeof(buff) - 1] = '\0';
+    if ('\0' == buff[0]) {
+        pr2serr("no flag found\n");
+        return 1;
+    }
+    cp = buff;
+    do {
+        np = strchr(cp, ',');
+        if (np)
+            *np++ = '\0';
+        if (0 == strcmp(cp, "append"))
+            ++fp->append;
+        else if (0 == strcmp(cp, "block"))
+            ++fp->block;
+        else if (0 == strcmp(cp, "cat"))
+            ++fp->cat;
+        else if (0 == strcmp(cp, "coe"))
+            ++fp->coe;
+        else if (0 == strcmp(cp, "dc"))
+            ++fp->dc;
+        else if (0 == strcmp(cp, "direct"))
+            ++fp->direct;
+        else if (0 == strcmp(cp, "dpo"))
+            ++fp->dpo;
+        else if (0 == strcmp(cp, "errblk"))
+            ++fp->errblk;
+        else if (0 == strcmp(cp, "excl"))
+            ++fp->excl;
+        else if (0 == strcmp(cp, "fdatasync"))
+            ++fp->fdatasync;
+        else if (0 == strcmp(cp, "flock"))
+            ++fp->flock;
+        else if (0 == strcmp(cp, "force"))
+            ++fp->force;
+        else if (0 == strcmp(cp, "fsync"))
+            ++fp->fsync;
+        else if (0 == strcmp(cp, "fua_nv"))   /* check fua_nv before fua */
+            ++fp->fua_nv;
+        else if (0 == strcmp(cp, "fua"))
+            ++fp->fua;
+        else if (0 == strcmp(cp, "ignoreew")) /* tape: ignore early warning */
+            ++fp->ignoreew;
+        else if (0 == strcmp(cp, "nocache"))
+            ++fp->nocache;
+        else if (0 == strcmp(cp, "nofm"))     /* No filemark on tape close */
+            ++fp->nofm;
+        else if (0 == strcmp(cp, "nopad"))
+            ++fp->nopad;
+        else if (0 == strcmp(cp, "norcap"))
+            ++fp->norcap;
+        else if (0 == strcmp(cp, "nowrite"))
+            ++fp->nowrite;
+        else if (0 == strcmp(cp, "null"))
+            ;
+        else if (0 == strcmp(cp, "pad"))
+            ++fp->pad;
+        else if (0 == strcmp(cp, "pre-alloc") || 0 == strcmp(cp, "prealloc"))
+            ++fp->prealloc;
+        else if (0 == strcmp(cp, "pt"))
+            ++fp->pt;
+        else if (0 == strcmp(cp, "rarc"))
+            ++fp->rarc;
+        else if (0 == strcmp(cp, "resume"))
+            ++fp->resume;
+        else if (0 == strcmp(cp, "self"))
+            ++fp->self;
+        else if (0 == strcmp(cp, "sparing"))
+            ++fp->sparing;
+        else if (0 == strcmp(cp, "sparse"))
+            ++fp->sparse;
+        else if (0 == strcmp(cp, "ssync"))
+            ++fp->ssync;
+        else if (0 == strcmp(cp, "strunc"))
+            ++fp->strunc;
+        else if (0 == strcmp(cp, "sync"))
+            ++fp->sync;
+        else if ((0 == strcmp(cp, "trim")) || (0 == strcmp(cp, "unmap"))) {
+            /* treat trim (ATA term) and unmap (SCSI term) as synonyms */
+            ++fp->wsame16;
+        } else if (0 == strcmp(cp, "trunc"))
+            ++fp->trunc;
+        else if (0 == strcmp(cp, "xcopy"))
+            ++fp->xcopy;
+        else {
+            pr2serr("unrecognised flag: %s\n", cp);
+            return 1;
+        }
+        cp = np;
+    } while (cp);
+    return 0;
+}
+
+/* Defaulting transfer (copy buffer) size depending on IBS. 128*2048 for
+ * CD/DVDs is too large for the block layer in lk 2.6 and results in an
+ * EIO on the SG_IO ioctl. So reduce it in that case.
+ * N.B. FreeBSD may reduce bpt later if pt is used on IFILE or OFILE. */
+static int
+default_bpt_i(int ibs)
+{
+    if (ibs < 8)
+        return DEF_BPT_LT8;
+    else if (ibs < 64)
+        return DEF_BPT_LT64;
+    else if (ibs < 1024)
+        return DEF_BPT_LT1024;
+    else if (ibs < 8192)
+        return DEF_BPT_LT8192;
+    else if (ibs < 31768)
+        return DEF_BPT_LT32768;
+    else
+        return DEF_BPT_GE32768;
+}
+
+/* Command line processing helper, checks sanity and applies some
+ * defaults. Returns 0 on success, > 0 for error. */
+static int
+cl_sanity_defaults(struct opts_t * op)
+{
+    if ((0 == op->ibs) && (0 == op->obs)) {
+        op->ibs = DEF_BLOCK_SIZE;
+        op->obs = DEF_BLOCK_SIZE;
+        if (op->idip->fn[0])
+            pr2serr("Assume block size of %d bytes for both input and "
+                    "output\n", DEF_BLOCK_SIZE);
+    } else if (0 == op->obs) {
+        op->obs = DEF_BLOCK_SIZE;
+        if ((op->ibs != DEF_BLOCK_SIZE) && op->odip->fn[0])
+            pr2serr("Neither obs nor bs given so set obs=%d (default "
+                    "block size)\n", op->obs);
+    } else if (0 == op->ibs) {
+        op->ibs = DEF_BLOCK_SIZE;
+        if (op->obs != DEF_BLOCK_SIZE)
+            pr2serr("Neither ibs nor bs given so set ibs=%d (default "
+                    "block size)\n", op->ibs);
+    }
+    op->ibs_hold = op->ibs;
+    if (0 == op->bpt_given)
+        op->bpt_i = default_bpt_i(op->ibs);
+
+    if ((op->ibs != op->obs) &&
+        (0 != ((op->ibs * op->bpt_i) % op->obs))) {
+        pr2serr("when 'ibs' and 'obs' differ, ((ibs*bpt)/obs) must have "
+                "no remainder (bpt=%d)\n", op->bpt_i);
+        return SG_LIB_SYNTAX_ERROR;
+    }
+    if ((op->skip < 0) || (op->seek < 0)) {
+        pr2serr("neither skip nor seek can be negative\n");
+        return SG_LIB_SYNTAX_ERROR;
+    }
+    if ((op->oflagp->append > 0) && (op->seek > 0)) {
+        pr2serr("Can't use both append and seek switches\n");
+        return SG_LIB_SYNTAX_ERROR;
+    }
+    if (op->bpt_i < 1) {
+        pr2serr("bpt must be greater than 0\n");
+        return SG_LIB_SYNTAX_ERROR;
+    }
+    if (op->iflagp->append)
+        pr2serr("append flag ignored on input\n");
+    if (op->iflagp->ignoreew)
+        pr2serr("ignoreew flag ignored on input\n");
+    if (op->iflagp->nofm)
+        pr2serr("nofm flag ignored on input\n");
+    if (op->iflagp->prealloc)
+        pr2serr("pre-alloc flag ignored on input\n");
+    if (op->iflagp->sparing)
+        pr2serr("sparing flag ignored on input\n");
+    if (op->iflagp->ssync)
+        pr2serr("ssync flag ignored on input\n");
+    if (op->oflagp->trunc) {
+        if (op->oflagp->resume) {
+            op->oflagp->trunc = 0;
+            if (op->verbose)
+                pr2serr("trunc ignored due to resume flag, "
+                        "otherwise open_of() truncates too early\n");
+        } else if (op->oflagp->append) {
+            op->oflagp->trunc = 0;
+            pr2serr("trunc ignored due to append flag\n");
+        } else if (op->oflagp->sparing) {
+            pr2serr("trunc flag conflicts with sparing\n");
+            return SG_LIB_SYNTAX_ERROR;
+        }
+    }
+    if (op->iflagp->self || op->oflagp->self) {
+        if (! op->oflagp->self)
+            ++op->oflagp->self;
+        if (op->iflagp->wsame16 || op->oflagp->wsame16) {
+            if (! op->oflagp->wsame16)
+                ++op->oflagp->wsame16;
+            if (! op->oflagp->nowrite)
+                ++op->oflagp->nowrite;
+        }
+        if ('\0' == op->odip->fn[0])
+            strcpy(op->odip->fn, op->idip->fn);
+        if ((0 == op->seek) && (op->skip > 0)) {
+            if (op->ibs == op->obs)
+                op->seek = op->skip;
+            else if (op->obs > 0) {
+                int64_t l;
+
+                l = op->skip * op->ibs;
+                op->seek = l / op->obs;
+                if ((op->seek * op->obs) != l) {
+                    pr2serr("self cannot translate skip to seek "
+                            "properly, try different skip value\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+            }
+            if (op->verbose)
+                pr2serr("self: set seek=%" PRId64 "\n", op->seek);
+        }
+    }
+    if (op->oflagp->wsame16)
+        op->oflagp->sparse += 2;
+    if (op->oflagp->strunc && (0 == op->oflagp->sparse))
+        ++op->oflagp->sparse;
+
+    if (op->has_xcopy) {
+        if (! (op->iflagp->xcopy || op->oflagp->xcopy))
+            op->iflagp->xcopy = 1;
+    }
+    if (op->iflagp->xcopy || op->oflagp->xcopy) {
+        if (op->iflagp->xcopy && op->oflagp->xcopy) {
+            pr2serr("Since xcopy set in both iflag= and oflags"
+                    "will send xcopy to if=%s\n", op->idip->fn);
+            op->oflagp->xcopy = 0;
+        }
+        op->has_xcopy = 1;
+        op->xc_dc = (op->iflagp->dc || op->oflagp->dc);
+        op->xc_cat = (op->iflagp->cat || op->oflagp->cat);
+        if (op->iflagp->xcopy) {
+            if (! op->iflagp->pt) {
+                op->iflagp->pt = 1;
+                if (op->verbose)
+                    pr2serr("setting pt (pass-through) on IFILE for "
+                            "xcopy\n");
+
+            }
+        } else {
+            if (! op->oflagp->pt) {
+                op->oflagp->pt = 1;
+                if (op->verbose)
+                    pr2serr("setting pt (pass-through) on OFILE for "
+                            "xcopy\n");
+            }
+        }
+    }
+
+    if (op->verbose) {      /* report flags used but not supported */
+#ifndef SG_LIB_LINUX
+        if (op->iflagp->flock || op->oflagp->flock)
+            pr2serr("warning: 'flock' flag not supported on this "
+                    "platform\n");
+#endif
+
+#ifndef HAVE_POSIX_FADVISE
+        if (op->iflagp->nocache || op->oflagp->nocache)
+            pr2serr("warning: 'nocache' flag not supported on this "
+                    "platform\n");
+#endif
+
+#if O_SYNC == 0
+        if (op->iflagp->sync || op->oflagp->sync)
+            pr2serr("warning: 'sync' flag (O_SYNC) not supported on "
+                    "this platform\n");
+#endif
+#if O_DIRECT == 0
+        if (op->iflagp->direct || op->oflagp->direct)
+            pr2serr("warning: 'direct' flag (O_DIRECT) not supported "
+                    "on this platform\n");
+#endif
+    }
+    return 0;
+}
+
+/* Process options on the command line. Returns 0 if successful, > 0 for
+ * (syntax) error and -1 for early exit (e.g. after '--help') */
+static int
+cl_process(struct opts_t * op, int argc, char * argv[])
+{
+    char str[STR_SZ];
+    char * key;
+    char * buf;
+    char * cp;
+    int k, n;
+
+    for (k = 1; k < argc; ++k) {
+        if (argv[k]) {
+            strncpy(str, argv[k], STR_SZ);
+            str[STR_SZ - 1] = '\0';
+        } else
+            continue;
+        // replace '=' with null and set buf pointer to following char
+        for (key = str, buf = key; *buf && *buf != '=';)
+            ++buf;
+        if (*buf)
+            *buf++ = '\0';
+        // check for option names, in alphabetical order
+        if (0 == strcmp(key, "bpt")) {
+            cp = strchr(buf, ',');
+            if (cp)
+                *cp = '\0';
+            if ((n = sg_get_num(buf)) < 0) {
+                pr2serr("bad BPT argument to 'bpt='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            if (n > 0) {
+                op->bpt_i = n;
+                op->bpt_given = 1;
+            }
+            if (cp) {
+                n = sg_get_num(cp + 1);
+                if (n < 0) {
+                    pr2serr("bad OBPC argument to 'bpt='\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+                op->obpch = n;
+            }
+        } else if (0 == strcmp(key, "bs")) {
+            n = sg_get_num(buf);
+            if (n < 0) {
+                pr2serr("bad argument to 'bs='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            if (op->bs_given) {
+                pr2serr("second 'bs=' option given, dangerous\n");
+                return SG_LIB_SYNTAX_ERROR;
+            } else
+                op->bs_given = 1;
+            if ((op->ibs_given) || (op->obs_given)) {
+                pr2serr("'bs=' option cannot be combined with "
+                        "'ibs=' or 'obs='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            op->ibs = n;
+            op->obs = n;
+        } else if (0 == strcmp(key, "cbs"))
+            pr2serr("the cbs= option is ignored\n");
+        else if (0 == strcmp(key, "cdbsz")) {
+            op->iflagp->cdbsz = sg_get_num(buf);
+            op->oflagp->cdbsz = op->iflagp->cdbsz;
+            op->cdbsz_given = 1;
+        } else if (0 == strcmp(key, "coe")) {
+            op->iflagp->coe = sg_get_num(buf);
+            op->oflagp->coe = op->iflagp->coe;
+        } else if (0 == strcmp(key, "coe_limit")) {
+            op->coe_limit = sg_get_num(buf);
+            if (-1 == op->coe_limit) {
+                pr2serr("bad argument to 'coe_limit='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (0 == strcmp(key, "conv")) {
+            if (conv_process(buf, op->iflagp, op->oflagp)) {
+                pr2serr("bad argument to 'conv='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (0 == strcmp(key, "count")) {
+            if (0 != strcmp("-1", buf)) {
+                op->dd_count = sg_get_llnum(buf);
+                if (-1LL == op->dd_count) {
+                    pr2serr("bad argument to 'count='\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+            }   /* 'count=-1' is accepted, means calculate count */
+        } else if (0 == strcmp(key, "delay")) {
+            cp = strchr(buf, ',');
+            if (cp)
+                *cp = '\0';
+            n = sg_get_num(buf);
+            if (n < 0) {
+                pr2serr("bad MS argument to 'delay='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            op->delay = n;
+            if (cp) {
+                n = sg_get_num(cp + 1);
+                if (n < 0) {
+                    pr2serr("bad W_MS argument to 'delay='\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+                op->wdelay = n;
+            }
+        } else if (0 == strcmp(key, "ibs")) {
+            n = sg_get_num(buf);
+            if (n < 0) {
+                pr2serr("bad argument to 'ibs='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            if (op->bs_given) {
+                pr2serr("'ibs=' option cannot be combined with "
+                        "'bs='; try 'obs=' instead\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            ++op->ibs_given;
+            op->ibs = n;
+        } else if (0 == strcmp(key, "id_usage")) {
+            if (isdigit(buf[0])) {
+                n = sg_get_num(buf);
+                if (n < 0) {
+                    pr2serr("bad numeric argument to 'id_usage='\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+                op->id_usage = n;
+            } else if (! strncmp(buf, "hold", 4))
+                op->id_usage = 0;
+            else if (! strncmp(buf, "discard", 7))
+                op->id_usage = 2;
+            else if (! strncmp(buf, "disable", 7))
+                op->id_usage = 3;
+            else {
+                pr2serr("bad argument to 'list_id='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (strcmp(key, "if") == 0) {
+            if ('\0' != op->idip->fn[0]) {
+                pr2serr("Second IFILE argument??\n");
+                return SG_LIB_SYNTAX_ERROR;
+            } else
+                strncpy(op->idip->fn, buf, INOUTF_SZ);
+        } else if (0 == strcmp(key, "iflag")) {
+            if (flags_process(buf, op->iflagp)) {
+                pr2serr("bad argument to 'iflag='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (0 == strcmp(key, "intio")) {
+            op->interrupt_io = sg_get_num(buf);
+        } else if (0 == strcmp(key, "iseek")) {
+            op->skip = sg_get_llnum(buf);
+            if (-1LL == op->skip) {
+                pr2serr("bad argument to 'iseek='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (0 == strcmp(key, "list_id")) {
+            n = sg_get_num(buf);
+            if (-1 == n || n > 0xff) {
+                pr2serr("bad argument to 'list_id='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            op->list_id = (n & 0xff);
+            op->list_id_given = 1;
+        } else if (0 == strcmp(key, "obs")) {
+            n = sg_get_num(buf);
+            if (n < 0) {
+                pr2serr("bad argument to 'obs='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            if (op->bs_given) {
+                pr2serr("'obs=' option cannot be combined with "
+                        "'bs='; try 'ibs=' instead\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            ++op->obs_given;
+            op->obs = n;
+        } else if (strcmp(key, "of") == 0) {
+            if ('\0' != op->odip->fn[0]) {
+                pr2serr("Second OFILE argument??\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            strncpy(op->odip->fn, buf, INOUTF_SZ);
+            ++op->outf_given;
+        } else if (strcmp(key, "of2") == 0) {
+            if ('\0' != op->o2dip->fn[0]) {
+                pr2serr("Second OFILE2 argument??\n");
+                return SG_LIB_SYNTAX_ERROR;
+            } else
+                strncpy(op->o2dip->fn, buf, INOUTF_SZ);
+        } else if (0 == strcmp(key, "oflag")) {
+            if (flags_process(buf, op->oflagp)) {
+                pr2serr("bad argument to 'oflag='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (0 == strcmp(key, "oseek")) {
+            op->seek = sg_get_llnum(buf);
+            if (-1LL == op->seek) {
+                pr2serr("bad argument to 'oseek='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (0 == strcmp(key, "prio")) {
+            n = sg_get_num(buf);
+            if ((n < 0) || (n > 7)) {
+                pr2serr("bad argument to 'prio=' (max: 7)\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            op->prio = n;
+        } else if (0 == strcmp(key, "protect")) {
+            cp = strchr(buf, ',');
+            if (cp)
+                *cp = '\0';
+            n = sg_get_num(buf);
+            if ((n < 0) || (n > 7)) {
+                pr2serr("bad RDP argument to 'protect='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            op->rdprotect = n;
+            if (cp) {
+                n = sg_get_num(cp + 1);
+                if ((n < 0) || (n > 7)) {
+                    pr2serr("bad WRP argument to 'protect='\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+                op->wrprotect = n;
+            }
+        } else if (0 == strcmp(key, "retries")) {
+            op->iflagp->retries = sg_get_num(buf);
+            op->oflagp->retries = op->iflagp->retries;
+            if (-1 == op->iflagp->retries) {
+                pr2serr("bad argument to 'retries='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (0 == strcmp(key, "seek")) {
+            op->seek = sg_get_llnum(buf);
+            if (-1LL == op->seek) {
+                pr2serr("bad argument to 'seek='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (0 == strcmp(key, "skip")) {
+            op->skip = sg_get_llnum(buf);
+            if (-1LL == op->skip) {
+                pr2serr("bad argument to 'skip='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (0 == strcmp(key, "status")) {
+            if (0 == strncmp(buf, "null", 4))
+                ;
+            else if (0 == strncmp(buf, "noxfer", 6))
+                op->do_time = 0;
+            else if (0 == strncmp(buf, "none", 4)) {
+                ++op->status_none;
+                op->do_time = 0;
+            } else {
+                pr2serr("'status=' expects 'none', 'noxfer' or 'null'\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+        } else if (0 == strncmp(key, "verb", 4)) {
+            op->verbose = sg_get_num(buf);
+            if ((-1 == op->verbose) && ('-' != buf[0])) {
+                pr2serr("bad argument to 'verbose='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            if (op->verbose < 0) {
+                ++op->quiet;
+                op->verbose = 0;
+            }
+        } else if (0 == strncmp(key, "--verb", 6))
+            ++op->verbose;
+        else if (0 == strncmp(key, "-vvvv", 5))
+            op->verbose += 4;
+        else if (0 == strncmp(key, "-vvv", 4))
+            op->verbose += 3;
+        else if (0 == strncmp(key, "-vv", 3))
+            op->verbose += 2;
+        else if (0 == strncmp(key, "-v", 2))
+            ++op->verbose;
+        else if (0 == strncmp(key, "-hh", 3))
+            op->do_help += 2;
+        else if ((0 == strncmp(key, "--help", 7)) ||
+                 (0 == strncmp(key, "-h", 2)) ||
+                 (0 == strcmp(key, "-?")))
+            ++op->do_help;
+        else if ((0 == strncmp(key, "--vers", 6)) ||
+                 (0 == strncmp(key, "-V", 2))) {
+            pr2serr("%s\n", version_str);
+            return -1;
+        }
+#ifdef SG_LIB_WIN32
+        else if (0 == strncmp(key, "--wscan", 7))
+            ++op->wscan;
+        else if (0 == strncmp(key, "-wwww", 5))
+            op->wscan += 4;
+        else if (0 == strncmp(key, "-www", 4))
+            op->wscan += 3;
+        else if (0 == strncmp(key, "-ww", 3))
+            op->wscan += 2;
+        else if (0 == strncmp(key, "-w", 2))
+            ++op->wscan;
+#endif
+        else if ((0 == strncmp(key, "--xcopy", 7)) ||
+                 (0 == strncmp(key, "-x", 2)))
+            ++op->has_xcopy;
+        else {
+            pr2serr("Unrecognized option '%s'\n", key);
+            pr2serr("For more information use '--help'\n");
+            return SG_LIB_SYNTAX_ERROR;
+        }
+    }
+    return cl_sanity_defaults(op);
+}
+
+/* Attempt to categorize the file type from the given filename.
+ * Separate version for Windows and Unix. Windows version does some
+ * file name processing. */
+#ifndef SG_LIB_WIN32
+
+#ifdef SG_LIB_LINUX
+static int bsg_major_checked = 0;
+static int bsg_major = 0;
+
+/* In Linux search /proc/devices for bsg character driver in order to
+ * find its major device number since it is allocated dynamically.  */
+static void
+find_bsg_major(int verbose)
+{
+    const char * proc_devices = "/proc/devices";
+    FILE *fp;
+    char a[128];
+    char b[128];
+    char * cp;
+    int n;
+
+    if (NULL == (fp = fopen(proc_devices, "r"))) {
+        if (verbose)
+            pr2serr("fopen %s failed: %s\n", proc_devices,
+                    strerror(errno));
+        return;
+    }
+    while ((cp = fgets(b, sizeof(b), fp))) {
+        if ((1 == sscanf(b, "%s", a)) &&
+            (0 == memcmp(a, "Character", 9)))
+            break;
+    }
+    while (cp && (cp = fgets(b, sizeof(b), fp))) {
+        if (2 == sscanf(b, "%d %s", &n, a)) {
+            if (0 == strcmp("bsg", a)) {
+                bsg_major = n;
+                break;
+            }
+        } else
+            break;
+    }
+    if (verbose > 5) {
+        if (cp)
+            pr2serr("found bsg_major=%d\n", bsg_major);
+        else
+            pr2serr("found no bsg char device in %s\n", proc_devices);
+    }
+    fclose(fp);
+}
+#endif
+
+/* Categorize file by using the stat() system call on its filename.
+ * If not found FT_ERROR returned. The FT_* constants are a bit mask
+ * and later logic can combine them (e.g. FT_BLOCK | FT_PT).
+ */
+static int
+dd_filetype(const char * filename, int verbose)
+{
+    struct stat st;
+    size_t len = strlen(filename);
+
+    if (verbose) { ; }    /* suppress warning */
+    if ((1 == len) && ('.' == filename[0]))
+        return FT_DEV_NULL;
+    if (stat(filename, &st) < 0)
+        return FT_ERROR;
+    if (S_ISREG(st.st_mode)) {
+        // pr2serr("dd_filetype: regular file, st_size=%" PRId64 "\n",
+        //         st.st_size);
+        return FT_REG;
+    } else if (S_ISCHR(st.st_mode)) {
+#ifdef SG_LIB_LINUX
+        /* major() and minor() defined in sys/sysmacros.h */
+        if ((MEM_MAJOR == major(st.st_rdev)) &&
+            (DEV_NULL_MINOR_NUM == minor(st.st_rdev)))
+            return FT_DEV_NULL;
+        if (SCSI_GENERIC_MAJOR == major(st.st_rdev))
+            return FT_PT;
+        if (SCSI_TAPE_MAJOR == major(st.st_rdev))
+            return FT_TAPE;
+        if (! bsg_major_checked) {
+            bsg_major_checked = 1;
+            find_bsg_major(verbose);
+        }
+        if (bsg_major == (int)major(st.st_rdev))
+            return FT_PT;
+        return FT_CHAR; /* assume something like /dev/zero */
+#elif SG_LIB_FREEBSD
+        {
+            /* int d_flags;  for FIOFTYPE ioctl see sys/filio.h */
+            char s[STR_SZ];
+            char * bname;
+
+            strcpy(s, filename);
+            bname = basename(s);
+            if (0 == strcmp("null", bname))
+                return FT_DEV_NULL;
+            else if (0 == memcmp("pass", bname, 4))
+                return FT_PT;
+            else if (0 == memcmp("sa", bname, 2))
+                return FT_TAPE;
+            else
+                return FT_BLOCK;  /* freebsd doesn't have block devices! */
+        }
+#elif SG_LIB_SOLARIS
+        /* might be /dev/rdsk or /dev/scsi , require pt override */
+        return FT_BLOCK;
+#else
+        return FT_PT;
+#endif
+    } else if (S_ISBLK(st.st_mode))
+        return FT_BLOCK;
+    else if (S_ISFIFO(st.st_mode))
+        return FT_FIFO;
+    return FT_OTHER;
+}
+#endif
+
+static char *
+dd_filetype_str(int ft, char * buff, int max_bufflen, const char * fname)
+{
+    int off = 0;
+
+    if (FT_DEV_NULL & ft)
+        off += my_snprintf(buff + off, max_bufflen - off, "null device ");
+    if (FT_PT & ft)
+        off += my_snprintf(buff + off, max_bufflen - off,
+                           "pass-through [pt] device ");
+    if (FT_TAPE & ft)
+        off += my_snprintf(buff + off, max_bufflen - off, "SCSI tape device ");
+    if (FT_BLOCK & ft)
+        off += my_snprintf(buff + off, max_bufflen - off, "block device ");
+    if (FT_FIFO & ft)
+        off += my_snprintf(buff + off, max_bufflen - off,
+                           "fifo [stdin, stdout, named pipe] ");
+    if (FT_REG & ft)
+        off += my_snprintf(buff + off, max_bufflen - off, "regular file ");
+    if (FT_CHAR & ft)
+        off += my_snprintf(buff + off, max_bufflen - off, "char device ");
+    if (FT_OTHER & ft)
+        off += my_snprintf(buff + off, max_bufflen - off, "other file type ");
+    if (FT_ERROR & ft)
+        off += my_snprintf(buff + off, max_bufflen - off,
+                           "unable to 'stat' %s ", (fname ? fname : "file"));
+    return buff;
+}
+
+/* get_blkdev_capacity() returns 0 -> success or -1 -> failure.
+ * which_arg should either be DDPT_ARG_IN, DDPT_ARG_OUT or DDPT_ARG_OUT2.
+ * If successful writes back sector size (logical block
+ * size) using the sect_sz * pointer. Also writes back the number of
+ * sectors (logical blocks) on the block device using num_sect pointer. */
+
+#ifdef SG_LIB_LINUX
+static int
+get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
+                    int * sect_sz)
+{
+    int blk_fd;
+    const char * fname;
+
+    blk_fd = (DDPT_ARG_IN == which_arg) ? op->idip->fd : op->odip->fd;
+    fname = (DDPT_ARG_IN == which_arg) ? op->idip->fn : op->odip->fn;
+    if (op->verbose > 2)
+        pr2serr("get_blkdev_capacity: for %s\n", fname);
+    /* BLKGETSIZE64, BLKGETSIZE and BLKSSZGET macros problematic (from
+     *  <linux/fs.h> or <sys/mount.h>). */
+#ifdef BLKSSZGET
+    if ((ioctl(blk_fd, BLKSSZGET, sect_sz) < 0) && (*sect_sz > 0)) {
+        perror("BLKSSZGET ioctl error");
+        return -1;
+    } else {
+ #ifdef BLKGETSIZE64
+        uint64_t ull;
+
+        if (ioctl(blk_fd, BLKGETSIZE64, &ull) < 0) {
+
+            perror("BLKGETSIZE64 ioctl error");
+            return -1;
+        }
+        *num_sect = ((int64_t)ull / (int64_t)*sect_sz);
+        if (op->verbose > 5)
+            pr2serr("Used Linux BLKGETSIZE64 ioctl\n");
+ #else
+        unsigned long ul;
+
+        if (ioctl(blk_fd, BLKGETSIZE, &ul) < 0) {
+            perror("BLKGETSIZE ioctl error");
+            return -1;
+        }
+        *num_sect = (int64_t)ul;
+        if (op->verbose > 5)
+            pr2serr("Used Linux BLKGETSIZE ioctl\n");
+ #endif
+    }
+    return 0;
+#else   /* not BLKSSZGET */
+    blk_fd = blk_fd;
+    if (op->verbose)
+        pr2serr("      BLKSSZGET+BLKGETSIZE ioctl not available\n");
+    *num_sect = 0;
+    *sect_sz = 0;
+    return -1;
+#endif
+}
+#endif  /* BLKSSZGET */
+
+#ifdef SG_LIB_FREEBSD
+static int
+get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
+                    int * sect_sz)
+{
+// Why do kernels invent their own typedefs and not use C standards?
+#define u_int unsigned int
+    off_t mediasize;
+    unsigned int sectorsize;
+    int blk_fd;
+    const char * fname;
+
+    blk_fd = (DDPT_ARG_IN == which_arg) ? op->idip->fd : op->odip->fd;
+    fname = (DDPT_ARG_IN == which_arg) ? op->idip->fn : op->odip->fn;
+    if (op->verbose > 2)
+        pr2serr("get_blkdev_capacity: for %s\n", fname);
+
+    /* For FreeBSD post suggests that /usr/sbin/diskinfo uses
+     * ioctl(fd, DIOCGMEDIASIZE, &mediasize), where mediasize is an off_t.
+     * also: ioctl(fd, DIOCGSECTORSIZE, &sectorsize) */
+    if (ioctl(blk_fd, DIOCGSECTORSIZE, &sectorsize) < 0) {
+        perror("DIOCGSECTORSIZE ioctl error");
+        return -1;
+    }
+    *sect_sz = sectorsize;
+    if (ioctl(blk_fd, DIOCGMEDIASIZE, &mediasize) < 0) {
+        perror("DIOCGMEDIASIZE ioctl error");
+        return -1;
+    }
+    if (sectorsize)
+        *num_sect = mediasize / sectorsize;
+    else
+        *num_sect = 0;
+    return 0;
+}
+#endif
+
+#ifdef SG_LIB_SOLARIS
+static int
+get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_sect,
+                    int * sect_sz)
+{
+    struct dk_minfo info;
+    int blk_fd;
+    const char * fname;
+
+    blk_fd = (DDPT_ARG_IN == which_arg) ? op->idip->fd : op->odip->fd;
+    fname = (DDPT_ARG_IN == which_arg) ? op->idip->fn : op->odip->fn;
+    if (op->verbose > 2)
+        pr2serr("get_blkdev_capacity: for %s\n", fname);
+
+    /* this works on "char" block devs (e.g. in /dev/rdsk) but not /dev/dsk */
+    if (ioctl(blk_fd, DKIOCGMEDIAINFO , &info) < 0) {
+        perror("DKIOCGMEDIAINFO ioctl error");
+        *num_sect = 0;
+        *sect_sz = 0;
+        return -1;
+    }
+    *num_sect = info.dki_capacity;
+    *sect_sz = info.dki_lbsize;
+    return 0;
+}
+#endif
+
+void
+zero_coe_limit_count(struct opts_t * op)
+{
+    if (op->coe_limit > 0)
+        op->coe_count = 0;
+}
+
+/* Print number of blocks, block size. If over 1 MB print size in MB
+ * (10**6 bytes), GB (10**9 bytes) or TB (10**12 bytes) to stderr. */
+static void
+print_blk_sizes(const char * fname, const char * access_typ, int64_t num_sect,
+                int sect_sz)
+{
+    int mb, gb, tb;
+    size_t len;
+    int64_t n = 0;
+    char b[32];
+    char dec[4];
+
+    if (num_sect <= 0) {
+        pr2serr("  %s [%s]: blocks=%" PRId64 ", _bs=%d\n", fname, access_typ,
+                num_sect, sect_sz);
+        return;
+    }
+    gb = 0;
+    if ((num_sect > 0) && (sect_sz > 0)) {
+        n = num_sect * sect_sz;
+        gb = n / 1000000000;
+    }
+    if (gb > 999999) {
+        tb = gb / 1000;
+        snprintf(b, sizeof(b), "%d", tb);
+        len = strlen(b); // len must be >= 4
+        dec[0] = b[len - 3];
+        dec[1] = b[len - 2];
+        dec[2] = '\0';
+        b[len - 3] = '\0';
+        pr2serr("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
+                "_bs=%d, %s.%s PB\n", fname, access_typ, num_sect,
+                num_sect, sect_sz, b, dec);
+    } else if (gb > 99999) {
+        tb = gb / 1000;
+        pr2serr("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
+                "_bs=%d, %d TB\n", fname, access_typ, num_sect,
+                num_sect, sect_sz, tb);
+    } else {
+        mb = n / 1000000;
+        if (mb > 999999) {
+            gb = mb / 1000;
+            snprintf(b, sizeof(b), "%d", gb);
+            len = strlen(b); // len must be >= 4
+            dec[0] = b[len - 3];
+            dec[1] = b[len - 2];
+            dec[2] = '\0';
+            b[len - 3] = '\0';
+            pr2serr("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
+                    "_bs=%d, %s.%s TB\n", fname, access_typ, num_sect,
+                    num_sect, sect_sz, b, dec);
+        } else if (mb > 99999) {
+            gb = mb / 1000;
+            pr2serr("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
+                    "_bs=%d, %d GB\n", fname, access_typ, num_sect,
+                    num_sect, sect_sz, gb);
+        } else if (mb > 999) {
+            snprintf(b, sizeof(b), "%d", mb);
+            len = strlen(b); // len must be >= 4
+            dec[0] = b[len - 3];
+            dec[1] = b[len - 2];
+            dec[2] = '\0';
+            b[len - 3] = '\0';
+            pr2serr("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
+                    "_bs=%d, %s.%s GB\n", fname, access_typ, num_sect,
+                    num_sect, sect_sz, b, dec);
+        } else if (mb > 0) {
+            pr2serr("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
+                    "_bs=%d, %d MB%s\n", fname, access_typ, num_sect,
+                    num_sect, sect_sz, mb, ((mb < 10) ? " approx" : ""));
+        } else
+            pr2serr("  %s [%s]: blocks=%" PRId64 " [0x%" PRIx64 "], "
+                    "_bs=%d\n", fname, access_typ, num_sect, num_sect,
+                    sect_sz);
+    }
+}
+
+static void
+calc_duration_init(struct opts_t * op)
+{
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+    if (op->do_time) {
+        op->start_tm.tv_sec = 0;
+        op->start_tm.tv_nsec = 0;
+        if (0 == clock_gettime(CLOCK_MONOTONIC, &op->start_tm))
+            op->start_tm_valid = 1;
+    }
+#elif defined(HAVE_GETTIMEOFDAY)
+    if (op->do_time) {
+        op->start_tm.tv_sec = 0;
+        op->start_tm.tv_usec = 0;
+        gettimeofday(&op->start_tm, NULL);
+        op->start_tm_valid = 1;
+    }
+#else
+    if (op) { ; }
+#endif
+}
+
+/* Calculates transfer throughput, typically in Megabytes per second.
+ * A megabyte in this context is 1000000 bytes (gives bigger numbers so
+ * is preferred by industry). The clock_gettime() interface is preferred
+ * since time is guaranteed to advance; gettimeofday() is impacted if the
+ * user (or something like ntpd) changes the time.
+ * Also if the transfer is large enough and isn't about to finish, it
+ * makes an estimate of the time remaining. */
+static void
+calc_duration_throughput(const char * leadin, int contin, struct opts_t * op)
+{
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+    struct timespec end_tm, res_tm;
+    double a, b, r;
+    int secs, h, m;
+    int64_t blks;
+
+    if (op->start_tm_valid && (op->start_tm.tv_sec || op->start_tm.tv_nsec)) {
+        blks = op->in_full;
+        clock_gettime(CLOCK_MONOTONIC, &end_tm);
+        res_tm.tv_sec = end_tm.tv_sec - op->start_tm.tv_sec;
+        res_tm.tv_nsec = end_tm.tv_nsec - op->start_tm.tv_nsec;
+        if (res_tm.tv_nsec < 0) {
+            --res_tm.tv_sec;
+            res_tm.tv_nsec += 1000000000;
+        }
+        a = res_tm.tv_sec;
+        a += (0.000001 * (res_tm.tv_nsec / 1000));
+        b = (double)op->ibs_hold * blks;
+        pr2serr("%stime to %s data%s: %d.%06d secs", leadin,
+                (op->read1_or_transfer ? "read" : "transfer"),
+                (contin ? " so far" : ""), (int)res_tm.tv_sec,
+                (int)(res_tm.tv_nsec / 1000));
+        r = 0.0;
+        if ((a > 0.00001) && (b > 511)) {
+            r = b / (a * 1000000.0);
+            if (r < 1.0)
+                pr2serr(" at %.1f KB/sec\n", r * 1000);
+            else
+                pr2serr(" at %.2f MB/sec\n", r);
+        } else
+            pr2serr("\n");
+        if (contin && (! op->reading_fifo) && (r > 0.01) &&
+            (op->dd_count > 100)) {
+            secs = (int)(((double)op->ibs_hold * op->dd_count) /
+                         (r * 1000000));
+            if (secs > 10) {
+                h = secs / 3600;
+                secs = secs - (h * 3600);
+                m = secs / 60;
+                secs = secs - (m * 60);
+                if (h > 0)
+                    pr2serr("%sestimated time remaining: %d:%02d:%02d\n",
+                            leadin, h, m, secs);
+                else
+                    pr2serr("%sestimated time remaining: %d:%02d\n",
+                            leadin, m, secs);
+            }
+        }
+    }
+#elif defined(HAVE_GETTIMEOFDAY)
+    struct timeval end_tm, res_tm;
+    double a, b, r;
+    int secs, h, m;
+    int64_t blks;
+
+    if (op->start_tm_valid && (op->start_tm.tv_sec || op->start_tm.tv_usec)) {
+        blks = op->in_full;
+        gettimeofday(&end_tm, NULL);
+        res_tm.tv_sec = end_tm.tv_sec - op->start_tm.tv_sec;
+        res_tm.tv_usec = end_tm.tv_usec - op->start_tm.tv_usec;
+        if (res_tm.tv_usec < 0) {
+            --res_tm.tv_sec;
+            res_tm.tv_usec += 1000000;
+        }
+        a = res_tm.tv_sec;
+        a += (0.000001 * res_tm.tv_usec);
+        b = (double)op->ibs_hold * blks;
+        pr2serr("%stime to %s data%s: %d.%06d secs", leadin,
+                (op->read1_or_transfer ? "read" : "transfer"),
+                (contin ? " so far" : ""), (int)res_tm.tv_sec,
+                (int)res_tm.tv_usec);
+        r = 0.0;
+        if ((a > 0.00001) && (b > 511)) {
+            r = b / (a * 1000000.0);
+            if (r < 1.0)
+                pr2serr(" at %.1f KB/sec\n", r * 1000);
+            else
+                pr2serr(" at %.2f MB/sec\n", r);
+        } else
+            pr2serr("\n");
+        if (contin && (! op->reading_fifo) && (r > 0.01) &&
+            (op->dd_count > 100)) {
+            secs = (int)(((double)op->ibs_hold * op->dd_count) /
+                         (r * 1000000));
+            if (secs > 10) {
+                h = secs / 3600;
+                secs = secs - (h * 3600);
+                m = secs / 60;
+                secs = secs - (m * 60);
+                if (h > 0)
+                    pr2serr("%sestimated time remaining: "
+                            "%d:%02d:%02d\n", leadin, h, m, secs);
+                else
+                    pr2serr("%sestimated time remaining: "
+                            "%d:%02d\n", leadin, m, secs);
+            }
+        }
+    }
+#else   /* no clock reading functions available */
+    if (leadin) { ; }    // suppress warning
+    if (contin) { ; }    // suppress warning
+#endif
+}
 
 /* Returns open input file descriptor (>= 0) or a negative value
  * (-SG_LIB_FILE_ERROR or -SG_LIB_CAT_OTHER) if error.
@@ -154,7 +1973,7 @@ open_if(struct opts_t * op)
         goto file_err;
     }
     if (FT_PT & idip->d_type) {
-        fd = pt_open_if(op, NULL);
+        fd = pt_open_if(op);
         if (-1 == fd)
             goto file_err;
         else if (fd < -1)
@@ -191,8 +2010,8 @@ open_if(struct opts_t * op)
 
                 rt = posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
                 if (rt)
-                    pr2serr("%s: posix_fadvise(SEQUENTIAL), err=%d\n",
-                            __func__, rt);
+                    pr2serr("open_if: posix_fadvise(SEQUENTIAL), err=%d\n",
+                            rt);
             }
 #endif
         }
@@ -249,7 +2068,7 @@ open_of(struct opts_t * op)
         goto file_err;
     }
     if (FT_PT & odip->d_type) {
-        fd = pt_open_of(op, NULL);
+        fd = pt_open_of(op);
         if (-1 == fd)
             goto file_err;
         else if (fd < -1)
@@ -346,18 +2165,15 @@ other_err:
 /* Helper for calc_count(). Attempts to size IFILE. Returns 0 if no error
  * detected. */
 static int
-calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
+calc_count_in(struct opts_t * op, int64_t * in_num_sectp)
 {
     int res;
     struct stat st;
-    int in_blk_sz, in_type;
-#ifndef SG_LIB_WIN32
-    int64_t num_blks, t;
-    int blk_sz;
-#endif
+    int64_t num_sect, t;
+    int in_sect_sz, sect_sz, in_type;
     const char * ifn = op->idip->fn;
 
-    *in_num_blksp = -1;
+    *in_num_sectp = -1;
     in_type = op->idip->d_type;
     if (FT_PT & in_type) {
         if (op->iflagp->norcap) {
@@ -369,15 +2185,13 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
             }
             return 0;
         }
-        res = pt_read_capacity(op, DDPT_ARG_IN, in_num_blksp, &in_blk_sz);
+        res = pt_read_capacity(op, 0, in_num_sectp, &in_sect_sz);
         if (SG_LIB_CAT_UNIT_ATTENTION == res) {
             pr2serr("Unit attention (readcap in), continuing\n");
-            res = pt_read_capacity(op, DDPT_ARG_IN, in_num_blksp,
-                                   &in_blk_sz);
+            res = pt_read_capacity(op, 0, in_num_sectp, &in_sect_sz);
         } else if (SG_LIB_CAT_ABORTED_COMMAND == res) {
             pr2serr("Aborted command (readcap in), continuing\n");
-            res = pt_read_capacity(op, DDPT_ARG_IN, in_num_blksp,
-                                   &in_blk_sz);
+            res = pt_read_capacity(op, 0, in_num_sectp, &in_sect_sz);
         }
         if (0 != res) {
             if (res == SG_LIB_CAT_INVALID_OP)
@@ -386,30 +2200,29 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
                 pr2serr("read capacity failed on %s - not ready\n", ifn);
             else
                 pr2serr("Unable to read capacity on %s\n", ifn);
-            *in_num_blksp = -1;
+            *in_num_sectp = -1;
             return res;
         } else {
             if (op->verbose) {
-                print_blk_sizes(ifn, "readcap", *in_num_blksp, in_blk_sz, 1);
+                print_blk_sizes(ifn, "pt", *in_num_sectp, in_sect_sz);
                 if (op->idip->prot_type > 0)
                     pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
                             op->idip->prot_type, op->idip->p_i_exp);
             }
-            if ((*in_num_blksp > 0) && (in_blk_sz != op->ibs)) {
+            if ((*in_num_sectp > 0) && (in_sect_sz != op->ibs)) {
                 pr2serr(">> warning: %s block size confusion: ibs=%d, "
-                        "device claims=%d\n", ifn, op->ibs, in_blk_sz);
+                        "device claims=%d\n", ifn, op->ibs, in_sect_sz);
                 if (0 == op->iflagp->force) {
                     pr2serr(">> abort copy, use iflag=force to override\n");
                     return -1;
                 }
             }
         }
-#ifndef SG_LIB_WIN32
         if ((FT_BLOCK & in_type) && (0 == op->iflagp->force) &&
-            (0 == get_blkdev_capacity(op, DDPT_ARG_IN, &num_blks,
-                                      &blk_sz))) {
-            t = (*in_num_blksp) * in_blk_sz;
-            if (t != (num_blks * blk_sz)) {
+            (0 == get_blkdev_capacity(op, DDPT_ARG_IN, &num_sect,
+                                      &sect_sz))) {
+            t = (*in_num_sectp) * in_sect_sz;
+            if (t != (num_sect * sect_sz)) {
                 pr2serr(">> warning: Size of input block device is "
                         "different from pt size.\n>> Pass-through on block "
                         "partition can give unexpected offsets.\n");
@@ -417,36 +2230,35 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
                 return -1;
             }
         }
-#endif
     } else if ((op->dd_count > 0) && (0 == op->oflagp->resume))
         return 0;
     else if (FT_BLOCK & in_type) {
-        if (0 != get_blkdev_capacity(op, DDPT_ARG_IN, in_num_blksp,
-                                     &in_blk_sz)) {
+        if (0 != get_blkdev_capacity(op, DDPT_ARG_IN, in_num_sectp,
+                                     &in_sect_sz)) {
             pr2serr("Unable to read block capacity on %s\n", ifn);
-            *in_num_blksp = -1;
+            *in_num_sectp = -1;
         }
         if (op->verbose)
-            print_blk_sizes(ifn, "blk", *in_num_blksp, in_blk_sz, 1);
-        if ((*in_num_blksp > 0) && (op->ibs != in_blk_sz)) {
+            print_blk_sizes(ifn, "blk", *in_num_sectp, in_sect_sz);
+        if ((*in_num_sectp > 0) && (op->ibs != in_sect_sz)) {
             pr2serr(">> warning: %s block size confusion: bs=%d, "
-                    "device claims=%d\n", ifn, op->ibs, in_blk_sz);
-            *in_num_blksp = -1;
+                    "device claims=%d\n", ifn, op->ibs, in_sect_sz);
+            *in_num_sectp = -1;
         }
     } else if (FT_REG & in_type) {
         if (fstat(op->idip->fd, &st) < 0) {
             perror("fstat(idip->fd) error");
-            *in_num_blksp = -1;
+            *in_num_sectp = -1;
         } else {
-            *in_num_blksp = st.st_size / op->ibs;
+            *in_num_sectp = st.st_size / op->ibs;
             res = st.st_size % op->ibs;
             if (op->verbose) {
-                print_blk_sizes(ifn, "reg", *in_num_blksp, op->ibs, 1);
+                print_blk_sizes(ifn, "reg", *in_num_sectp, op->ibs);
                 if (res)
                     pr2serr("    residual_bytes=%d\n", res);
             }
             if (res)
-                ++*in_num_blksp;
+                ++*in_num_sectp;
         }
     }
     return 0;
@@ -455,18 +2267,15 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
 /* Helper for calc_count(). Attempts to size OFILE. Returns 0 if no error
  * detected. */
 static int
-calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
+calc_count_out(struct opts_t * op, int64_t * out_num_sectp)
 {
     int res;
     struct stat st;
-    int out_blk_sz, out_type;
-#ifndef SG_LIB_WIN32
-    int64_t num_blks, t;
-    int blk_sz;
-#endif
+    int64_t num_sect, t;
+    int out_sect_sz, sect_sz, out_type;
     const char * ofn = op->odip->fn;
 
-    *out_num_blksp = -1;
+    *out_num_sectp = -1;
     out_type = op->odip->d_type;
     if (FT_PT & out_type) {
         if (op->oflagp->norcap) {
@@ -478,47 +2287,43 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
             }
             return 0;
         }
-        res = pt_read_capacity(op, DDPT_ARG_OUT, out_num_blksp, &out_blk_sz);
+        res = pt_read_capacity(op, 1, out_num_sectp, &out_sect_sz);
         if (SG_LIB_CAT_UNIT_ATTENTION == res) {
             pr2serr("Unit attention (readcap out), continuing\n");
-            res = pt_read_capacity(op, DDPT_ARG_OUT, out_num_blksp,
-                                   &out_blk_sz);
+            res = pt_read_capacity(op, 1, out_num_sectp, &out_sect_sz);
         } else if (SG_LIB_CAT_ABORTED_COMMAND == res) {
             pr2serr("Aborted command (readcap out), continuing\n");
-            res = pt_read_capacity(op, DDPT_ARG_OUT, out_num_blksp,
-                                   &out_blk_sz);
+            res = pt_read_capacity(op, 1, out_num_sectp, &out_sect_sz);
         }
         if (0 != res) {
             if (res == SG_LIB_CAT_INVALID_OP)
                 pr2serr("read capacity not supported on %s\n", ofn);
             else
                 pr2serr("Unable to read capacity on %s\n", ofn);
-            *out_num_blksp = -1;
+            *out_num_sectp = -1;
             return res;
         } else {
             if (op->verbose) {
-                print_blk_sizes(ofn, "readcap", *out_num_blksp, out_blk_sz,
-                                1);
+                print_blk_sizes(ofn, "pt", *out_num_sectp, out_sect_sz);
                 if (op->odip->prot_type > 0)
                     pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
                             op->odip->prot_type, op->odip->p_i_exp);
             }
-            if ((*out_num_blksp > 0) && (op->obs != out_blk_sz)) {
+            if ((*out_num_sectp > 0) && (op->obs != out_sect_sz)) {
                 pr2serr(">> warning: %s block size confusion: "
                         "obs=%d, device claims=%d\n", ofn, op->obs,
-                        out_blk_sz);
+                        out_sect_sz);
                 if (0 == op->oflagp->force) {
                     pr2serr(">> abort copy, use oflag=force to override\n");
                     return -1;
                 }
             }
         }
-#ifndef SG_LIB_WIN32
         if ((FT_BLOCK & out_type) && (0 == op->oflagp->force) &&
-             (0 == get_blkdev_capacity(op, DDPT_ARG_OUT, &num_blks,
-                                       &blk_sz))) {
-            t = (*out_num_blksp) * out_blk_sz;
-            if (t != (num_blks * blk_sz)) {
+             (0 == get_blkdev_capacity(op, DDPT_ARG_OUT, &num_sect,
+                                       &sect_sz))) {
+            t = (*out_num_sectp) * out_sect_sz;
+            if (t != (num_sect * sect_sz)) {
                 pr2serr(">> warning: size of output block device is "
                         "different from pt size.\n>> Pass-through on block "
                         "partition can give unexpected results.\n");
@@ -526,37 +2331,36 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
                 return -1;
             }
         }
-#endif
     } else if ((op->dd_count > 0) && (0 == op->oflagp->resume))
         return 0;
     if (FT_BLOCK & out_type) {
-        if (0 != get_blkdev_capacity(op, DDPT_ARG_OUT, out_num_blksp,
-                                     &out_blk_sz)) {
+        if (0 != get_blkdev_capacity(op, DDPT_ARG_OUT, out_num_sectp,
+                                     &out_sect_sz)) {
             pr2serr("Unable to read block capacity on %s\n", ofn);
-            *out_num_blksp = -1;
+            *out_num_sectp = -1;
         } else {
             if (op->verbose)
-                print_blk_sizes(ofn, "blk", *out_num_blksp, out_blk_sz, 1);
-            if ((*out_num_blksp > 0) && (op->obs != out_blk_sz)) {
+                print_blk_sizes(ofn, "blk", *out_num_sectp, out_sect_sz);
+            if ((*out_num_sectp > 0) && (op->obs != out_sect_sz)) {
                 pr2serr(">> warning: %s block size confusion: obs=%d, "
-                        "device claims=%d\n", ofn, op->obs, out_blk_sz);
-                *out_num_blksp = -1;
+                        "device claims=%d\n", ofn, op->obs, out_sect_sz);
+                *out_num_sectp = -1;
             }
         }
     } else if (FT_REG & out_type) {
         if (fstat(op->odip->fd, &st) < 0) {
             perror("fstat(odip->fd) error");
-            *out_num_blksp = -1;
+            *out_num_sectp = -1;
         } else {
-            *out_num_blksp = st.st_size / op->obs;
+            *out_num_sectp = st.st_size / op->obs;
             res = st.st_size % op->obs;
             if (op->verbose) {
-                print_blk_sizes(ofn, "reg", *out_num_blksp, op->obs, 1);
+                print_blk_sizes(ofn, "reg", *out_num_sectp, op->obs);
                 if (res)
                     pr2serr("    residual_bytes=%d\n", res);
             }
             if (res)
-                ++*out_num_blksp;
+                ++*out_num_sectp;
         }
     }
     return 0;
@@ -565,20 +2369,20 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
 
 /* Calculates the number of blocks associated with the in and out files.
  * May also yield the block size in bytes of devices. For regular files
- * uses ibs or obs as the logical block size. Returns 0 for continue,
+ * uses ibs or obs as the block (sector) size. Returns 0 for continue,
  * otherwise bypass copy and exit. */
 static int
-calc_count(struct opts_t * op, int64_t * in_num_blksp,
-           int64_t * out_num_blksp)
+calc_count(struct opts_t * op, int64_t * in_num_sectp,
+           int64_t * out_num_sectp)
 {
     int res;
 
-    res = calc_count_in(op, in_num_blksp);
+    res = calc_count_in(op, in_num_sectp);
     if (res) {
-        *out_num_blksp = -1;
+        *out_num_sectp = -1;
         return res;
     }
-    return calc_count_out(op, out_num_blksp);
+    return calc_count_out(op, out_num_sectp);
 }
 
 #ifdef HAVE_POSIX_FADVISE
@@ -658,6 +2462,33 @@ cp_read_pt(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
         csp->ocbpt = (blks_read * op->ibs) / op->obs;
     }
     op->in_full += csp->icbpt;
+    return 0;
+}
+
+/* Helper for case when EIO or EREMOTE errno suggests the equivalent
+ * of a medium error. Returns 0 unless coe_limit exceeded. */
+int             /* Global function, used by ddpt_win32.c */
+coe_process_eio(struct opts_t * op, int64_t skip)
+{
+    if ((op->coe_limit > 0) && (++op->coe_count > op->coe_limit)) {
+        pr2serr(">> coe_limit on consecutive reads "
+                "exceeded\n");
+        return SG_LIB_CAT_MEDIUM_HARD;
+    }
+    if (op->highest_unrecovered < 0) {
+        op->highest_unrecovered = skip;
+        op->lowest_unrecovered = skip;
+    } else {
+        if (skip < op->lowest_unrecovered)
+            op->lowest_unrecovered = skip;
+        if (skip > op->highest_unrecovered)
+            op->highest_unrecovered = skip;
+    }
+    ++op->unrecovered_errs;
+    ++op->in_partial;
+    --op->in_full;
+    pr2serr(">> unrecovered read error at blk=%" PRId64 ", "
+            "substitute zeros\n", skip);
     return 0;
 }
 
@@ -787,9 +2618,6 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
     int numbytes = csp->icbpt * op->ibs_pi;
     int ibs = op->ibs_pi;
 
-    if (op->verbose > 4)
-        pr2serr("%s: offset=0x%" PRIx64 ", numbytes=%d\n", __func__, offset,
-                numbytes);
     in_type = op->idip->d_type;
 #ifdef SG_LIB_WIN32
     if (FT_BLOCK & in_type) {
@@ -896,6 +2724,24 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
 
 #ifdef SG_LIB_LINUX
 
+/* Summarise previous consecutive same-length reads. Do that when:
+ * - read length (res) differs from the previous read length, and
+ * - there were more than one consecutive reads of the same length
+ * The str argument is a prefix string, typically one or two spaces, used
+ * to e.g. make output line up when printing on kill -USR1. */
+static void
+print_tape_summary(struct opts_t * op, int res, const char * str)
+{
+    int len = op->last_tape_read_len;
+    int num = op->read_tape_numbytes;
+
+    if ((op->verbose > 1) && (res != len) && (op->consec_same_len_reads >= 1))
+        pr2serr("%s(%d%s read%s of %d byte%s)\n", str,
+                op->consec_same_len_reads, (len < num) ? " short" : "",
+                (op->consec_same_len_reads != 1) ? "s" : "", len,
+                (len != 1) ? "s" : "");
+}
+
 /* Main copy loop's read (input) for tape device. Returns 0 on success,
  * else SG_LIB_CAT_MEDIUM_HARD, SG_LIB_CAT_OTHER or -1 . */
 static int
@@ -980,8 +2826,8 @@ cp_read_fifo(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
 
     if (offset != csp->if_filepos) {
         if (op->verbose > 2)
-            pr2serr("%s: _not_ moving IFILE filepos to %" PRId64 "\n",
-                    __func__, (int64_t)offset);
+            pr2serr("fifo: _not_ moving IFILE filepos to %" PRId64 "\n",
+                    (int64_t)offset);
         csp->if_filepos = offset;
     }
 
@@ -992,10 +2838,10 @@ cp_read_fifo(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
 
         err = errno;
         if (op->verbose > 2)
-            pr2serr("%s: requested bytes=%d, res=%d\n", __func__, numbytes,
-                    res);
+            pr2serr("read(fifo): requested bytes=%d, res=%d\n",
+                    numbytes, res);
         if (res < 0) {
-            pr2serr("%s: skip=%" PRId64 " : %s\n", __func__, op->skip,
+            pr2serr("read(fifo), skip=%" PRId64 " : %s\n", op->skip,
                     safe_strerror(err));
             return SG_LIB_CAT_OTHER;
         } else if (0 == res) {
@@ -1183,15 +3029,15 @@ cp_write_pt(struct opts_t * op, struct cp_state_t * csp, int seek_delta,
             if (res > numbytes)
                 memset(ncbp + numbytes, 0, res - numbytes);
             if (op->verbose > 1)
-                pr2serr("%s: padding probable final write at seek=%" PRId64
-                        "\n", __func__, aseek);
+                pr2serr("pt_write: padding probable final write at "
+                        "seek=%" PRId64 "\n", aseek);
         } else
             pr2serr(">>> ignore partial write of %d bytes to pt "
                     "(unless oflag=pad given)\n", csp->partial_write_bytes);
     }
     res = pt_write(op, bp, blks, aseek);
     if (0 != res) {
-        pr2serr("%s: failed,%s seek=%" PRId64 "\n", __func__,
+        pr2serr("pt_write failed,%s seek=%" PRId64 "\n",
                 ((-2 == res) ? " try reducing bpt," : ""), aseek);
         return res;
     } else
@@ -1467,7 +3313,7 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
 static void
 cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
 {
-    int64_t offset = (op->seek * op->obs) + csp->partial_write_bytes;
+    int64_t offset = op->seek * op->obs;
     struct stat a_st;
 
     if (offset > csp->of_filepos) {
@@ -1478,18 +3324,18 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
             return;
         }
         if (fstat(op->odip->fd, &a_st) < 0) {
-            pr2serr("%s: fstat: %s\n", __func__, safe_strerror(errno));
+            pr2serr("cp_sparse_cleanup: fstat: %s\n", safe_strerror(errno));
             return;
         }
         if (offset == a_st.st_size) {
             if (op->verbose > 1)
-                pr2serr("%s: OFILE already correct length\n", __func__);
+                pr2serr("cp_sparse_cleanup: OFILE already correct length\n");
             return;
         }
         if (offset < a_st.st_size) {
             if (op->verbose > 1)
-                pr2serr("%s: OFILE longer than required, do nothing\n",
-                        __func__);
+                pr2serr("cp_sparse_cleanup: OFILE longer than required, do "
+                        "nothing\n");
             return;
         }
         if (op->oflagp->strunc) {
@@ -1512,8 +3358,7 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
             else
                 --op->out_sparse;
         }
-    } else if (op->verbose > 1)
-        pr2serr("%s: bypass as output_offset <= output_filepos\n", __func__);
+    }
 }
 
 /* Main copy loop's finer grain comparison and possible write (to OFILE)
@@ -1670,28 +3515,28 @@ cp_construct_pt_zero_buff(struct opts_t * op, int obpt)
 static int
 count_calculate(struct opts_t * op)
 {
-    int64_t in_num_blks = -1;
-    int64_t out_num_blks = -1;
+    int64_t in_num_sect = -1;
+    int64_t out_num_sect = -1;
     int64_t ibytes, obytes, ibk;
     int valid_resume = 0;
     int res;
 
-    if ((res = calc_count(op, &in_num_blks, &out_num_blks)))
+    if ((res = calc_count(op, &in_num_sect, &out_num_sect)))
         return res;
     if ((0 == op->oflagp->resume) && (op->dd_count > 0))
         return 0;
     if (op->verbose > 1)
-        pr2serr("calc_count: in_num_blks=%" PRId64 ", out_num_blks"
-                "=%" PRId64 "\n", in_num_blks, out_num_blks);
+        pr2serr("calc_count: in_num_sect=%" PRId64 ", out_num_sect"
+                "=%" PRId64 "\n", in_num_sect, out_num_sect);
     if (op->skip && (FT_REG == op->idip->d_type) &&
-        (op->skip > in_num_blks)) {
+        (op->skip > in_num_sect)) {
         pr2serr("cannot skip to specified offset on %s\n", op->idip->fn);
         op->dd_count = 0;
         return -1;
     }
     if (op->oflagp->resume) {
         if (FT_REG == op->odip->d_type) {
-            if (out_num_blks < 0)
+            if (out_num_sect < 0)
                 pr2serr("resume cannot determine size of OFILE, ignore\n");
             else
                 valid_resume = 1;
@@ -1699,37 +3544,37 @@ count_calculate(struct opts_t * op)
             pr2serr("resume expects OFILE to be regular, ignore\n");
     }
     if ((op->dd_count < 0) && (! valid_resume)) {
-        /* Scale back in_num_blks by value of skip */
-        if (op->skip && (in_num_blks > op->skip))
-            in_num_blks -= op->skip;
-        /* Scale back out_num_blks by value of seek */
-        if (op->seek && (out_num_blks > op->seek))
-            out_num_blks -= op->seek;
+        /* Scale back in_num_sect by value of skip */
+        if (op->skip && (in_num_sect > op->skip))
+            in_num_sect -= op->skip;
+        /* Scale back out_num_sect by value of seek */
+        if (op->seek && (out_num_sect > op->seek))
+            out_num_sect -= op->seek;
 
-        if ((out_num_blks < 0) && (in_num_blks > 0))
-            op->dd_count = in_num_blks;
-        else if ((op->reading_fifo) && (out_num_blks < 0))
+        if ((out_num_sect < 0) && (in_num_sect > 0))
+            op->dd_count = in_num_sect;
+        else if ((op->reading_fifo) && (out_num_sect < 0))
             ;
-        else if ((out_num_blks < 0) && (in_num_blks <= 0))
+        else if ((out_num_sect < 0) && (in_num_sect <= 0))
             ;
         else {
-            ibytes = (in_num_blks > 0) ? (op->ibs * in_num_blks) : 0;
-            obytes = op->obs * out_num_blks;
+            ibytes = (in_num_sect > 0) ? (op->ibs * in_num_sect) : 0;
+            obytes = op->obs * out_num_sect;
             if (0 == ibytes)
                 op->dd_count = obytes / op->ibs;
             else if ((ibytes > obytes) && (FT_REG != op->odip->d_type)) {
                 op->dd_count = obytes / op->ibs;
             } else
-                op->dd_count = in_num_blks;
+                op->dd_count = in_num_sect;
         }
     }
     if (valid_resume) {
         if (op->dd_count < 0)
-            op->dd_count = in_num_blks - op->skip;
-        if (out_num_blks <= op->seek)
+            op->dd_count = in_num_sect - op->skip;
+        if (out_num_sect <= op->seek)
             pr2serr("resume finds no previous copy, restarting\n");
         else {
-            obytes = op->obs * (out_num_blks - op->seek);
+            obytes = op->obs * (out_num_sect - op->seek);
             ibk = obytes / op->ibs;
             if (ibk >= op->dd_count) {
                 pr2serr("resume finds copy complete, exiting\n");
@@ -1749,16 +3594,16 @@ count_calculate(struct opts_t * op)
     return 0;
 }
 
-/* This is the main copy loop (unless an offloaded copy is requested).
- * Attempts to copy 'dd_count' blocks (size given by bs or ibs) in chunks
- * of op->bpt_i blocks. Returns 0 if successful.  */
+/* This is the main copy loop. Attempts to copy 'dd_count' (a static)
+ * blocks (size given by bs or ibs) in chunks of op->bpt_i blocks.
+ * Returns 0 if successful.  */
 static int
 do_rw_copy(struct opts_t * op)
 {
     int ibpt, obpt, res, n, sparse_skip, sparing_skip, continual_read;
     int ret = 0;
     int first_time = 1;
-    int first_time_ff = 1;
+    int could_be_last = 0;
     int id_type = op->idip->d_type;
     int od_type = op->odip->d_type;
     struct cp_state_t cp_st;
@@ -1823,12 +3668,6 @@ do_rw_copy(struct opts_t * op)
             ret = SG_LIB_CAT_OTHER;
             break;
 #endif
-        } else if (FT_ALL_FF & id_type) {
-            if (first_time_ff) {
-                first_time_ff = 0;
-                memset(wPos, 0xff, op->ibs * ibpt);
-            }
-            op->in_full += csp->icbpt;
         } else {
              if ((ret = cp_read_block_reg(op, csp, wPos)))
                 break;
@@ -1881,6 +3720,8 @@ do_rw_copy(struct opts_t * op)
         }
 
         /* Start of writing section */
+        if ((! continual_read) && (csp->icbpt >= op->dd_count))
+            could_be_last = 1;
         if (sparing_skip || sparse_skip) {
             op->out_sparse += csp->ocbpt;
             if (csp->partial_write_bytes > 0)
@@ -1895,10 +3736,6 @@ do_rw_copy(struct opts_t * op)
                         break;
                 } else if (FT_TAPE & od_type) {
 #ifdef SG_LIB_LINUX
-                    int could_be_last;
-
-                    could_be_last = ((! continual_read) &&
-                                     (csp->icbpt >= op->dd_count));
                     if ((ret = cp_write_tape(op, csp, wPos, could_be_last)))
                         break;
 #else
@@ -1966,6 +3803,71 @@ copy_end:
     return ret;
 }
 
+#ifdef SG_LIB_LINUX
+
+static void
+show_tape_pos_error(const char * postfix)
+{
+    pr2serr("Could not get tape position%s: %s\n", postfix,
+            safe_strerror(errno));
+}
+
+/* Print tape position(s) if verbose > 1. If both reading from and writing to
+ * tape, make clear in output which is which. Also only print the position if
+ * necessary, i.e. not already printed.
+ * Prefix argument is e.g. "Initial " or "Final ". */
+static void
+print_tape_pos(const char * prefix, const char * postfix,
+               struct opts_t * op)
+{
+    static int lastreadpos, lastwritepos;
+    static char lastreadposvalid = 0;
+    static char lastwriteposvalid = 0;
+    int res;
+    struct mtpos pos;
+
+    if (op->verbose > 1) {
+        if (FT_TAPE & op->idip->d_type) {
+            res = ioctl(op->idip->fd, MTIOCPOS, &pos);
+            if (0 == res) {
+                if ((pos.mt_blkno != lastreadpos) ||
+                    (0 == lastreadposvalid)) {
+                    lastreadpos = pos.mt_blkno;
+                    lastreadposvalid = 1;
+                    pr2serr("%stape position%s: %u%s\n", prefix,
+                            (FT_TAPE & op->odip->d_type) ? " (reading)" : "",
+                            lastreadpos, postfix);
+                }
+            } else {
+                lastreadposvalid = 0;
+                show_tape_pos_error((FT_TAPE & op->odip->d_type) ?
+                                    " (reading)" : "");
+            }
+        }
+
+        if (FT_TAPE & op->odip->d_type) {
+            res = ioctl(op->odip->fd, MTIOCPOS, &pos);
+            if (0 == res) {
+                if ((pos.mt_blkno != lastwritepos) ||
+                    (0 == lastwriteposvalid)) {
+                    lastwritepos = pos.mt_blkno;
+                    lastwriteposvalid = 1;
+                    pr2serr("%stape position%s: %u%s\n", prefix,
+                            (FT_TAPE & op->idip->d_type) ? " (writing)" : "",
+                            lastwritepos, postfix);
+                }
+            } else {
+                lastwriteposvalid = 0;
+                show_tape_pos_error((FT_TAPE & op->idip->d_type) ?
+                                    " (writing)" : "");
+            }
+        }
+
+    }
+}
+
+#endif  /* SG_LIB_LINUX */
+
 static int
 prepare_pi(struct opts_t * op)
 {
@@ -2018,6 +3920,46 @@ prepare_pi(struct opts_t * op)
     return 0;
 }
 
+static void
+state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
+           struct dev_info_t * idip, struct dev_info_t * odip,
+           struct dev_info_t * o2dip)
+{
+    memset(op, 0, sizeof(struct opts_t));
+    op->dd_count = -1;
+    op->highest_unrecovered = -1;
+    op->do_time = 1;         /* default was 0 in sg_dd */
+    op->id_usage = -1;
+    op->list_id = 1;
+    op->prio = 1;
+    op->max_uas = MAX_UNIT_ATTENTIONS;
+    op->max_aborted = MAX_ABORTED_CMDS;
+    memset(ifp, 0, sizeof(struct flags_t));
+    memset(ofp, 0, sizeof(struct flags_t));
+    op->iflagp = ifp;
+    op->oflagp = ofp;
+    memset(idip, 0, sizeof(struct dev_info_t));
+    memset(odip, 0, sizeof(struct dev_info_t));
+    memset(o2dip, 0, sizeof(struct dev_info_t));
+    idip->d_type = FT_OTHER;
+    idip->fd = -1;
+    odip->d_type = FT_OTHER;
+    odip->fd = -1;
+    o2dip->d_type = FT_OTHER;
+    o2dip->fd = -1;
+    op->idip = idip;
+    op->odip = odip;
+    op->o2dip = o2dip;
+    ifp->cdbsz = DEF_SCSI_CDBSZ;
+    ofp->cdbsz = DEF_SCSI_CDBSZ;
+#ifdef HAVE_POSIX_FADVISE
+    op->lowest_skip = -1;
+    op->lowest_seek = -1;
+#endif
+    op->idip->pdt = -1;
+    op->odip->pdt = -1;
+}
+
 static int
 open_files_devices(struct opts_t * op)
 {
@@ -2043,9 +3985,6 @@ open_files_devices(struct opts_t * op)
                 return -fd;
         }
         idip->fd = fd;
-    } else if (op->iflagp->ff) {
-        idip->d_type = FT_ALL_FF;
-        idip->fd = 9999;        /* unlikely file descriptor */
     } else {
         pr2serr("'if=IFILE' option must be given. For stdin as input use "
                 "'if=-'\n");
@@ -2194,7 +4133,7 @@ tape_cleanup_of(struct opts_t * op)
     /* Before closing OFILE, if writing to tape handle suppressing the
      * writing of a filemark and/or flushing the drive buffer which the
      * Linux st driver normally does when tape file is closed after writing.
-     * Possibilities depend on oflag arguments:
+     * Possibilities depend on oflags:
      * nofm:         MTWEOFI 0 if possible (kernel 2.6.37+), else MTBSR 0
      * nofm & fsync: MTWEOF 0
      * fsync:        Do nothing; st writes filemark & flushes buffer on close.
@@ -2350,7 +4289,7 @@ wrk_buffers_init(struct opts_t * op)
 #if defined(HAVE_SYSCONF) && defined(_SC_PAGESIZE)
         psz = sysconf(_SC_PAGESIZE); /* POSIX.1 (was getpagesize()) */
 #elif defined(SG_LIB_WIN32)
-        psz = win32_pagesize();
+        psz = my_pagesize();
 #else
         psz = 4096;     /* give up, pick likely figure */
 #endif
@@ -2388,8 +4327,8 @@ wrk_buffers_init(struct opts_t * op)
             pr2serr("Not enough user memory for aligned usage\n");
             return SG_LIB_CAT_OTHER;
         }
-        op->wrkPos = (unsigned char *)(((uintptr_t)op->wrkBuff + psz - 1) &
-                                       (~((uintptr_t)psz - 1)));
+        op->wrkPos = (unsigned char *)(((unsigned long)op->wrkBuff + psz - 1) &
+                                       (~(psz - 1)));
         if (op->oflagp->sparing) {
             op->wrkBuff2 = (unsigned char*)calloc(len + psz, 1);
             if (0 == op->wrkBuff2) {
@@ -2397,8 +4336,7 @@ wrk_buffers_init(struct opts_t * op)
                 return SG_LIB_CAT_OTHER;
             }
             op->wrkPos2 = (unsigned char *)
-                           (((uintptr_t)op->wrkBuff2 + psz - 1) &
-                            (~((uintptr_t)psz - 1)));
+                    (((unsigned long)op->wrkBuff2 + psz - 1) & (~(psz - 1)));
         }
 #endif  /* HAVE_POSIX_MEMALIGN */
     } else {
@@ -2462,41 +4400,6 @@ cleanup_resources(struct opts_t * op)
         close(op->o2dip->fd);
 }
 
-static int
-chk_sgl_for_non_offload(struct opts_t * op)
-{
-    if (op->in_sgl) {
-        if (op->in_sgl_elems > 1) {
-            pr2serr("Only accept a multiple element skip= (gather) list for "
-                    "%s with odx\n", op->idip->fn[0] ? op->idip->fn : "?");
-            return SG_LIB_SYNTAX_ERROR;
-        }
-        if ((op->dd_count >= 0) && (op->dd_count != op->in_sgl[0].num)) {
-            pr2serr("dd_count [%" PRIu64 "] and skip (sgl num) [%" PRIu32 "] "
-                    "contradict\n", op->dd_count, op->in_sgl[0].num);
-            return SG_LIB_SYNTAX_ERROR;
-        }
-        op->skip = op->in_sgl[0].lba;
-        op->dd_count = op->in_sgl[0].num;
-    }
-    if (op->out_sgl) {
-        if (op->out_sgl_elems > 1) {
-            pr2serr("Only accept a multiple element seek= (scatter) list for "
-                    "%s with odx\n", op->odip->fn[0] ? op->odip->fn : "?");
-            return SG_LIB_SYNTAX_ERROR;
-        }
-        /* assuming ibs==obs, revisit xxxxxxx */
-        if ((op->dd_count >= 0) && (op->dd_count != op->out_sgl[0].num)) {
-            pr2serr("dd_count [%" PRIu64 "] and seek (sgl num) [%" PRIu32 "] "
-                    "too confusing\n", op->dd_count, op->out_sgl[0].num);
-            return SG_LIB_SYNTAX_ERROR;
-        }
-        op->seek = op->out_sgl[0].lba;
-        op->dd_count = op->out_sgl[0].num;
-    }
-    return 0;
-}
-
 
 /* The main() function: much of the its complex logic is spawned off to
  * helper functions shown directly above. */
@@ -2505,17 +4408,16 @@ main(int argc, char * argv[])
 {
     int ret = 0;
     int started_copy = 0;
-    int jf_depth = 0;
     struct opts_t ops;
     struct flags_t iflag, oflag;
     struct dev_info_t ids, ods, o2ds;
     struct opts_t * op;
 
+    state_init(&ops, &iflag, &oflag, &ids, &ods, &o2ds);
     op = &ops;
-    state_init(op, &iflag, &oflag, &ids, &ods, &o2ds);
-    ret = cl_process(op, argc, argv, ddpt_version_str, jf_depth);
+    ret = cl_process(op, argc, argv);
     if (op->do_help > 0) {
-        ddpt_usage(op->do_help);
+        usage(op->do_help);
         return 0;
     } else if (ret)
         return (ret < 0) ? 0 : ret;
@@ -2532,17 +4434,6 @@ main(int argc, char * argv[])
 #endif
 
     install_signal_handlers(op);
-
-    if (op->has_odx) {
-        started_copy = 1;
-        ret = do_odx(op);
-        goto cleanup;
-    }
-
-    /* may allow scatter gather lists for non-odx copies in future */
-    ret = chk_sgl_for_non_offload(op);
-    if (ret)
-        return ret;
 
     if ((ret = open_files_devices(op)))
         return ret;
@@ -2570,11 +4461,10 @@ main(int argc, char * argv[])
     if ((ret = wrk_buffers_init(op)))
         goto cleanup;
 
-    if (op->verbose)
+    if (ops.verbose)
         details_pre_copy_print(op);
 
     op->read1_or_transfer = !! (FT_DEV_NULL & op->odip->d_type);
-    op->dd_count_start = op->dd_count;
     if (op->read1_or_transfer && (! op->outf_given) &&
         ((op->dd_count > 0) || op->reading_fifo))
         pr2serr("Output file not specified so no copy, just reading input\n");
@@ -2597,12 +4487,12 @@ main(int argc, char * argv[])
 
     ++started_copy;
     if (op->has_xcopy)
-        ret = do_xcopy_lid1(op);
+        ret = do_xcopy(op);
     else
         ret = do_rw_copy(op);
 
     if (0 == op->status_none)
-        print_stats("", op, 0);
+        print_stats("", op);
 
     if ((op->oflagp->ssync) && (FT_PT & op->odip->d_type)) {
         if (0 == op->status_none)
@@ -2622,15 +4512,14 @@ cleanup:
     if (started_copy && (0 != op->dd_count) && (! op->reading_fifo)) {
         if (0 == ret)
             pr2serr("Early termination, EOF on input?\n");
-        else if (ret > 0)
-            print_exit_status_msg("Early termination", ret, 1);
-        else {
-            if (op->verbose < 2)
-                pr2serr("Early termination: some error occurred; try again "
-                        "with '-vv'\n");
-            else
-                pr2serr("Early termination: some error occurred\n");
-        }
+        else if (SG_LIB_CAT_MEDIUM_HARD == ret)
+            pr2serr("Early termination, medium error occurred\n");
+        else if ((SG_LIB_CAT_PROTECTION == ret) ||
+                 (SG_LIB_CAT_PROTECTION_WITH_INFO == ret))
+            pr2serr("Early termination, protection information "
+                    "error occurred\n");
+        else
+            pr2serr("Early termination, some error occurred\n");
     }
     return (ret >= 0) ? ret : SG_LIB_CAT_OTHER;
 }
