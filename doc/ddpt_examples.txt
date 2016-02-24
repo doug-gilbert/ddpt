@@ -18,10 +18,10 @@ $ dd if=src of=dst
 6915 bytes (6.9 kB) copied, 0.000128857 s, 53.7 MB/s
 
 # Now lets look at the ddpt equivalent. So we try the same options but
-# the dst2 file exists and it is relatively large.
-$ stat -c %s dst2
+# the ddst file exists and it is relatively large.
+$ stat -c %s ddst
 524800
-$ ddpt if=src of=dst2
+$ ddpt if=src of=ddst
 Assume block size of 512 bytes for both input and output
 13+1 records in
 13+1 records out
@@ -29,34 +29,27 @@ time to transfer data: 0.000121 secs at 59.24 MB/sec
 $ stat -c %s dst
 524800
 
-# ddpt does not truncate dst2, it overwrites it. So if dst2's file length
+# ddpt does not truncate ddst, it overwrites it. So if ddst's file length
 # is longer than src's file length then the output file needs to be
 # truncated:
-$ ddpt if=src of=dst2 oflag=trunc
+$ ddpt if=src of=ddst oflag=trunc
 Assume block size of 512 bytes for both input and output
 13+1 records in
 13+1 records out
 time to transfer data: 0.000243 secs at 29.50 MB/sec
-$ stat -c %s dst2
+$ stat -c %s ddst
 6915
 
-# So now src is the same length as dst and dst2. And they all contain the
+# So now src is the same length as dst and ddst. And they all contain the
 # same data. The ddpt benefit of not truncating the output file by default
 # is with write sparing and the resume capability.
-
-# Sometimes it may be useful to preserve permissions and timestamps
-# of the src file. After the copy (by ddpt or dd) call these:
-$ chmod --reference=src dst2
-$ touch --reference=src dst2
-# and to preserve the src's ACL (Access Control List):
-$ getfacl src | setfacl --set-file=- dst2
 
 # Both dd and ddpt default to a block size of 512 bytes (bs=512) as they
 # are designed to move disk data which up until recent times typically
 # had a block size of 512 bytes. However for copying regular (normal)
 # files bs=1 would be a clearer choice. dd is relatively inefficient when
 # bs=1 but ddpt should be faster. So we can do this:
-$ ddpt if=src bs=1 of=dst2 oflag=trunc
+$ ddpt if=src bs=1 of=ddst oflag=trunc          
 6915+0 records in
 6915+0 records out
 time to transfer data: 0.000134 secs at 51.60 MB/sec
@@ -71,14 +64,14 @@ $ dd if=src of=dst
 $ dd if=src of=dst bs=64k
 
 # ddpt reads BPT*IBS bytes at a time from src before writing them to
-# dst2. The default value of BPT varies depending on IBS; for IBS=512
+# ddst. The default value of BPT varies depending on IBS; for IBS=512
 # BPT defaults to 128. So for 512 byte blocks ddpt reads in chunks of
 # 64 KB. Hence this invocation of ddpt remains quite efficient:
-$ ddpt if=src ibs=512 of=dst2 oflag=trunc obs=1
+$ ddpt if=src ibs=512 of=ddst oflag=trunc obs=1
 # The advantage of keeping the IBS value low (and specifically equal to
 # the logical block size for block devices) is that the SKIP and COUNT
 # arguments are in units of IBS bytes:
-$ ddpt if=/dev/sda skip=0x4215cc bs=512 of=dst2.img count=1234560
+$ ddpt if=/dev/sda skip=0x4215cc bs=512 of=ddst.img count=1234560
 # There is no need to worry about short reads on a block device
 # so giving BS sets both IBS and OBS to the same value. So now
 # SKIP and COUNT are in 512 byte units (so SKIP is a Logical Block
@@ -127,7 +120,7 @@ time to read data: 20.575803 secs at 260.92 MB/sec
 # Zero filled blocks are listed as "bypassed records out" (even though
 # nothing is actually written). When the granularity of the check for
 # zeros is 64 KB then 5672704 zero blocks are found. When the granularity
-# of the check is reduced to 512 bytes then 6317217 zero blocks are found.
+# of the check is reduced to 512 bytes then 6317217 zero blocks are found. 
 
 
 # As an example of write sparing, assume the regular file t exists
@@ -175,7 +168,7 @@ time to transfer data: 10.543506 secs at 68.45 MB/sec
 # By checking the size of sda2.bin the resume logic has adjusted
 # the skip, seek and count options to complete the rest of the
 # copy. If the copy was finished then making the same invocation
-# is harmless:
+# is harmless: 
 $ ddpt if=/dev/sda2 of=sda2.bin bs=512 oflag=resume
 resume finds copy complete, exiting
 # And if sda2.bin was empty on did not exist then a full copy
@@ -187,8 +180,8 @@ resume finds copy complete, exiting
 # operation (also known as unmap) with "deterministic read
 # zero after trim". ddpt treats a trim like sparse, however
 # instead of bypassing a segment of zeros a trim command is sent.
-# In SCSI parlance trim is a WRITE SAME with the UNMAP bit set.
-$ ddpt if=/dev/sdb1 bs=512 of=/dev/sg1 seek=73899000 oflag=trim
+# In SCSI parlance trim is a WRITE SAME with the UNMAP bit set. 
+$ ddpt if=/dev/sdb1 bs=512 of=/dev/sg1 seek=73899000 oflag=trim          
 18314037+0 records in
 16970165+0 records out
 1343872 trimmed records out
@@ -247,102 +240,4 @@ oflag=trim,nowrite bpt=1024,1
 $ ddpt if=/dev/sg1 skip=$((0xfff + 1)) count=1
 
 
-# xcopy is an abbreviation of the SCSI EXTENDED COPY command and facility.
-# There are two variants: "LID1" (List Identifier length of 1 byte)
-# and "LID4". xcopy is a performance win when disks (LUs) are remote or
-# disks have better bandwidth to a storage switch (e.g. a SAS expander)
-# than they do to server machines. Some xcopy implementations use the term
-# "remote copy". This example copies the contents of /dev/sdc to /dev/sdd
-$ ddpt if=/dev/sdc iflag=xcopy bs=512 of=/dev/sdd
-204800+0 records in
-204800+0 records out
-4 xcopy commands done
-time to transfer data: 0.162026 secs at 647.17 MB/sec
-# In this case the EXTENDED COPY command is sent to /dev/sdc . To send that
-# command to the destination (i.e. /dev/sdd) instead then replace
-# "iflag=xcopy" with "oflag=xcopy". If the above fails add "verbose=1" and
-# ramp that up to 5 to see what is happening "in the weeds".
-# Logically the resulting state of the destination should be the same
-# whether or not the xcopy facility is used. The difference should be in the
-# performance, with the xcopy version being faster, possibly much faster,
-# with essentially no load on the machine issuing the xcopy.
-
-# A subset of xcopy(LID4) that does disk to disk, token based copies and has
-# the market name ODX is supported. A full disk to disk copy looks like this:
-$ ddpt --odx if=/dev/sg3 of=/dev/sg4 bs=512
-20971520+0 records in
-20971520+0 records out
-time to transfer data: 38.994866 secs at 275.35 MB/sec
-# ODX also has a facility to zero out blocks:
-$ ddpt rtype=zero if=/dev/null of=/dev/sg4 bs=512
-20971520+0 records out
-time to transfer data: 25.348843 secs at 423.59 MB/sec
-# The ROD type of "zero" has a special, static ROD Token associated with it.
-
-# Network copies can be done by exposing a ROD Token (512 bytes long) or a
-# sequence of them. In the following example both mach_a and mach_b can "see"
-# the same storage array. One of that array's targets contains two LUs:
-# /dev/sg3 and /dev/sg4. In the first step, one or more RODs are populated
-# with 1m blocks starting at LBA 0x1234 from /dev/sg3. Those ROD Tokens are
-# passed back to mach_a which places them in a file called "my.tk". A
-# network copy ("scp") is used to copy "my.tk" to mach_b. mach_b then uses
-# those 1m blocks of data represented by the ROD Tokens in "my.tk" to write
-# to /dev/sg4, starting at LBA 0 (since no seek= option is given):
-mach_a $ ddpt if=/dev/sg3 bs=512 skip=0x1234,1m rtf=my.tk
-1048576+0 records in
-time to transfer data: 0.002217 secs at 242160.99 MB/sec
-
-mach_a $ scp -p my.tk user@mach_b:/tmp
-
-mach_b $ ddpt rtf=/tmp/my.tk bs=512 of=/dev/sg4 count=1m
-1048576+0 records out
-time to transfer data: 0.747828 secs at 717.91 MB/sec
-
-
-# Job files are designed to lessen to tedium of repeatedly entering numerous
-# command options to ddpt. Instead, some or all options can be placed in a
-# job file can then be named on the command line. For example, assume a file
-# called "read_1m_zero.jf" contains the following 9 lines:
-
-# Example job file for ddpt that reads from /dev/zero 1m blocks, each
-# of 512 bytes. The count value of "1m" is 1024*1024=1048576
-
-if=/dev/zero
-bs=512
-count=1m
-of=/dev/null
-# -vv
-
-# This can be used like this (and can be executed by a non-root user since
-# /dev/zero can be read by all and the copy is relatively harmless):
-$ ddpt read_1m_zero.jf
-1048576+0 records in
-0+0 records out
-time to read data: 0.055672 secs at 9643.46 MB/sec
-
-# It may not be a good idea to put the if= and particularly of= options
-# inside a job file as they are most likely to change. Some options are
-# allowed to be changed while others are not, typically with a view to
-# safety. For example:
-$ ddpt read_1m_zero.jf if=/dev/null
-Second IFILE argument??
-
-# Some other options can be overridden, in which case the last one seen
-# is used:
-$ ddpt count=1000x1000 read_1m_zero.jf
-1048576+0 records in
-0+0 records out
-time to read data: 0.052276 secs at 10269.93 MB/sec
-
-$ ddpt read_1m_zero.jf count=1000x1000
-1000000+0 records in
-0+0 records out
-time to read data: 0.051909 secs at 9863.41 MB/sec
-
-# A job file can contain comments: anything from a "#" to the end of a
-# line is considered a comment. Blanks lines are permitted and ignored.
-# Job files can invoke other job files, to a level of 4 deep. Some checks
-# are made that a file assumed to contain text and ddpt options is not
-# actually binary, but that is error prone.
-
-# Douglas Gilbert 20141226
+# Douglas Gilbert 20110121

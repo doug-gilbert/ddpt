@@ -1,5 +1,5 @@
 %define	name	ddpt
-%define	version	0.96
+%define	version	0.92
 %define	release	1
 
 Summary:	Copy files (like dd) especially SCSI/storage devices
@@ -14,12 +14,13 @@ BuildRoot:	%{_tmppath}/%{name}-%{version}-root
 Packager:	Douglas Gilbert <dgilbert at interlog dot com>
 
 %description
-ddpt is yet another variant of the Unix dd command used to copy files.
-This variant is specialized for moving data to, from or between storage
-devices. If requested, SCSI commands can be sent to read or write data.
-SCSI commands are sent via a pass-through interface. Also supports
-two variants of SCSI copy offload: xcopy(LID1) and the disk->disk
-subset of xcopy(LID4) known as ODX.
+ddpt is yet another variant of the Unix dd command used to copy
+files. This variant is specialized for moving data to, from or
+between storage devices. If requested SCSI commands can be
+sent to read or write data. Such commands are sent via a pass-through
+interface. Note that recent (S)ATA disks can often be driven
+by SCSI commands due to SCSI to ATA translation (SAT) implemented
+in the kernel.
 
 %prep
 
@@ -50,18 +51,6 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Tue Feb 09 2016 - dgilbert at interlog dot com
-- bump version
-  * ddpt-0.96
-* Fri Dec 26 2014 - dgilbert at interlog dot com
-- show percent completed, job file
-  * ddpt-0.95
-* Mon Apr 07 2014 - dgilbert at interlog dot com
-- add ODX (subset xcopy(LID4)) support
-  * ddpt-0.94
-* Wed Nov 13 2013 - dgilbert at interlog dot com
-- allow tape device in non-pt mode; rework signal handling, xcopy
-  * ddpt-0.93
 * Thu Feb 17 2011 - dgilbert at interlog dot com
 - warn about pt on block partitions, coe on reg,blk in
   * ddpt-0.92

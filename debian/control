@@ -8,11 +8,7 @@ Standards-Version: 3.9.1
 Package: ddpt
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: Copies disks, partitions and files.
- Copies files. Is specialized for cases where the source and/or
- destination is a storage device. Optionally can use a
- pass-through interface to issue SCSI READ and WRITE commands.
- Various sparse file and device handling options. Similar to
- and an extension of the Unix dd command. Also supports two
- variants of SCSI copy offload: xcopy(LID1) and the disk->disk 
- subset of xcopy(LID4) known as ODX.
+Description: Another dd variant. Copies files. Is specialized
+ for cases where to source and/or destination is a storage
+ device. Can drop down to the SCSI command level to issue
+ READ and WRITE commands through a pass-through interface.
