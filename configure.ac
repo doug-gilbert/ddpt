@@ -1,4 +1,4 @@
-AC_INIT(ddpt, 0.96, dgilbert@interlog.com)
+AC_INIT(ddpt, 0.94, dgilbert@interlog.com)
 
 AM_INIT_AUTOMAKE
 AM_MAINTAINER_MODE
@@ -40,40 +40,33 @@ case "${host}" in
         *-*-linux-gnu*)
                 AC_SUBST([os_deps], ['sg_pt_linux.o'])
 		AC_DEFINE_UNQUOTED(SG_LIB_LINUX, 1, [ddpt on linux])
-		AC_SUBST([os_cflags], [''])
                 AC_SUBST([os_libs], ['']) ;;
         *-*-linux*)
                 AC_SUBST([os_deps], ['sg_pt_linux.o'])
 		AC_DEFINE_UNQUOTED(SG_LIB_LINUX, 1, [ddpt on linux])
-		AC_SUBST([os_cflags], [''])
                 AC_SUBST([os_libs], ['']) ;;
         *-*-freebsd*|*-*-kfreebsd*-gnu*)
                 AC_SUBST([os_deps], ['sg_pt_freebsd.o'])
 		AC_DEFINE_UNQUOTED(SG_LIB_FREEBSD, 1, [ddpt on FreeBSD])
-		AC_SUBST([os_cflags], [''])
                 AC_SUBST([os_libs], ['-lcam']);;
         *-*-solaris*)
                 AC_SUBST([os_deps], ['sg_pt_solaris.o'])
 		AC_DEFINE_UNQUOTED(SG_LIB_SOLARIS, 1, [ddpt on Solaris])
-		AC_SUBST([os_cflags], [''])
                 AC_SUBST([os_libs], ['']);;
         *-*-cygwin*)
                 AC_SUBST([os_deps], ['sg_pt_win32.o'])
 		AC_DEFINE_UNQUOTED(SG_LIB_WIN32, 1, [ddpt on Win32])
 		AC_DEFINE_UNQUOTED(WIN32_SPT_DIRECT, 1, [allow large buffers, aligned?])
-		AC_SUBST([os_cflags], ['-Wno-char-subscripts'])
                 AC_SUBST([os_libs], ['']) ;;
         *-*-mingw*)
                 AC_SUBST([os_deps], ['sg_pt_win32.o'])
 		AC_DEFINE_UNQUOTED(SG_LIB_WIN32, 1, [ddpt on Win32])
 		AC_DEFINE_UNQUOTED(WIN32_SPT_DIRECT, 1, [allow large buffers, aligned?])
 		AC_DEFINE_UNQUOTED(SG_LIB_MINGW, 1, [also MinGW environment])
-		AC_SUBST([os_cflags], [''])
                 AC_SUBST([os_libs], ['']) ;;
         *)
                 AC_SUBST([os_deps], ['sg_pt_linux.o'])
 		AC_DEFINE_UNQUOTED(SG_LIB_LINUX, 1, [assume ddpt on linux])
-		AC_SUBST([os_cflags], [''])
                 AC_SUBST([os_libs], ['']) ;;
 esac
 

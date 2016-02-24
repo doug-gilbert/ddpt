@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2016 Douglas Gilbert.
+ * Copyright (c) 2008-2014 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,7 +46,7 @@
 
 /* Need _GNU_SOURCE for O_DIRECT */
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
+#define _GNU_SOURCE
 #endif
 
 #include <unistd.h>
@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.96 20160209 [svn: r318]";
+static const char * ddpt_version_str = "0.94 20140407 [svn: r277]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -111,7 +111,6 @@ static const char * ddpt_version_str = "0.96 20160209 [svn: r318]";
 
 #include "ddpt.h"
 #include "sg_lib.h"
-#include "sg_pr2serr.h"
 
 #ifndef EREMOTEIO
 #define EREMOTEIO EIO
@@ -191,8 +190,8 @@ open_if(struct opts_t * op)
 
                 rt = posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
                 if (rt)
-                    pr2serr("%s: posix_fadvise(SEQUENTIAL), err=%d\n",
-                            __func__, rt);
+                    pr2serr("open_if: posix_fadvise(SEQUENTIAL), err=%d\n",
+                            rt);
             }
 #endif
         }
@@ -350,11 +349,8 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
 {
     int res;
     struct stat st;
-    int in_blk_sz, in_type;
-#ifndef SG_LIB_WIN32
     int64_t num_blks, t;
-    int blk_sz;
-#endif
+    int in_blk_sz, blk_sz, in_type;
     const char * ifn = op->idip->fn;
 
     *in_num_blksp = -1;
@@ -404,7 +400,6 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
                 }
             }
         }
-#ifndef SG_LIB_WIN32
         if ((FT_BLOCK & in_type) && (0 == op->iflagp->force) &&
             (0 == get_blkdev_capacity(op, DDPT_ARG_IN, &num_blks,
                                       &blk_sz))) {
@@ -417,7 +412,6 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
                 return -1;
             }
         }
-#endif
     } else if ((op->dd_count > 0) && (0 == op->oflagp->resume))
         return 0;
     else if (FT_BLOCK & in_type) {
@@ -459,11 +453,8 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
 {
     int res;
     struct stat st;
-    int out_blk_sz, out_type;
-#ifndef SG_LIB_WIN32
     int64_t num_blks, t;
-    int blk_sz;
-#endif
+    int out_blk_sz, blk_sz, out_type;
     const char * ofn = op->odip->fn;
 
     *out_num_blksp = -1;
@@ -513,7 +504,6 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
                 }
             }
         }
-#ifndef SG_LIB_WIN32
         if ((FT_BLOCK & out_type) && (0 == op->oflagp->force) &&
              (0 == get_blkdev_capacity(op, DDPT_ARG_OUT, &num_blks,
                                        &blk_sz))) {
@@ -526,7 +516,6 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
                 return -1;
             }
         }
-#endif
     } else if ((op->dd_count > 0) && (0 == op->oflagp->resume))
         return 0;
     if (FT_BLOCK & out_type) {
@@ -787,9 +776,6 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
     int numbytes = csp->icbpt * op->ibs_pi;
     int ibs = op->ibs_pi;
 
-    if (op->verbose > 4)
-        pr2serr("%s: offset=0x%" PRIx64 ", numbytes=%d\n", __func__, offset,
-                numbytes);
     in_type = op->idip->d_type;
 #ifdef SG_LIB_WIN32
     if (FT_BLOCK & in_type) {
@@ -980,8 +966,8 @@ cp_read_fifo(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
 
     if (offset != csp->if_filepos) {
         if (op->verbose > 2)
-            pr2serr("%s: _not_ moving IFILE filepos to %" PRId64 "\n",
-                    __func__, (int64_t)offset);
+            pr2serr("fifo: _not_ moving IFILE filepos to %" PRId64 "\n",
+                    (int64_t)offset);
         csp->if_filepos = offset;
     }
 
@@ -992,10 +978,10 @@ cp_read_fifo(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
 
         err = errno;
         if (op->verbose > 2)
-            pr2serr("%s: requested bytes=%d, res=%d\n", __func__, numbytes,
-                    res);
+            pr2serr("read(fifo): requested bytes=%d, res=%d\n",
+                    numbytes, res);
         if (res < 0) {
-            pr2serr("%s: skip=%" PRId64 " : %s\n", __func__, op->skip,
+            pr2serr("read(fifo), skip=%" PRId64 " : %s\n", op->skip,
                     safe_strerror(err));
             return SG_LIB_CAT_OTHER;
         } else if (0 == res) {
@@ -1183,15 +1169,15 @@ cp_write_pt(struct opts_t * op, struct cp_state_t * csp, int seek_delta,
             if (res > numbytes)
                 memset(ncbp + numbytes, 0, res - numbytes);
             if (op->verbose > 1)
-                pr2serr("%s: padding probable final write at seek=%" PRId64
-                        "\n", __func__, aseek);
+                pr2serr("pt_write: padding probable final write at "
+                        "seek=%" PRId64 "\n", aseek);
         } else
             pr2serr(">>> ignore partial write of %d bytes to pt "
                     "(unless oflag=pad given)\n", csp->partial_write_bytes);
     }
     res = pt_write(op, bp, blks, aseek);
     if (0 != res) {
-        pr2serr("%s: failed,%s seek=%" PRId64 "\n", __func__,
+        pr2serr("pt_write failed,%s seek=%" PRId64 "\n",
                 ((-2 == res) ? " try reducing bpt," : ""), aseek);
         return res;
     } else
@@ -1467,7 +1453,7 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
 static void
 cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
 {
-    int64_t offset = (op->seek * op->obs) + csp->partial_write_bytes;
+    int64_t offset = op->seek * op->obs;
     struct stat a_st;
 
     if (offset > csp->of_filepos) {
@@ -1478,18 +1464,18 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
             return;
         }
         if (fstat(op->odip->fd, &a_st) < 0) {
-            pr2serr("%s: fstat: %s\n", __func__, safe_strerror(errno));
+            pr2serr("cp_sparse_cleanup: fstat: %s\n", safe_strerror(errno));
             return;
         }
         if (offset == a_st.st_size) {
             if (op->verbose > 1)
-                pr2serr("%s: OFILE already correct length\n", __func__);
+                pr2serr("cp_sparse_cleanup: OFILE already correct length\n");
             return;
         }
         if (offset < a_st.st_size) {
             if (op->verbose > 1)
-                pr2serr("%s: OFILE longer than required, do nothing\n",
-                        __func__);
+                pr2serr("cp_sparse_cleanup: OFILE longer than required, do "
+                        "nothing\n");
             return;
         }
         if (op->oflagp->strunc) {
@@ -1512,8 +1498,7 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
             else
                 --op->out_sparse;
         }
-    } else if (op->verbose > 1)
-        pr2serr("%s: bypass as output_offset <= output_filepos\n", __func__);
+    }
 }
 
 /* Main copy loop's finer grain comparison and possible write (to OFILE)
@@ -1758,7 +1743,6 @@ do_rw_copy(struct opts_t * op)
     int ibpt, obpt, res, n, sparse_skip, sparing_skip, continual_read;
     int ret = 0;
     int first_time = 1;
-    int first_time_ff = 1;
     int id_type = op->idip->d_type;
     int od_type = op->odip->d_type;
     struct cp_state_t cp_st;
@@ -1823,12 +1807,6 @@ do_rw_copy(struct opts_t * op)
             ret = SG_LIB_CAT_OTHER;
             break;
 #endif
-        } else if (FT_ALL_FF & id_type) {
-            if (first_time_ff) {
-                first_time_ff = 0;
-                memset(wPos, 0xff, op->ibs * ibpt);
-            }
-            op->in_full += csp->icbpt;
         } else {
              if ((ret = cp_read_block_reg(op, csp, wPos)))
                 break;
@@ -2043,9 +2021,6 @@ open_files_devices(struct opts_t * op)
                 return -fd;
         }
         idip->fd = fd;
-    } else if (op->iflagp->ff) {
-        idip->d_type = FT_ALL_FF;
-        idip->fd = 9999;        /* unlikely file descriptor */
     } else {
         pr2serr("'if=IFILE' option must be given. For stdin as input use "
                 "'if=-'\n");
@@ -2194,7 +2169,7 @@ tape_cleanup_of(struct opts_t * op)
     /* Before closing OFILE, if writing to tape handle suppressing the
      * writing of a filemark and/or flushing the drive buffer which the
      * Linux st driver normally does when tape file is closed after writing.
-     * Possibilities depend on oflag arguments:
+     * Possibilities depend on oflags:
      * nofm:         MTWEOFI 0 if possible (kernel 2.6.37+), else MTBSR 0
      * nofm & fsync: MTWEOF 0
      * fsync:        Do nothing; st writes filemark & flushes buffer on close.
@@ -2388,8 +2363,8 @@ wrk_buffers_init(struct opts_t * op)
             pr2serr("Not enough user memory for aligned usage\n");
             return SG_LIB_CAT_OTHER;
         }
-        op->wrkPos = (unsigned char *)(((uintptr_t)op->wrkBuff + psz - 1) &
-                                       (~((uintptr_t)psz - 1)));
+        op->wrkPos = (unsigned char *)(((unsigned long)op->wrkBuff + psz - 1) &
+                                       (~(psz - 1)));
         if (op->oflagp->sparing) {
             op->wrkBuff2 = (unsigned char*)calloc(len + psz, 1);
             if (0 == op->wrkBuff2) {
@@ -2397,8 +2372,7 @@ wrk_buffers_init(struct opts_t * op)
                 return SG_LIB_CAT_OTHER;
             }
             op->wrkPos2 = (unsigned char *)
-                           (((uintptr_t)op->wrkBuff2 + psz - 1) &
-                            (~((uintptr_t)psz - 1)));
+                    (((unsigned long)op->wrkBuff2 + psz - 1) & (~(psz - 1)));
         }
 #endif  /* HAVE_POSIX_MEMALIGN */
     } else {
@@ -2505,15 +2479,14 @@ main(int argc, char * argv[])
 {
     int ret = 0;
     int started_copy = 0;
-    int jf_depth = 0;
     struct opts_t ops;
     struct flags_t iflag, oflag;
     struct dev_info_t ids, ods, o2ds;
     struct opts_t * op;
 
+    state_init(&ops, &iflag, &oflag, &ids, &ods, &o2ds);
     op = &ops;
-    state_init(op, &iflag, &oflag, &ids, &ods, &o2ds);
-    ret = cl_process(op, argc, argv, ddpt_version_str, jf_depth);
+    ret = cl_process(op, argc, argv, ddpt_version_str);
     if (op->do_help > 0) {
         ddpt_usage(op->do_help);
         return 0;
@@ -2570,11 +2543,10 @@ main(int argc, char * argv[])
     if ((ret = wrk_buffers_init(op)))
         goto cleanup;
 
-    if (op->verbose)
+    if (ops.verbose)
         details_pre_copy_print(op);
 
     op->read1_or_transfer = !! (FT_DEV_NULL & op->odip->d_type);
-    op->dd_count_start = op->dd_count;
     if (op->read1_or_transfer && (! op->outf_given) &&
         ((op->dd_count > 0) || op->reading_fifo))
         pr2serr("Output file not specified so no copy, just reading input\n");
@@ -2624,13 +2596,9 @@ cleanup:
             pr2serr("Early termination, EOF on input?\n");
         else if (ret > 0)
             print_exit_status_msg("Early termination", ret, 1);
-        else {
-            if (op->verbose < 2)
-                pr2serr("Early termination: some error occurred; try again "
-                        "with '-vv'\n");
-            else
-                pr2serr("Early termination: some error occurred\n");
-        }
+        else
+            pr2serr("Early termination: some error occurred; try again with "
+                    "'-vv'\n");
     }
     return (ret >= 0) ? ret : SG_LIB_CAT_OTHER;
 }

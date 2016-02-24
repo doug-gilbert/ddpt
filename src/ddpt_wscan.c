@@ -45,12 +45,7 @@
 
 #include "sg_lib.h"
 
-#ifdef _WIN32_WINNT
- #if _WIN32_WINNT < 0x0602
- #undef _WIN32_WINNT
- #define _WIN32_WINNT 0x0602
- #endif
-#else
+#ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0602
 /* claim its W8 */
 #endif
@@ -170,7 +165,7 @@ union STORAGE_DEVICE_DESCRIPTOR_DATA {
 
 union STORAGE_DEVICE_UID_DATA {
     STORAGE_DEVICE_UNIQUE_IDENTIFIER desc;
-    char raw[1060];
+    char raw[512];
 };
 
 struct storage_elem {
@@ -280,21 +275,20 @@ query_dev_property(HANDLE hdevice,
         if (verbose > 2) {
             err = GetLastError();
             pr2serr("  IOCTL_STORAGE_QUERY_PROPERTY(Devprop) failed, "
-                    "Error=%u %s\n", (unsigned int)err,
-                    get_err_str(err, sizeof(b), b));
+                    "Error=%ld %s\n", err, get_err_str(err, sizeof(b), b));
         }
         return -ENOSYS;
     }
 
     if (verbose > 3)
-        pr2serr("  IOCTL_STORAGE_QUERY_PROPERTY(DevProp) num_out=%u\n",
-                (unsigned int)num_out);
+        pr2serr("  IOCTL_STORAGE_QUERY_PROPERTY(DevProp) num_out=%ld\n",
+                num_out);
     return 0;
 }
 
 static int
 query_dev_uid(HANDLE hdevice,
-              union STORAGE_DEVICE_UID_DATA * data)
+                    union STORAGE_DEVICE_UID_DATA * data)
 {
     DWORD num_out, err;
     char b[256];
@@ -302,42 +296,22 @@ query_dev_uid(HANDLE hdevice,
                                     PropertyStandardQuery, {0} };
 
     memset(data, 0, sizeof(*data));
-    num_out = 0;
-    query.QueryType = PropertyExistsQuery;
-    if (! DeviceIoControl(hdevice, IOCTL_STORAGE_QUERY_PROPERTY,
-                          &query, sizeof(query), NULL, 0, &num_out, NULL)) {
-        if (verbose > 2) {
-            err = GetLastError();
-            fprintf(stderr, "  IOCTL_STORAGE_QUERY_PROPERTY(DevUid(exists)) "
-                    "failed, Error=%u %s\n", (unsigned int)err,
-                    get_err_str(err, sizeof(b), b));
-        }
-        if (verbose > 3)
-            fprintf(stderr, "      num_out=%u\n", (unsigned int)num_out);
-        /* interpret any error to mean this property doesn't exist */
-        return 0;
-    }
-
-    query.QueryType = PropertyStandardQuery;
     if (! DeviceIoControl(hdevice, IOCTL_STORAGE_QUERY_PROPERTY,
                           &query, sizeof(query), data, sizeof(*data),
                           &num_out, NULL)) {
         if (verbose > 2) {
             err = GetLastError();
-            fprintf(stderr, "  IOCTL_STORAGE_QUERY_PROPERTY(DevUid) failed, "
-                    "Error=%u %s\n", (unsigned int)err,
-                    get_err_str(err, sizeof(b), b));
+            pr2serr("  IOCTL_STORAGE_QUERY_PROPERTY(DevUid) failed, "
+                    "Error=%ld %s\n", err, get_err_str(err, sizeof(b), b));
         }
         return -ENOSYS;
     }
     if (verbose > 3)
-        fprintf(stderr, "  IOCTL_STORAGE_QUERY_PROPERTY(DevUid) num_out=%u\n",
-                (unsigned int)num_out);
+        pr2serr("  IOCTL_STORAGE_QUERY_PROPERTY(DevUid) num_out=%ld\n",
+                num_out);
     return 0;
 }
 
-/* Updates storage_arr based on sep. Returns 1 if update occurred, 0 if
- * no update occured. */
 static int
 check_devices(const struct storage_elem * sep)
 {
@@ -347,18 +321,7 @@ check_devices(const struct storage_elem * sep)
     for (k = 0; k < next_unused_elem; ++k, ++sarr) {
         if ('\0' == sarr->name[0])
             continue;
-        if (sep->qp_uid_valid && sarr->qp_uid_valid) {
-            if (0 == memcmp(&sep->qp_uid, &sarr->qp_uid,
-                            sizeof(sep->qp_uid))) {
-                for (j = 0; j < (int)sizeof(sep->volume_letters); ++j) {
-                    if ('\0' == sarr->volume_letters[j]) {
-                        sarr->volume_letters[j] = sep->name[0];
-                        break;
-                    }
-                }
-                return 1;
-            }
-        } else if (sep->qp_descriptor_valid && sarr->qp_descriptor_valid) {
+        if (sep->qp_descriptor_valid && sarr->qp_descriptor_valid) {
             if (0 == memcmp(&sep->qp_descriptor, &sarr->qp_descriptor,
                             sizeof(sep->qp_descriptor))) {
                 for (j = 0; j < (int)sizeof(sep->volume_letters); ++j) {
@@ -370,6 +333,7 @@ check_devices(const struct storage_elem * sep)
                 return 1;
             }
         }
+        // should do uid check here (probably before descriptor compare)
     }
     return 0;
 }
@@ -385,7 +349,7 @@ enum_scsi_adapters(void)
     BYTE bus;
     BOOL success;
     char adapter_name[64];
-    char inqDataBuff[8192];
+    char inqDataBuff[2048];
     PSCSI_ADAPTER_BUS_INFO  ai;
     char b[256];
 
@@ -398,7 +362,7 @@ enum_scsi_adapters(void)
             hole_count = 0;
             success = DeviceIoControl(fh, IOCTL_SCSI_GET_INQUIRY_DATA,
                                       NULL, 0, inqDataBuff,
-                                      sizeof(inqDataBuff), &dummy, NULL);
+                                      sizeof(inqDataBuff), &dummy, FALSE);
             if (success) {
                 PSCSI_BUS_DATA pbd;
                 PSCSI_INQUIRY_DATA pid;
@@ -431,19 +395,17 @@ enum_scsi_adapters(void)
                 }
             } else {
                 err = GetLastError();
-                pr2serr("%s: IOCTL_SCSI_GET_INQUIRY_DATA failed err=%u\n"
-                        "\t%s", adapter_name, (unsigned int)err,
+                pr2serr("%s: IOCTL_SCSI_GET_INQUIRY_DATA failed err=%lu\n"
+                        "\t%s", adapter_name, err,
                         get_err_str(err, sizeof(b), b));
             }
             CloseHandle(fh);
         } else {
-            err = GetLastError();
-            if (ERROR_SHARING_VIOLATION == err)
-                fprintf(stderr, "%s: in use by other process (sharing "
-                        "violation [34])\n", adapter_name);
-            else if (verbose > 3)
-                pr2serr("%s: CreateFile failed err=%u\n\t%s", adapter_name,
-                        (unsigned int)err, get_err_str(err, sizeof(b), b));
+            if (verbose > 3) {
+                err = GetLastError();
+                pr2serr("%s: CreateFile failed err=%lu\n\t%s", adapter_name,
+                        err, get_err_str(err, sizeof(b), b));
+            }
             if (++hole_count >= MAX_HOLE_COUNT)
                 break;
         }
@@ -521,13 +483,11 @@ enum_pds(void)
             memcpy(&storage_arr[next_unused_elem++], &tmp_se, sizeof(tmp_se));
             CloseHandle(fh);
         } else {
-            err = GetLastError();
-            if (ERROR_SHARING_VIOLATION == err)
-                fprintf(stderr, "%s: in use by other process (sharing "
-                        "violation [34])\n", adapter_name);
-            else if (verbose > 3)
-                pr2serr("%s: CreateFile failed err=%u\n\t%s", adapter_name,
-                        (unsigned int)err, get_err_str(err, sizeof(b), b));
+            if (verbose > 3) {
+                err = GetLastError();
+                pr2serr("%s: CreateFile failed err=%lu\n\t%s", adapter_name,
+                        err, get_err_str(err, sizeof(b), b));
+            }
             if (++hole_count >= MAX_HOLE_COUNT)
                 break;
         }
@@ -569,13 +529,11 @@ enum_cdroms(void)
             memcpy(&storage_arr[next_unused_elem++], &tmp_se, sizeof(tmp_se));
             CloseHandle(fh);
         } else {
-            err = GetLastError();
-            if (ERROR_SHARING_VIOLATION == err)
-                fprintf(stderr, "%s: in use by other process (sharing "
-                        "violation [34])\n", adapter_name);
-            else if (verbose > 3)
-                pr2serr("%s: CreateFile failed err=%u\n\t%s", adapter_name,
-                        (unsigned int)err, get_err_str(err, sizeof(b), b));
+            if (verbose > 3) {
+                err = GetLastError();
+                pr2serr("%s: CreateFile failed err=%lu\n\t%s", adapter_name,
+                        err, get_err_str(err, sizeof(b), b));
+            }
             if (++hole_count >= MAX_HOLE_COUNT)
                 break;
         }
@@ -617,13 +575,11 @@ enum_tapes(void)
             memcpy(&storage_arr[next_unused_elem++], &tmp_se, sizeof(tmp_se));
             CloseHandle(fh);
         } else {
-            err = GetLastError();
-            if (ERROR_SHARING_VIOLATION == err)
-                fprintf(stderr, "%s: in use by other process (sharing "
-                        "violation [34])\n", adapter_name);
-            else if (verbose > 3)
-                pr2serr("%s: CreateFile failed err=%u\n\t%s", adapter_name,
-                        (unsigned int)err, get_err_str(err, sizeof(b), b));
+            if (verbose > 3) {
+                err = GetLastError();
+                pr2serr("%s: CreateFile failed err=%lu\n\t%s", adapter_name,
+                        err, get_err_str(err, sizeof(b), b));
+            }
             if (++hole_count >= MAX_HOLE_COUNT)
                 break;
         }
@@ -687,13 +643,9 @@ do_wscan(char letter, int show_bt, int scsi_scan)
                     printf("%s", sp->qp_descriptor.raw + j);
                 printf("\n");
                 if (verbose > 2)
-                    dStrHexErr(sp->qp_descriptor.raw, 144, 0);
+                    dStrHex(sp->qp_descriptor.raw, 144, 0);
             } else
                 printf("\n");
-            if ((verbose > 3) && sp->qp_uid_valid) {
-                printf("  UID valid, in hex:\n");
-                dStrHexErr(sp->qp_uid.raw, sizeof(sp->qp_uid.raw), 1);
-            }
         }
     }
 

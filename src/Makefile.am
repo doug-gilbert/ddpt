@@ -1,7 +1,7 @@
 bin_PROGRAMS = ddpt ddptctl
 
 # for C++/clang testing
-## CC = gcc
+## CC = g++
 ## CC = g++
 ## CC = clang
 ## CC = clang++
@@ -9,9 +9,9 @@ bin_PROGRAMS = ddpt ddptctl
 # INCLUDES = -I$(top_srcdir)/include -I$(top_srcdir)/include/scsi
 
 # -std=<s> can be c99, c11, gnu11, etc. Default is gnu89 (gnu90 is the same)
-AM_CFLAGS = -iquote $(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W @os_cflags@
-## AM_CFLAGS = -iquote $(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W @os_cflags@ -pedantic -std=c11
-## AM_CFLAGS = -iquote $(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W @os_cflags@ -pedantic -std=c++11
+AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W
+## AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W -pedantic -std=c11
+## AM_CFLAGS = -I$(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W -pedantic -std=c++11
 
 
 
@@ -58,7 +58,7 @@ ddptctl_SOURCES +=	ddpt_win32.c \
 endif
 
 if HAVE_SGUTILS
-INCLUDES = -I/scsi
+INCLUDES = -I/usr/include/scsi
 ddpt_LDADD = @os_libs@ @rt_libs@ @SGUTILS_LIBS@
 else
 INCLUDES = -I$(top_srcdir)/include
@@ -77,7 +77,7 @@ EXTRA_ddpt_SOURCES =	../lib/sg_pt_linux.c	\
 
 
 if HAVE_SGUTILS
-INCLUDES = -I/scsi
+INCLUDES = -I/usr/include/scsi
 ddptctl_LDADD = @os_libs@ @rt_libs@ @SGUTILS_LIBS@
 else
 INCLUDES = -I$(top_srcdir)/include

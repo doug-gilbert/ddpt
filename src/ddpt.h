@@ -1,35 +1,6 @@
 #ifndef DDPT_H
 #define DDPT_H
 
-/*
- * Copyright (c) 2008-2016 Douglas Gilbert.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- *
- */
-
 /* This is a C header file for the ddpt utility. See ddpt.c and ddpt.8
  * for more information.
  */
@@ -39,7 +10,7 @@
 #endif
 
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
+#define _GNU_SOURCE
 #endif
 
 #include <unistd.h>
@@ -113,9 +84,6 @@ extern "C" {
 #define MAX_XC_BPT_POW2 32768  /* BPT maximum that is power of 2 */
 #define DEF_SCSI_CDBSZ 10
 #define MAX_SCSI_CDBSZ 32
-#define DDPT_MAX_JF_DEPTH 4
-#define DDPT_MAX_JF_LINES 1000
-#define DDPT_MAX_JF_ARGS_PER_LINE 16
 
 #define VPD_DEVICE_ID 0x83
 #define VPD_3PARTY_COPY 0x8f
@@ -151,7 +119,6 @@ extern "C" {
 #define FT_FIFO 64              /* fifo (named or unnamed pipe (stdout)) */
 #define FT_CHAR 128             /* char dev, doesn't fit another category */
 #define FT_ERROR 256            /* couldn't "stat" file */
-#define FT_ALL_FF 512           /* iflag=ff so input will be 0xff bytes */
 
 /* ODX type requested */
 #define ODX_REQ_NONE 0          /* some other type of copy */
@@ -200,6 +167,7 @@ extern "C" {
 #define SG_LIB_CAT_PROTECTION_WITH_INFO 41
 #endif
 
+#define DDPT_CAT_RESERVATION_CONFLICT 30
 #define DDPT_CAT_PARAM_LST_LEN_ERR 50
 #define DDPT_CAT_INVALID_FLD_IN_PARAM 51
 #define DDPT_CAT_TOO_MANY_SEGS_IN_PARAM 52
@@ -210,12 +178,13 @@ extern "C" {
 #define DDPT_CAT_INSUFF_RES_CREATE_RODTOK 57
 #define DDPT_CAT_CMDS_CLEARED_BY_DEV_SVR 58
 #define DDPT_CAT_TOKOP_BASE 70        /* assume less than 20 above this */
+#define DDPT_CAT_SK_DATA_PROTECT 7    /* same as sense key code */
+#define DDPT_CAT_SK_COPY_ABORTED 10   /* same as sense key code */
 
 #define XCOPY_TO_SRC "XCOPY_TO_SRC"
 #define XCOPY_TO_DST "XCOPY_TO_DST"
 #define DEF_XCOPY_SRC0_DST1 1
 #define ODX_RTF_LEN "ODX_RTF_LEN"     /* append 8 byte ROD size to token */
-#define DDPT_DEF_BS "DDPT_DEF_BS" /* default default block size: 512 bytes */
 
 /* ODX: length field inside ROD Token constant, implies 512 byte ROD Token */
 #define ODX_ROD_TOK_LEN_FLD 504       /* 0x1f8 */
@@ -263,9 +232,7 @@ struct block_rodtok_vpd {
  * General or for disk unless otherwise marked. */
 struct flags_t {
     int append;
-    int atomic;
     int block;          /* only for pt, non blocking default */
-    int bytchk;         /* set field in WRITE AND VERIFY */
     int cat;            /* xcopy(lid1) related */
     int cdbsz;
     int coe;
@@ -276,7 +243,6 @@ struct flags_t {
     int errblk;
     int excl;
     int fdatasync;
-    int ff;             /* iflag=ff makes input all 0xff bytes */
     int flock;
     int force;
     int fsync;
@@ -305,7 +271,6 @@ struct flags_t {
     int strunc;
     int sync;
     int trunc;
-    int verify;         /* oflag with pt, turns WRITE into WRITE AND VERIFY */
     int wsame16;
     int xcopy;          /* xcopy(LID1) */
 };
@@ -328,7 +293,7 @@ struct dev_info_t {
     struct sg_pt_base * ptvp;
 };
 
-/* command line options plus most other state variables */
+/* command line options and most other state */
 /* The _given fields indicate whether option was given or is a default */
 struct opts_t {
     /* command line related variables */
@@ -389,10 +354,8 @@ struct opts_t {
     struct dev_info_t * o2dip;
     /* working variables and statistics */
     int64_t dd_count;   /* -1 for not specified, 0 for no blocks to copy */
-                        /* after copy/read starts, decrements to 0 */
-    int64_t dd_count_start;     /* dd_count prior to start of copy/read */
-    int64_t in_full;    /* full blocks read from IFILE so far */
-    int64_t out_full;   /* full blocks written to OFILE so far */
+    int64_t in_full;
+    int64_t out_full;
     int64_t out_sparse; /* used for sparse, sparing + trim */
     int64_t lowest_unrecovered;         /* on reads */
     int64_t highest_unrecovered;        /* on reads */
@@ -419,12 +382,10 @@ struct opts_t {
     int num_retries;
     int sum_of_resids;
     int interrupted_retries;
-    int io_eagains;
     int err_to_report;
     int reading_fifo;
     int read1_or_transfer; /* 1 when of=/dev/null or similar */
     int ibs_hold;
-    int o_readonly;
     unsigned char * wrkBuff;
     unsigned char * wrkPos;
     unsigned char * wrkBuff2;
@@ -490,6 +451,11 @@ struct sg_simple_inquiry_resp;
 /* No global function defined in ddpt.c apart from main() */
 
 /* defined in ddpt_com.c */
+#ifdef __GNUC__
+int pr2serr(const char * fmt, ...) __attribute__ ((format (printf, 1, 2)));
+#else
+int pr2serr(const char * fmt, ...);
+#endif
 void sleep_ms(int millisecs);
 void state_init(struct opts_t * op, struct flags_t * ifp,
                 struct flags_t * ofp, struct dev_info_t * idip,
@@ -571,7 +537,7 @@ int do_odx(struct opts_t * op);
 
 /* defined in ddpt_cl.c */
 int cl_process(struct opts_t * op, int argc, char * argv[],
-               const char * version_str, int jf_depth);
+               const char * version_str);
 void ddpt_usage(int help);
 
 
@@ -606,4 +572,4 @@ size_t win32_pagesize(void);
 }
 #endif
 
-#endif  /* DDPT_H guard against multiple includes */
+#endif

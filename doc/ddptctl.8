@@ -1,14 +1,14 @@
-.TH DDPTCTL "8" "February 2016" "ddpt\-0.96" DDPT
+.TH DDPTCTL "8" "April 2014" "ddpt\-0.94" DDPT
 .SH NAME
 ddptctl \- helper/auxiliary utility for ddpt
 .SH SYNOPSIS
 .B ddptctl
 [\fI\-\-abort\fR] [\fI\-\-all_toks\fR] [\fI\-\-block\fR] [\fI\-\-del_tkn\fR]
 [\fI\-\-help\fR] [\fI\-\-immed\fR] [\fI\-\-info\fR] [\fI\-\-list_id=LID\fR]
-[\fI\-\-oir=OIR\fR] [\fI\-\-poll\fR] [\fI\-\-pt=GL\fR] [\fI\-\-readonly\fR]
-[\fI\-\-receive\fR] [\fI\-\-rtf=RTF\fR] [\fI\-\-rtype=RTYPE\fR]
-[\fI\-\-size\fR] [\fI\-\-timeout=ITO[,CMD]\fR] [\fI\-\-verbose\fR]
-[\fI\-\-version\fR] [\fI\-\-wut=SL\fR] [\fIDEVICE\fR]
+[\fI\-\-oir=OIR\fR] [\fI\-\-poll\fR] [\fI\-\-pt=GL\fR] [\fI\-\-receive\fR]
+[\fI\-\-rtf=RTF\fR] [\fI\-\-rtype=RTYPE\fR] [\fI\-\-size\fR]
+[\fI\-\-timeout=ITO[,CMD]\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR]
+[\fI\-\-wut=SL\fR] [\fIDEVICE\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
@@ -28,8 +28,8 @@ become associated with this subset. This utility can issue PT, WUT and related
 commands, read the Third Party Copy VPD page and perform several other
 housekeeping tasks.
 .PP
-The xcopy family of commands are described in the SPC\-4,5 and SBC\-3,4
-documents found at http://www.t10.org .
+The xcopy family of commands are described in the SPC\-4 and SBC\-3 documents
+found at http://www.t10.org .
 .SH OPTIONS
 Arguments to long options are mandatory for short options as well.
 .TP
@@ -53,9 +53,10 @@ pass\-through device.
 .TP
 \fB\-D\fR, \fB\-\-del_tkn\fR
 set the DEL_TKN bit in a WUT command (default: clear the DEL_TKN bit).
-Since an ODX copy manager deletes the ROD Token when its inactivity
-time-out is reached, this option is typically not needed. It may
-be useful for long\-lived ROD Tokens that are no longer needed.
+Since an ODX copy manager deletes the ROD Token after is has been
+fully copied from (once), this option is typically not needed. It may
+be useful for long\-lived ROD Tokens that have only been partially
+written from (or not used at all) and are no longer needed.
 .br
 To delete an unused ROD Token a degenerate scatter list seems to be
 acceptable (e.g. '\-\-wut=0,0 \-\-del_tkn').
@@ -89,14 +90,14 @@ file length which should either be a multiple of 512 or 520 bytes.
 \fB\-l\fR, \fB\-\-list_id\fR=\fILID\fR
 \fILID\fR is a list identifier which is used to associate an originating
 xcopy command (e.g. PT or WUT) with a follow\-up command that retrieves
-associated information or aborts the operation. T10 requires each active
-\fILID\fR to be unique on a given I\-T nexus. An I\-T nexus is the current
-machine (more precisely a HBA if a machine has two or more) and a specific
-target which will contain one or more logical units (LUs) of which
-\fIDEVICE\fR is one. If the \fIDEVICE\fR's copy manager feels that rather
-complex condition has not been met then an error is generated with sense
-data that decodes to "operation in progress". Rather than try to work out
-who is doing what elsewhere, try another \fILID\fR value.
+information or aborts the operation. T10 requires active \fILID\fRs to be
+unique on a given I\-T nexus. An I\-T nexus is the current machine (more
+precisely a HBA if a machine has two or more) and a specific target which
+will contain one or more logical units (LUs) of which \fIDEVICE\fR is one.
+If the \fIDEVICE\fR's copy manager feels that rather complex condition has
+not been met then an error is generated with sense data that decodes
+to "operation in progress". Rather than try to work out who is doing
+what elsewhere, try another \fILID\fR value.
 .br
 The default value for \fILID\fR is 257.
 .TP
@@ -133,10 +134,6 @@ ddptctl_rod_tok.bin in the current directory.
 If the \fI\-\-immed\fR option is given this utility will exit after the
 PT command finishes. To complete the operation this utility should be
 invoked again with the \fI\-\-poll\fR option and the same \fIDEVICE\fR.
-.TP
-\fB\-y\fR, \fB\-\-readonly\fR
-open the \fIDEVICE\fR read\-only (e.g. in Unix with the O_RDONLY flag).
-The default is to open it read\-write.
 .TP
 \fB\-R\fR, \fB\-\-receive\fR
 send the RECEIVE ROD TOKEN INFORMATION SCSI command (RRTI) to the \fIDEVICE\fR
@@ -337,7 +334,7 @@ Written by Douglas Gilbert.
 .SH "REPORTING BUGS"
 Report bugs to <dgilbert at interlog dot com>.
 .SH COPYRIGHT
-Copyright \(co 2014\-2016 Douglas Gilbert
+Copyright \(co 2014 Douglas Gilbert
 .br
 This software is distributed under a FreeBSD license. There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
