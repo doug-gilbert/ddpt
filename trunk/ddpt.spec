@@ -50,8 +50,8 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Tue Feb 09 2016 - dgilbert at interlog dot com
-- bump version
+* Wed Feb 24 2016 - dgilbert at interlog dot com
+- see ChangeLog
   * ddpt-0.96
 * Fri Dec 26 2014 - dgilbert at interlog dot com
 - show percent completed, job file
