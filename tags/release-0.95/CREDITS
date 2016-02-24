@@ -1,0 +1,22 @@
+The author of ddpt would like to thank the following people who
+have made contributions:
+
+Mark Knibbs <markk at clara dot co dot uk>
+        defined write sparing and sparse writing. [20081212]
+        defined granularity control for sparing+sparse; oflag=resume;
+        lazy seeks; trim and self-trim. [20100730]
+        implemented prealloc flag (fallocate()) [20111227]
+        delay [20131021]; implemented much of the tape support and
+        wrote documentation [20131105]
+
+Peter Allworth <linsol at zeta dot org dot au>
+        original dd clone design used by sg3_utils's dd variants
+        (e.g. sg_dd). The sg_dd linux utility has been generalized
+        to become this utility (ddpt). [20081212]
+
+Thomas Glanzmann <thomas at glanzmann dot de>
+        help testing xcopy [20131021]
+
+
+Doug Gilbert
+7th November 2013
