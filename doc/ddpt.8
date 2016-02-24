@@ -1,4 +1,4 @@
-.TH DDPT "8" "February 2016" "ddpt\-0.96" DDPT
+.TH DDPT "8" "December 2014" "ddpt\-0.95" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -1390,28 +1390,6 @@ because another machine (HBA or SCSI "initiator") holds a reservation on
 this device. On modern SCSI systems this is related to the use of
 the PERSISTENT RESERVATION family of commands.
 .TP
-.B 25
-the \fIDEVICE\fR reports a SCSI status of "condition met". Currently only
-the PRE\-FETCH command (see SBC\-4) yields this status.
-.TP
-.B 26
-the \fIDEVICE\fR reports a SCSI status of "busy". SAM\-5 defines this
-status as the logical unit is temporarily unable to process a command.
-It is recommended to re-issue the command.
-.TP
-.B 27
-the \fIDEVICE\fR reports a SCSI status of "task set full".
-.TP
-.B 28
-the \fIDEVICE\fR reports a SCSI status of "ACA active". ACA is "auto
-contingent allegiance" and is seldom used.
-.TP
-.B 29
-the \fIDEVICE\fR reports a SCSI status of "task aborted". SAM\-5 says:
-"This status shall be returned if a command is aborted by a command or task
-management function on another I_T nexus and the Control mode page TAS bit
-is set to one".
-.TP
 .B 33
 the command sent to device has timed out. This occurs in Linux only; in
 other ports a command timeout will appear as a transport (or OS) error.
@@ -1556,7 +1534,7 @@ Written by Doug Gilbert
 .SH "REPORTING BUGS"
 Report bugs to <dgilbert at interlog dot com>.
 .SH COPYRIGHT
-Copyright \(co 2008\-2016 Douglas Gilbert
+Copyright \(co 2008\-2014 Douglas Gilbert
 .br
 This software is distributed under the GPL version 2. There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.

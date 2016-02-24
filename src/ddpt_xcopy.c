@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2016 Douglas Gilbert.
+ * Copyright (c) 2013-2014 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -36,7 +36,7 @@
 
 /* Need _GNU_SOURCE for O_DIRECT */
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
+#define _GNU_SOURCE
 #endif
 
 #include <unistd.h>
@@ -64,7 +64,6 @@
 #include "sg_lib.h"
 #include "sg_cmds_basic.h"
 #include "sg_unaligned.h"
-#include "sg_pr2serr.h"
 
 
 #define DEF_3PC_OUT_TIMEOUT (10 * 60)   /* is 10 minutes enough? */
@@ -202,11 +201,27 @@ scsi_encode_seg_desc(struct opts_t * op, unsigned char *seg_desc,
         seg_desc[4] = 0;
         seg_desc[5] = 0; /* Source target index */
         seg_desc[7] = 1; /* Destination target index */
-        sg_put_unaligned_be16((uint16_t)num_blk, seg_desc + 10);
-        sg_put_unaligned_be64(src_lba, seg_desc + 12);
-        sg_put_unaligned_be64(dst_lba, seg_desc + 20);
+        seg_desc[10] = (num_blk >> 8) & 0xff;
+        seg_desc[11] = num_blk & 0xff;
+        seg_desc[12] = (src_lba >> 56) & 0xff;
+        seg_desc[13] = (src_lba >> 48) & 0xff;
+        seg_desc[14] = (src_lba >> 40) & 0xff;
+        seg_desc[15] = (src_lba >> 32) & 0xff;
+        seg_desc[16] = (src_lba >> 24) & 0xff;
+        seg_desc[17] = (src_lba >> 16) & 0xff;
+        seg_desc[18] = (src_lba >> 8) & 0xff;
+        seg_desc[19] = src_lba & 0xff;
+        seg_desc[20] = (dst_lba >> 56) & 0xff;
+        seg_desc[21] = (dst_lba >> 48) & 0xff;
+        seg_desc[22] = (dst_lba >> 40) & 0xff;
+        seg_desc[23] = (dst_lba >> 32) & 0xff;
+        seg_desc[24] = (dst_lba >> 24) & 0xff;
+        seg_desc[25] = (dst_lba >> 16) & 0xff;
+        seg_desc[26] = (dst_lba >> 8) & 0xff;
+        seg_desc[27] = dst_lba & 0xff;
     }
-    sg_put_unaligned_be16((uint16_t)seg_desc_len, seg_desc + 2);
+    seg_desc[2] = (seg_desc_len >> 8) & 0xFF;
+    seg_desc[3] = seg_desc_len & 0xFF;
 
     return seg_desc_len + 4;
 }
@@ -288,7 +303,8 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
     if (0 != res)
         return -res;
 
-    len = sg_get_unaligned_be32(rcBuff + 0) + 4;
+    len = ((rcBuff[0] << 24) | (rcBuff[1] << 16) | (rcBuff[2] << 8) |
+           rcBuff[3]) + 4;
     if (len > rcBuffLen) {
         pr2serr("  <<report len %d > %d too long for internal buffer, output "
                 "truncated\n", len, rcBuffLen);
@@ -298,12 +314,15 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
         dStrHexErr((const char *)rcBuff, len, 1);
     }
     snlid = rcBuff[4] & 0x1;
-    max_target_num = sg_get_unaligned_be16(rcBuff + 8);
-    max_segment_num = sg_get_unaligned_be16(rcBuff + 10);
-    max_desc_len = sg_get_unaligned_be32(rcBuff + 12);
-    max_segment_len = sg_get_unaligned_be32(rcBuff + 16);
+    max_target_num = rcBuff[8] << 8 | rcBuff[9];
+    max_segment_num = rcBuff[10] << 8 | rcBuff[11];
+    max_desc_len = rcBuff[12] << 24 | rcBuff[13] << 16 | rcBuff[14] << 8 |
+                   rcBuff[15];
+    max_segment_len = rcBuff[16] << 24 | rcBuff[17] << 16 |
+                      rcBuff[18] << 8 | rcBuff[19];
     dip->xc_max_bytes = max_segment_len ? max_segment_len : ULONG_MAX;
-    max_inline_data = sg_get_unaligned_be32(rcBuff + 20);
+    max_inline_data = rcBuff[20] << 24 | rcBuff[21] << 16 | rcBuff[22] << 8 |
+                      rcBuff[23];
     if (op->verbose) {
         pr2serr(" >> %s, %sput [%s]:\n", rec_copy_op_params_str,
                 (is_dest ? "out" : "in"), dip->fn);
@@ -315,7 +334,8 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
         pr2serr("    Maximum segment length: %lu\n", max_segment_len);
         pr2serr("    Maximum inline data length: %lu\n", max_inline_data);
     }
-    held_data_limit = sg_get_unaligned_be32(rcBuff + 24);
+    held_data_limit = rcBuff[24] << 24 | rcBuff[25] << 16 |
+                      rcBuff[26] << 8 | rcBuff[27];
     if (op->id_usage < 0) {
         if (! held_data_limit)
             op->id_usage = 2;
@@ -325,7 +345,8 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
     if (op->verbose) {
         pr2serr("    Held data limit: %lu (list_id_usage: %d)\n",
                 held_data_limit, op->id_usage);
-        num = sg_get_unaligned_be32(rcBuff + 28);
+        num = rcBuff[28] << 24 | rcBuff[29] << 16 | rcBuff[30] << 8 |
+              rcBuff[31];
         pr2serr("    Maximum stream device transfer size: %lu\n", num);
         pr2serr("    Maximum concurrent copies: %u\n", rcBuff[36]);
         pr2serr("    Data segment granularity: %u bytes\n", 1 << rcBuff[37]);
@@ -587,7 +608,7 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
         pr2serr("invalid VPD response\n");
         return SG_LIB_CAT_MALFORMED;
     }
-    len = sg_get_unaligned_be16(rcBuff + 2) + 4;
+    len = ((rcBuff[2] << 8) + rcBuff[3]) + 4;
     res = sg_ll_inquiry(fd, 0, 1, VPD_DEVICE_ID, rcBuff, len, 1, verb);
     if (0 != res) {
         pr2serr("VPD inquiry failed with %d\n", res);
@@ -653,7 +674,9 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
             memcpy(desc + 4, best, best_len + 4);
             desc[4] &= 0x1f;
             desc[28] = flp->pad << 2;
-            sg_put_unaligned_be24((uint32_t)block_size, desc + 29);
+            desc[29] = (block_size >> 16) & 0xff;
+            desc[30] = (block_size >> 8) & 0xff;
+            desc[31] = block_size & 0xff;
             if (op->verbose > 3) {
                 pr2serr("Descriptor in hex (bs %d):\n", block_size);
                 dStrHexErr((const char *)desc, 32, 1);
@@ -1155,7 +1178,7 @@ decode_3party_copy_vpd(unsigned char * buff, int len, int to_stderr,
             break;
         case 0x000C:
             print_p(" Supported CSCD IDs:\n");
-            for (j = 0; j < sg_get_unaligned_be16(ucp + 4); j += 2) {
+            for (j = 0; j < (ucp[4] << 8) + ucp[5]; j += 2) {
                 u = sg_get_unaligned_be16(ucp + 6 + j);
                 print_p("  0x%04x\n", u);
             }
@@ -1252,7 +1275,7 @@ fetch_3pc_vpd(int fd, const char * fn, unsigned char * fixed_b,
         pr2serr("invalid 3PARTY_COPY VPD response\n");
         return SG_LIB_CAT_MALFORMED;
     }
-    len = sg_get_unaligned_be16(rp + 2) + 4;
+    len = ((rp[2] << 8) + rp[3]) + 4;
     if (len > fixed_blen) {
         rp = (unsigned char *)malloc(len);
         if (NULL == rp) {
@@ -1278,9 +1301,10 @@ get_3pc_vpd_blkdev_lims(struct opts_t * op, struct dev_info_t * dip)
     unsigned char rBuff[256];
     unsigned char * rp;
     unsigned char * ucp;
-    int res, verb, n, len, bump, desc_type, desc_len, k;
+    int res, verb, n, len, bump, desc_type, desc_len, k, j;
     int found = 0;
     uint32_t max_ito = 0;
+    uint64_t ull;
 
     verb = (op->verbose ? (op->verbose - 1) : 0);
     rp = rBuff;
@@ -1288,11 +1312,12 @@ get_3pc_vpd_blkdev_lims(struct opts_t * op, struct dev_info_t * dip)
     res = fetch_3pc_vpd(dip->fd, dip->fn, rBuff, n, &rp, verb);
     if (res)
         return res;
-    len = sg_get_unaligned_be16(rp + 2);
+    len = ((rp[2] << 8) + rp[3]) + 4;
+    len -= 4;
     ucp = rp + 4;
     for (k = 0; k < len; k += bump, ucp += bump) {
-        desc_type = sg_get_unaligned_be16(ucp + 0);
-        desc_len = sg_get_unaligned_be16(ucp + 2);
+        desc_type = (ucp[0] << 8) + ucp[1];
+        desc_len = (ucp[2] << 8) + ucp[3];
         if (op->verbose > 4)
             pr2serr("Descriptor type=%d, len=%d\n", desc_type, desc_len);
         bump = 4 + desc_len;
@@ -1319,12 +1344,26 @@ get_3pc_vpd_blkdev_lims(struct opts_t * op, struct dev_info_t * dip)
                         desc_len);
                 break;
             }
-            dip->odxp->max_range_desc = sg_get_unaligned_be16(ucp + 10);
-            max_ito = sg_get_unaligned_be32(ucp + 12);
+            dip->odxp->max_range_desc = (ucp[10] << 8) + ucp[11];
+            max_ito = (ucp[12] << 24) | (ucp[13] << 16) | (ucp[14] << 8) |
+                      ucp[15];
             dip->odxp->max_inactivity_to = max_ito;
-            dip->odxp->def_inactivity_to = sg_get_unaligned_be32(ucp + 16);
-            dip->odxp->max_tok_xfer_size = sg_get_unaligned_be64(ucp + 20);
-            dip->odxp->optimal_xfer_count = sg_get_unaligned_be64(ucp + 28);
+            dip->odxp->def_inactivity_to = (ucp[16] << 24) | (ucp[17] << 16) |
+                                           (ucp[18] << 8) | ucp[19];
+            ull = 0;
+            for (j = 0; j < 8; j++) {
+                if (j > 0)
+                    ull <<= 8;
+                ull |= ucp[20 + j];
+            }
+            dip->odxp->max_tok_xfer_size = ull;
+            ull = 0;
+            for (j = 0; j < 8; j++) {
+                if (j > 0)
+                    ull <<= 8;
+                ull |= ucp[28 + j];
+            }
+            dip->odxp->optimal_xfer_count = ull;
             break;
         default:
             break;
@@ -1360,7 +1399,7 @@ print_3pc_vpd(struct opts_t * op, int to_stderr)
                         &rp, verb);
     if (res)
         return res;
-    len = sg_get_unaligned_be16(rp + 2) + 4;
+    len = ((rp[2] << 8) + rp[3]) + 4;
     decode_3party_copy_vpd(rp, len, to_stderr, verb);
     if (rBuff != rp)
         free(rp);
@@ -1463,12 +1502,18 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
     memset(pl, 0, pl_sz);
     if (op->rod_type_given) {
         pl[2] = 0x2;            /* RTV bit */
-        sg_put_unaligned_be32((uint32_t)op->rod_type, pl + 8);
+        pl[8] = (unsigned char)((op->rod_type >> 24) & 0xff);
+        pl[9] = (unsigned char)((op->rod_type >> 16) & 0xff);
+        pl[10] = (unsigned char)((op->rod_type >> 8) & 0xff);
+        pl[11] = (unsigned char)(op->rod_type & 0xff);
     }
     if (op->iflagp->immed)
         pl[2] |= 0x1;           /* IMMED bit */
     /* if inactivity_to=0 then cm takes default in TPC VPD page */
-    sg_put_unaligned_be32((uint32_t)op->inactivity_to, pl + 4);
+    pl[4] = (unsigned char)((op->inactivity_to >> 24) & 0xff);
+    pl[5] = (unsigned char)((op->inactivity_to >> 16) & 0xff);
+    pl[6] = (unsigned char)((op->inactivity_to >> 8) & 0xff);
+    pl[7] = (unsigned char)(op->inactivity_to & 0xff);
 
     if (sglp) {
         lba = sglp->lba + sg0_off;
@@ -1483,27 +1528,49 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
             if (vb_a)
                 pr2serr("  lba=0x%" PRIx64 ", num=%" PRIu32 ", k=%d\n", lba,
                         num, k);
-            sg_put_unaligned_be64(lba, pl + n);
-            n += 8;
-            sg_put_unaligned_be32(num, pl + n);
-            n += 4 + 4;
+            pl[++n] = (unsigned char)((lba >> 56) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 48) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 40) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 32) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 24) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 16) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 8) & 0xff);
+            pl[++n] = (unsigned char)(lba & 0xff);
+            pl[++n] = (unsigned char)((num >> 24) & 0xff);
+            pl[++n] = (unsigned char)((num >> 16) & 0xff);
+            pl[++n] = (unsigned char)((num >> 8) & 0xff);
+            pl[++n] = (unsigned char)(num & 0xff);
+            n += 4;
         }
         sz_bdrd = k * 16;
-        sg_put_unaligned_be16(sz_bdrd, pl + 14);
+        pl[14] = (unsigned char)((sz_bdrd >> 8) & 0xff);
+        pl[15] = (unsigned char)(sz_bdrd & 0xff);
         len = n + 1;
     } else {    /* assume count= and possibly skip= given */
         sz_bdrd = 16;       /* single element */
-        sg_put_unaligned_be16(sz_bdrd, pl + 14);
+        pl[14] = (unsigned char)((sz_bdrd >> 8) & 0xff);
+        pl[15] = (unsigned char)(sz_bdrd & 0xff);
         lba = op->skip + blk_off;
         if (vb_a)
             pr2serr("  lba=0x%" PRIx64 ", num_blks=%" PRIu32 "\n", lba,
                     num_blks);
-        sg_put_unaligned_be64(lba, pl + 16);
-        sg_put_unaligned_be32(num_blks, pl + 24);
+        pl[16] = (unsigned char)((lba >> 56) & 0xff);
+        pl[17] = (unsigned char)((lba >> 48) & 0xff);
+        pl[18] = (unsigned char)((lba >> 40) & 0xff);
+        pl[19] = (unsigned char)((lba >> 32) & 0xff);
+        pl[20] = (unsigned char)((lba >> 24) & 0xff);
+        pl[21] = (unsigned char)((lba >> 16) & 0xff);
+        pl[22] = (unsigned char)((lba >> 8) & 0xff);
+        pl[23] = (unsigned char)(lba & 0xff);
+        pl[24] = (unsigned char)((num_blks >> 24) & 0xff);
+        pl[25] = (unsigned char)((num_blks >> 16) & 0xff);
+        pl[26] = (unsigned char)((num_blks >> 8) & 0xff);
+        pl[27] = (unsigned char)(num_blks & 0xff);
         len = 32;
     }
     n = len - 2;
-    sg_put_unaligned_be16((uint16_t)n, pl + 0);
+    pl[0] = (unsigned char)((n >> 8) & 0xff);
+    pl[1] = (unsigned char)(n & 0xff);
 
     tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
     res = pt_3party_copy_out(fd, SA_POP_TOK, op->list_id, DEF_GROUP_NUM,
@@ -1528,7 +1595,7 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
 int
 do_rrti(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp, int verb)
 {
-    int res, fd, off, err_vb;
+    int j, res, fd, off, err_vb;
     uint32_t len, rtdl;
     unsigned char rsp[1024];
     char b[400];
@@ -1547,7 +1614,7 @@ do_rrti(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp, int verb)
     if (res)
         return res;
 
-    len = sg_get_unaligned_be32(rsp + 0) + 4;
+    len = ((rsp[0] << 24) | (rsp[1] << 16) | (rsp[2] << 8) | rsp[3]) + 4;
     if (len > sizeof(rsp)) {
         pr2serr("RRTI: ROD Token info too long for internal buffer, output "
                 "truncated\n");
@@ -1582,17 +1649,23 @@ do_rrti(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp, int verb)
     rrp->cstat = 0x7f & rsp[5];
     rrp->xc_cstatus = rsp[12];
     rrp->sense_len = rsp[14];
-    rrp->esu_del = sg_get_unaligned_be32(rsp + 8);
+    rrp->esu_del = (rsp[8] << 24) | (rsp[9] << 16) | (rsp[10] << 8) | rsp[11];
     if (verb)
        pr2serr("%s: %s\n", cp, cpy_op_status_str(rrp->cstat, b, sizeof(b)));
-    rrp->tc = sg_get_unaligned_be64(rsp + 16);
+    rrp->tc = 0;
+    for (j = 0; j < 8; j++) {
+        if (j > 0)
+            rrp->tc <<= 8;
+        rrp->tc |= rsp[16 + j];
+    }
     if (rrp->sense_len > 0) {
         snprintf(bb, sizeof(bb), "%s: sense data", cp);
         sg_get_sense_str(bb, rsp + 32, rrp->sense_len, verb, sizeof(b), b);
         pr2serr("%s\n", b);
     }
     off = 32 + rsp[13];
-    rtdl = sg_get_unaligned_be32(rsp +off);
+    rtdl = (rsp[off] << 24) | (rsp[off + 1] << 16) | (rsp[off + 2] << 8) |
+           rsp[off + 3];
     rrp->rt_len = (rtdl > 2) ? rtdl - 2 : 0;
     if (rtdl > 2)
         memcpy(rrp->rod_tok, rsp + off + 6,
@@ -1603,7 +1676,7 @@ do_rrti(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp, int verb)
 int
 process_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a)
 {
-    int res, len, vb_b, err, cont;
+    int res, k, len, vb_b, err, cont;
     uint64_t rod_sz;
     uint32_t delay;
     struct rrti_resp_t r;
@@ -1672,7 +1745,8 @@ process_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a)
             }
             if (op->rtf_len_add) {
                 rod_sz = r.tc * op->ibs;
-                sg_put_unaligned_be64(rod_sz, uc + 0);
+                for (k = 7; k >= 0; --k, rod_sz >>= 8)
+                    uc[k] = rod_sz & 0xff;
                 res = write(op->rtf_fd, uc, 8);
                 if (res < 0) {
                     err = errno;
@@ -1764,8 +1838,16 @@ do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
     }
     if (flp->immed)
         pl[2] |= 0x1;           /* IMMED bit */
-    if (oir)            /* Offset in ROD field */
-        sg_put_unaligned_be64(oir, pl + 8);
+    if (oir) {          /* Offset in ROD field */
+        pl[8] = (unsigned char)((oir >> 56) & 0xff);
+        pl[9] = (unsigned char)((oir >> 48) & 0xff);
+        pl[10] = (unsigned char)((oir >> 40) & 0xff);
+        pl[11] = (unsigned char)((oir >> 32) & 0xff);
+        pl[12] = (unsigned char)((oir >> 24) & 0xff);
+        pl[13] = (unsigned char)((oir >> 16) & 0xff);
+        pl[14] = (unsigned char)((oir >> 8) & 0xff);
+        pl[15] = (unsigned char)(oir & 0xff);
+    }
     memcpy(pl + 16, tokp, 512);
 
     if (sglp) {
@@ -1781,26 +1863,48 @@ do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
             if (vb_a)
                 pr2serr("  lba=0x%" PRIx64 ", num=%" PRIu32 ", k=%d\n", lba,
                         num, k);
-            sg_put_unaligned_be64(lba, pl + n);
-            n += 8;
-            sg_put_unaligned_be32(num, pl + n);
-            n += 4 + 4;
+            pl[++n] = (unsigned char)((lba >> 56) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 48) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 40) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 32) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 24) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 16) & 0xff);
+            pl[++n] = (unsigned char)((lba >> 8) & 0xff);
+            pl[++n] = (unsigned char)(lba & 0xff);
+            pl[++n] = (unsigned char)((num >> 24) & 0xff);
+            pl[++n] = (unsigned char)((num >> 16) & 0xff);
+            pl[++n] = (unsigned char)((num >> 8) & 0xff);
+            pl[++n] = (unsigned char)(num & 0xff);
+            n += 4;
         }
         sz_bdrd = 16 * k;
-        sg_put_unaligned_be16(sz_bdrd, pl + 534);
+        pl[534] = (unsigned char)((sz_bdrd >> 8) & 0xff);
+        pl[535] = (unsigned char)(sz_bdrd & 0xff);
     } else {
         sz_bdrd = 16;   /* single element */
-        sg_put_unaligned_be16(sz_bdrd, pl + 534);
+        pl[534] = (unsigned char)((sz_bdrd >> 8) & 0xff);
+        pl[535] = (unsigned char)(sz_bdrd & 0xff);
         lba = op->seek + blk_off;
         if (vb_a)
             pr2serr("  lba=0x%" PRIx64 ", num_blks=%" PRIu32 "\n", lba,
                     num_blks);
-        sg_put_unaligned_be64(lba, pl + 536);
-        sg_put_unaligned_be32(num_blks, pl + 544);
+        pl[536] = (unsigned char)((lba >> 56) & 0xff);
+        pl[537] = (unsigned char)((lba >> 48) & 0xff);
+        pl[538] = (unsigned char)((lba >> 40) & 0xff);
+        pl[539] = (unsigned char)((lba >> 32) & 0xff);
+        pl[540] = (unsigned char)((lba >> 24) & 0xff);
+        pl[541] = (unsigned char)((lba >> 16) & 0xff);
+        pl[542] = (unsigned char)((lba >> 8) & 0xff);
+        pl[543] = (unsigned char)(lba & 0xff);
+        pl[544] = (unsigned char)((num_blks >> 24) & 0xff);
+        pl[545] = (unsigned char)((num_blks >> 16) & 0xff);
+        pl[546] = (unsigned char)((num_blks >> 8) & 0xff);
+        pl[547] = (unsigned char)(num_blks & 0xff);
     }
     len = 536 +  sz_bdrd;
     n = len - 2;
-    sg_put_unaligned_be16(n, pl + 0);
+    pl[0] = (unsigned char)((n >> 8) & 0xff);
+    pl[1] = (unsigned char)(n & 0xff);
     fd = op->odip->fd;
 
     tmout = (op->timeout_xcopy < 1) ? DEF_3PC_OUT_TIMEOUT : op->timeout_xcopy;
@@ -1990,8 +2094,12 @@ odx_full_zero_copy(struct opts_t * op)
 
     /* Build fixed format ROD Token Block Zero; specified by SBC-3 */
     memset(local_rod_token, 0, sizeof(local_rod_token));
-    sg_put_unaligned_be32(RODT_BLK_ZERO, local_rod_token + 0);
-    sg_put_unaligned_be16(ODX_ROD_TOK_LEN_FLD, local_rod_token + 6);
+    local_rod_token[0] = (unsigned char)((RODT_BLK_ZERO >> 24) & 0xff);
+    local_rod_token[1] = (unsigned char)((RODT_BLK_ZERO >> 16) & 0xff);
+    local_rod_token[2] = (unsigned char)((RODT_BLK_ZERO >> 8) & 0xff);
+    local_rod_token[3] = (unsigned char)(RODT_BLK_ZERO & 0xff);
+    local_rod_token[6] = (unsigned char)((ODX_ROD_TOK_LEN_FLD >> 8) & 0xff);
+    local_rod_token[7] = (unsigned char)(ODX_ROD_TOK_LEN_FLD & 0xff);
 
     if (op->verbose > 1)
         pr2serr("%s: about to zero %" PRIi64 " blocks\n", __func__,
@@ -2204,7 +2312,11 @@ odx_write_from_rods(struct opts_t * op)
             }
             off = 56;
         }
-        num = sg_get_unaligned_be64(rt + off);
+        for (n = 0, num = 0; n < 8; ++n) {
+            if (n > 0)
+                num <<= 8;
+            num += rt[off + n];
+        }
         o_num = num / (unsigned int)op->obs;
         if (o_num > 0xffffffffffLL) {
             pr2serr("%s: ROD size seems too large (%" PRIu64 " blocks "

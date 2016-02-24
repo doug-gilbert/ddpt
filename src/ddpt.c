@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2016 Douglas Gilbert.
+ * Copyright (c) 2008-2014 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,7 +46,7 @@
 
 /* Need _GNU_SOURCE for O_DIRECT */
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
+#define _GNU_SOURCE
 #endif
 
 #include <unistd.h>
@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.96 20160209 [svn: r318]";
+static const char * ddpt_version_str = "0.95 20141226 [svn: r307]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -111,7 +111,6 @@ static const char * ddpt_version_str = "0.96 20160209 [svn: r318]";
 
 #include "ddpt.h"
 #include "sg_lib.h"
-#include "sg_pr2serr.h"
 
 #ifndef EREMOTEIO
 #define EREMOTEIO EIO
