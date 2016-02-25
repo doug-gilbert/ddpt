@@ -166,7 +166,7 @@ state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
            struct dev_info_t * o2dip)
 {
     memset(op, 0, sizeof(struct opts_t));
-    op->dd_count = -1;
+    op->dd_count = DDPT_COUNT_INDEFINITE;
     op->highest_unrecovered = -1;
     op->do_time = 1;         /* default was 0 in sg_dd */
     op->id_usage = -1;

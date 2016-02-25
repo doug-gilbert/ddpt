@@ -116,6 +116,7 @@ extern "C" {
 #define DDPT_MAX_JF_DEPTH 4
 #define DDPT_MAX_JF_LINES 1000
 #define DDPT_MAX_JF_ARGS_PER_LINE 16
+#define DDPT_COUNT_INDEFINITE (-1)
 
 #define VPD_DEVICE_ID 0x83
 #define VPD_3PARTY_COPY 0x8f
