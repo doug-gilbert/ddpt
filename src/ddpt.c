@@ -68,7 +68,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.96 20160224 [svn: r323]";
+static const char * ddpt_version_str = "0.96 20160225 [svn: r324]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -357,7 +357,7 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
 #endif
     const char * ifn = op->idip->fn;
 
-    *in_num_blksp = -1;
+    *in_num_blksp = DDPT_COUNT_INDEFINITE;
     in_type = op->idip->d_type;
     if (FT_PT & in_type) {
         if (op->iflagp->norcap) {
@@ -386,7 +386,7 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
                 pr2serr("read capacity failed on %s - not ready\n", ifn);
             else
                 pr2serr("Unable to read capacity on %s\n", ifn);
-            *in_num_blksp = -1;
+            *in_num_blksp = DDPT_COUNT_INDEFINITE;
             return res;
         } else {
             if (op->verbose) {
@@ -424,19 +424,19 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
         if (0 != get_blkdev_capacity(op, DDPT_ARG_IN, in_num_blksp,
                                      &in_blk_sz)) {
             pr2serr("Unable to read block capacity on %s\n", ifn);
-            *in_num_blksp = -1;
+            *in_num_blksp = DDPT_COUNT_INDEFINITE;
         }
         if (op->verbose)
             print_blk_sizes(ifn, "blk", *in_num_blksp, in_blk_sz, 1);
         if ((*in_num_blksp > 0) && (op->ibs != in_blk_sz)) {
             pr2serr(">> warning: %s block size confusion: bs=%d, "
                     "device claims=%d\n", ifn, op->ibs, in_blk_sz);
-            *in_num_blksp = -1;
+            *in_num_blksp = DDPT_COUNT_INDEFINITE;
         }
     } else if (FT_REG & in_type) {
         if (fstat(op->idip->fd, &st) < 0) {
             perror("fstat(idip->fd) error");
-            *in_num_blksp = -1;
+            *in_num_blksp = DDPT_COUNT_INDEFINITE;
         } else {
             *in_num_blksp = st.st_size / op->ibs;
             res = st.st_size % op->ibs;
@@ -466,7 +466,7 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
 #endif
     const char * ofn = op->odip->fn;
 
-    *out_num_blksp = -1;
+    *out_num_blksp = DDPT_COUNT_INDEFINITE;
     out_type = op->odip->d_type;
     if (FT_PT & out_type) {
         if (op->oflagp->norcap) {
@@ -493,7 +493,7 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
                 pr2serr("read capacity not supported on %s\n", ofn);
             else
                 pr2serr("Unable to read capacity on %s\n", ofn);
-            *out_num_blksp = -1;
+            *out_num_blksp = DDPT_COUNT_INDEFINITE;
             return res;
         } else {
             if (op->verbose) {
@@ -533,20 +533,20 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
         if (0 != get_blkdev_capacity(op, DDPT_ARG_OUT, out_num_blksp,
                                      &out_blk_sz)) {
             pr2serr("Unable to read block capacity on %s\n", ofn);
-            *out_num_blksp = -1;
+            *out_num_blksp = DDPT_COUNT_INDEFINITE;
         } else {
             if (op->verbose)
                 print_blk_sizes(ofn, "blk", *out_num_blksp, out_blk_sz, 1);
             if ((*out_num_blksp > 0) && (op->obs != out_blk_sz)) {
                 pr2serr(">> warning: %s block size confusion: obs=%d, "
                         "device claims=%d\n", ofn, op->obs, out_blk_sz);
-                *out_num_blksp = -1;
+                *out_num_blksp = DDPT_COUNT_INDEFINITE;
             }
         }
     } else if (FT_REG & out_type) {
         if (fstat(op->odip->fd, &st) < 0) {
             perror("fstat(odip->fd) error");
-            *out_num_blksp = -1;
+            *out_num_blksp = DDPT_COUNT_INDEFINITE;
         } else {
             *out_num_blksp = st.st_size / op->obs;
             res = st.st_size % op->obs;
@@ -575,7 +575,7 @@ calc_count(struct opts_t * op, int64_t * in_num_blksp,
 
     res = calc_count_in(op, in_num_blksp);
     if (res) {
-        *out_num_blksp = -1;
+        *out_num_blksp = DDPT_COUNT_INDEFINITE;
         return res;
     }
     return calc_count_out(op, out_num_blksp);
@@ -1670,8 +1670,8 @@ cp_construct_pt_zero_buff(struct opts_t * op, int obpt)
 static int
 count_calculate(struct opts_t * op)
 {
-    int64_t in_num_blks = -1;
-    int64_t out_num_blks = -1;
+    int64_t in_num_blks = DDPT_COUNT_INDEFINITE;
+    int64_t out_num_blks = DDPT_COUNT_INDEFINITE;
     int64_t ibytes, obytes, ibk;
     int valid_resume = 0;
     int res;
@@ -1681,8 +1681,8 @@ count_calculate(struct opts_t * op)
     if ((0 == op->oflagp->resume) && (op->dd_count > 0))
         return 0;
     if (op->verbose > 1)
-        pr2serr("calc_count: in_num_blks=%" PRId64 ", out_num_blks"
-                "=%" PRId64 "\n", in_num_blks, out_num_blks);
+        pr2serr("%s: in_num_blks=%" PRId64 ", out_num_blks=%" PRId64 "\n",
+                __func__, in_num_blks, out_num_blks);
     if (op->skip && (FT_REG == op->idip->d_type) &&
         (op->skip > in_num_blks)) {
         pr2serr("cannot skip to specified offset on %s\n", op->idip->fn);
@@ -1708,6 +1708,8 @@ count_calculate(struct opts_t * op)
 
         if ((out_num_blks < 0) && (in_num_blks > 0))
             op->dd_count = in_num_blks;
+        else if ((op->reading_fifo) && (FT_REG == op->odip->d_type))
+            ;
         else if ((op->reading_fifo) && (out_num_blks < 0))
             ;
         else if ((out_num_blks < 0) && (in_num_blks <= 0))
@@ -1746,6 +1748,8 @@ count_calculate(struct opts_t * op)
                     op->dd_count);
         }
     }
+    if (op->verbose > 1)
+        pr2serr("%s: dd_count=%" PRId64 "\n", __func__, op->dd_count);
     return 0;
 }
 

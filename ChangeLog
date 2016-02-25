@@ -2,11 +2,12 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.96 [20160220] [svn: r323]
+Changelog for ddpt-0.96 [20160225] [svn: r324]
   - add support for locally assigned UUIDs in VPD page
     0x83 (spc5r08)
   - improve device designator descriptor handling
   - resubmit IOs if EAGAIN, report count if > 0
+  - fix reading fifo (stdin) and writing to regular file
   - rework pr2serr() handling
   - point svn:externals to rev 663 of sg3_utils
   - upgrade automake to version 1.15 (U15.10)
