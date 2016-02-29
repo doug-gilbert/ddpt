@@ -322,8 +322,8 @@ struct dev_info_t {
     int pdt;
     int prot_type;      /* from RCAP(16) or 0 */
     int p_i_exp;        /* protection intervals exponent */
-    unsigned long xc_min_bytes;
-    unsigned long xc_max_bytes;
+    uint32_t xc_min_bytes;
+    uint32_t xc_max_bytes;
     char fn[INOUTF_SZ];
     struct block_rodtok_vpd * odxp;
     struct sg_pt_base * ptvp;
