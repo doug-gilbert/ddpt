@@ -67,6 +67,10 @@
 #include "sg_pr2serr.h"
 
 
+#ifndef UINT32_MAX
+#define UINT32_MAX ((uint32_t)-1)
+#endif
+
 #define DEF_3PC_OUT_TIMEOUT (10 * 60)   /* is 10 minutes enough? */
 #define DEF_3PC_IN_TIMEOUT 60           /* these should be fast */
 
@@ -259,8 +263,8 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
     int res, fd, ftype, pdt, snlid, verb;
     unsigned char rcBuff[256];
     unsigned int rcBuffLen = 256, len, n, td_list = 0;
-    unsigned long num, max_target_num, max_segment_num, max_segment_len;
-    unsigned long max_desc_len, max_inline_data, held_data_limit;
+    uint32_t num, max_target_num, max_segment_num, max_segment_len;
+    uint32_t max_desc_len, max_inline_data, held_data_limit;
     int valid = 0;
     struct dev_info_t * dip;
 
@@ -302,18 +306,21 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
     max_segment_num = sg_get_unaligned_be16(rcBuff + 10);
     max_desc_len = sg_get_unaligned_be32(rcBuff + 12);
     max_segment_len = sg_get_unaligned_be32(rcBuff + 16);
-    dip->xc_max_bytes = max_segment_len ? max_segment_len : ULONG_MAX;
+    dip->xc_max_bytes = max_segment_len ? max_segment_len : UINT32_MAX;
     max_inline_data = sg_get_unaligned_be32(rcBuff + 20);
     if (op->verbose) {
         pr2serr(" >> %s, %sput [%s]:\n", rec_copy_op_params_str,
                 (is_dest ? "out" : "in"), dip->fn);
         pr2serr("    Support No List IDentifier (SNLID): %d\n", snlid);
-        pr2serr("    Maximum target descriptor count: %lu\n", max_target_num);
-        pr2serr("    Maximum segment descriptor count: %lu\n",
+        pr2serr("    Maximum target descriptor count: %" PRIu32 "\n",
+                max_target_num);
+        pr2serr("    Maximum segment descriptor count: %" PRIu32 "\n",
                 max_segment_num);
-        pr2serr("    Maximum descriptor list length: %lu\n", max_desc_len);
-        pr2serr("    Maximum segment length: %lu\n", max_segment_len);
-        pr2serr("    Maximum inline data length: %lu\n", max_inline_data);
+        pr2serr("    Maximum descriptor list length: %" PRIu32 "\n",
+                max_desc_len);
+        pr2serr("    Maximum segment length: %" PRIu32 "\n", max_segment_len);
+        pr2serr("    Maximum inline data length: %" PRIu32 "\n",
+                max_inline_data);
     }
     held_data_limit = sg_get_unaligned_be32(rcBuff + 24);
     if (op->id_usage < 0) {
@@ -323,10 +330,11 @@ scsi_operating_parameter(struct opts_t * op, int is_dest)
             op->id_usage = 0;
     }
     if (op->verbose) {
-        pr2serr("    Held data limit: %lu (list_id_usage: %d)\n",
+        pr2serr("    Held data limit: %" PRIu32 " (list_id_usage: %d)\n",
                 held_data_limit, op->id_usage);
         num = sg_get_unaligned_be32(rcBuff + 28);
-        pr2serr("    Maximum stream device transfer size: %lu\n", num);
+        pr2serr("    Maximum stream device transfer size: %" PRIu32 "\n",
+                num);
         pr2serr("    Maximum concurrent copies: %u\n", rcBuff[36]);
         pr2serr("    Data segment granularity: %u bytes\n", 1 << rcBuff[37]);
         pr2serr("    Inline data granularity: %u bytes\n", 1 << rcBuff[38]);
@@ -755,36 +763,35 @@ do_xcopy_lid1(struct opts_t * op)
 
     bs_same = (op->ibs == op->obs);
     max_bpt = bs_same ? MAX_XC_BPT : MAX_XC_BPT_POW2;
-    /* Beware, xc_max_bytes may be ULONG_MAX hence unsigned long division */
     if (op->bpt_given) {
         ibpt = op->bpt_i;
         ibpt = (ibpt > max_bpt) ? max_bpt : ibpt;
         obpt = bs_same ? ibpt : ((op->ibs * op->bpt_i) / op->obs);
         if (ifp->dc || ofp->dc) {
-            if ((unsigned long)obpt * op->obs > odip->xc_max_bytes) {
-                pr2serr("bpt too large (max %ld blocks)\n",
-                        odip->xc_max_bytes / op->obs);
+            if ((uint32_t)(obpt * op->obs) > odip->xc_max_bytes) {
+                pr2serr("bpt too large (max %" PRIu32 " blocks)\n",
+                        odip->xc_max_bytes / (uint32_t)op->obs);
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else {
-            if ((unsigned long)ibpt * op->ibs > idip->xc_max_bytes) {
-                pr2serr("bpt too large (max %ld blocks)\n",
-                        idip->xc_max_bytes / op->ibs);
+            if ((uint32_t)(ibpt * op->ibs) > idip->xc_max_bytes) {
+                pr2serr("bpt too large (max %" PRIu32 " blocks)\n",
+                        idip->xc_max_bytes / (uint32_t)op->ibs);
                 return SG_LIB_SYNTAX_ERROR;
             }
         }
     } else {
-        unsigned long r;
+        uint32_t r;
 
         if (ifp->dc || ofp->dc) {
-            r = odip->xc_max_bytes / (unsigned long)op->obs;
+            r = odip->xc_max_bytes / (uint32_t)op->obs;
             obpt = (r > INT_MAX) ? INT_MAX : (int)r;
             ibpt = bs_same ? obpt : ((op->obs * obpt) / op->ibs);
             ibpt = (ibpt > max_bpt) ? max_bpt : ibpt;
             obpt = bs_same ? ibpt : ((op->ibs * ibpt) / op->obs);
         } else {
-            r = idip->xc_max_bytes / (unsigned long)op->ibs;
-            ibpt = (r > (unsigned long)max_bpt) ? max_bpt : (int)r;
+            r = idip->xc_max_bytes / (uint32_t)op->ibs;
+            ibpt = (r > (uint32_t)max_bpt) ? max_bpt : (int)r;
             obpt = bs_same ? ibpt : ((op->ibs * ibpt) / op->obs);
         }
     }
