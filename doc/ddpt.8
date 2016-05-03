@@ -1,4 +1,4 @@
-.TH DDPT "8" "April 2016" "ddpt\-0.96" DDPT
+.TH DDPT "8" "May 2016" "ddpt\-0.96" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -478,6 +478,9 @@ the default action of this utility is not to truncate \fIOFILE\fR.
 null
 has no affect, just a placeholder.
 .TP
+prefer_rcs
+equivalent to "oflag=prefer_rcs".
+.TP
 resume
 See "resume" in the FLAGS sections for more information.
 .TP
@@ -725,6 +728,12 @@ together with the cat flag. See the XCOPY section below.
 prealloc [o] [reg]
 use the fallocate() call prior to starting a copy to set \fIOFILE\fR to its
 expected size.
+.TP
+prefer_rcs [o] [odx]
+prefer Receive Copy Status (RCS) command to the Receive Rod Token
+Information (RRTI) command which is the default. This only is active when
+polling after a WUT command (since polling after a PT command needs
+to fetch the Rod Token so it needs the RRTI command).
 .TP
 pt [io] [blk,pt]
 causes a device to be accessed in "pt" mode. In "pt" mode SCSI READ and

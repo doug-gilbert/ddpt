@@ -46,6 +46,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <ctype.h>
 #include <getopt.h>
@@ -66,7 +67,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.96 20160430 [svn: r328]";
+const char * ddptctl_version_str = "0.96 20160503 [svn: r329]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -134,6 +135,8 @@ static struct option long_options[] = {
         {"list_id", required_argument, 0, 'l'},
         {"oir", required_argument, 0, 'O'},
         {"poll", no_argument, 0, 'p'},
+        {"prefer_rcs", no_argument, 0, 'q'},
+        {"prefer-rcs", no_argument, 0, 'q'},
         {"pt", required_argument, 0, 'P'},
         {"readonly", no_argument, 0, 'y'},
         {"receive", no_argument, 0, 'R'},
@@ -178,17 +181,18 @@ usage()
             "RTF\n"
             "    --list_id=LID|-l LID    LID is list identifier used with "
             "PT, WUT,\n"
-            "                            RRTI or COPY OPERATION ABORT (def: "
-            "257)\n"
+            "                            RRTI, RCS or COPY OPERATION ABORT "
+            "(def: 257)\n"
             "    --oir=OIR|-O OIR      Offset In ROD (def: 0), used by WUT\n"
             "    --poll|-p             call RRTI periodically until "
             "completed\n"
+            "    --prefer-rcs|-q       prefer RCS over RRTI (def: RRTI)\n"
             "    --pt=GL|-P GL         call PT with gather list GL. GL's "
             "format is\n"
             "                          LBA1,NUM1[,LBA2,NUM2...]\n"
             "    --readonly|-y         open DEVICE read-only (def: "
             "read-write)\n"
-            "    --receive|-R          call RRTI once\n"
+            "    --receive|-R          call RRTI (or RCS) once\n"
             "    --rtf=RTF|-r RTF      ROD Token file for analysis (--info); "
             "output by\n"
             "                          -pt=, --poll or --receive; input to "
@@ -209,10 +213,11 @@ usage()
             "                          as GL\n\n"
             "ddptctl is a ddpt helper utility, mainly for ODX, a subset of "
             "xcopy(LID4).\nPT refers to the POPULATE TOKEN command, WUT to "
-            "the WRITE USING TOKEN\ncommand and RRTI to the RECEIVE ROD "
-            "TOKEN INFORMATION command. If\nthe ODX_RTF_LEN environment "
-            "variable is present, the ROD's size is\nappended to the ROD "
-            "Token placed in the RTF file.\n"
+            "the WRITE USING TOKEN\ncommand, RRTI to the RECEIVE ROD TOKEN "
+            "INFORMATION command and RCS to\nthe RECEIVE COPY STATUS "
+            "command. If the ODX_RTF_LEN environment\nvariable is present, "
+            "the ROD's size is appended to the ROD Token placed\nin the RTF "
+            "file.\n"
             );
 }
 
@@ -438,7 +443,7 @@ report_all_toks(struct opts_t * op, struct dev_info_t * dip, int do_hex)
     int a_err = 0;
     unsigned int len, num_mtoks;
     unsigned char rsp[8 + (MAX_NUM_MAN_TOKS * 96)];
-    unsigned char * ucp;
+    unsigned char * bp;
 
     fd = dip->fd;
     res = pt_3party_copy_in(fd, SA_ALL_ROD_TOKS, op->list_id,
@@ -466,9 +471,9 @@ report_all_toks(struct opts_t * op, struct dev_info_t * dip, int do_hex)
     if (do_hex) {
         if (do_hex > 1) {
             dStrHex((const char *)rsp, ((len < 8) ? len : 8), 1);
-            for (k = 0, ucp = rsp + 8; k < (int)num_mtoks; ++k, ucp += 96) {
+            for (k = 0, bp = rsp + 8; k < (int)num_mtoks; ++k, bp += 96) {
                 printf("\n");
-                dStrHex((const char *)ucp, 96, 1);
+                dStrHex((const char *)bp, 96, 1);
             }
         } else  {
             if (len > sizeof(rsp))
@@ -481,10 +486,10 @@ report_all_toks(struct opts_t * op, struct dev_info_t * dip, int do_hex)
            (len - 8) / 96);
     if (num_mtoks < ((len - 8) / 96))
         printf("  Number displayed: %u\n", num_mtoks);
-    for (k = 0, ucp = rsp + 8; k < (int)num_mtoks; ++k, ucp += 96) {
+    for (k = 0, bp = rsp + 8; k < (int)num_mtoks; ++k, bp += 96) {
         printf("\n ROD Token header %d\n", k + 1);
 
-        res = odx_print_rod_tok(op, ucp, 96);
+        res = odx_print_rod_tok(op, bp, 96);
         if (res && (0 == a_err))
             a_err = res;
     }
@@ -588,6 +593,7 @@ main(int argc, char * argv[])
     int do_hex = 0;
     int do_info = 0;
     int do_poll = 0;
+    bool prefer_rcs = false;
     int req_pt = 0;
     int do_receive = 0;
     int do_size = 0;
@@ -601,6 +607,7 @@ main(int argc, char * argv[])
     struct opts_t * op;
     char * np;
     const char * sglp = NULL;
+    const char * rrti_rcs_str = "";
     char b[80];
     char bb[80];
     unsigned char rt[512];
@@ -613,7 +620,7 @@ main(int argc, char * argv[])
     while (1) {
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "AaBDhHiIl:O:pP:r:Rst:T:vVw:y",
+        c = getopt_long(argc, argv, "AaBDhHiIl:O:pP:qr:Rst:T:vVw:y",
                         long_options, &option_index);
         if (c == -1)
             break;
@@ -675,6 +682,9 @@ main(int argc, char * argv[])
             }
             ++req_pt;
             sglp = optarg;
+            break;
+        case 'q':
+            prefer_rcs = true;
             break;
         case 'r':
             if (op->rtf[0]) {
@@ -821,6 +831,7 @@ main(int argc, char * argv[])
         if (! (req_all_toks || op->list_id_given))
             op->list_id = DEF_LID4_LID;
     }
+    rrti_rcs_str = prefer_rcs ? "RCS" : "RRTI";
     if (op->rtf[0]) {
         if (do_info) {
             if (op->idip->fn[0])
@@ -895,7 +906,10 @@ main(int argc, char * argv[])
             goto clean_up;
     } else if (do_poll) {
         do {
-            ret = do_rrti(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
+            if (prefer_rcs)
+                ret = do_rcs(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
+            else
+                ret = do_rrti(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
             if (ret)
                 goto clean_up;
             cont = ((rrti_rsp.cstat >= 0x10) && (rrti_rsp.cstat <= 0x12));
@@ -916,7 +930,7 @@ main(int argc, char * argv[])
         } while (cont);
         sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, rrti_rsp.for_sa, 0,
                               (int)sizeof(b), b);
-        printf("RRTI for %s: %s\n", b,
+        printf("%s for %s: %s\n", rrti_rcs_str, b,
                cpy_op_status_str(rrti_rsp.cstat, bb, sizeof(bb)));
         printf("  transfer count of %" PRIu64 " [0x%" PRIx64 "]\n",
                rrti_rsp.tc, rrti_rsp.tc);
@@ -946,12 +960,15 @@ main(int argc, char * argv[])
         }
         goto clean_up;
     } else if (do_receive) {
-        ret = do_rrti(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
+        if (prefer_rcs)
+            ret = do_rcs(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
+        else
+            ret = do_rrti(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
         if (ret)
             goto clean_up;
         sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, rrti_rsp.for_sa, 0,
                               (int)sizeof(b), b);
-        printf("RRTI for %s: %s\n", b,
+        printf("%s for %s: %s\n", rrti_rcs_str, b,
                cpy_op_status_str(rrti_rsp.cstat, bb, sizeof(bb)));
         printf("  transfer count of %" PRIu64 " [0x%" PRIx64 "]\n",
                rrti_rsp.tc, rrti_rsp.tc);

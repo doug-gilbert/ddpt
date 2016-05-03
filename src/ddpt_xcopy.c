@@ -567,7 +567,7 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
                  int is_dest)
 {
     int fd, res, u, i_len, assoc, desig, verb;
-    unsigned char rcBuff[256], *ucp, *best = NULL;
+    unsigned char rcBuff[256], *bp, *best = NULL;
     unsigned int len = 254;
     unsigned int block_size;
     int off = -1;
@@ -611,16 +611,16 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
 
     while ((u = sg_vpd_dev_id_iter(rcBuff + 4, len - 4, &off, 0, -1, -1)) ==
            0) {
-        ucp = rcBuff + 4 + off;
-        i_len = ucp[3];
+        bp = rcBuff + 4 + off;
+        i_len = bp[3];
         if (((unsigned int)off + i_len + 4) > len) {
             pr2serr("    VPD page error: designator length %d longer than\n"
                     "     remaining response length=%d\n", i_len,
                     (len - off));
             return SG_LIB_CAT_MALFORMED;
         }
-        assoc = ((ucp[1] >> 4) & 0x3);
-        desig = (ucp[1] & 0xf);
+        assoc = ((bp[1] >> 4) & 0x3);
+        desig = (bp[1] & 0xf);
         if (op->verbose > 2)
             pr2serr("    Desc %d: assoc %u desig %u len %d\n", off, assoc,
                     desig, i_len);
@@ -628,25 +628,25 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
         if (i_len > 16)
             continue;
         if (desig == 3) {
-            best = ucp;
+            best = bp;
             best_len = i_len;
             break;
         }
         if (desig == 2) {
             if (!best || f_desig < 2) {
-                best = ucp;
+                best = bp;
                 best_len = i_len;
                 f_desig = 2;
             }
         } else if (desig == 1) {
             if (!best || f_desig == 0) {
-                best = ucp;
+                best = bp;
                 best_len = i_len;
                 f_desig = desig;
             }
         } else if (desig == 0) {
             if (!best) {
-                best = ucp;
+                best = bp;
                 best_len = i_len;
                 f_desig = desig;
             }
@@ -948,44 +948,44 @@ cpy_op_status_str(int cos, char * b, int blen)
 static void
 decode_rod_descriptor(const unsigned char * buff, int len, int to_stderr)
 {
-    const unsigned char * ucp = buff;
+    const unsigned char * bp = buff;
     int k, bump;
     int (*print_p)(const char *, ...);
 
     print_p = to_stderr ? pr2serr : printf;
-    for (k = 0; k < len; k += bump, ucp += bump) {
-        bump = sg_get_unaligned_be16(ucp + 2) + 4;
-        switch (ucp[0]) {
+    for (k = 0; k < len; k += bump, bp += bump) {
+        bump = sg_get_unaligned_be16(bp + 2) + 4;
+        switch (bp[0]) {
             case 0:
                 /* Block ROD device type specific descriptor */
                 print_p("  Optimal block ROD length granularity: %d\n",
-                        sg_get_unaligned_be16(ucp + 6));
+                        sg_get_unaligned_be16(bp + 6));
                 print_p("  Maximum Bytes in block ROD: %" PRIu64 "\n",
-                        sg_get_unaligned_be64(ucp + 8));
+                        sg_get_unaligned_be64(bp + 8));
                 print_p("  Optimal Bytes in block ROD transfer: %" PRIu64 "\n",
-                        sg_get_unaligned_be64(ucp + 16));
+                        sg_get_unaligned_be64(bp + 16));
                 print_p("  Optimal Bytes to token per segment: %" PRIu64 "\n",
-                        sg_get_unaligned_be64(ucp + 24));
+                        sg_get_unaligned_be64(bp + 24));
                 print_p("  Optimal Bytes from token per segment:"
-                        " %" PRIu64 "\n", sg_get_unaligned_be64(ucp + 32));
+                        " %" PRIu64 "\n", sg_get_unaligned_be64(bp + 32));
                 break;
             case 1:
                 /* Stream ROD device type specific descriptor */
                 print_p("  Maximum Bytes in stream ROD: %" PRIu64 "\n",
-                        sg_get_unaligned_be64(ucp + 8));
+                        sg_get_unaligned_be64(bp + 8));
                 print_p("  Optimal Bytes in stream ROD transfer:"
-                        " %" PRIu64 "\n", sg_get_unaligned_be64(ucp + 16));
+                        " %" PRIu64 "\n", sg_get_unaligned_be64(bp + 16));
                 break;
             case 3:
                 /* Copy manager ROD device type specific descriptor */
                 print_p("  Maximum Bytes in processor ROD: %" PRIu64 "\n",
-                        sg_get_unaligned_be64(ucp + 8));
+                        sg_get_unaligned_be64(bp + 8));
                 print_p("  Optimal Bytes in processor ROD transfer:"
-                        " %" PRIu64 "\n", sg_get_unaligned_be64(ucp + 16));
+                        " %" PRIu64 "\n", sg_get_unaligned_be64(bp + 16));
                 break;
             default:
                 print_p("  Unhandled descriptor (format %d, device type %d)\n",
-                        ucp[0] >> 5, ucp[0] & 0x1F);
+                        bp[0] >> 5, bp[0] & 0x1F);
                 break;
         }
     }
@@ -1084,9 +1084,9 @@ static void
 decode_3party_copy_vpd(unsigned char * buff, int len, int to_stderr,
                        int verbose)
 {
-    int k, j, m, bump, desc_type, desc_len, sa_len;
+    int k, j, m, bump, desc_type, desc_len, sa_len, pdt, csll;
     unsigned int u;
-    const unsigned char * ucp;
+    const unsigned char * bp;
     const char * cp;
     uint64_t ull;
     char b[80];
@@ -1097,11 +1097,12 @@ decode_3party_copy_vpd(unsigned char * buff, int len, int to_stderr,
         print_p("Third-party Copy VPD page length too short=%d\n", len);
         return;
     }
+    pdt = buff[0] & 0x1f;
     len -= 4;
-    ucp = buff + 4;
-    for (k = 0; k < len; k += bump, ucp += bump) {
-        desc_type = sg_get_unaligned_be16(ucp);
-        desc_len = sg_get_unaligned_be16(ucp + 2);
+    bp = buff + 4;
+    for (k = 0; k < len; k += bump, bp += bump) {
+        desc_type = sg_get_unaligned_be16(bp);
+        desc_len = sg_get_unaligned_be16(bp + 2);
         if (verbose)
             print_p("Descriptor type=%d, len=%d\n", desc_type, desc_len);
         bump = 4 + desc_len;
@@ -1116,116 +1117,129 @@ decode_3party_copy_vpd(unsigned char * buff, int len, int to_stderr,
         case 0x0000:    /* Required if POPULATE TOKEN (or friend) used */
             print_p(" Block Device ROD Token Limits:\n");
             print_p("  Maximum Range Descriptors: %d\n",
-                    sg_get_unaligned_be16(ucp + 10));
-            u = sg_get_unaligned_be32(ucp + 12);
+                    sg_get_unaligned_be16(bp + 10));
+            u = sg_get_unaligned_be32(bp + 12);
             print_p("  Maximum Inactivity Timeout: %u seconds\n", u);
-            u = sg_get_unaligned_be32(ucp + 16);
+            u = sg_get_unaligned_be32(bp + 16);
             print_p("  Default Inactivity Timeout: %u seconds\n", u);
-            ull = sg_get_unaligned_be64(ucp + 20);
+            ull = sg_get_unaligned_be64(bp + 20);
             print_p("  Maximum Token Transfer Size: %" PRIu64 "\n", ull);
-            ull = sg_get_unaligned_be64(ucp + 28);
+            ull = sg_get_unaligned_be64(bp + 28);
             print_p("  Optimal Transfer Count: %" PRIu64 "\n", ull);
             break;
         case 0x0001:    /* Mandatory (SPC-4) */
             print_p(" Supported Commands:\n");
             j = 0;
-            while (j < ucp[4]) {
-                sa_len = ucp[6 + j];
-                for (m = 0; m < sa_len; ++m) {
-                    sg_get_opcode_sa_name(ucp[5 + j], ucp[7 + j + m],
-                                          0, sizeof(b), b);
+            csll = bp[4];
+            if (csll >= desc_len) {
+                pr2serr("Command supported list length (%d) >= "
+                        "descriptor length (%d), wrong so trim\n",
+                        csll, desc_len);
+                csll = desc_len - 1;
+            }
+            while (j < csll) {
+                sa_len = bp[6 + j];
+                for (m = 0; (m < sa_len) && ((j + m) < csll); ++m) {
+                    sg_get_opcode_sa_name(bp[5 + j], bp[7 + j + m],
+                                          pdt, sizeof(b), b);
                     print_p("  %s\n", b);
                 }
-                j += sa_len + 2;
+                if (0 == sa_len) {
+                    sg_get_opcode_name(bp[5 + j], pdt, sizeof(b), b);
+                    print_p("  %s\n",  b);
+                } else if (m < sa_len)
+                    pr2serr("Supported service actions list length (%d) "
+                            "is too large\n", sa_len);
+                j += m + 2;
             }
             break;
         case 0x0004:
             print_p(" Parameter Data:\n");
             print_p("  Maximum CSCD Descriptor Count: %d\n",
-                    sg_get_unaligned_be16(ucp + 8));;
+                    sg_get_unaligned_be16(bp + 8));;
             print_p("  Maximum Segment Descriptor Count: %d\n",
-                    sg_get_unaligned_be16(ucp + 10));
-            u = sg_get_unaligned_be32(ucp + 12);
+                    sg_get_unaligned_be16(bp + 10));
+            u = sg_get_unaligned_be32(bp + 12);
             print_p("  Maximum Descriptor List Length: %u\n", u);
-            u = sg_get_unaligned_be32(ucp + 16);
+            u = sg_get_unaligned_be32(bp + 16);
             print_p("  Maximum Inline Data Length: %u\n", u);
             break;
         case 0x0008:
             print_p(" Supported Descriptors:\n");
-            for (j = 0; j < ucp[4]; j++) {
-                cp = get_tpc_desc_name(ucp[5 + j]);
+            for (j = 0; j < bp[4]; j++) {
+                cp = get_tpc_desc_name(bp[5 + j]);
                 if (strlen(cp) > 0)
-                    printf("  %s [0x%x]\n", cp, ucp[5 + j]);
+                    printf("  %s [0x%x]\n", cp, bp[5 + j]);
                 else
-                    printf("  0x%x\n", ucp[5 + j]);
+                    printf("  0x%x\n", bp[5 + j]);
             }
             break;
         case 0x000C:
             print_p(" Supported CSCD IDs:\n");
-            for (j = 0; j < sg_get_unaligned_be16(ucp + 4); j += 2) {
-                u = sg_get_unaligned_be16(ucp + 6 + j);
+            for (j = 0; j < sg_get_unaligned_be16(bp + 4); j += 2) {
+                u = sg_get_unaligned_be16(bp + 6 + j);
                 print_p("  0x%04x\n", u);
             }
             break;
         case 0x0106:
             print_p(" ROD Token Features:\n");
-            print_p("  Remote Tokens: %d\n", ucp[4] & 0x0f);
-            u = sg_get_unaligned_be32(ucp + 16);
+            print_p("  Remote Tokens: %d\n", bp[4] & 0x0f);
+            u = sg_get_unaligned_be32(bp + 16);
             print_p("  Minimum Token Lifetime: %u seconds\n", u);
-            u = sg_get_unaligned_be32(ucp + 20);
+            u = sg_get_unaligned_be32(bp + 20);
             print_p("  Maximum Token Lifetime: %u seconds\n", u);
-            u = sg_get_unaligned_be32(ucp + 24);
+            u = sg_get_unaligned_be32(bp + 24);
             print_p("  Maximum Token inactivity timeout: %d\n", u);
-            decode_rod_descriptor(ucp + 48,
-                                  sg_get_unaligned_be16(ucp + 46), to_stderr);
+            decode_rod_descriptor(bp + 48,
+                                  sg_get_unaligned_be16(bp + 46), to_stderr);
             break;
         case 0x0108:
             print_p(" Supported ROD Token and ROD Types:\n");
-            for (j = 0; j < sg_get_unaligned_be16(ucp + 6); j+= 64) {
-                u = sg_get_unaligned_be32(ucp + 8 + j);
+            for (j = 0; j < sg_get_unaligned_be16(bp + 6); j+= 64) {
+                u = sg_get_unaligned_be32(bp + 8 + j);
                 cp = get_tpc_rod_name(u);
                 if (strlen(cp) > 0)
                     printf("  ROD Type: %s [0x%x]\n", cp, u);
                 else
                    printf("  ROD Type: 0x%x\n", u);
                 print_p("    Internal: %s\n",
-                        ucp[8 + j + 4] & 0x80 ? "yes" : "no");
+                        bp[8 + j + 4] & 0x80 ? "yes" : "no");
                 print_p("    Token In: %s\n",
-                        ucp[8 + j + 4] & 0x02 ? "yes" : "no");
+                        bp[8 + j + 4] & 0x02 ? "yes" : "no");
                 print_p("    Token Out: %s\n",
-                        ucp[8 + j + 4] & 0x01 ? "yes" : "no");
+                        bp[8 + j + 4] & 0x01 ? "yes" : "no");
                 print_p("    Preference: %d\n",
-                        sg_get_unaligned_be16(ucp + 8 + j + 6));
+                        sg_get_unaligned_be16(bp + 8 + j + 6));
             }
             break;
         case 0x8001:    /* Mandatory (SPC-4) */
             print_p(" General Copy Operations:\n");
-            u = sg_get_unaligned_be32(ucp + 4);
+            u = sg_get_unaligned_be32(bp + 4);
             print_p("  Total Concurrent Copies: %u\n", u);
-            u = sg_get_unaligned_be32(ucp + 8);
+            u = sg_get_unaligned_be32(bp + 8);
             print_p("  Maximum Identified Concurrent Copies: %u\n", u);
-            u = sg_get_unaligned_be32(ucp + 12);
+            u = sg_get_unaligned_be32(bp + 12);
             print_p("  Maximum Segment Length: %u\n", u);
-            ull = (1 << ucp[16]);       /* field is power of 2 */
+            ull = (1 << bp[16]);       /* field is power of 2 */
             print_p("  Data Segment Granularity: %" PRIu64 "\n", ull);
-            ull = (1 << ucp[17]);
+            ull = (1 << bp[17]);
             print_p("  Inline Data Granularity: %" PRIu64 "\n", ull);
             break;
         case 0x9101:
             print_p(" Stream Copy Operations:\n");
-            u = sg_get_unaligned_be32(ucp + 4);
+            u = sg_get_unaligned_be32(bp + 4);
             print_p("  Maximum Stream Device Transfer Size: %u\n", u);
             break;
         case 0xC001:
             print_p(" Held Data:\n");
-            u = sg_get_unaligned_be32(ucp + 4);
+            u = sg_get_unaligned_be32(bp + 4);
             print_p("  Held Data Limit: %u\n", u);
-            ull = (1 << ucp[8]);
+            ull = (1 << bp[8]);
             print_p("  Held Data Granularity: %" PRIu64 "\n", ull);
             break;
         default:
             print_p("Unexpected type=%d\n", desc_type);
-            dStrHexErr((const char *)ucp, bump, 1);
+            dStrHexErr((const char *)bp, bump, 1);
             break;
         }
     }
@@ -1284,7 +1298,7 @@ get_3pc_vpd_blkdev_lims(struct opts_t * op, struct dev_info_t * dip)
 {
     unsigned char rBuff[256];
     unsigned char * rp;
-    unsigned char * ucp;
+    unsigned char * bp;
     int res, verb, n, len, bump, desc_type, desc_len, k;
     int found = 0;
     uint32_t max_ito = 0;
@@ -1296,10 +1310,10 @@ get_3pc_vpd_blkdev_lims(struct opts_t * op, struct dev_info_t * dip)
     if (res)
         return res;
     len = sg_get_unaligned_be16(rp + 2);
-    ucp = rp + 4;
-    for (k = 0; k < len; k += bump, ucp += bump) {
-        desc_type = sg_get_unaligned_be16(ucp + 0);
-        desc_len = sg_get_unaligned_be16(ucp + 2);
+    bp = rp + 4;
+    for (k = 0; k < len; k += bump, bp += bump) {
+        desc_type = sg_get_unaligned_be16(bp + 0);
+        desc_len = sg_get_unaligned_be16(bp + 2);
         if (op->verbose > 4)
             pr2serr("Descriptor type=%d, len=%d\n", desc_type, desc_len);
         bump = 4 + desc_len;
@@ -1318,7 +1332,7 @@ get_3pc_vpd_blkdev_lims(struct opts_t * op, struct dev_info_t * dip)
             if (op->verbose > 3) {
                 pr2serr("3PARTY_COPY Copy VPD, Block Device ROD Token "
                         "Limits descriptor:\n");
-                dStrHexErr((const char *)ucp, desc_len, 1);
+                dStrHexErr((const char *)bp, desc_len, 1);
             }
             if (desc_len < 32) {
                 pr2serr("3PARTY_COPY Copy VPD, Block Device ROD Token "
@@ -1326,12 +1340,12 @@ get_3pc_vpd_blkdev_lims(struct opts_t * op, struct dev_info_t * dip)
                         desc_len);
                 break;
             }
-            dip->odxp->max_range_desc = sg_get_unaligned_be16(ucp + 10);
-            max_ito = sg_get_unaligned_be32(ucp + 12);
+            dip->odxp->max_range_desc = sg_get_unaligned_be16(bp + 10);
+            max_ito = sg_get_unaligned_be32(bp + 12);
             dip->odxp->max_inactivity_to = max_ito;
-            dip->odxp->def_inactivity_to = sg_get_unaligned_be32(ucp + 16);
-            dip->odxp->max_tok_xfer_size = sg_get_unaligned_be64(ucp + 20);
-            dip->odxp->optimal_xfer_count = sg_get_unaligned_be64(ucp + 28);
+            dip->odxp->def_inactivity_to = sg_get_unaligned_be32(bp + 16);
+            dip->odxp->max_tok_xfer_size = sg_get_unaligned_be64(bp + 20);
+            dip->odxp->optimal_xfer_count = sg_get_unaligned_be64(bp + 28);
             break;
         default:
             break;
@@ -1532,6 +1546,9 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
     return res;
 }
 
+static int rrti_num = 0;
+
+/* send Receive ROD Token Information command and process response */
 int
 do_rrti(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp, int verb)
 {
@@ -1548,6 +1565,7 @@ do_rrti(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp, int verb)
     if ((verb != op->verbose) && (err_vb > 1))
         --err_vb;
     fd = in0_out1 ? op->odip->fd : op->idip->fd;
+    ++rrti_num;
     res = pt_3party_copy_in(fd, SA_ROD_TOK_INFO, op->list_id,
                             DEF_3PC_IN_TIMEOUT, rsp, sizeof(rsp), 1, verb,
                             err_vb);
@@ -1556,12 +1574,12 @@ do_rrti(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp, int verb)
 
     len = sg_get_unaligned_be32(rsp + 0) + 4;
     if (len > sizeof(rsp)) {
-        pr2serr("RRTI: ROD Token info too long for internal buffer, output "
-                "truncated\n");
+        pr2serr("RRTI [%d]: ROD Token Info too long for internal buffer, "
+                "output truncated\n", rrti_num);
         len = sizeof(rsp);
     }
     if (verb > 1) {
-        pr2serr("\nRRTI response in hex:\n");
+        pr2serr("\nRRTI [%d] response in hex:\n", rrti_num);
         dStrHexErr((const char *)rsp, len, 1);
     }
     if (NULL == rrp)
@@ -1584,26 +1602,98 @@ do_rrti(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp, int verb)
         cp = "RRTI for unknown originating xcopy command";
         break;
     }
-    if (verb > 1)
-        pr2serr("%s\n", cp);
     rrp->cstat = 0x7f & rsp[5];
     rrp->xc_cstatus = rsp[12];
     rrp->sense_len = rsp[14];
     rrp->esu_del = sg_get_unaligned_be32(rsp + 8);
     if (verb)
-       pr2serr("%s: %s\n", cp, cpy_op_status_str(rrp->cstat, b, sizeof(b)));
+       pr2serr("%s [%d]: %s\n", cp, rrti_num,
+               cpy_op_status_str(rrp->cstat, b, sizeof(b)));
     rrp->tc = sg_get_unaligned_be64(rsp + 16);
     if (rrp->sense_len > 0) {
-        snprintf(bb, sizeof(bb), "%s: sense data", cp);
+        snprintf(bb, sizeof(bb), "%s [%d]: sense data", cp, rrti_num);
         sg_get_sense_str(bb, rsp + 32, rrp->sense_len, verb, sizeof(b), b);
         pr2serr("%s\n", b);
     }
     off = 32 + rsp[13];
-    rtdl = sg_get_unaligned_be32(rsp +off);
+    rtdl = sg_get_unaligned_be32(rsp + off);
     rrp->rt_len = (rtdl > 2) ? rtdl - 2 : 0;
     if (rtdl > 2)
         memcpy(rrp->rod_tok, rsp + off + 6,
                ((rrp->rt_len > 512) ? 512 : rrp->rt_len));
+    return 0;
+}
+
+static int rcs_num = 0;
+
+/* send Receive Copy Status command and process response */
+int
+do_rcs(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp, int verb)
+{
+    int res, fd, err_vb;
+    uint32_t len;
+    unsigned char rsp[1024];
+    char b[400];
+    char bb[80];
+    const char * cp;
+
+    /* want to suppress 'pass-through requested n bytes ...' messages with
+     * 'ddpt verbose=2 ...' */
+    err_vb = op->verbose;
+    if ((verb != op->verbose) && (err_vb > 1))
+        --err_vb;
+    fd = in0_out1 ? op->odip->fd : op->idip->fd;
+    ++rcs_num;
+    res = pt_3party_copy_in(fd, SA_COPY_STATUS_LID4, op->list_id,
+                            DEF_3PC_IN_TIMEOUT, rsp, sizeof(rsp), 1, verb,
+                            err_vb);
+    if (res)
+        return res;
+
+    len = sg_get_unaligned_be32(rsp + 0) + 4;
+    if (len > sizeof(rsp)) {
+        pr2serr("RCS [%d]: too long for internal buffer, output truncated\n",
+                rcs_num);
+        len = sizeof(rsp);
+    }
+    if (verb > 1) {
+        pr2serr("\nRCS [%d] response in hex:\n", rcs_num);
+        dStrHexErr((const char *)rsp, len, 1);
+    }
+    if (NULL == rrp)
+        return 0;
+    rrp->for_sa = 0x1f & rsp[4];
+    switch(rrp->for_sa) {
+    case SA_POP_TOK:
+        cp = "RCS for PT";
+        break;
+    case SA_WR_USING_TOK:
+        cp = "RCS for WUT";
+        break;
+    case SA_XCOPY_LID1:
+        cp = "RCS for XCOPY(LID1)";
+        break;
+    case SA_XCOPY_LID4:
+        cp = "RCS for XCOPY(LID4)";
+        break;
+    default:
+        cp = "RCS for unknown originating xcopy command";
+        break;
+    }
+    rrp->cstat = 0x7f & rsp[5];
+    rrp->xc_cstatus = rsp[12];
+    rrp->sense_len = rsp[14];
+    rrp->esu_del = sg_get_unaligned_be32(rsp + 8);
+    if (verb)
+       pr2serr("%s [%d]: %s\n", cp, rcs_num,
+               cpy_op_status_str(rrp->cstat, b, sizeof(b)));
+    rrp->tc = sg_get_unaligned_be64(rsp + 16);
+    if (rrp->sense_len > 0) {
+        snprintf(bb, sizeof(bb), "%s [%d]: sense data", cp, rcs_num);
+        sg_get_sense_str(bb, rsp + 32, rrp->sense_len, verb, sizeof(b), b);
+        pr2serr("%s\n", b);
+    }
+    rrp->rt_len = 0;
     return 0;
 }
 
@@ -1628,36 +1718,38 @@ process_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a)
         if (SA_POP_TOK != r.for_sa) {
             sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, r.for_sa, 0,
                                   sizeof(b), b);
-            pr2serr("Receive ROD Token info expected response for Populate "
-                    "Token\n  but got response for %s\n", b);
+            pr2serr("RRTI [%d] expected response for Populate Token\n  "
+                    "but got response for %s\n", rrti_num, b);
         }
         cont = ((r.cstat >= 0x10) && (r.cstat <= 0x12));
         if (cont) {
             delay = r.esu_del;
             if ((delay < 0xfffffffe) && (delay > 0)) {
                 if (vb_b > 1)
-                    pr2serr("using copy manager recommended delay of %"
-                            PRIu32 " milliseconds\n", delay);
+                    pr2serr("[%d] using copy manager recommended delay of %"
+                            PRIu32 " milliseconds\n", rrti_num, delay);
             } else {
                 delay = DEF_ODX_POLL_DELAY_MS;
                 if (vb_b > 1)
-                    pr2serr("using default for poll delay\n");
+                    pr2serr("[%d] using default for poll delay\n", rrti_num);
             }
             if (delay)
                 sleep_ms(delay);
         }
     } while (cont);
     if ((! ((0x1 == r.cstat) || (0x3 == r.cstat))) || (vb_b > 1))
-        pr2serr("RRTI for PT: %s\n", cpy_op_status_str(r.cstat, b, sizeof(b)));
+        pr2serr("RRTI [%d] after PT: %s\n", rrti_num,
+                cpy_op_status_str(r.cstat, b, sizeof(b)));
     if (vb_a)
-        pr2serr("RRTI for PT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n",
-                r.tc, r.tc);
+        pr2serr("RRTI [%d] after PT: Transfer count=%" PRIu64 " [0x%" PRIx64
+                "]\n", rrti_num, r.tc, r.tc);
     if (tcp)
         *tcp = r.tc;
     if (r.rt_len > 0) {
         len = (r.rt_len > 512) ? 512 : r.rt_len;
         if (vb_a) {
-            pr2serr("RRTI for PT: copy manager ROD Token id: %s",
+            pr2serr("RRTI [%d] after PT: copy manager ROD Token id: %s",
+                    rrti_num,
                     rt_cm_id_str(r.rod_tok, r.rt_len, b, sizeof(b)));
             if (512 == r.rt_len)
                 pr2serr("\n");
@@ -1837,20 +1929,36 @@ process_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a)
     uint32_t delay;
     struct rrti_resp_t r;
     char b[80];
+    const char * cmd_name;
+    bool prefer_rcs = op->oflagp->prefer_rcs;
+    bool changed_pref = false;
 
     if (op->verbose == vb_a)
         vb_b = op->verbose;
     else
         vb_b = (vb_a > 0) ? (vb_a - 1) : 0;
     do {
-        res = do_rrti(op, DDPT_ARG_OUT, &r, vb_b);
-        if (res)
-            return res;
+resend_cmd:
+        if (prefer_rcs) {
+            cmd_name = "RCS";
+            res = do_rcs(op, DDPT_ARG_OUT, &r, vb_b);
+        } else {
+            cmd_name = "RRTI";
+            res = do_rrti(op, DDPT_ARG_OUT, &r, vb_b);
+        }
+        if (res) {
+            if ((SG_LIB_CAT_ILLEGAL_REQ == res) && ! changed_pref) {
+                changed_pref = true;
+                prefer_rcs = !prefer_rcs;
+                goto resend_cmd;
+            } else
+                return res;
+        }
         if (SA_WR_USING_TOK != r.for_sa) {
             sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, r.for_sa, 0,
                                   sizeof(b), b);
-            pr2serr("Receive ROD Token info expected response for Write "
-                    "Using Token\n  but got response for %s\n", b);
+            pr2serr("%s expected response for Write Using Token\n  but got "
+                    "response for %s\n", cmd_name, b);
         }
         cont = ((r.cstat >= 0x10) && (r.cstat <= 0x12));
         if (cont) {
@@ -1870,13 +1978,13 @@ process_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a)
     } while (cont);
 
     if ((! ((0x1 == r.cstat) || (0x3 == r.cstat))) || (vb_b > 1))
-        pr2serr("RRTI for WUT: %s\n", cpy_op_status_str(r.cstat, b,
-                sizeof(b)));
+        pr2serr("%s for WUT: %s\n", cmd_name, cpy_op_status_str(r.cstat, b,
+                                                                sizeof(b)));
     if (tcp)
         *tcp = r.tc;
     if (vb_a)
-        pr2serr("RRTI for WUT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n",
-                r.tc, r.tc);
+        pr2serr("%s for WUT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n",
+                cmd_name, r.tc, r.tc);
     return 0;
 }
 
