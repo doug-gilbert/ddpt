@@ -251,6 +251,7 @@ tertiary_help:
             "  pre-alloc (o)  use fallocate() before copy to set OFILE to "
             "its\n"
             "                 expected size\n"
+            "  prefer_rts (odx)  prefer RCS over RRTI command (def: RRTI)\n"
             "  pt             instruct pass-through interface to be used\n"
             "  rarc (i,pt)    set RARC (rebuild assist) bit in SCSI READs\n"
             "  resume (o)     attempt to restart an interrupted copy\n"
@@ -434,6 +435,9 @@ conv_process(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
             ;         /* this is the default action of ddpt so ignore */
         else if (0 == strcmp(cp, "null"))
             ;
+        else if ((0 == strcmp(cp, "prefer_rcs")) ||
+                 (0 == strcmp(cp, "prefer-rcs")))
+            ++ofp->prefer_rcs;
         else if (0 == strcmp(cp, "resume"))
             ++ofp->resume;
         else if (0 == strcmp(cp, "rtf_len"))
@@ -534,8 +538,12 @@ flags_process(const char * arg, struct flags_t * fp)
             ++fp->odx;
         else if (0 == strcmp(cp, "pad"))
             ++fp->pad;
-        else if (0 == strcmp(cp, "pre-alloc") || 0 == strcmp(cp, "prealloc"))
+        else if ((0 == strcmp(cp, "pre-alloc")) ||
+                 (0 == strcmp(cp, "prealloc")))
             ++fp->prealloc;
+        else if ((0 == strcmp(cp, "prefer_rcs")) ||
+                 (0 == strcmp(cp, "prefer-rcs")))
+            ++fp->prefer_rcs;
         else if (0 == strcmp(cp, "pt"))
             ++fp->pt;
         else if (0 == strcmp(cp, "rarc"))

@@ -46,6 +46,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <signal.h>
 #include <sys/time.h>
 
@@ -232,16 +233,17 @@ extern "C" {
  * actions */
 #define SA_XCOPY_LID1           0x0     /* OUT, originate */
 #define SA_XCOPY_LID4           0x1     /* OUT, originate */
-#define SA_POP_TOK              0x10    /* OUT, originate */
-#define SA_WR_USING_TOK         0x11    /* OUT, originate */
+#define SA_POP_TOK              0x10    /* OUT, originate [PT] */
+#define SA_WR_USING_TOK         0x11    /* OUT, originate [WUT] */
 #define SA_COPY_ABORT           0x1C    /* OUT, abort */
+
 #define SA_COPY_STATUS_LID1     0x0     /* IN, retrieve */
 #define SA_COPY_DATA_LID1       0x1     /* IN, retrieve */
 #define SA_COPY_OP_PARAMS       0x3     /* IN, retrieve */
 #define SA_COPY_FAIL_DETAILS    0x4     /* IN, retrieve */
-#define SA_COPY_STATUS_LID4     0x5     /* IN, retrieve */
+#define SA_COPY_STATUS_LID4     0x5     /* IN, retrieve [RCS] */
 #define SA_COPY_DATA_LID4       0x6     /* IN, retrieve */
-#define SA_ROD_TOK_INFO         0x7     /* IN, retrieve */
+#define SA_ROD_TOK_INFO         0x7     /* IN, retrieve [RRTI] */
 #define SA_ALL_ROD_TOKS         0x8     /* IN, retrieve */
 
 #define MAX_FIXED_SGL_ELEMS 128         /* same for gl and sl; MS max is 64 */
@@ -262,7 +264,7 @@ struct block_rodtok_vpd {
 
 /* One instance for arguments to iflag= , another instance for oflag=
  * conv= arguments are mapped to flag arguments.
- * General or for disk unless otherwise marked. */
+ * flags for classic dd on disks or files unless otherwise noted. */
 struct flags_t {
     int append;
     int atomic;
@@ -295,6 +297,7 @@ struct flags_t {
     int odx;            /* xcopy(LID4), sbc-3's POPULATE TOKEN++ */
     int pad;            /* used for xcopy(lid1) or tape */
     int prealloc;
+    bool prefer_rcs;  /* prefer Receive Copy Status(lid4) command over RRTI */
     int pt;             /* use pass-through to inject SCSI commands */
     int resume;
     int rarc;
@@ -471,7 +474,8 @@ struct val_str_t {
     const char * name;
 };
 
-/* This data is from the parameter data found in data-in of RRTI command */
+/* This data is extracted from the response of the Receive ROD Token
+ * Information (RRTI) command and the Receive Copy Status (RCS) command. */
 struct rrti_resp_t {
     uint8_t for_sa;     /* response to service action */
     uint8_t cstat;      /* copy operation status */
@@ -479,6 +483,7 @@ struct rrti_resp_t {
     uint8_t sense_len;  /* (parameter data, actual) sense data length */
     uint32_t esu_del;   /* estimated status update delay (ms) */
     uint64_t tc;        /* transfer count (blocks) */
+    /* Prior to this point response is in common with the RCS command */
     uint32_t rt_len;    /* might differ from 512, 0 if no ROD token */
     unsigned char rod_tok[512]; /* (perhaps truncate to) ODX ROD Token */
 };
@@ -563,6 +568,8 @@ int do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
                int walk_list_id, int vb_a);
 int do_rrti(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp,
             int verb);
+int do_rcs(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp,
+           int verb);
 void get_local_rod_tok(unsigned char * tokp, int max_tok_len);
 int process_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a);
 int do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,

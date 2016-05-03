@@ -1252,14 +1252,14 @@ signals_process_delay(struct opts_t * op, int delay_type)
 }
 
 void
-decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
+decode_designation_descriptor(const unsigned char * bp, int len_less_4,
                               int to_stderr, int verb)
 {
     int (*print_p)(const char *, ...);
     char b[2048];
 
     print_p = to_stderr ? pr2serr : printf;
-    sg_get_designation_descriptor_str(NULL, ucp, len_less_4 + 4, verb,
+    sg_get_designation_descriptor_str(NULL, bp, len_less_4 + 4, verb,
                                       verb, sizeof(b), b);
     print_p("%s", b);
 }
