@@ -1,4 +1,4 @@
-.TH DDPTCTL "8" "April 2016" "ddpt\-0.96" DDPT
+.TH DDPTCTL "8" "May 2016" "ddpt\-0.96" DDPT
 .SH NAME
 ddptctl \- helper/auxiliary utility for ddpt
 .SH SYNOPSIS
@@ -6,9 +6,9 @@ ddptctl \- helper/auxiliary utility for ddpt
 [\fI\-\-abort\fR] [\fI\-\-all_toks\fR] [\fI\-\-block\fR] [\fI\-\-del_tkn\fR]
 [\fI\-\-help\fR] [\fI\-\-immed\fR] [\fI\-\-info\fR] [\fI\-\-list_id=LID\fR]
 [\fI\-\-oir=OIR\fR] [\fI\-\-poll\fR] [\fI\-\-pt=GL\fR] [\fI\-\-readonly\fR]
-[\fI\-\-receive\fR] [\fI\-\-rtf=RTF\fR] [\fI\-\-rtype=RTYPE\fR]
-[\fI\-\-size\fR] [\fI\-\-timeout=ITO[,CMD]\fR] [\fI\-\-verbose\fR]
-[\fI\-\-version\fR] [\fI\-\-wut=SL\fR] [\fIDEVICE\fR]
+[\fI\-\-prefer_rcs\fR] [\fI\-\-receive\fR] [\fI\-\-rtf=RTF\fR]
+[\fI\-\-rtype=RTYPE\fR] [\fI\-\-size\fR] [\fI\-\-timeout=ITO[,CMD]\fR]
+[\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wut=SL\fR] [\fIDEVICE\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
@@ -30,6 +30,10 @@ housekeeping tasks.
 .PP
 The xcopy family of commands are described in the SPC\-4,5 and SBC\-3,4
 documents found at http://www.t10.org .
+.PP
+Apart from PT and WUT, other command abbreviations used below are RRTI for the
+RECEIVE ROD TOKEN INFORMATION command and RCS for the RECEIVE COPY
+STATUS(LID4) command.
 .SH OPTIONS
 Arguments to long options are mandatory for short options as well.
 .TP
@@ -106,11 +110,11 @@ used together with the \fI\-\-wut=SL\fR option. Its default value is 0 and
 its units are the logical block size of \fIDEVICE\fR.
 .TP
 \fB\-p\fR, \fB\-\-poll\fR
-send RECEIVE ROD TOKEN INFORMATION SCSI commands (RRTIs) to the \fIDEVICE\fR
-using the \fILID\fR (i.e. from the \fI\-\-list_id=LID\fR option). If
-a copy status is received indicating the operation is ongoing, then this
-SCSI command is sent periodically (as suggested by the previous RRTI command
-or 500 milliseconds) until some other copy status is detected. If the
+send RRTI (or RCS) command to the \fIDEVICE\fR using the \fILID\fR (i.e.
+from the \fI\-\-list_id=LID\fR option). If a copy status is received
+indicating the operation is ongoing, then this SCSI command is sent
+periodically (as suggested by the previous RRTI (or RCS) command or every
+500 milliseconds) until some other copy status is detected. If the
 \fI\-\-list_id=LID\fR option is not given then a \fILID\fR of 257 is assumed.
 .br
 If the originating xcopy command was POPULATE TOKEN and the RRTI command
@@ -118,6 +122,12 @@ indicates that it has completed successfully then the associated
 ROD Token (returned in the RRTI response) is written to the \fIRTF\fR
 file. If the \fI\-\-rtf=RTF\fR option is not given then the ROD token is
 written to a file called ddptctl_rod_tok.bin in the current directory.
+.TP
+\fB\-q\fR, \fB\-\-prefer_rcs\fR
+prefers using the RECEIVE COPY STATUS (RCS) command over the RRTI command
+which is the default. This only should be done following a WUT command
+since after a PT command, the RRTI command is needed to fetch the ROD
+tokane.
 .TP
 \fB\-P\fR, \fB\-\-pt\fR=\fIGL\fR
 send a POPULATE TOKEN (PT) command with the given gather list. The format
@@ -139,8 +149,8 @@ open the \fIDEVICE\fR read\-only (e.g. in Unix with the O_RDONLY flag).
 The default is to open it read\-write.
 .TP
 \fB\-R\fR, \fB\-\-receive\fR
-send the RECEIVE ROD TOKEN INFORMATION SCSI command (RRTI) to the \fIDEVICE\fR
-using the \fILID\fR (i.e. from the \fI\-\-list_id=LID\fR option). If the
+send the RRTI (or RCS) SCSI command to the \fIDEVICE\fR using the
+\fILID\fR (i.e. from the \fI\-\-list_id=LID\fR option). If the
 \fI\-\-list_id=LID\fR option is not given then a \fILID\fR of 257 is assumed.
 .br
 If the originating xcopy command was POPULATE TOKEN and the RRTI command
