@@ -1587,19 +1587,19 @@ do_rrti(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp, int verb)
     rrp->for_sa = 0x1f & rsp[4];
     switch(rrp->for_sa) {
     case SA_POP_TOK:
-        cp = "RRTI for PT";
+        cp = "PT";
         break;
     case SA_WR_USING_TOK:
-        cp = "RRTI for WUT";
+        cp = "WUT";
         break;
     case SA_XCOPY_LID1:
-        cp = "RRTI for XCOPY(LID1)";
+        cp = "XCOPY(LID1)";
         break;
     case SA_XCOPY_LID4:
-        cp = "RRTI for XCOPY(LID4)";
+        cp = "XCOPY(LID4)";
         break;
     default:
-        cp = "RRTI for unknown originating xcopy command";
+        cp = "unknown originating xcopy command";
         break;
     }
     rrp->cstat = 0x7f & rsp[5];
@@ -1607,7 +1607,7 @@ do_rrti(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp, int verb)
     rrp->sense_len = rsp[14];
     rrp->esu_del = sg_get_unaligned_be32(rsp + 8);
     if (verb)
-       pr2serr("%s [%d]: %s\n", cp, rrti_num,
+       pr2serr("RRTI [%d] for %s: %s\n", rrti_num, cp,
                cpy_op_status_str(rrp->cstat, b, sizeof(b)));
     rrp->tc = sg_get_unaligned_be64(rsp + 16);
     if (rrp->sense_len > 0) {
@@ -1665,19 +1665,19 @@ do_rcs(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp, int verb)
     rrp->for_sa = 0x1f & rsp[4];
     switch(rrp->for_sa) {
     case SA_POP_TOK:
-        cp = "RCS for PT";
+        cp = "PT";
         break;
     case SA_WR_USING_TOK:
-        cp = "RCS for WUT";
+        cp = "WUT";
         break;
     case SA_XCOPY_LID1:
-        cp = "RCS for XCOPY(LID1)";
+        cp = "XCOPY(LID1)";
         break;
     case SA_XCOPY_LID4:
-        cp = "RCS for XCOPY(LID4)";
+        cp = "XCOPY(LID4)";
         break;
     default:
-        cp = "RCS for unknown originating xcopy command";
+        cp = "unknown originating xcopy command";
         break;
     }
     rrp->cstat = 0x7f & rsp[5];
@@ -1685,7 +1685,7 @@ do_rcs(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp, int verb)
     rrp->sense_len = rsp[14];
     rrp->esu_del = sg_get_unaligned_be32(rsp + 8);
     if (verb)
-       pr2serr("%s [%d]: %s\n", cp, rcs_num,
+       pr2serr("RCS [%d] for %s: %s\n", rcs_num, cp,
                cpy_op_status_str(rrp->cstat, b, sizeof(b)));
     rrp->tc = sg_get_unaligned_be64(rsp + 16);
     if (rrp->sense_len > 0) {
@@ -1925,7 +1925,7 @@ do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
 int
 process_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a)
 {
-    int res, cont, vb_b;
+    int res, cont, vb_b, r_count;
     uint32_t delay;
     struct rrti_resp_t r;
     char b[80];
@@ -1941,9 +1941,11 @@ process_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a)
 resend_cmd:
         if (prefer_rcs) {
             cmd_name = "RCS";
+            r_count = rrti_num;
             res = do_rcs(op, DDPT_ARG_OUT, &r, vb_b);
         } else {
             cmd_name = "RRTI";
+            r_count = rcs_num;
             res = do_rrti(op, DDPT_ARG_OUT, &r, vb_b);
         }
         if (res) {
@@ -1957,8 +1959,8 @@ resend_cmd:
         if (SA_WR_USING_TOK != r.for_sa) {
             sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, r.for_sa, 0,
                                   sizeof(b), b);
-            pr2serr("%s expected response for Write Using Token\n  but got "
-                    "response for %s\n", cmd_name, b);
+            pr2serr("%s [%d] expected response for Write Using Token\n  but "
+                    "got response for %s\n", cmd_name, r_count, b);
         }
         cont = ((r.cstat >= 0x10) && (r.cstat <= 0x12));
         if (cont) {
@@ -1978,13 +1980,13 @@ resend_cmd:
     } while (cont);
 
     if ((! ((0x1 == r.cstat) || (0x3 == r.cstat))) || (vb_b > 1))
-        pr2serr("%s for WUT: %s\n", cmd_name, cpy_op_status_str(r.cstat, b,
-                                                                sizeof(b)));
+        pr2serr("%s [%d] for WUT: %s\n", cmd_name, r_count,
+                cpy_op_status_str(r.cstat, b, sizeof(b)));
     if (tcp)
         *tcp = r.tc;
     if (vb_a)
-        pr2serr("%s for WUT: Transfer count=%" PRIu64 " [0x%" PRIx64 "]\n",
-                cmd_name, r.tc, r.tc);
+        pr2serr("%s [%d] for WUT: Transfer count=%" PRIu64 " [0x%" PRIx64
+                "]\n", cmd_name, r_count, r.tc, r.tc);
     return 0;
 }
 
