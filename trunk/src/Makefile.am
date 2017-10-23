@@ -8,10 +8,10 @@ bin_PROGRAMS = ddpt ddptctl
 
 # INCLUDES = -I$(top_srcdir)/include -I$(top_srcdir)/include/scsi
 
-# -std=<s> can be c99, c11, gnu11, etc. Default is gnu89 (gnu90 is the same)
+# -std=<s> can be c99, c11, c14, gnu11, etc. Default is gnu89 (gnu90 is the same)
 AM_CFLAGS = -iquote $(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W @os_cflags@
-## AM_CFLAGS = -iquote $(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W @os_cflags@ -pedantic -std=c11
-## AM_CFLAGS = -iquote $(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W @os_cflags@ -pedantic -std=c++11
+## AM_CFLAGS = -iquote $(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W @os_cflags@ -pedantic -std=c11 --analyze
+# AM_CFLAGS = -iquote $(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W @os_cflags@ -pedantic -std=c++14
 
 
 
