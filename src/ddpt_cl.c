@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2016 Douglas Gilbert.
+ * Copyright (c) 2008-2017 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -424,33 +424,34 @@ conv_process(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
         if (np)
             *np++ = '\0';
         if (0 == strcmp(cp, "fdatasync"))
-            ++ofp->fdatasync;
+            ofp->fdatasync = true;
         else if (0 == strcmp(cp, "fsync"))
-            ++ofp->fsync;
+            ofp->fsync = true;
         else if (0 == strcmp(cp, "no_del_tkn"))
-            ++ofp->no_del_tkn;
+            ofp->no_del_tkn = true;
         else if (0 == strcmp(cp, "noerror"))
-            ++ifp->coe;         /* will still fail on write error */
+            ifp->coe = true;        /* will still fail on write error */
         else if (0 == strcmp(cp, "notrunc"))
             ;         /* this is the default action of ddpt so ignore */
         else if (0 == strcmp(cp, "null"))
             ;
         else if ((0 == strcmp(cp, "prefer_rcs")) ||
                  (0 == strcmp(cp, "prefer-rcs")))
-            ++ofp->prefer_rcs;
+            ofp->prefer_rcs = true;
         else if (0 == strcmp(cp, "resume"))
-            ++ofp->resume;
-        else if (0 == strcmp(cp, "rtf_len"))
-            ++ofp->rtf_len;
+            ofp->resume = true;
+        else if ((0 == strcmp(cp, "rtf_len")) ||
+                 (0 == strcmp(cp, "rtf-len")))
+            ofp->rtf_len = true;
         else if (0 == strcmp(cp, "sparing"))
-            ++ofp->sparing;
+            ofp->sparing = true;
         else if (0 == strcmp(cp, "sparse"))
             ++ofp->sparse;
         else if (0 == strcmp(cp, "sync"))
             ;   /* dd(susv4): pad errored block(s) with zeros but ddpt does
                  * that by default. Typical dd use: 'conv=noerror,sync' */
         else if (0 == strcmp(cp, "trunc"))
-            ++ofp->trunc;
+            ofp->trunc = true;
         else {
             pr2serr("unrecognised flag: %s\n", cp);
             return 1;
@@ -481,98 +482,101 @@ flags_process(const char * arg, struct flags_t * fp)
         if (np)
             *np++ = '\0';
         if (0 == strcmp(cp, "append"))
-            ++fp->append;
+            fp->append = true;
         else if (0 == strcmp(cp, "atomic"))
-            ++fp->atomic;
+            fp->atomic = true;
         else if (0 == strcmp(cp, "block"))
-            ++fp->block;
+            fp->block = true;
         else if (0 == strcmp(cp, "bytchk"))
             ++fp->bytchk;
         else if (0 == strcmp(cp, "cat"))
-            ++fp->cat;
+            fp->cat = true;
         else if (0 == strcmp(cp, "coe"))
-            ++fp->coe;
+            fp->coe = true;
         else if (0 == strcmp(cp, "dc"))
-            ++fp->dc;
+            fp->dc = true;
         else if (0 == strcmp(cp, "direct"))
-            ++fp->direct;
+            fp->direct = true;
         else if (0 == strcmp(cp, "dpo"))
-            ++fp->dpo;
+            fp->dpo = true;
         else if (0 == strcmp(cp, "errblk"))
-            ++fp->errblk;
+            fp->errblk = true;
         else if (0 == strcmp(cp, "excl"))
-            ++fp->excl;
+            fp->excl = true;
         else if (0 == strcmp(cp, "fdatasync"))
-            ++fp->fdatasync;
+            fp->fdatasync = true;
         else if (0 == strcmp(cp, "ff"))
-            ++fp->ff;
+            fp->ff = true;
         else if (0 == strcmp(cp, "flock"))
-            ++fp->flock;
-        else if (0 == strcmp(cp, "force"))
+            fp->flock = true;
+        else if (0 == strcmp(cp, "force")) /* 2: try harder on xcopy */
             ++fp->force;
         else if (0 == strcmp(cp, "fsync"))
-            ++fp->fsync;
-        else if (0 == strcmp(cp, "fua_nv"))   /* check fua_nv before fua */
-            ++fp->fua_nv;
+            fp->fsync = true;
+        else if ((0 == strcmp(cp, "fua_nv")) || /* obsolete: sbc3r35l */
+                 (0 == strcmp(cp, "fua-nv")))   /* check fua_nv before fua */
+            fp->fua_nv = true;
         else if (0 == strcmp(cp, "fua"))
-            ++fp->fua;
+            fp->fua = true;
         else if (0 == strcmp(cp, "ignoreew")) /* tape: ignore early warning */
-            ++fp->ignoreew;
+            fp->ignoreew = true;
         else if (0 == strcmp(cp, "immed"))
-            ++fp->immed;
-        else if (0 == strcmp(cp, "nocache"))
+            fp->immed = true;
+        else if (0 == strcmp(cp, "nocache"))    /* can be (0), 1, 2, or 3 */
             ++fp->nocache;
-        else if (0 == strcmp(cp, "no_del_tkn"))
-            ++fp->no_del_tkn;
+        else if ((0 == strcmp(cp, "no_del_tkn")) ||
+                 (0 == strcmp(cp, "no-del-tkn")))
+            fp->no_del_tkn = true;
         else if (0 == strcmp(cp, "nofm"))     /* No filemark on tape close */
-            ++fp->nofm;
+            fp->nofm = true;
         else if (0 == strcmp(cp, "nopad"))
-            ++fp->nopad;
+            fp->nopad = true;
         else if (0 == strcmp(cp, "norcap"))
-            ++fp->norcap;
+            fp->norcap = true;
         else if (0 == strcmp(cp, "nowrite"))
-            ++fp->nowrite;
-        else if (0 == strcmp(cp, "null"))
+            fp->nowrite = true;
+        else if (0 == strcmp(cp, "null"))       /* ignore */
             ;
         else if (0 == strcmp(cp, "odx"))
-            ++fp->odx;
+            fp->odx = true;
         else if (0 == strcmp(cp, "pad"))
-            ++fp->pad;
+            fp->pad = true;
         else if ((0 == strcmp(cp, "pre-alloc")) ||
                  (0 == strcmp(cp, "prealloc")))
-            ++fp->prealloc;
+            fp->prealloc = true;
         else if ((0 == strcmp(cp, "prefer_rcs")) ||
                  (0 == strcmp(cp, "prefer-rcs")))
-            ++fp->prefer_rcs;
+            fp->prefer_rcs = true;
         else if (0 == strcmp(cp, "pt"))
-            ++fp->pt;
+            fp->pt = true;
         else if (0 == strcmp(cp, "rarc"))
-            ++fp->rarc;
+            fp->rarc = true;
         else if (0 == strcmp(cp, "resume"))
-            ++fp->resume;
-        else if (0 == strcmp(cp, "rtf_len"))
-            ++fp->rtf_len;
+            fp->resume = true;
+        else if ((0 == strcmp(cp, "rtf_len")) ||
+                 (0 == strcmp(cp, "rtf-len")))
+            fp->rtf_len = true;
         else if (0 == strcmp(cp, "self"))
-            ++fp->self;
+            fp->self = true;
         else if (0 == strcmp(cp, "sparing"))
-            ++fp->sparing;
+            fp->sparing = true;
         else if (0 == strcmp(cp, "sparse"))
             ++fp->sparse;
         else if (0 == strcmp(cp, "ssync"))
-            ++fp->ssync;
+            fp->ssync = true;
         else if (0 == strcmp(cp, "strunc"))
-            ++fp->strunc;
+            fp->strunc = true;
         else if (0 == strcmp(cp, "sync"))
-            ++fp->sync;
+            fp->sync = true;
         else if ((0 == strcmp(cp, "trim")) || (0 == strcmp(cp, "unmap"))) {
             /* treat trim (ATA term) and unmap (SCSI term) as synonyms */
-            ++fp->wsame16;
+            fp->wsame16 = true;
         } else if (0 == strcmp(cp, "trunc"))
-            ++fp->trunc;
+            fp->trunc = true;
         else if (0 == strcmp(cp, "verify"))
-            ++fp->verify;
+            fp->verify = true;
         else if (0 == strcmp(cp, "xcopy"))
-            ++fp->xcopy;
+            fp->xcopy = true;
         else {
             pr2serr("unrecognised flag: %s\n", cp);
             return 1;
@@ -647,10 +651,10 @@ cl_sanity_defaults(struct opts_t * op)
     }
     op->ibs_hold = op->ibs;
     if (op->bpt_given && (op->bpt_i < 1)) {
-        op->bpt_given = 0;
+        op->bpt_given = false;
         /* want to allow bpt=0,<num> where BPT takes the default, for ODX */
     }
-    if (0 == op->bpt_given)
+    if (! op->bpt_given)
         op->bpt_i = default_bpt_i(op->ibs);
 
     if ((op->ibs != op->obs) && (ODX_REQ_NONE == op->odx_request) &&
@@ -685,12 +689,12 @@ cl_sanity_defaults(struct opts_t * op)
         pr2serr("ssync flag ignored on input\n");
     if (ofp->trunc) {
         if (ofp->resume) {
-            ofp->trunc = 0;
+            ofp->trunc = false;
             if (op->verbose)
                 pr2serr("trunc ignored due to resume flag, "
                         "otherwise open_of() truncates too early\n");
         } else if (ofp->append) {
-            ofp->trunc = 0;
+            ofp->trunc = false;
             pr2serr("trunc ignored due to append flag\n");
         } else if (ofp->sparing) {
             pr2serr("trunc flag conflicts with sparing\n");
@@ -699,12 +703,12 @@ cl_sanity_defaults(struct opts_t * op)
     }
     if (ifp->self || ofp->self) {
         if (! ofp->self)
-            ++ofp->self;
+            ofp->self = true;
         if (ifp->wsame16 || ofp->wsame16) {
             if (! ofp->wsame16)
-                ++ofp->wsame16;
+                ofp->wsame16 = true;
             if (! ofp->nowrite)
-                ++ofp->nowrite;
+                ofp->nowrite = true;
         }
         if ('\0' == op->odip->fn[0])
             strcpy(op->odip->fn, op->idip->fn);
@@ -732,7 +736,7 @@ cl_sanity_defaults(struct opts_t * op)
         ++ofp->sparse;
 
     if (ifp->xcopy || ofp->xcopy)
-        ++op->has_xcopy;
+        op->has_xcopy = true;
     if (op->has_xcopy) {
         if ((!! ifp->xcopy) == (!! ofp->xcopy)) {
             csp = getenv(XCOPY_TO_SRC);
@@ -740,12 +744,12 @@ cl_sanity_defaults(struct opts_t * op)
             if ((!! csp) == (!! cdp)) {
 #if DEF_XCOPY_SRC0_DST1 == 0
                 if (! ifp->xcopy)
-                    ifp->xcopy = 1;
+                    ifp->xcopy = true;
                 ofp->xcopy = 0;
 #else
                 ifp->xcopy = 0;
                 if (! ofp->xcopy)
-                    ofp->xcopy = 1;
+                    ofp->xcopy = true;
 #endif
                 if (op->verbose > 1)
                     pr2serr("Default dictates which device to send xcopy "
@@ -753,12 +757,12 @@ cl_sanity_defaults(struct opts_t * op)
             } else {
                 if (csp) {
                     if (! ifp->xcopy)
-                        ifp->xcopy = 1;
+                        ifp->xcopy = true;
                     ofp->xcopy = 0;
                 } else {
                     ifp->xcopy = 0;
                     if (! ofp->xcopy)
-                        ofp->xcopy = 1;
+                        ofp->xcopy = true;
                 }
                 if (op->verbose > 1)
                     pr2serr("%s dictates which device to send xcopy "
@@ -778,7 +782,7 @@ cl_sanity_defaults(struct opts_t * op)
         op->xc_cat = (ifp->cat || ofp->cat);
         if (ifp->xcopy) {
             if (! ifp->pt) {
-                ifp->pt = 1;
+                ifp->pt = true;
                 if (op->verbose > 3)
                     pr2serr("Setting pt (pass-through) on IFILE for "
                             "xcopy\n");
@@ -786,16 +790,15 @@ cl_sanity_defaults(struct opts_t * op)
             }
         } else {
             if (! ofp->pt) {
-                ofp->pt = 1;
+                ofp->pt = true;
                 if (op->verbose > 3)
                     pr2serr("Setting pt (pass-through) on OFILE for "
                             "xcopy\n");
             }
         }
     }
-    if (ifp->odx || ofp->odx || op->rtf[0] ||
-        op->rod_type_given)
-        op->has_odx = op->has_odx ? op->has_odx : 1;
+    if (ifp->odx || ofp->odx || op->rtf[0] || op->rod_type_given)
+        op->has_odx = true;
     if (op->has_odx) {
         if (op->has_xcopy) {
             pr2serr("Can either request xcopy(LID1) or ODX but not "
@@ -833,7 +836,7 @@ cl_sanity_defaults(struct opts_t * op)
         }
         csp = getenv(ODX_RTF_LEN);
         if (csp)
-                ++op->rtf_len_add;
+                op->rtf_len_add = true;
         if (op->verbose) {
             pr2serr("ODX: %s%s\n", cp, (csp ? "\n    [ODX_RTF_LEN "
                     "environment variable present]" : ""));
@@ -879,13 +882,14 @@ static int
 jf_process(struct opts_t * op, const char * jf_name, const char * version_str,
            int jf_depth)
 {
-    FILE * fp;
-    char b[4096];
-    char bb[256];
-    int k, len, off, rlen, argc, first_real;
+    bool first_real;
+    int k, len, off, rlen, argc;
     int ret = 0;
+    FILE * fp;
     char * cp;
     char * argv[DDPT_MAX_JF_ARGS_PER_LINE];
+    char b[4096];
+    char bb[256];
 
     ++jf_depth;
     if (jf_depth > DDPT_MAX_JF_DEPTH) {
@@ -902,7 +906,7 @@ jf_process(struct opts_t * op, const char * jf_name, const char * version_str,
         return SG_LIB_FILE_ERROR;
     }
     rlen = sizeof(b);
-    for (off = 0, k = 0, first_real = 1;
+    for (off = 0, k = 0, first_real = true;
          (rlen > 0) && ((cp = fgets(b + off, rlen, fp)) &&
          (k < DDPT_MAX_JF_LINES));
          rlen -= len, off += len, ++k) {
@@ -910,7 +914,7 @@ jf_process(struct opts_t * op, const char * jf_name, const char * version_str,
         if (0 == len)
             continue;
         if (first_real) {
-            first_real = 0;
+            first_real = false;
             if ((0 == op->iflagp->force) && (0 == op->oflagp->force)) {
                 /* in absence of iflag=force or oflag-force, check if job
                  * file seems to be binary */
@@ -1004,7 +1008,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
             }
             if (n > 0) {
                 op->bpt_i = n;
-                op->bpt_given = 1;
+                op->bpt_given = true;
             }
             if (cp) {
                 n = sg_get_num(cp + 1);
@@ -1024,7 +1028,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 pr2serr("second 'bs=' option given, dangerous\n");
                 return SG_LIB_SYNTAX_ERROR;
             } else
-                op->bs_given = 1;
+                op->bs_given = true;
             if ((op->ibs_given) || (op->obs_given)) {
                 pr2serr("'bs=' option cannot be combined with "
                         "'ibs=' or 'obs='\n");
@@ -1037,11 +1041,12 @@ cl_process(struct opts_t * op, int argc, char * argv[],
         else if (0 == strcmp(key, "cdbsz")) {
             ifp->cdbsz = sg_get_num(buf);
             ofp->cdbsz = ifp->cdbsz;
-            op->cdbsz_given = 1;
+            op->cdbsz_given = true;
         } else if (0 == strcmp(key, "coe")) {
             ifp->coe = sg_get_num(buf);
             ofp->coe = ifp->coe;
-        } else if (0 == strcmp(key, "coe_limit")) {
+        } else if ((0 == strcmp(key, "coe_limit")) ||
+                   (0 == strcmp(key, "coe-limit"))) {
             op->coe_limit = sg_get_num(buf);
             if (-1 == op->coe_limit) {
                 pr2serr("bad argument to 'coe_limit='\n");
@@ -1060,7 +1065,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                     return SG_LIB_SYNTAX_ERROR;
                 }
             }   /* 'count=-1' is accepted, means calculate count */
-            ++op->count_given;
+            op->count_given = true;
         } else if (0 == strcmp(key, "delay")) {
             cp = strchr(buf, ',');
             if (cp)
@@ -1090,9 +1095,10 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                         "'bs='; try 'obs=' instead\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-            ++op->ibs_given;
+            op->ibs_given = true;
             op->ibs = n;
-        } else if (0 == strcmp(key, "id_usage")) {
+        } else if ((0 == strcmp(key, "id_usage")) ||
+                   (0 == strcmp(key, "id-usage"))) {
             if (isdigit(buf[0])) {
                 n = sg_get_num(buf);
                 if (n < 0) {
@@ -1137,7 +1143,8 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 return SG_LIB_SYNTAX_ERROR;
             }
             op->inactivity_to = n;
-        } else if (0 == strcmp(key, "list_id")) {
+        } else if ((0 == strcmp(key, "list_id")) ||
+                   (0 == strcmp(key, "list-id"))) {
             i64 = sg_get_llnum(buf);
             if (-1 == i64) {
                 pr2serr("bad argument to 'list_id='\n");
@@ -1148,7 +1155,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 return SG_LIB_SYNTAX_ERROR;
             }
             op->list_id = (uint32_t)i64;
-            op->list_id_given = 1;
+            op->list_id_given = true;
         } else if (0 == strcmp(key, "obs")) {
             n = sg_get_num(buf);
             if (n < 0) {
@@ -1160,7 +1167,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                         "'bs='; try 'ibs=' instead\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-            ++op->obs_given;
+            op->obs_given = true;
             op->obs = n;
         } else if (strcmp(key, "of") == 0) {
             if ('\0' != op->odip->fn[0]) {
@@ -1171,7 +1178,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 return SG_LIB_SYNTAX_ERROR;
             }
             strncpy(op->odip->fn, buf, INOUTF_SZ - 1);
-            ++op->outf_given;
+            op->outf_given = true;
         } else if (strcmp(key, "of2") == 0) {
             if ('\0' != op->o2dip->fn[0]) {
                 pr2serr("Second OFILE2 argument??\n");
@@ -1230,13 +1237,17 @@ cl_process(struct opts_t * op, int argc, char * argv[],
             }
             strncpy(op->rtf, buf, INOUTF_SZ - 1);
         } else if (0 == strcmp(key, "rtype")) {
-            if (0 == strncmp("pit-def", buf, 7))
+            if ((0 == strncmp("pit-def", buf, 7)) ||
+                (0 == strncmp("pit_def", buf, 7)))
                 op->rod_type = RODT_PIT_DEF;
-            else if (0 == strncmp("pit-vuln", buf, 8))
+            else if ((0 == strncmp("pit-vuln", buf, 8)) ||
+                     (0 == strncmp("pit_vuln", buf, 8)))
                 op->rod_type = RODT_PIT_VULN;
-            else if (0 == strncmp("pit-pers", buf, 8))
+            else if ((0 == strncmp("pit-pers", buf, 8)) ||
+                     (0 == strncmp("pit_pers", buf, 8)))
                 op->rod_type = RODT_PIT_PERS;
-            else if (0 == strncmp("pit-any", buf, 7))
+            else if ((0 == strncmp("pit-any", buf, 7)) ||
+                     (0 == strncmp("pit_any", buf, 7)))
                 op->rod_type = RODT_PIT_ANY;
             else if (0 == strncmp("zero", buf, 4))
                 op->rod_type = RODT_BLK_ZERO;
@@ -1254,7 +1265,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 }
                 op->rod_type = (uint32_t)i64;
             }
-            ++op->rod_type_given;
+            op->rod_type_given = true;
         } else if (0 == strcmp(key, "seek")) {
             res = do_seek(op, key, buf);
             if (res)
@@ -1267,10 +1278,10 @@ cl_process(struct opts_t * op, int argc, char * argv[],
             if (0 == strncmp(buf, "null", 4))
                 ;
             else if (0 == strncmp(buf, "noxfer", 6))
-                op->do_time = 0;
+                op->do_time = false;
             else if (0 == strncmp(buf, "none", 4)) {
-                ++op->status_none;
-                op->do_time = 0;
+                op->status_none = true;
+                op->do_time = false;
             } else {
                 pr2serr("'status=' expects 'none', 'noxfer' or 'null'\n");
                 return SG_LIB_SYNTAX_ERROR;
@@ -1288,7 +1299,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 return SG_LIB_SYNTAX_ERROR;
             }
             if (op->verbose < 0) {
-                ++op->quiet;
+                op->quiet = true;
                 op->verbose = 0;
             }
         }
@@ -1305,7 +1316,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strncmp(key, "--odx", 5))
-            ++op->has_odx;
+            op->has_odx = true;
         else if (0 == strncmp(key, "--verb", 6))
             ++op->verbose;
         else if (0 == strncmp(key, "--vers", 6)) {
@@ -1317,7 +1328,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
             ++op->wscan;
 #endif
         else if (0 == strncmp(key, "--xcopy", 7))
-            ++op->has_xcopy;
+            op->has_xcopy = true;
         /* look for short options that start with a single '-', they can be
          * concaternated (e.g. '-vvvx') */
         else if ((keylen > 1) && ('-' == key[0]) && ('-' != key[1])) {
@@ -1326,7 +1337,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
             op->do_help += n;
             res += n;
             n = num_chs_in_str(key + 1, keylen - 1, 'o');
-            op->has_odx += n;
+            op->has_odx = (n > 0);
             res += n;
             n = num_chs_in_str(key + 1, keylen - 1, 'v');
             op->verbose += n;
@@ -1341,7 +1352,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
             res += n;
 #endif
             n = num_chs_in_str(key + 1, keylen - 1, 'x');
-            op->has_xcopy += n;
+            op->has_xcopy = (n > 0);
             res += n;
             if (res < (keylen - 1)) {
                 pr2serr("Unrecognised short option in '%s', try '--help'\n",

@@ -2,7 +2,7 @@
 #define DDPT_H
 
 /*
- * Copyright (c) 2008-2016 Douglas Gilbert.
+ * Copyright (c) 2008-2017 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -266,53 +266,71 @@ struct block_rodtok_vpd {
  * conv= arguments are mapped to flag arguments.
  * flags for classic dd on disks or files unless otherwise noted. */
 struct flags_t {
-    int append;
-    int atomic;
-    int block;          /* only for pt, non blocking default */
-    int bytchk;         /* set field in WRITE AND VERIFY */
-    int cat;            /* xcopy(lid1) related */
-    int cdbsz;
-    int coe;
-    int dc;             /* xcopy(lid1) related */
-    int del_tkn;        /* xcopy(odx) related */
-    int direct;
-    int dpo;
-    int errblk;
-    int excl;
-    int fdatasync;
-    int ff;             /* iflag=ff makes input all 0xff bytes */
-    int flock;
-    int force;
-    int fsync;
-    int fua;
-    int fua_nv;
-    int ignoreew;       /* tape */
-    int immed;          /* xcopy(odx) related */
-    int nocache;
-    int no_del_tkn;     /* xcopy(odx) related */
-    int nofm;           /* tape */
-    int nopad;
-    int norcap;
-    int nowrite;
-    int odx;            /* xcopy(LID4), sbc-3's POPULATE TOKEN++ */
-    int pad;            /* used for xcopy(lid1) or tape */
-    int prealloc;
-    bool prefer_rcs;  /* prefer Receive Copy Status(lid4) command over RRTI */
-    int pt;             /* use pass-through to inject SCSI commands */
-    int resume;
-    int rarc;
-    int retries;
-    int rtf_len;
-    int self;
-    int sparing;
-    int sparse;
-    int ssync;
-    int strunc;
-    int sync;
-    int trunc;
-    int verify;         /* oflag with pt, turns WRITE into WRITE AND VERIFY */
-    int wsame16;
-    int xcopy;          /* xcopy(LID1) */
+    bool append;        /* open non-pt OF with O_APPEND flag */
+    bool atomic;        /* for pt OF use WRITE ATOMIC instead of WRITE */
+    bool block;         /* only for pt, non blocking open is default */
+    bool cat;           /* xcopy(lid1) tape: strategy for inexact fit */
+    bool coe;           /* continue on (read) error, supply zeros */
+    bool dc;            /* xcopy(lid1): destination count */
+    bool del_tkn;       /* xcopy(odx): delete token after operation */
+    bool direct;        /* set O_DIRECT on non-pt open() */
+    bool dpo;           /* 'disable page out' bits on READ and WRITE cdbs */
+    bool errblk;        /* write unreadable LB addresses to errblk.txt */
+    bool excl;          /* opens IF and OF with O_EXCL flag */
+    bool fdatasync;     /* use fdatasync() system call on OF after xfer */
+    bool ff;            /* iflag=ff makes input all 0xff bytes */
+    bool flock;         /* linux: use flock(LOCK_EX | LOCK_NB) before xfer */
+    bool fsync;         /* use fsync() system call on OF after xfer */
+    bool fua;           /* force unit access on pt calls */
+    bool fua_nv;        /* obsolete (sbc3r35l): fua_non_volatile on pt */
+    bool ignoreew;      /* tape: ignore early warning */
+    bool immed;         /* xcopy(odx): returns immediately from POPULATE
+                         * TOKEN and WRITE USING TOKEN then poll */
+    bool no_del_tkn;    /* xcopy(odx): don't delete token after xfer */
+    bool nofm;          /* tape: no filemark on close */
+    bool nopad;         /* tape: no pad on partial writes */
+    bool norcap;        /* no READ CAPACITY calls on pt */
+    bool nowrite;       /* don't write to OF */
+    bool odx;           /* xcopy(LID4), sbc-3's POPULATE TOKEN++ */
+    bool pad;           /* pad with zeros partial (trailing) pt writes; also
+                         * xcopy(lid1) tape: strategy for inexact fit */
+    bool prealloc;      /* use (posix_)fallocate() on output file before
+                         *  transfer */
+    bool prefer_rcs;    /* prefer Receive Copy Status command over RRTI */
+    bool pt;            /* use pass-through to inject SCSI commands */
+    bool rarc;          /* Set Rebuild Assist Recovery Control bit on READs */
+    bool resume;        /* try to restart previously interrupted copy */
+    bool rtf_len;       /* odx: append number of bytes ROD represents to end
+                         * of RTF */
+    bool self;          /* trim (zero segments) out of a file in place (i.e.
+                         * with no copy) */
+    bool sparing;       /* saves on writes by reading OF (and/or OF2) and if
+                         * same as segment read from IF, move on (i.e. don't
+                         * overwrite OF (and/or OF2) with same data */
+    bool ssync;         /* for pt OF (or OF2) do a SCSI SYNCHRONIZE CACHE
+                         * at end of transfer before close */
+    bool strunc;        /* perform sparse copy on non-pt OF using the
+                         * ftruncate() call to extend/truncate OF */
+    bool sync;          /* open non-pt file with O_SYNC flag */
+    bool trunc;         /* truncate non-pt OF to SEEK (typically 0 length)
+                         * before start of copy */
+    bool verify;        /* oflag with pt, turns WRITE into WRITE AND VERIFY */
+    bool wsame16;       /* given trim or unmap then wsame16 is set. Trim/unmap
+                         * done on pt using SCSI WRITE SAME(16) command */
+    bool xcopy;         /* xcopy(LID1) requested */
+
+    int bytchk;         /* set field (2 bit) in WRITE AND VERIFY */
+    int cdbsz;          /* 6, 10, 12, 16 or 32 */
+    int force;          /* overrides errors, 2: force harder */
+    int nocache;        /* (1 & nocache): IF and/or OF; (2 & nocache): OF .
+                         * OF, OF2: use posix_fadvise(POSIX_FADV_DONTNEED)
+                         * IF: use posix_fadvise(POSIX_FADV_SEQUENTIAL) */
+    int retries;        /* retry each failed READ or WRITE this number of
+                         * times (def: 0 (for no retries)) */
+    int sparse;         /* when > 0 skips writes on segments that are all
+                         * zeros. When 1 writes last segment even if all
+                         * zeros, if > 1 then will skip last segment as well
+                         * if all zeros */
 };
 
 /* one instance per file/device: if, of and of2 */
@@ -336,62 +354,61 @@ struct dev_info_t {
 /* command line options plus most other state variables */
 /* The _given fields indicate whether option was given or is a default */
 struct opts_t {
+    bool bpt_given;     /* true implies bpt= option given on command line */
+    bool bs_given;
+    bool cdbsz_given;
+    bool count_given;
+    bool do_time;       /* default true, set false by --status=none */
+    bool has_odx;       /* --odx: equivalent to iflag=odx or oflag=odx */
+    bool has_xcopy;     /* --xcopy (LID1): iflag=xcopy or oflag=xcopy */
+    bool ibs_given;
+    bool interrupt_io;  /* [intio=0|1] if false, mask SIGINFO++ during IO */
+    bool list_id_given;
+    bool obs_given;
+    bool o_readonly;
+    bool out_sparing_active;
+    bool out_sparse_active;
+    bool out_trim_active;
+    bool outf_given;
+    bool quiet;         /* set true when verbose=-1 (or any negative int) */
+    bool reading_fifo;
+    bool read1_or_transfer;     /* true when of=/dev/null or similar */
+    bool rod_type_given;
+    bool rtf_append;            /* if rtf is regular file: open(O_APPEND) */
+    bool rtf_len_add;           /* append 64 bit ROD byte size to token */
+    bool status_none;           /* status=none given */
+    bool subsequent_wdelay;     /* so no delay before first write */
+    bool xc_cat;
+    bool xc_dc;
     /* command line related variables */
-    int64_t skip;
-    int64_t seek;
-    int count_given;
-    int bs_given;       /* 1 implies bs= option given on command line */
     int delay;          /* intra copy segment delay in milliseconds */
     int wdelay;         /* delay prior to each write in copy segment */
-    int subsequent_wdelay;      /* so no delay before first write */
     int ibs;
     int ibs_pi;    /* if (protect) ibs_pi = ibs+pi_len else ibs_pi=ibs */
-    int ibs_given;
     int obs;
     int obs_pi;    /* if (protect) obs_pi = obs+pi_len else obs_pi=obs */
-    int obs_given;
     int bpt_i;          /* blocks (of input) per transfer */
-    int bpt_given;
     int obpch;          /* output blocks per check, granularity of sparse,
                          * sparing and trim checks for zeros */
     int id_usage;       /* xcopy(LID1) List identifier usage, init to -1 */
-    int interrupt_io;   /* [intio=0|1] if 0, mask SIGINFO++ during IO */
-    uint32_t list_id;   /* xcopy(LID1) and odx related */
-    int list_id_given;
-    int outf_given;
     int prio;           /* xcopy(LID1) related */
     int rdprotect;
     int wrprotect;
-    int cdbsz_given;
     int coe_limit;
     int coe_count;
     int verbose;
-    int quiet;
     int do_help;
-    int do_time;
-    int has_xcopy;      /* --xcopy (LID1): iflag=xcopy or oflag=xcopy */
     int odx_request;    /* ODX_REQ_NONE==0 for no ODX */
-    int has_odx;        /* --odx: equivalent to iflag=odx or oflag=odx */
-    uint32_t inactivity_to;     /* ODX: timeout in seconds */
-    uint32_t rod_type;          /* ODX: ROD type */
-    int rod_type_given;
-    int64_t offset_in_rod;      /* ODX: units are obs bytes */
     int timeout_xcopy;          /* xcopy(LID1) and ODX */
     int in_sgl_elems;           /* xcopy, odx */
     int out_sgl_elems;          /* xcopy, odx */
     int rtf_fd;                 /* ODX: rtf's file descriptor (init: -1) */
-    int rtf_len_add;            /* append 64 bit ROD byte size to token */
-    int rtf_append;             /* if rtf is regular file: open(O_APPEND) */
-    char rtf[INOUTF_SZ];        /* ODX: ROD token filename */
-    struct scat_gath_elem * in_sgl;     /* xcopy, odx: alternative to skip=
-                                         * and count= */
-    struct scat_gath_elem * out_sgl;    /* xcopy, odx: alternative to seek=
-                                         * and count= */
-    struct flags_t * iflagp;
-    struct dev_info_t * idip;
-    struct flags_t * oflagp;
-    struct dev_info_t * odip;
-    struct dev_info_t * o2dip;
+    uint32_t inactivity_to;     /* ODX: timeout in seconds */
+    uint32_t list_id;           /* xcopy(LID1) and odx related */
+    uint32_t rod_type;          /* ODX: ROD type */
+    int64_t offset_in_rod;      /* ODX: units are obs bytes */
+    int64_t skip;
+    int64_t seek;
     /* working variables and statistics */
     int64_t dd_count;   /* -1 for not specified, 0 for no blocks to copy */
                         /* after copy/read starts, decrements to 0 */
@@ -406,17 +423,11 @@ struct opts_t {
     int max_aborted;
     int max_uas;
     int out_partial;
-    int out_sparse_active;
-    int out_sparing_active;
     int out_sparse_partial;
-    int out_trim_active;
     int recovered_errs;          /* on reads */
     int unrecovered_errs;        /* on reads */
     int wr_recovered_errs;
     int wr_unrecovered_errs;
-    int xc_cat;
-    int xc_dc;
-    int status_none;
     int trim_errs;
     int read_tape_numbytes;
     int last_tape_read_len;  /* Length of previous tape read */
@@ -426,15 +437,26 @@ struct opts_t {
     int interrupted_retries;
     int io_eagains;
     int err_to_report;
-    int reading_fifo;
-    int read1_or_transfer; /* 1 when of=/dev/null or similar */
     int ibs_hold;
-    int o_readonly;
+    FILE * errblk_fp;
+    struct scat_gath_elem * in_sgl;     /* xcopy, odx: alternative to skip=
+                                         * and count= */
+    struct scat_gath_elem * out_sgl;    /* xcopy, odx: alternative to seek=
+                                         * and count= */
+    struct flags_t * iflagp;
+    struct dev_info_t * idip;
+    struct flags_t * oflagp;
+    struct dev_info_t * odip;
+    struct dev_info_t * o2dip;
     unsigned char * wrkBuff;
     unsigned char * wrkPos;
     unsigned char * wrkBuff2;
     unsigned char * wrkPos2;
     unsigned char * zeros_buff;
+    char rtf[INOUTF_SZ];        /* ODX: ROD token filename */
+#ifdef SG_LIB_WIN32
+    int wscan;          /* only used on Windows, for scanning devices */
+#endif
 #ifdef HAVE_POSIX_FADVISE
     off_t lowest_skip;
     off_t lowest_seek;
@@ -444,29 +466,27 @@ struct opts_t {
     sigset_t orig_mask;
 #endif
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
-    int start_tm_valid;
+    bool start_tm_valid;
     struct timespec start_tm;
 #elif defined(HAVE_GETTIMEOFDAY)
-    int start_tm_valid;
+    bool start_tm_valid;
     struct timeval start_tm;
 #endif
-    FILE * errblk_fp;
-    int wscan;  /* only used on Windows, for scanning devices */
 };
 
 /* state of working variables within do_copy() */
 /* permits do_copy() to be broken up into lots of helpers */
 struct cp_state_t {
-    int64_t if_filepos;
-    int64_t of_filepos;
+    bool leave_after_write;
     int icbpt;
     int ocbpt;
     int bytes_read;
     int bytes_of;
     int bytes_of2;
-    int leave_after_write;
     int leave_reason;   /* ==0 for no error (e.g. EOF) */
     int partial_write_bytes;
+    int64_t if_filepos;
+    int64_t of_filepos;
 };
 
 struct val_str_t {
@@ -506,10 +526,10 @@ int dd_filetype(const char * filename, int verbose);
 char * dd_filetype_str(int ft, char * buff, int max_bufflen,
                        const char * fname);
 void calc_duration_init(struct opts_t * op);
-void calc_duration_throughput(const char * leadin, int contin,
+void calc_duration_throughput(const char * leadin, bool contin,
                               struct opts_t * op);
 void print_blk_sizes(const char * fname, const char * access_typ,
-                     int64_t num_blks, int blk_sz, int to_stderr);
+                     int64_t num_blks, int blk_sz, bool to_stderr);
 void zero_coe_limit_count(struct opts_t * op);
 int get_blkdev_capacity(struct opts_t * op, int which_arg,
                         int64_t * num_blks, int * blk_sz);
@@ -525,12 +545,13 @@ void print_tape_pos(const char * prefix, const char * postfix,
 void install_signal_handlers(struct opts_t * op);
 void signals_process_delay(struct opts_t * op, int delay_type);
 void decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
-                                   int to_stderr, int verb);
+                                   bool to_stderr, int verb);
 int coe_process_eio(struct opts_t * op, int64_t skip);
 char * rod_type_str(uint32_t rt, char * b, int b_mlen);
 char * rt_cm_id_str(const unsigned char * rtp, int rt_len, char * b,
                     int b_mlen);
-void print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr);
+void print_exit_status_msg(const char * prefix, int exit_stat,
+                           bool to_stderr);
 int cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr,
               int * arr_len, int max_arr_len);
 int file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
@@ -542,9 +563,9 @@ void pt_destruct_obj(void * vp);
 int pt_open_if(struct opts_t * op, struct sg_simple_inquiry_resp * sirp);
 int pt_open_of(struct opts_t * op, struct sg_simple_inquiry_resp * sirp);
 void pt_close(int fd);
-int pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_blks,
+int pt_read_capacity(struct opts_t * op, bool in0_out1, int64_t * num_blks,
                      int * blk_sz);
-int pt_read(struct opts_t * op, int in0_out1, unsigned char * buff,
+int pt_read(struct opts_t * op, bool in0_out1, unsigned char * buff,
             int blocks, int * blks_readp);
 int pt_write(struct opts_t * op, const unsigned char * buff, int blocks,
              int64_t to_block);
@@ -553,27 +574,27 @@ int pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
 void pt_sync_cache(int fd);
 int pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
                        int timeout_secs, void * paramp, int param_len,
-                       int noisy, int verbose, int err_vb);
+                       bool noisy, int verbose, int err_vb);
 int pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
-                      void * resp, int mx_resp_len, int noisy, int verbose,
+                      void * resp, int mx_resp_len, bool noisy, int verbose,
                       int err_vb);
 
 /* defined in ddpt_xcopy.c */
 int open_rtf(struct opts_t * op);
 const char * cpy_op_status_str(int cos, char * b, int blen);
 uint64_t count_sgl_blocks(const struct scat_gath_elem * sglp, int elems);
-int print_3pc_vpd(struct opts_t * op, int to_stderr);
+int print_3pc_vpd(struct opts_t * op, bool to_stderr);
 int do_xcopy_lid1(struct opts_t * op);
 int do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
-               int walk_list_id, int vb_a);
-int do_rrti(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp,
+               bool walk_list_id, int vb_a);
+int do_rrti(struct opts_t * op, bool in0_out1, struct rrti_resp_t * rrp,
             int verb);
-int do_rcs(struct opts_t * op, int in0_out1, struct rrti_resp_t * rrp,
+int do_rcs(struct opts_t * op, bool in0_out1, struct rrti_resp_t * rrp,
            int verb);
 void get_local_rod_tok(unsigned char * tokp, int max_tok_len);
 int process_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a);
 int do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
-           uint32_t num_blks, uint64_t oir, int more_left, int walk_list_id,
+           uint32_t num_blks, uint64_t oir, bool more_left, bool walk_list_id,
            int vb_a);
 int process_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a);
 int do_odx(struct opts_t * op);

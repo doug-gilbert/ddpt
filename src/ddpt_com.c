@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2016 Douglas Gilbert.
+ * Copyright (c) 2013-2017 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -77,14 +77,17 @@
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
-#include <sys/sysmacros.h>
 #include <sys/file.h>
-#include <linux/major.h>
 #include <linux/fs.h>   /* <sys/mount.h> */
 #include <linux/mtio.h> /* For tape ioctls */
 #ifndef MTWEOFI
 #define MTWEOFI 35  /* write an end-of-file record (mark) in immediate mode */
 #endif
+#include <sys/sysmacros.h>
+#ifndef major
+#include <sys/types.h>
+#endif
+#include <linux/major.h>
 
 #ifdef HAVE_FALLOCATE
 #include <linux/falloc.h>
@@ -165,10 +168,10 @@ state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
            struct dev_info_t * idip, struct dev_info_t * odip,
            struct dev_info_t * o2dip)
 {
-    memset(op, 0, sizeof(struct opts_t));
+    memset(op, 0, sizeof(struct opts_t));       /* sets bools to false */
     op->dd_count = DDPT_COUNT_INDEFINITE;
     op->highest_unrecovered = -1;
-    op->do_time = 1;         /* default was 0 in sg_dd */
+    op->do_time = true;    /* default was false (0) in sg_dd */
     op->id_usage = -1;
     op->list_id = 1;
     op->prio = 1;
@@ -288,7 +291,7 @@ print_stats(const char * str, struct opts_t * op, int who)
 #ifndef SG_LIB_WIN32
 
 #ifdef SG_LIB_LINUX
-static int bsg_major_checked = 0;
+static bool bsg_major_checked = false;
 static int bsg_major = 0;
 
 /* In Linux search /proc/devices for bsg character driver in order to
@@ -296,12 +299,12 @@ static int bsg_major = 0;
 static void
 find_bsg_major(int verbose)
 {
+    int n;
     const char * proc_devices = "/proc/devices";
     FILE *fp;
     char a[128];
     char b[128];
     char * cp;
-    int n;
 
     if (NULL == (fp = fopen(proc_devices, "r"))) {
         if (verbose)
@@ -340,8 +343,8 @@ find_bsg_major(int verbose)
 static int
 unix_dd_filetype(const char * filename, int verbose)
 {
-    struct stat st;
     size_t len = strlen(filename);
+    struct stat st;
 
     if (verbose) { ; }    /* suppress warning */
     if ((1 == len) && ('.' == filename[0]))
@@ -363,7 +366,7 @@ unix_dd_filetype(const char * filename, int verbose)
         if (SCSI_TAPE_MAJOR == major(st.st_rdev))
             return FT_TAPE;
         if (! bsg_major_checked) {
-            bsg_major_checked = 1;
+            bsg_major_checked = true;
             find_bsg_major(verbose);
         }
         if (bsg_major == (int)major(st.st_rdev))
@@ -372,8 +375,8 @@ unix_dd_filetype(const char * filename, int verbose)
 #elif SG_LIB_FREEBSD
         {
             /* int d_flags;  for FIOFTYPE ioctl see sys/filio.h */
-            char s[STR_SZ];
             char * bname;
+            char s[STR_SZ];
 
             strcpy(s, filename);
             bname = basename(s);
@@ -438,8 +441,8 @@ dd_filetype_str(int ft, char * buff, int max_bufflen, const char * fname)
     if (FT_OTHER & ft)
         off += my_snprintf(buff + off, max_bufflen - off, "other file type ");
     if (FT_ERROR & ft)
-        off += my_snprintf(buff + off, max_bufflen - off,
-                           "unable to 'stat' %s ", (fname ? fname : "file"));
+        /* off += */ my_snprintf(buff + off, max_bufflen - off, "unable to "
+                                 "'stat' %s ", (fname ? fname : "file"));
     return buff;
 }
 
@@ -594,7 +597,7 @@ zero_coe_limit_count(struct opts_t * op)
  * (10**6 bytes), GB (10**9 bytes) or TB (10**12 bytes) to stderr. */
 void
 print_blk_sizes(const char * fname, const char * access_typ, int64_t num_blks,
-                int blk_sz, int to_stderr)
+                int blk_sz, bool to_stderr)
 {
     int mb, gb, tb;
     size_t len;
@@ -677,14 +680,14 @@ calc_duration_init(struct opts_t * op)
         op->start_tm.tv_sec = 0;
         op->start_tm.tv_nsec = 0;
         if (0 == clock_gettime(CLOCK_MONOTONIC, &op->start_tm))
-            op->start_tm_valid = 1;
+            op->start_tm_valid = true;
     }
 #elif defined(HAVE_GETTIMEOFDAY)
     if (op->do_time) {
         op->start_tm.tv_sec = 0;
         op->start_tm.tv_usec = 0;
         gettimeofday(&op->start_tm, NULL);
-        op->start_tm_valid = 1;
+        op->start_tm_valid = true;
     }
 #else
     if (op) { ; }
@@ -697,9 +700,9 @@ calc_duration_init(struct opts_t * op)
  * since time is guaranteed to advance; gettimeofday() is impacted if the
  * user (or something like ntpd) changes the time.
  * Also if the transfer is large enough and isn't about to finish, it
- * makes an estimate of the time remaining. */
+ * makes an estimate of the time remaining (when contin=true). */
 void
-calc_duration_throughput(const char * leadin, int contin, struct opts_t * op)
+calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
 {
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
     struct timespec end_tm, res_tm;
@@ -908,9 +911,10 @@ show_tape_pos_error(const char * postfix)
 void
 print_tape_pos(const char * prefix, const char * postfix, struct opts_t * op)
 {
+    static bool lastreadposvalid = false;       /* <<< static autos */
+    static bool lastwriteposvalid = false;
     static int lastreadpos, lastwritepos;
-    static char lastreadposvalid = 0;
-    static char lastwriteposvalid = 0;
+
     int res;
     struct mtpos pos;
 
@@ -919,15 +923,15 @@ print_tape_pos(const char * prefix, const char * postfix, struct opts_t * op)
             res = ioctl(op->idip->fd, MTIOCPOS, &pos);
             if (0 == res) {
                 if ((pos.mt_blkno != lastreadpos) ||
-                    (0 == lastreadposvalid)) {
+                    (! lastreadposvalid)) {
                     lastreadpos = pos.mt_blkno;
-                    lastreadposvalid = 1;
+                    lastreadposvalid = true;
                     pr2serr("%stape position%s: %u%s\n", prefix,
                             (FT_TAPE & op->odip->d_type) ? " (reading)" : "",
                             lastreadpos, postfix);
                 }
             } else {
-                lastreadposvalid = 0;
+                lastreadposvalid = false;
                 show_tape_pos_error((FT_TAPE & op->odip->d_type) ?
                                     " (reading)" : "");
             }
@@ -937,15 +941,15 @@ print_tape_pos(const char * prefix, const char * postfix, struct opts_t * op)
             res = ioctl(op->odip->fd, MTIOCPOS, &pos);
             if (0 == res) {
                 if ((pos.mt_blkno != lastwritepos) ||
-                    (0 == lastwriteposvalid)) {
+                    (! lastwriteposvalid)) {
                     lastwritepos = pos.mt_blkno;
-                    lastwriteposvalid = 1;
+                    lastwriteposvalid = true;
                     pr2serr("%stape position%s: %u%s\n", prefix,
                             (FT_TAPE & op->idip->d_type) ? " (writing)" : "",
                             lastwritepos, postfix);
                 }
             } else {
-                lastwriteposvalid = 0;
+                lastwriteposvalid = false;
                 show_tape_pos_error((FT_TAPE & op->idip->d_type) ?
                                     " (writing)" : "");
             }
@@ -1042,10 +1046,11 @@ install_signal_handlers(struct opts_t * op)
                 (SA_NOCLDSTOP ? "modern" : "old"), SA_NOCLDSTOP,
                 (op->interrupt_io ? "not " : ""));
 #if SA_NOCLDSTOP
+    bool unblock_starting_mask = false;
+    int num_members = 0;
     struct sigaction act;
     sigset_t starting_mask;
-    int num_members = 0;
-    int unblock_starting_mask = 0;
+
     sigemptyset(&op->caught_signals);
     sigemptyset(&op->orig_mask);
     sigaction(SIGINFO, NULL, &act);
@@ -1068,17 +1073,17 @@ install_signal_handlers(struct opts_t * op)
     if (sigismember(&starting_mask, SIGINFO)) {
         if (op->verbose)
             pr2serr("%s blocked on entry, unblock\n", sname);
-        ++unblock_starting_mask;
+        unblock_starting_mask = true;
     }
     if (sigismember(&starting_mask, SIGINT)) {
         if (op->verbose)
             pr2serr("SIGINT blocked on entry, unblock\n");
-        ++unblock_starting_mask;
+        unblock_starting_mask = true;
     }
     if (sigismember(&starting_mask, SIGPIPE)) {
         if (op->verbose)
             pr2serr("SIGPIPE blocked on entry, unblock\n");
-        ++unblock_starting_mask;
+        unblock_starting_mask = true;
     }
     act.sa_mask = op->caught_signals;
 
@@ -1128,12 +1133,12 @@ install_signal_handlers(struct opts_t * op)
 void    /* Global function, used by ddpt_xcopy.c */
 signals_process_delay(struct opts_t * op, int delay_type)
 {
+    bool got_something = false;
     char b[32];
-    int got_something = 0;
     int delay = 0;
 
 #if SA_NOCLDSTOP
-    int found_pending = 0;
+    bool found_pending = false;
 
     if ((0 == op->interrupt_io) &&
         (sigismember(&op->caught_signals, SIGINT) ||
@@ -1147,7 +1152,7 @@ signals_process_delay(struct opts_t * op, int delay_type)
             sigismember(&pending_set, SIGINFO)) {
             /* Signal handler for a pending signal run during suspend */
             sigsuspend(&op->orig_mask);
-            found_pending = 1;
+            found_pending = true;
         } else {        /* nothing pending so perhaps delay */
             if ((op->delay > 0) && (DELAY_COPY_SEGMENT == delay_type))
                 delay = op->delay;
@@ -1155,7 +1160,7 @@ signals_process_delay(struct opts_t * op, int delay_type)
                 if (op->subsequent_wdelay)
                     delay = op->wdelay;
                 else
-                    op->subsequent_wdelay = 1;
+                    op->subsequent_wdelay = true;
             }
             if (delay) {
                 sigprocmask(SIG_SETMASK, &op->orig_mask, NULL);
@@ -1175,7 +1180,7 @@ signals_process_delay(struct opts_t * op, int delay_type)
         int interrupt;
         int infos;
 
-        got_something = 1;
+        got_something = true;
 #if SA_NOCLDSTOP
         if (! found_pending)
             sigprocmask(SIG_BLOCK, &op->caught_signals, NULL);
@@ -1197,10 +1202,10 @@ signals_process_delay(struct opts_t * op, int delay_type)
         if (interrupt) {
             pr2serr("Interrupted by signal %s\n",
                     get_signal_name(interrupt, b, sizeof(b)));
-            print_stats("", op, 0);
+            print_stats("", op, 0 /* both in and out */);
             /* Don't show next message if using oflag=pre-alloc and we didn't
              * use FALLOC_FL_KEEP_SIZE */
-            if ((0 == op->reading_fifo) && (FT_REG & op->odip->d_type_hold)
+            if ((! op->reading_fifo) && (FT_REG & op->odip->d_type_hold)
                  && (0 == op->oflagp->prealloc)) {
                 if (op->oflagp->strunc) {
                     int64_t osize = (op->seek * op->obs);
@@ -1219,7 +1224,7 @@ signals_process_delay(struct opts_t * op, int delay_type)
             pr2serr("Progress report:\n");
             print_stats("  ", op, 0);
             if (op->do_time)
-                calc_duration_throughput("  ", 1, op);
+                calc_duration_throughput("  ", true /* contin */, op);
             pr2serr("  continuing ...\n");
         }
         if (interrupt) {
@@ -1244,7 +1249,7 @@ signals_process_delay(struct opts_t * op, int delay_type)
             if (op->subsequent_wdelay)
                 delay = op->wdelay;
             else
-                op->subsequent_wdelay = 1;
+                op->subsequent_wdelay = true;
         }
         if (delay)
             sleep_ms(op->delay);
@@ -1253,7 +1258,7 @@ signals_process_delay(struct opts_t * op, int delay_type)
 
 void
 decode_designation_descriptor(const unsigned char * bp, int len_less_4,
-                              int to_stderr, int verb)
+                              bool to_stderr, int verb)
 {
     int (*print_p)(const char *, ...);
     char b[2048];
@@ -1294,7 +1299,7 @@ coe_process_eio(struct opts_t * op, int64_t skip)
 char *
 rod_type_str(uint32_t rt, char * b, int b_mlen)
 {
-    int got_pit = 0;
+    bool got_pit = false;       /* Point In Time copy */
     const char * cp = NULL;
     const char * pitp = "point in time copy - ";
 
@@ -1307,19 +1312,19 @@ rod_type_str(uint32_t rt, char * b, int b_mlen)
         break;
     case RODT_PIT_DEF:
         cp = "default";
-        got_pit = 1;
+        got_pit = true;
         break;
     case RODT_PIT_VULN:
         cp = "change vulnerable";
-        got_pit = 1;
+        got_pit = true;
         break;
     case RODT_PIT_PERS:
         cp = "persistent";
-        got_pit = 1;
+        got_pit = true;
         break;
     case RODT_PIT_ANY:
         cp = "any";
-        got_pit = 1;
+        got_pit = true;
         break;
     case RODT_BLK_ZERO:
         cp = "block device zero";
@@ -1357,7 +1362,7 @@ rt_cm_id_str(const unsigned char * rtp, int rt_len, char * b, int b_mlen)
 }
 
 void
-print_exit_status_msg(const char * prefix, int exit_stat, int to_stderr)
+print_exit_status_msg(const char * prefix, int exit_stat, bool to_stderr)
 {
     int (*print_p)(const char *, ...);
     char b[80];
@@ -1520,10 +1525,10 @@ cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr, int * arr_len,
           int max_arr_len)
 {
     int in_len, k;
-    const char * lcp;
     int64_t ll;
     char * cp;
     char * c2p;
+    const char * lcp;
 
     if ((NULL == inp) || (NULL == sgl_arr) ||
         (NULL == arr_len))
@@ -1601,13 +1606,13 @@ int
 file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
             int * arr_len, int max_arr_len)
 {
-    char line[1024];
+    bool have_stdin, bit0;
+    int in_len, k, j, m, ind, res;
     int off = 0;
-    int in_len, k, j, m, ind, bit0, res;
-    bool have_stdin;
-    char * lcp;
-    FILE * fp;
     int64_t ll;
+    FILE * fp;
+    char * lcp;
+    char line[1024];
 
     have_stdin = ((1 == strlen(file_name)) && ('-' == file_name[0]));
     if (have_stdin)
@@ -1657,7 +1662,7 @@ file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
             ll = sg_get_llnum(lcp);
             if (-1 != ll) {
                 ind = ((off + k) >> 1);
-                bit0 = 0x1 & (off + k);
+                bit0 = !! (0x1 & (off + k));
                 if (ind >= max_arr_len) {
                     pr2serr("%s: array length exceeded\n", __func__);
                     goto the_end;
