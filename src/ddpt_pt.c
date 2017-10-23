@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2016 Douglas Gilbert.
+ * Copyright (c) 2008-2017 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -137,10 +137,10 @@ int
 pt_open_if(struct opts_t * op, struct sg_simple_inquiry_resp * sirp)
 {
     int verb, flags, fl, fd;
-    struct sg_simple_inquiry_resp sir;
     struct flags_t * fp = op->iflagp;
     struct dev_info_t * dip = op->idip;
     const char * fn = op->idip->fn;
+    struct sg_simple_inquiry_resp sir;
 
     verb = (op->verbose ? op->verbose - 1: 0);
     flags = fp->block ? 0 : O_NONBLOCK;
@@ -252,20 +252,19 @@ pt_close(int fd)
 /* Fetch number of blocks and block size of a pt device.
  * Return of 0 -> success, see sg_ll_read_capacity*() otherwise. */
 int
-pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_blks,
+pt_read_capacity(struct opts_t * op, bool in0_out1, int64_t * num_blks,
                  int * blk_sz)
 {
-    int res;
+    int res, verb;
+    int protect = (in0_out1 ? op->wrprotect : op->rdprotect);
+    int sg_fd = (in0_out1 ? op->odip->fd : op->idip->fd);
     unsigned int ui;
     unsigned char rcBuff[RCAP16_REPLY_LEN];
-    int verb;
-    int sg_fd = (in0_out1 ? op->odip->fd : op->idip->fd);
-    int protect = (in0_out1 ? op->wrprotect : op->rdprotect);
 
     verb = (op->verbose ? op->verbose - 1: 0);
     memset(rcBuff, 0, sizeof(rcBuff));
     if (! protect) {
-        res = sg_ll_readcap_10(sg_fd, 0, 0, rcBuff, READ_CAP_REPLY_LEN, 1,
+        res = sg_ll_readcap_10(sg_fd, 0, 0, rcBuff, READ_CAP_REPLY_LEN, true,
                                verb);
         if (0 != res)
             return res;
@@ -280,7 +279,7 @@ pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_blks,
         if (verb && ! protect)
             pr2serr("    READ CAPACITY (10) response cannot represent this "
                     "capacity\n");
-        res = sg_ll_readcap_16(sg_fd, 0, 0, rcBuff, RCAP16_REPLY_LEN, 1,
+        res = sg_ll_readcap_16(sg_fd, 0, 0, rcBuff, RCAP16_REPLY_LEN, true,
                                verb);
         if (0 != res)
             return res;
@@ -310,15 +309,15 @@ pt_read_capacity(struct opts_t * op, int in0_out1, int64_t * num_blks,
 /* Build a SCSI READ or WRITE CDB. */
 static int
 pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
-                  int64_t start_block, int write_true,
+                  int64_t start_block, bool write_true,
                   const struct flags_t * fp, int protect)
 {
+    int opcode_sa, options_byte, rw_sa;
+    int * opc_arr;
     int rd_opcode[] = {DDPT_READ6_OC, DDPT_READ10_OC, DDPT_READ12_OC,
                        DDPT_READ16_OC, DDPT_READ32_SA};
     int wr_opcode[] = {DDPT_WRITE6_OC, DDPT_WRITE10_OC, DDPT_WRITE12_OC,
                        DDPT_WRITE16_OC, DDPT_WRITE32_SA};
-    int opcode_sa, options_byte, rw_sa;
-    int * opc_arr;
 
     if (cdb_sz < 6) {
         pr2serr("cdb_sz too small\n");
@@ -348,10 +347,12 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
             }
         } else
             opc_arr = wr_opcode;
-    } else {    /* a READ */
+    } else {    /* READs */
         opc_arr = rd_opcode;
-        if (fp->rarc)
-            options_byte |= 0x4;
+        if (6 != cdb_sz) {    /* a READ(10, 12, 16, 32) */
+            if (fp->rarc)
+                options_byte |= 0x4;
+        }
     }
 
     if (cdb_sz > 6) {
@@ -363,10 +364,10 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
         } else {
             if (fp->fua)
                 options_byte |= 0x8;
-            if (fp->fua_nv)
+            if (fp->fua_nv)     /* obsolete around sbc3r35l */
                 options_byte |= 0x2;
         }
-        if (protect)
+        if (protect)    /* wrprotect field */
             options_byte |= ((protect & 0x7) << 5);
     }
 
@@ -448,20 +449,20 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
  * -2 -> ENOMEM
  * -1 other errors */
 static int
-pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
-            int blocks, int64_t from_block, int bs,
-            uint64_t * io_addrp)
+pt_low_read(struct opts_t * op, bool in0_out1, unsigned char * buff,
+            int blocks, int64_t from_block, int bs, uint64_t * io_addrp)
 {
+    bool info_valid;
+    int res, k, slen, sense_cat, ret, vt;
+    int protect = (in0_out1 ? op->wrprotect : op->rdprotect);
+    const struct dev_info_t * dip = (in0_out1 ? op->odip : op->idip);
+    const struct flags_t * fp = (in0_out1 ? op->oflagp : op->iflagp);
+    struct sg_pt_base * ptvp = (in0_out1 ? op->odip->ptvp : op->idip->ptvp);
     unsigned char rdCmd[MAX_SCSI_CDBSZ];
     unsigned char sense_b[SENSE_BUFF_LEN];
-    int res, k, info_valid, slen, sense_cat, ret, vt;
-    struct sg_pt_base * ptvp = (in0_out1 ? op->odip->ptvp : op->idip->ptvp);
-    const struct flags_t * fp = (in0_out1 ? op->oflagp : op->iflagp);
-    const struct dev_info_t * dip = (in0_out1 ? op->odip : op->idip);
-    int protect = (in0_out1 ? op->wrprotect : op->rdprotect);
     struct sg_scsi_sense_hdr ssh;
 
-    if (pt_build_scsi_cdb(rdCmd, fp->cdbsz, blocks, from_block, 0,
+    if (pt_build_scsi_cdb(rdCmd, fp->cdbsz, blocks, from_block, false,
                           fp, protect)) {
         pr2serr("bad rd cdb build, from_block=%" PRId64 ", blocks=%d\n",
                 from_block, blocks);
@@ -497,7 +498,7 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
 
     vt = ((op->verbose > 1) ? (op->verbose - 1) : op->verbose);
     ret = sg_cmds_process_resp(ptvp, "READ", res, bs * blocks, sense_b,
-                               0 /* noisy */, vt, &sense_cat);
+                               false /* noisy */, vt, &sense_cat);
     if (-1 == ret)
         ;
     else if (-2 == ret) {
@@ -547,7 +548,7 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
             break;
         case SG_LIB_CAT_ILLEGAL_REQ:
             if (5 == dip->pdt) {    /* MMC READs can go down this path */
-                int ili;
+                bool ili;
 
                 if (sg_scsi_normalize_sense(sense_b, slen, &ssh) &&
                     (0x64 == ssh.asc) && (0x0 == ssh.ascq)) {
@@ -555,9 +556,10 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
                                                       NULL, &ili) && ili) {
                         info_valid = sg_get_sense_info_fld(sense_b, slen,
                                                            io_addrp);
-                        if (*io_addrp > 0) {
+                        if (info_valid) {
                             ++op->unrecovered_errs;
                             ret = SG_LIB_CAT_MEDIUM_HARD_WITH_INFO;
+                            break;
                         } else
                             pr2serr("MMC READ gave 'illegal mode for this "
                                     "track' and ILI but no LBA of failure\n");
@@ -566,6 +568,7 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
                     ret = SG_LIB_CAT_MEDIUM_HARD;
                 }
             }
+            break;
         default:
             break;
         }
@@ -589,19 +592,18 @@ pt_low_read(struct opts_t * op, int in0_out1, unsigned char * buff,
  * SG_LIB_CAT_MEDIUM_HARD, SG_LIB_CAT_ABORTED_COMMAND,
  * -2 -> ENOMEM, -1 other errors */
 int
-pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
+pt_read(struct opts_t * op, bool in0_out1, unsigned char * buff, int blocks,
         int * blks_readp)
 {
-    uint64_t io_addr;
-    int64_t from_block;
-    int64_t lba;
-    int bs;
-    struct flags_t * fp;
-    int res, blks, use_io_addr, xferred, pi_len;
-    unsigned char * bp;
-    int retries_tmp;
+    bool may_coe = false;
+    bool use_io_addr;
+    int res, blks, xferred, pi_len, bs, retries_tmp;
     int ret = 0;
-    int may_coe = 0;
+    int64_t from_block;
+    uint64_t io_addr;
+    int64_t lba;
+    struct flags_t * fp;
+    unsigned char * bp;
     const char * iop;
 
     if (in0_out1) {
@@ -621,8 +623,8 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
     for (xferred = 0, blks = blocks, lba = from_block, bp = buff;
          blks > 0; blks = blocks - xferred) {
         io_addr = 0;
-        use_io_addr = 0;
-        may_coe = 0;
+        use_io_addr = false;
+        may_coe = false;
         res = pt_low_read(op, in0_out1, bp, blks, lba, bs, &io_addr);
         switch (res) {
         case 0:         /* this is the fast path after good pt_low_read() */
@@ -657,7 +659,7 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
             }
             break;
         case SG_LIB_CAT_PROTECTION_WITH_INFO:
-            use_io_addr = 1;
+            use_io_addr = true;
             ret = res;
             break; /* unrecovered read error at lba=io_addr */
         case SG_LIB_CAT_MEDIUM_HARD_WITH_INFO:
@@ -669,7 +671,7 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
                 if (op->unrecovered_errs > 0)
                     --op->unrecovered_errs;
             } else
-                use_io_addr = 1;
+                use_io_addr = true;
             ret = SG_LIB_CAT_MEDIUM_HARD;
             break; /* unrecovered read error at lba=io_addr */
         case SG_LIB_SYNTAX_ERROR:
@@ -680,7 +682,7 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
             ret = res;
             goto err_out;
         case SG_LIB_CAT_MEDIUM_HARD:
-            may_coe = 1;
+            may_coe = true;
             /* No VALID+INFO field but we know the range of lba_s */
             if (0 == retries_tmp)
                 errblk_put_range(lba, blks, op);
@@ -708,7 +710,7 @@ pt_read(struct opts_t * op, int in0_out1, unsigned char * buff, int blocks,
                 pr2serr("  Unrecovered error lba 0x%" PRIx64 " not in "
                         "correct range:\n\t[0x%" PRIx64 ",0x%" PRIx64 "]\n",
                         io_addr, (uint64_t)lba, (uint64_t)(lba + blks - 1));
-            may_coe = 1;
+            may_coe = true;
             goto err_out;
         }
         if (op->highest_unrecovered < 0) {
@@ -829,14 +831,15 @@ static int
 pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
              int64_t to_block, int bs)
 {
-    unsigned char wrCmd[MAX_SCSI_CDBSZ];
-    unsigned char sense_b[SENSE_BUFF_LEN];
-    int res, k, info_valid, ret, sense_cat, slen, vt;
+    bool info_valid;
+    int res, k, ret, sense_cat, slen, vt;
     int sg_fd = op->odip->fd;
     uint64_t io_addr = 0;
     struct sg_pt_base * ptvp = op->odip->ptvp;
     const struct flags_t * fp = op->oflagp;
     const char * desc;
+    unsigned char wrCmd[MAX_SCSI_CDBSZ];
+    unsigned char sense_b[SENSE_BUFF_LEN];
 
     if (pt_build_scsi_cdb(wrCmd, fp->cdbsz, blocks, to_block, 1, fp,
                           op->wrprotect)) {
@@ -880,7 +883,7 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
 
     vt = ((op->verbose > 1) ? (op->verbose - 1) : op->verbose);
     ret = sg_cmds_process_resp(ptvp, desc, res, bs * blocks, sense_b,
-                               0 /* noisy */, vt, &sense_cat);
+                               false /* noisy */, vt, &sense_cat);
     if (-1 == ret)
         ;
     else if (-2 == ret) {
@@ -935,8 +938,8 @@ int
 pt_write(struct opts_t * op, const unsigned char * buff, int blocks,
          int64_t to_block)
 {
+    bool first = true;
     int retries_tmp;
-    int first = 1;
     int ret = 0;
     int bs = op->obs_pi;
 
@@ -974,7 +977,7 @@ pt_write(struct opts_t * op, const unsigned char * buff, int blocks,
                 --op->wr_unrecovered_errs;
         } else
             break;
-        first = 0;
+        first = false;
     }
     return ret;
 }
@@ -989,12 +992,12 @@ pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
                 int blocks, int64_t start_block)
 {
     int k, ret, res, sense_cat, vt;
-    uint64_t llba;
+    int sg_fd = op->odip->fd;
     uint32_t unum;
+    uint64_t llba;
+    struct sg_pt_base * ptvp = op->odip->ptvp;
     unsigned char wsCmdBlk[16];
     unsigned char sense_b[SENSE_BUFF_LEN];
-    struct sg_pt_base * ptvp = op->odip->ptvp;
-    int sg_fd = op->odip->fd;
 
     memset(wsCmdBlk, 0, sizeof(wsCmdBlk));
     wsCmdBlk[0] = 0x93;         /* WRITE SAME(16) opcode */
@@ -1031,7 +1034,7 @@ pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
             ++op->io_eagains;
     }
     ret = sg_cmds_process_resp(ptvp, "Write same(16)", res, 0, sense_b,
-                               1 /*noisy */, vt, &sense_cat);
+                               true /*noisy */, vt, &sense_cat);
     if (-1 == ret)
         ;
     else if (-2 == ret) {
@@ -1042,7 +1045,8 @@ pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
             break;
         case SG_LIB_CAT_MEDIUM_HARD:
             {
-                int valid, slen;
+                bool valid;
+                int slen;
                 uint64_t ull = 0;
 
                 slen = get_scsi_pt_sense_len(ptvp);
@@ -1068,10 +1072,10 @@ pt_sync_cache(int fd)
 {
     int res;
 
-    res = sg_ll_sync_cache_10(fd, 0, 0, 0, 0, 0, 1, 0);
+    res = sg_ll_sync_cache_10(fd, 0, 0, 0, 0, 0, true, 0);
     if (SG_LIB_CAT_UNIT_ATTENTION == res) {
         pr2serr("Unit attention (out, sync cache), continuing\n");
-        res = sg_ll_sync_cache_10(fd, 0, 0, 0, 0, 0, 1, 0);
+        res = sg_ll_sync_cache_10(fd, 0, 0, 0, 0, 0, true, 0);
     }
     if (0 != res)
         pr2serr("Unable to do SCSI synchronize cache\n");
@@ -1081,7 +1085,8 @@ static int
 pt_tpc_process_res(int cp_ret, int sense_cat, const unsigned char * sense_b,
                    int sense_len)
 {
-    int ret, sb_ok;
+    bool sb_ok;
+    int ret;
 
     if (-1 == cp_ret)
         ret = -1;
@@ -1149,38 +1154,39 @@ pt_tpc_process_res(int cp_ret, int sense_cat, const unsigned char * sense_b,
 int
 pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
                    int timeout_secs, void * paramp, int param_len,
-                   int noisy, int vb, int err_vb)
+                   bool noisy, int vb, int err_vb)
 {
-    int k, res, ret, has_lid, sense_cat, tmout;
+    bool has_lid;
+    int k, res, ret, sense_cat, tmout;
+    struct sg_pt_base * ptvp;
     unsigned char xcopyCmdBlk[DDPT_TPC_OUT_CMDLEN] =
       {DDPT_TPC_OUT_CMD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     unsigned char sense_b[SENSE_BUFF_LEN];
-    struct sg_pt_base * ptvp;
     char cname[80];
 
     if (vb < 0)
         vb = 0;
     if (err_vb < 0)
         err_vb = 0;
-    sg_get_opcode_sa_name(DDPT_TPC_OUT_CMD, sa, 0, sizeof(cname),
+    sg_get_opcode_sa_name(DDPT_TPC_OUT_CMD, sa, 0 /* pdt */, sizeof(cname),
                           cname);
     xcopyCmdBlk[1] = (unsigned char)(sa & 0x1f);
     switch (sa) {
     case 0x0:   /* XCOPY(LID1) */
     case 0x1:   /* XCOPY(LID4) */
         sg_put_unaligned_be32((uint32_t)param_len, xcopyCmdBlk + 10);
-        has_lid = 0;
+        has_lid = false;
         break;
     case 0x10:  /* POPULATE TOKEN (SBC-3) */
     case 0x11:  /* WRITE USING TOKEN (SBC-3) */
         sg_put_unaligned_be32(list_id, xcopyCmdBlk + 6);
-        has_lid = 1;
+        has_lid = true;
         sg_put_unaligned_be32((uint32_t)param_len, xcopyCmdBlk + 10);
         xcopyCmdBlk[14] = (unsigned char)(group_num & 0x1f);
         break;
     case 0x1c:  /* COPY OPERATION ABORT */
         sg_put_unaligned_be32(list_id, xcopyCmdBlk + 2);
-        has_lid = 1;
+        has_lid = true;
         break;
     default:
         pr2serr("pt_3party_copy_out: unknown service action 0x%x\n", sa);
@@ -1234,20 +1240,22 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
 
 int
 pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
-                  void * resp, int mx_resp_len, int noisy, int vb, int err_vb)
+                  void * resp, int mx_resp_len, bool noisy, int vb,
+                  int err_vb)
 {
     int k, res, ret, sense_cat, tmout;
+    struct sg_pt_base * ptvp;
     unsigned char rcvcopyresCmdBlk[DDPT_TPC_IN_CMDLEN] =
       {DDPT_TPC_IN_CMD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     unsigned char sense_b[SENSE_BUFF_LEN];
-    struct sg_pt_base * ptvp;
     char cname[64];
 
     if (vb < 0)
         vb = 0;
     if (err_vb < 0)
         err_vb = 0;
-    sg_get_opcode_sa_name(DDPT_TPC_IN_CMD, sa, 0, (int)sizeof(cname), cname);
+    sg_get_opcode_sa_name(DDPT_TPC_IN_CMD, sa, 0 /* pdt */,
+                          (int)sizeof(cname), cname);
     rcvcopyresCmdBlk[1] = (unsigned char)(sa & 0x1f);
     if (sa <= 4)        /* LID1 variants */
         rcvcopyresCmdBlk[2] = (unsigned char)(list_id);

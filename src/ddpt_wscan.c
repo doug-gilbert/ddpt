@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006-2016 Douglas Gilbert.
+ * Copyright (c) 2006-2017 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -633,7 +633,7 @@ enum_tapes(void)
 }
 
 static int
-do_wscan(char letter, int show_bt, int scsi_scan)
+do_wscan(char letter, bool show_bt, int scsi_scan)
 {
     int k, j, n;
     struct storage_elem * sp;
@@ -710,7 +710,8 @@ do_wscan(char letter, int show_bt, int scsi_scan)
 int
 sg_do_wscan(char letter, int do_scan, int verb)
 {
-    int ret, show_bt, scsi_scan;
+    bool show_bt;
+    int ret, scsi_scan;
 
     verbose = verb;
     show_bt = (do_scan > 1);

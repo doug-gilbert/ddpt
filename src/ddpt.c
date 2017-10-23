@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2016 Douglas Gilbert.
+ * Copyright (c) 2008-2017 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -59,7 +59,6 @@
 #include <fcntl.h>
 #define __STDC_FORMAT_MACROS 1
 #include <inttypes.h>
-#include <sys/types.h>
 #include <sys/stat.h>
 
 /* N.B. config.h must precede anything that depends on HAVE_*  */
@@ -68,18 +67,21 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.96 20160520 [svn: r330]";
+static const char * ddpt_version_str = "0.96 20171023 [svn: r331]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
-#include <sys/sysmacros.h>
 #include <sys/file.h>
-#include <linux/major.h>
 #include <linux/fs.h>   /* <sys/mount.h> */
 #include <linux/mtio.h> /* For tape ioctls */
 #ifndef MTWEOFI
 #define MTWEOFI 35  /* write an end-of-file record (mark) in immediate mode */
 #endif
+#include <sys/sysmacros.h>
+#ifndef major
+#include <sys/types.h>
+#endif
+#include <linux/major.h>
 
 #ifdef HAVE_FALLOCATE
 #include <linux/falloc.h>
@@ -117,7 +119,7 @@ static const char * ddpt_version_str = "0.96 20160520 [svn: r330]";
 #define EREMOTEIO EIO
 #endif
 
-/* Used for outputting diagnostic messages for oflag=pre-alloc */
+/* Used for outputting diagnostic messages for oflag=prealloc */
 #define PREALLOC_DEBUG 1
 
 
@@ -147,7 +149,7 @@ open_if(struct opts_t * op)
     if (!(FT_PT & idip->d_type) && op->rdprotect)
         pr2serr("rdprotect ignored on non-pt device\n");
     if ((FT_FIFO | FT_CHAR | FT_TAPE) & idip->d_type)
-        ++op->reading_fifo;
+        op->reading_fifo = true;
 
     if ((FT_TAPE & idip->d_type) && (FT_PT & idip->d_type)) {
         pr2serr("SCSI tape device %s not supported via pt\n", ifn);
@@ -201,6 +203,7 @@ open_if(struct opts_t * op)
     if (ifp->flock) {
         int res;
 
+        /* implicit unlock operation when fd closed when utility exits */
         res = flock(fd, LOCK_EX | LOCK_NB);
         if (res < 0) {
             close(fd);
@@ -225,14 +228,14 @@ other_err:
 static int
 open_of(struct opts_t * op)
 {
+    bool outf_exists = false;
     int flags;
     int fd = -SG_LIB_FILE_ERROR;
-    int outf_exists = 0;
-    char ebuff[EBUFF_SZ];
-    struct stat st;
     struct flags_t * ofp = op->oflagp;
     struct dev_info_t * odip = op->odip;
     const char * ofn = odip->fn;
+    char ebuff[EBUFF_SZ];
+    struct stat st;
 
     odip->d_type = dd_filetype(ofn, op->verbose);
     if (((FT_BLOCK | FT_TAPE | FT_OTHER) & odip->d_type) && ofp->pt)
@@ -264,19 +267,19 @@ open_of(struct opts_t * op)
     }
 #endif
     else {      /* typically regular file or block device node */
-        int needs_ftruncate = 0;
+        bool needs_ftruncate = false;
         int64_t offset = 0;
 
         memset(&st, 0, sizeof(st));
         if (0 == stat(ofn, &st))
-            outf_exists = 1;
+            outf_exists = true;
         else if (ofp->pt) {
             /* if oflag=pt, then creating a regular file is unhelpful */
             pr2serr("Cannot create a regular file called %s as a pt\n", ofn);
             goto other_err;
         }
         flags = ofp->sparing ? O_RDWR : O_WRONLY;
-        if (0 == outf_exists)
+        if (! outf_exists)
             flags |= O_CREAT;
         if (ofp->direct)
             flags |= O_DIRECT;
@@ -291,7 +294,7 @@ open_of(struct opts_t * op)
             if (op->seek > 0) {
                 offset = op->seek * op->obs;
                 if (st.st_size > offset)
-                    ++needs_ftruncate;  // only truncate to shorten
+                    needs_ftruncate = true;  // only truncate to shorten
             } else
                 flags |= O_TRUNC;
         }
@@ -362,8 +365,8 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
     if (FT_PT & in_type) {
         if (op->iflagp->norcap) {
             if ((FT_BLOCK & in_type) && (0 == op->iflagp->force)) {
-                pr2serr(">> warning: norcap on input block device "
-                        "accessed via pt is risky.\n");
+                pr2serr(">> warning: norcap (no Read Capacity) on input "
+                        "block device accessed via pt is risky.\n");
                 pr2serr(">> Abort copy, use iflag=force to override.\n");
                 return -1;
             }
@@ -390,7 +393,8 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
             return res;
         } else {
             if (op->verbose) {
-                print_blk_sizes(ifn, "readcap", *in_num_blksp, in_blk_sz, 1);
+                print_blk_sizes(ifn, "readcap", *in_num_blksp, in_blk_sz,
+                                true /* to_stderr */);
                 if (op->idip->prot_type > 0)
                     pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
                             op->idip->prot_type, op->idip->p_i_exp);
@@ -418,7 +422,7 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
             }
         }
 #endif
-    } else if ((op->dd_count > 0) && (0 == op->oflagp->resume))
+    } else if ((op->dd_count > 0) && (! op->oflagp->resume))
         return 0;
     else if (FT_BLOCK & in_type) {
         if (0 != get_blkdev_capacity(op, DDPT_ARG_IN, in_num_blksp,
@@ -427,7 +431,7 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
             *in_num_blksp = DDPT_COUNT_INDEFINITE;
         }
         if (op->verbose)
-            print_blk_sizes(ifn, "blk", *in_num_blksp, in_blk_sz, 1);
+            print_blk_sizes(ifn, "blk", *in_num_blksp, in_blk_sz, true);
         if ((*in_num_blksp > 0) && (op->ibs != in_blk_sz)) {
             pr2serr(">> warning: %s block size confusion: bs=%d, "
                     "device claims=%d\n", ifn, op->ibs, in_blk_sz);
@@ -441,7 +445,7 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
             *in_num_blksp = st.st_size / op->ibs;
             res = st.st_size % op->ibs;
             if (op->verbose) {
-                print_blk_sizes(ifn, "reg", *in_num_blksp, op->ibs, 1);
+                print_blk_sizes(ifn, "reg", *in_num_blksp, op->ibs, true);
                 if (res)
                     pr2serr("    residual_bytes=%d\n", res);
             }
@@ -471,8 +475,8 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
     if (FT_PT & out_type) {
         if (op->oflagp->norcap) {
             if ((FT_BLOCK & out_type) && (0 == op->oflagp->force)) {
-                pr2serr(">> warning: norcap on output block device "
-                        "accessed via pt is risky.\n");
+                pr2serr(">> warning: norcap (no Read Capacity) on output "
+                        "block device accessed via pt is risky.\n");
                 pr2serr(">> Abort copy, use oflag=force to override.\n");
                 return -1;
             }
@@ -498,7 +502,7 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
         } else {
             if (op->verbose) {
                 print_blk_sizes(ofn, "readcap", *out_num_blksp, out_blk_sz,
-                                1);
+                                true /* to_stderr */);
                 if (op->odip->prot_type > 0)
                     pr2serr("    reports Protection_type=%d, p_i_exp=%d\n",
                             op->odip->prot_type, op->odip->p_i_exp);
@@ -527,7 +531,7 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
             }
         }
 #endif
-    } else if ((op->dd_count > 0) && (0 == op->oflagp->resume))
+    } else if ((op->dd_count > 0) && (! op->oflagp->resume))
         return 0;
     if (FT_BLOCK & out_type) {
         if (0 != get_blkdev_capacity(op, DDPT_ARG_OUT, out_num_blksp,
@@ -536,7 +540,7 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
             *out_num_blksp = DDPT_COUNT_INDEFINITE;
         } else {
             if (op->verbose)
-                print_blk_sizes(ofn, "blk", *out_num_blksp, out_blk_sz, 1);
+                print_blk_sizes(ofn, "blk", *out_num_blksp, out_blk_sz, true);
             if ((*out_num_blksp > 0) && (op->obs != out_blk_sz)) {
                 pr2serr(">> warning: %s block size confusion: obs=%d, "
                         "device claims=%d\n", ofn, op->obs, out_blk_sz);
@@ -551,7 +555,7 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
             *out_num_blksp = st.st_size / op->obs;
             res = st.st_size % op->obs;
             if (op->verbose) {
-                print_blk_sizes(ofn, "reg", *out_num_blksp, op->obs, 1);
+                print_blk_sizes(ofn, "reg", *out_num_blksp, op->obs, true);
                 if (res)
                     pr2serr("    residual_bytes=%d\n", res);
             }
@@ -589,7 +593,8 @@ calc_count(struct opts_t * op, int64_t * in_num_blksp,
 static void
 do_fadvise(struct opts_t * op, int bytes_if, int bytes_of, int bytes_of2)
 {
-    int rt, in_valid, out2_valid, out_valid, id_type, od_type, o2d_type;
+    bool in_valid, out2_valid, out_valid;
+    int rt, id_type, od_type, o2d_type;
 
     id_type = op->idip->d_type;
     od_type = op->odip->d_type;
@@ -651,7 +656,7 @@ cp_read_pt(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
         if (op->verbose > 1)
             pr2serr("short read, requested %d blocks, got %d blocks\n",
                     csp->icbpt, blks_read);
-        ++csp->leave_after_write;
+        csp->leave_after_write = true;
         /* csp->leave_reason = 0; assume at end rather than error */
         csp->icbpt = blks_read;
         /* round down since don't do partial writes from pt reads */
@@ -678,7 +683,7 @@ coe_cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
     if (0 == numread_errno) {
         csp->icbpt = 0;
         csp->ocbpt = 0;
-        ++csp->leave_after_write;
+        csp->leave_after_write = true;
         csp->leave_reason = 0;
         return 0;       /* EOF */
     } else if (numread_errno < 0) {
@@ -764,7 +769,7 @@ short_read:
         ++op->in_partial;
     }
     csp->ocbpt = total_read / op->obs;
-    ++csp->leave_after_write;
+    csp->leave_after_write = true;
     if (0 == csp->leave_reason) {
         csp->partial_write_bytes = total_read % op->obs;
     } else {
@@ -850,7 +855,7 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
             --op->in_full;
         }
         csp->ocbpt = res / op->obs;
-        ++csp->leave_after_write;
+        csp->leave_after_write = true;
         csp->leave_reason = 0;  /* fall through is assumed EOF */
         if (op->verbose > 1) {
             if (FT_BLOCK & in_type)
@@ -953,7 +958,7 @@ cp_read_tape(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
                 --op->in_full;
             }
             csp->ocbpt = res / op->obs;
-            ++csp->leave_after_write;
+            csp->leave_after_write = true;
             csp->leave_reason = REASON_TAPE_SHORT_READ;
             csp->partial_write_bytes = res % op->obs;
             if ((op->verbose == 2) && (op->consec_same_len_reads == 1))
@@ -1006,7 +1011,7 @@ cp_read_fifo(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
                 --op->in_full;
             }
             csp->ocbpt = k / op->obs;
-            ++csp->leave_after_write;
+            csp->leave_after_write = true;
             csp->leave_reason = 0;  /* EOF */
             csp->partial_write_bytes = k % op->obs;
             break;
@@ -1024,24 +1029,25 @@ static int
 cp_write_of2(struct opts_t * op, struct cp_state_t * csp,
              const unsigned char * bp)
 {
-    int res, off, part, err;
+    bool got_part;
+    int res, off, err;
     int numbytes = (csp->ocbpt * op->obs) + csp->partial_write_bytes;
 
     // write to fifo (reg file ?) is non-atomic so loop if making progress
     off = 0;
-    part = 0;
+    got_part = false;
     do {
         while (((res = write(op->o2dip->fd, bp + off, numbytes - off)) < 0) &&
                (EINTR == errno))
             ++op->interrupted_retries;
         err = errno;
         if ((res > 0) && (res < (numbytes - off)))
-            ++part;
+            got_part = true;
     } while ((FT_FIFO & op->o2dip->d_type) && (res > 0) &&
              ((off += res) < numbytes));
     if (off >= numbytes) {
         res = numbytes;
-        if (part && op->verbose)
+        if (got_part && op->verbose)
             pr2serr("write to of2 splintered\n");
     } else if (off > 0)
         pr2serr("write to of2 fifo problem: count=%d, off=%d, res=%d\n",
@@ -1206,22 +1212,22 @@ cp_write_pt(struct opts_t * op, struct cp_state_t * csp, int seek_delta,
  * or -1 . */
 static int
 cp_write_tape(struct opts_t * op, struct cp_state_t * csp,
-              const unsigned char * bp, int could_be_last)
+              const unsigned char * bp, bool could_be_last)
 {
+    static bool printed_ew_message = false;     /* <<<< static local */
+    bool got_early_warning = false;
+    bool got_partial = false;
     int res, err;
     int numbytes;
-    int partial = 0;
     int blks = csp->ocbpt;
     int64_t aseek = op->seek;
-    int got_early_warning = 0;
 /* Only print early warning message once when verbose=2 */
-    static int printed_ew_message = 0;
 
     numbytes = blks * op->obs;
     if (op->oflagp->nowrite)
         return 0;
     if (csp->partial_write_bytes > 0) {
-        ++partial;
+        got_partial = true;
         numbytes += csp->partial_write_bytes;
         if (op->oflagp->nopad)
             ++op->out_partial;
@@ -1246,9 +1252,9 @@ ew_retry:
     if ((op->verbose > 2) || ((op->verbose > 0) && could_be_last)) {
         const char * cp;
 
-        cp = ((! op->oflagp->nopad) && partial) ? ", padded" : "";
+        cp = ((! op->oflagp->nopad) && got_partial) ? ", padded" : "";
         pr2serr("write(tape%s%s): requested bytes=%d, res=%d\n",
-                (partial ? ", partial" : ""), cp, numbytes, res);
+                (got_partial ? ", partial" : ""), cp, numbytes, res);
     }
 
 /* Handle EOM early warning. */
@@ -1259,15 +1265,15 @@ ew_retry:
  * The st driver should allow it; writes alternate until EOM, i.e. write okay,
  * ENOSPC, write okay, ENOSPC, etc. Exit if more than one ENOSPC in a row. */
     if ((op->oflagp->ignoreew) && (-1 == res) && (ENOSPC == err) &&
-        (0 == got_early_warning)) {
-        got_early_warning = 1;
-        if (0 == printed_ew_message) {
+        (! got_early_warning)) {
+        got_early_warning = true;
+        if (! printed_ew_message) {
             if (op->verbose > 1)
                 pr2serr("writing, seek=%" PRId64 " : EOM early "
                         "warning, continuing...\n", aseek);
              if (2 == op->verbose) {
                 pr2serr("(suppressing further early warning messages)\n");
-                printed_ew_message = 1;
+                printed_ew_message = true;
             }
         }
         goto ew_retry;
@@ -1311,9 +1317,10 @@ static int
 cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
                    int seek_delta, int blks, const unsigned char * bp)
 {
+    bool got_part = false;
     int64_t offset;
     int64_t aseek = op->seek + seek_delta;
-    int res, off, part, out_type, err;
+    int res, off, out_type, err;
     int numbytes = blks * op->obs_pi;
     int obs = op->obs_pi;
 
@@ -1415,19 +1422,19 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
         }
         // write to fifo (reg file ?) is non-atomic so loop if making progress
         off = 0;
-        part = 0;
+        got_part = false;
         do {
             while (((res = write(op->odip->fd, bp + off,
                                  numbytes - off)) < 0) && (EINTR == errno))
                 ++op->interrupted_retries;
             err = errno;
             if ((res > 0) && (res < (numbytes - off)))
-                ++part;
+                got_part = true;
         } while ((FT_FIFO & out_type) && (res > 0) &&
                  ((off += res) < numbytes));
         if (off >= numbytes) {
             res = numbytes;
-            if (part && op->verbose)
+            if (got_part && op->verbose)
                 pr2serr("write to output file splintered\n");
         } else if (off > 0)
             pr2serr("write to of fifo problem: count=%d, off=%d, "
@@ -1471,7 +1478,7 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
     struct stat a_st;
 
     if (offset > csp->of_filepos) {
-        if ((0 == op->oflagp->strunc) && (op->oflagp->sparse > 1)) {
+        if ((! op->oflagp->strunc) && (op->oflagp->sparse > 1)) {
             if (op->verbose > 1)
                 pr2serr("asked to bypass writing sparse last block of "
                         "zeros\n");
@@ -1494,8 +1501,8 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
         }
         if (op->oflagp->strunc) {
             if (op->verbose > 1)
-                pr2serr("About to truncate %s to byte offset "
-                        "%" PRId64 "\n", op->odip->fn, offset);
+                pr2serr("About to truncate %s to byte offset %" PRId64 "\n",
+                        op->odip->fn, offset);
             if (ftruncate(op->odip->fd, offset) < 0) {
                 pr2serr("could not ftruncate after copy: %s\n",
                         safe_strerror(errno));
@@ -1522,9 +1529,10 @@ static int
 cp_finer_comp_wr(struct opts_t * op, struct cp_state_t * csp,
                  const unsigned char * b1p, const unsigned char * b2p)
 {
-    int res, k, n, oblks, numbytes, chunk, need_wr, wr_len, wr_k, obs;
-    int trim_check, need_tr, tr_len, tr_k, out_type;
-    int done_sigs_delay = 0;
+    bool done_sigs_delay = false;
+    bool need_wr, trim_check, need_tr;
+    int res, k, n, oblks, numbytes, chunk, wr_len, wr_k, obs;
+    int tr_len, tr_k, out_type;
 
     oblks = csp->ocbpt;
     obs = op->obs;
@@ -1549,10 +1557,11 @@ cp_finer_comp_wr(struct opts_t * op, struct cp_state_t * csp,
     chunk = op->obpch * obs;
     trim_check = (op->oflagp->sparse && op->oflagp->wsame16 &&
                   (FT_PT & out_type));
-    need_tr = 0;
+    need_tr = false;
     tr_len = 0;
     tr_k = 0;
-    for (k = 0, need_wr = 0, wr_len = 0, wr_k = 0; k < numbytes; k += chunk) {
+    for (k = 0, need_wr = false, wr_len = 0, wr_k = 0; k < numbytes;
+         k += chunk) {
         n = ((k + chunk) < numbytes) ? chunk : (numbytes - k);
         if (0 == memcmp(b1p + k, b2p + k, n)) {
             if (need_wr) {
@@ -1560,7 +1569,7 @@ cp_finer_comp_wr(struct opts_t * op, struct cp_state_t * csp,
                     ;
                 else if (FT_PT & out_type) {
                     if (! done_sigs_delay) {
-                        done_sigs_delay = 1;
+                        done_sigs_delay = true;
                         signals_process_delay(op, DELAY_WRITE);
                     }
                     if ((res = cp_write_pt(op, csp, wr_k / obs,
@@ -1568,19 +1577,19 @@ cp_finer_comp_wr(struct opts_t * op, struct cp_state_t * csp,
                         return res;
                 } else {
                     if (! done_sigs_delay) {
-                        done_sigs_delay = 1;
+                        done_sigs_delay = true;
                         signals_process_delay(op, DELAY_WRITE);
                     }
                     if ((res = cp_write_block_reg(op, csp, wr_k / obs,
                                                   wr_len / obs, b1p + wr_k)))
                         return res;
                 }
-                need_wr = 0;
+                need_wr = false;
             }
             if (need_tr)
                 tr_len += n;
             else if (trim_check) {
-                need_tr = 1;
+                need_tr = true;
                 tr_len = n;
                 tr_k = k;
             }
@@ -1589,13 +1598,13 @@ cp_finer_comp_wr(struct opts_t * op, struct cp_state_t * csp,
             if (need_wr)
                 wr_len += n;
             else {
-                need_wr = 1;
+                need_wr = true;
                 wr_len = n;
                 wr_k = k;
             }
             if (need_tr) {
                     if (! done_sigs_delay) {
-                        done_sigs_delay = 1;
+                        done_sigs_delay = true;
                         signals_process_delay(op, DELAY_WRITE);
                     }
                 res = pt_write_same16(op, b2p, obs, tr_len / obs,
@@ -1603,7 +1612,7 @@ cp_finer_comp_wr(struct opts_t * op, struct cp_state_t * csp,
                 if (res)
                     ++op->trim_errs;
                 /* continue past trim errors */
-                need_tr = 0;
+                need_tr = false;
             }
         }
     }
@@ -1612,7 +1621,7 @@ cp_finer_comp_wr(struct opts_t * op, struct cp_state_t * csp,
             ;
         else if (FT_PT & out_type) {
             if (! done_sigs_delay) {
-                done_sigs_delay = 1;
+                done_sigs_delay = true;
                 signals_process_delay(op, DELAY_WRITE);
             }
             if ((res = cp_write_pt(op, csp, wr_k / obs, wr_len / obs,
@@ -1620,7 +1629,7 @@ cp_finer_comp_wr(struct opts_t * op, struct cp_state_t * csp,
                 return res;
         } else {
             if (! done_sigs_delay) {
-                done_sigs_delay = 1;
+                done_sigs_delay = true;
                 signals_process_delay(op, DELAY_WRITE);
             }
             if ((res = cp_write_block_reg(op, csp, wr_k / obs, wr_len / obs,
@@ -1673,12 +1682,12 @@ count_calculate(struct opts_t * op)
     int64_t in_num_blks = DDPT_COUNT_INDEFINITE;
     int64_t out_num_blks = DDPT_COUNT_INDEFINITE;
     int64_t ibytes, obytes, ibk;
-    int valid_resume = 0;
+    bool valid_resume = false;
     int res;
 
     if ((res = calc_count(op, &in_num_blks, &out_num_blks)))
         return res;
-    if ((0 == op->oflagp->resume) && (op->dd_count > 0))
+    if ((! op->oflagp->resume) && (op->dd_count > 0))
         return 0;
     if (op->verbose > 1)
         pr2serr("%s: in_num_blks=%" PRId64 ", out_num_blks=%" PRId64 "\n",
@@ -1694,7 +1703,7 @@ count_calculate(struct opts_t * op)
             if (out_num_blks < 0)
                 pr2serr("resume cannot determine size of OFILE, ignore\n");
             else
-                valid_resume = 1;
+                valid_resume = true;
         } else
             pr2serr("resume expects OFILE to be regular, ignore\n");
     }
@@ -1708,9 +1717,9 @@ count_calculate(struct opts_t * op)
 
         if ((out_num_blks < 0) && (in_num_blks > 0))
             op->dd_count = in_num_blks;
-        else if ((op->reading_fifo) && (FT_REG == op->odip->d_type))
+        else if (op->reading_fifo && (FT_REG == op->odip->d_type))
             ;
-        else if ((op->reading_fifo) && (out_num_blks < 0))
+        else if (op->reading_fifo && (out_num_blks < 0))
             ;
         else if ((out_num_blks < 0) && (in_num_blks <= 0))
             ;
@@ -1759,17 +1768,18 @@ count_calculate(struct opts_t * op)
 static int
 do_rw_copy(struct opts_t * op)
 {
-    int ibpt, obpt, res, n, sparse_skip, sparing_skip, continual_read;
+    bool sparse_skip, sparing_skip, continual_read;
+    bool first_time = true;
+    bool first_time_ff = true;
+    int ibpt, obpt, res, n;
     int ret = 0;
-    int first_time = 1;
-    int first_time_ff = 1;
     int id_type = op->idip->d_type;
     int od_type = op->odip->d_type;
-    struct cp_state_t cp_st;
     struct cp_state_t * csp;
     unsigned char * wPos = op->wrkPos;
+    struct cp_state_t cp_st;
 
-    continual_read = op->reading_fifo && (op->dd_count < 0);
+    continual_read = (op->reading_fifo && (op->dd_count < 0));
     if (op->verbose > 3) {
         if (continual_read)
             pr2serr("do_rw_copy: reading fifo continually\n");
@@ -1789,14 +1799,14 @@ do_rw_copy(struct opts_t * op)
     /* <<< main loop that does the copy >>> */
     while ((op->dd_count > 0) || continual_read) {
         if (first_time)
-            first_time = 0;
+            first_time = false;
         else
             signals_process_delay(op, DELAY_COPY_SEGMENT);
         csp->bytes_read = 0;
         csp->bytes_of = 0;
         csp->bytes_of2 = 0;
-        sparing_skip = 0;
-        sparse_skip = 0;
+        sparing_skip = false;
+        sparse_skip = false;
         if ((op->dd_count >= ibpt) || continual_read) {
             csp->icbpt = ibpt;
             csp->ocbpt = obpt;
@@ -1829,7 +1839,7 @@ do_rw_copy(struct opts_t * op)
 #endif
         } else if (FT_ALL_FF & id_type) {
             if (first_time_ff) {
-                first_time_ff = 0;
+                first_time_ff = false;
                 memset(wPos, 0xff, op->ibs * ibpt);
             }
             op->in_full += csp->icbpt;
@@ -1847,7 +1857,7 @@ do_rw_copy(struct opts_t * op)
         if (op->oflagp->sparse) {
             n = (csp->ocbpt * op->obs) + csp->partial_write_bytes;
             if (0 == memcmp(wPos, op->zeros_buff, n)) {
-                sparse_skip = 1;
+                sparse_skip = true;
                 if (op->oflagp->wsame16 && (FT_PT & od_type)) {
                     signals_process_delay(op, DELAY_WRITE);
                     res = pt_write_same16(op, op->zeros_buff, op->obs,
@@ -1871,7 +1881,7 @@ do_rw_copy(struct opts_t * op)
             if (0 == res) {
                 n = (csp->ocbpt * op->obs) + csp->partial_write_bytes;
                 if (0 == memcmp(wPos, op->wrkPos2, n))
-                    sparing_skip = 1;
+                    sparing_skip = true;
                 else if (op->obpch) {
                     ret = cp_finer_comp_wr(op, csp, wPos, op->wrkPos2);
                     if (ret)
@@ -1899,7 +1909,7 @@ do_rw_copy(struct opts_t * op)
                         break;
                 } else if (FT_TAPE & od_type) {
 #ifdef SG_LIB_LINUX
-                    int could_be_last;
+                    bool could_be_last;
 
                     could_be_last = ((! continual_read) &&
                                      (csp->icbpt >= op->dd_count));
@@ -1927,7 +1937,7 @@ bypass_write:
             if (REASON_TAPE_SHORT_READ == csp->leave_reason) {
                 /* allow multiple partial writes for tape */
                 csp->partial_write_bytes = 0;
-                csp->leave_after_write = 0;
+                csp->leave_after_write = false;
             } else {
                 /* other cases: stop copy after partial write */
                 ret = csp->leave_reason;
@@ -1937,7 +1947,7 @@ bypass_write:
     } /* end of main loop that does the copy ... */
 
     /* sparse: clean up ofile length when last block(s) were not written */
-    if ((FT_REG & od_type) && (0 == op->oflagp->nowrite) &&
+    if ((FT_REG & od_type) && (! op->oflagp->nowrite) &&
         op->oflagp->sparse)
         cp_sparse_cleanup(op, csp);
 
@@ -2037,7 +2047,7 @@ open_files_devices(struct opts_t * op)
         if (('-' == idip->fn[0]) && ('\0' == idip->fn[1])) {
             fd = STDIN_FILENO;
             idip->d_type = FT_FIFO;
-            ++op->reading_fifo;
+            op->reading_fifo = true;
             if (op->verbose)
                 pr2serr(" >> Input file type: fifo [stdin, stdout, named "
                         "pipe]\n");
@@ -2146,18 +2156,18 @@ sparse_sparing_check(struct opts_t * op)
             pr2serr("oflag=sparse needs seekable output file, ignore\n");
             op->oflagp->sparse = 0;
         } else {
-            op->out_sparse_active = 1;
+            op->out_sparse_active = true;
             if (op->oflagp->wsame16)
-                op->out_trim_active = 1;
+                op->out_trim_active = true;
         }
     }
     if (op->oflagp->sparing) {
         if ((FT_DEV_NULL | FT_FIFO | FT_TAPE) & op->odip->d_type) {
             pr2serr("oflag=sparing needs a readable and seekable "
                     "output file, ignore\n");
-            op->oflagp->sparing = 0;
+            op->oflagp->sparing = false;
         } else
-            op->out_sparing_active = 1;
+            op->out_sparing_active = true;
     }
 }
 
@@ -2166,8 +2176,8 @@ cdb_size_prealloc(struct opts_t * op)
 {
     if (op->oflagp->prealloc) {
         if ((FT_DEV_NULL | FT_FIFO | FT_TAPE | FT_PT) & op->odip->d_type) {
-            pr2serr("oflag=pre-alloc needs a normal output file, ignore\n");
-            op->oflagp->prealloc = 0;
+            pr2serr("oflag=prealloc needs a normal output file, ignore\n");
+            op->oflagp->prealloc = false;
         }
     }
     if (! op->cdbsz_given) {
@@ -2207,16 +2217,16 @@ tape_cleanup_of(struct opts_t * op)
     struct mtop mt_cmd;
     int res;
 
-    if (op->oflagp->nofm || !op->oflagp->fsync) {
-        mt_cmd.mt_op = (op->oflagp->fsync) ? MTWEOF : MTWEOFI;
+    if (op->oflagp->nofm || (! op->oflagp->fsync)) {
+        mt_cmd.mt_op = op->oflagp->fsync ? MTWEOF : MTWEOFI;
         mt_cmd.mt_count = (op->oflagp->nofm) ? 0 : 1;
         res = ioctl(op->odip->fd, MTIOCTOP, &mt_cmd);
         if (res != 0) {
             if (op->verbose > 0)
                 pr2serr("MTWEOF%s %d failed: %s\n",
-                        (op->oflagp->fsync) ? "" : "I", mt_cmd.mt_count,
+                        op->oflagp->fsync ? "" : "I", mt_cmd.mt_count,
                         safe_strerror(errno));
-            if (op->oflagp->nofm && !op->oflagp->fsync) {
+            if (op->oflagp->nofm && (! op->oflagp->fsync)) {
                 if (op->verbose > 0)
                     pr2serr("Trying MTBSR 0 instead\n");
                 mt_cmd.mt_op = MTBSR; /* mt_cmd.mt_count = 0 from above */
@@ -2241,7 +2251,7 @@ do_falloc(struct opts_t * op)
      *
      * If fallocate() does not succeed, exit with an error message. The user
      * can then either free up some disk space or invoke ddpt without
-     * oflag=pre-alloc (at the risk of running out of disk space).
+     * oflag=prealloc (at the risk of running out of disk space).
      *
      * TODO/DISCUSSION: Some filesystems (e.g. FAT32) don't support
      * fallocate(). In that case we should probably have a way to continue if
@@ -2274,8 +2284,8 @@ do_falloc(struct opts_t * op)
                 pr2serr("Could not pre-allocate with "
                         "FALLOC_FL_KEEP_SIZE (%s), retrying without "
                         "...\n", safe_strerror(errno));
-            res = fallocate(op->odip->fd, 0, op->obs*op->seek,
-                            op->obs*op->dd_count);
+            res = fallocate(op->odip->fd, 0 /* no flags */,
+                            op->obs * op->seek, op->obs * op->dd_count);
 #ifdef PREALLOC_DEBUG
             pr2serr("fallocate() without FALLOC_FL_KEEP_SIZE "
                     " returned %d\n", res);
@@ -2285,7 +2295,7 @@ do_falloc(struct opts_t * op)
         /* fallocate() with FALLOC_FL_KEEP_SIZE succeeded. Set
          * op->oflagp->prealloc to 0 so the possible message about using
          * oflag=resume is not suppressed later. */
-        op->oflagp->prealloc = 0;
+        op->oflagp->prealloc = false;
     }
     if (-1 == res) {
             pr2serr("Unable to pre-allocate space: %s\n",
@@ -2303,8 +2313,8 @@ do_falloc(struct opts_t * op)
 
     /* If not on Linux, use posix_fallocate(). (That sets the file size to its
      * full length, so re-invoking ddpt with oflag=resume will do nothing.) */
-    res = posix_fallocate(op->odip->fd, op->obs*op->seek,
-                          op->obs*op->dd_count);
+    res = posix_fallocate(op->odip->fd, op->obs * op->seek,
+                          op->obs * op->dd_count);
     if (-1 == res) {
             pr2serr("Unable to pre-allocate space: %s\n",
                     safe_strerror(errno));
@@ -2605,16 +2615,16 @@ main(int argc, char * argv[])
     else
         ret = do_rw_copy(op);
 
-    if (0 == op->status_none)
-        print_stats("", op, 0);
+    if (! op->status_none)
+        print_stats("", op, 0 /* both in and out */);
 
-    if ((op->oflagp->ssync) && (FT_PT & op->odip->d_type)) {
-        if (0 == op->status_none)
+    if (op->oflagp->ssync && (FT_PT & op->odip->d_type)) {
+        if (! op->status_none)
             pr2serr(">> SCSI synchronizing cache on %s\n", op->odip->fn);
         pt_sync_cache(op->odip->fd);
     }
     if (op->do_time)
-        calc_duration_throughput("", 0, op);
+        calc_duration_throughput("", false /* contin */, op);
 
     if (op->sum_of_resids)
         pr2serr(">> Non-zero sum of residual counts=%d\n", op->sum_of_resids);
@@ -2627,7 +2637,8 @@ cleanup:
         if (0 == ret)
             pr2serr("Early termination, EOF on input?\n");
         else if (ret > 0)
-            print_exit_status_msg("Early termination", ret, 1);
+            print_exit_status_msg("Early termination", ret,
+                                  true /* to stderr */);
         else {
             if (op->verbose < 2)
                 pr2serr("Early termination: some error occurred; try again "

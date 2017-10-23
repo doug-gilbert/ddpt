@@ -1,4 +1,4 @@
-.TH DDPT "8" "May 2016" "ddpt\-0.96" DDPT
+.TH DDPT "8" "October 2017" "ddpt\-0.96" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -782,9 +782,10 @@ which implies \fIOBS\fR bytes.
 sparse [io] [reg,blk,pt]
 after each \fIIBS\fR * \fIBPT\fR byte segment is read from \fIIFILE\fR, it
 is checked to see if it is all zeros. If so, that segment is not written to
-\fIOFILE\fR. See the section on SPARSE WRITES below. The granularity of
-the zero comparison can be reduced from the default \fIIBS\fR * \fIBPT\fR
-byte segment with the \fIOBPC\fR value given to the "bpt=" option.
+\fIOFILE\fR. See the section on SPARSE WRITES below for the difference
+between using this flag once or twice. The granularity of the zero comparison
+can be reduced from the default \fIIBS\fR * \fIBPT\fR byte segment with the
+\fIOBPC\fR value given to the "bpt=" option.
 .br
 The sparse flag may be used on input when a file is only being read (e.g.
 when \fIof=OFILE\fR is not given or \fIOFILE\fR is /dev/null) to determine
@@ -806,12 +807,13 @@ causes the O_SYNC flag to be added to the open of \fIIFILE\fR and/or
 .TP
 rtf_len [io] [odx]
 odx: with the 'read to tokens' variant, after 512 bytes of each ROD Token
-are written to \fIIRTF\fR an additional 8 byte (big endian) integer is
-written. That integer is the number of bytes the associated ROD represents.
-The draft standards say for standard ROD types the ROD Token holds this
-value. However vendor specific ROD types may be used or the vendors may
-choose not to comply. Either way the 'write from tokens' variant needs to
-know the size of the ROD it is writing from.
+are written to \fIRTF\fR an additional 8 byte (big endian) integer is
+written. That integer is the number of bytes that the associated ROD
+represents. The draft standards say for standard ROD types the ROD Token
+contains this value. However vendor specific ROD types may be used or
+vendors may choose not to comply. Either way the 'write from tokens'
+variant needs to know the data size associated with the ROD it is writing
+from.
 .TP
 trim [io] [pt] [experimental]
 similar logic to the "sparse" option. However instead of skipping segments
@@ -1565,7 +1567,7 @@ Written by Doug Gilbert
 .SH "REPORTING BUGS"
 Report bugs to <dgilbert at interlog dot com>.
 .SH COPYRIGHT
-Copyright \(co 2008\-2016 Douglas Gilbert
+Copyright \(co 2008\-2017 Douglas Gilbert
 .br
 This software is distributed under the GPL version 2. There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.

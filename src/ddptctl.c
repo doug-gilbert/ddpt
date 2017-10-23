@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2016 Douglas Gilbert.
+ * Copyright (c) 2014-2017 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -67,18 +67,21 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.96 20160530 [svn: r330]";
+const char * ddptctl_version_str = "0.96 20171023 [svn: r331]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
-#include <sys/sysmacros.h>
 #include <sys/file.h>
-#include <linux/major.h>
 #include <linux/fs.h>   /* <sys/mount.h> */
 #include <linux/mtio.h> /* For tape ioctls */
 #ifndef MTWEOFI
 #define MTWEOFI 35  /* write an end-of-file record (mark) in immediate mode */
 #endif
+#include <sys/sysmacros.h>
+#ifndef major
+#include <sys/types.h>
+#endif
+#include <linux/major.h>
 
 #ifdef HAVE_FALLOCATE
 #include <linux/falloc.h>
@@ -125,18 +128,21 @@ static struct scat_gath_elem fixed_sgl[MAX_FIXED_SGL_ELEMS];
 
 static struct option long_options[] = {
         {"abort", no_argument, 0, 'A'},
+        {"all-toks", no_argument, 0, 'a'},
         {"all_toks", no_argument, 0, 'a'},
         {"block", no_argument, 0, 'b'},
+        {"del-tkn", no_argument, 0, 'D'},
         {"del_tkn", no_argument, 0, 'D'},
         {"help", no_argument, 0, 'h'},
         {"hex", no_argument, 0, 'H'},
         {"info", no_argument, 0, 'i'},
         {"immed", no_argument, 0, 'I'},
+        {"list-id", required_argument, 0, 'l'},
         {"list_id", required_argument, 0, 'l'},
         {"oir", required_argument, 0, 'O'},
         {"poll", no_argument, 0, 'p'},
-        {"prefer_rcs", no_argument, 0, 'q'},
         {"prefer-rcs", no_argument, 0, 'q'},
+        {"prefer_rcs", no_argument, 0, 'q'},
         {"pt", required_argument, 0, 'P'},
         {"readonly", no_argument, 0, 'y'},
         {"receive", no_argument, 0, 'R'},
@@ -225,25 +231,33 @@ usage()
 static int
 odx_print_rod_tok(const struct opts_t * op, unsigned char * rth, int len)
 {
-    int vendor, all_0, all_1, m, prot_en, p_type, desig_type, lbppbe;
-    int target_dev_desc = 0;
-    uint64_t bc;
-    uint32_t rod_t, bs;
-    uint16_t rtl;
-    char b[128];
+    bool vendor, all_0, all_1, prot_en;
+    bool target_dev_desc = true;
+    int m, p_type, desig_type, lbppbe;
     unsigned char uc;
+    uint16_t rtl;
+    uint32_t rod_t, bs;
+    uint64_t bc;
+    char b[128];
 
     rod_t = sg_get_unaligned_be32(rth + 0);
     printf("  ROD type: %s\n", rod_type_str(rod_t, b, sizeof(b)));
     if (rod_t >= 0xfffffff0) {
         printf("    Since ROD type is vendor specific, the following may "
                "not be relevant\n");
-        vendor = 1;
+        vendor = true;
     } else {
-        vendor = 0;
-        target_dev_desc = (RODT_ACCESS_ON_REF == rod_t) ||
-                  (RODT_PIT_DEF == rod_t) || (RODT_PIT_VULN == rod_t) ||
-                  (RODT_PIT_PERS == rod_t);
+        vendor = false;
+        switch (rod_t) {
+        case RODT_ACCESS_ON_REF:
+        case RODT_PIT_DEF:
+        case RODT_PIT_VULN:
+        case RODT_PIT_PERS:
+            target_dev_desc = true;
+            break;
+        default:
+            break;
+        }
     }
     rtl = sg_get_unaligned_be16(rth + 6);
     if (rtl < ODX_ROD_TOK_LEN_FLD) {
@@ -268,21 +282,21 @@ odx_print_rod_tok(const struct opts_t * op, unsigned char * rth, int len)
            sg_get_unaligned_be16(rth + 18));
     desig_type = rth[20 + 1] & 0xf;
     if ((0x2 == desig_type) || (0x3 == desig_type))
-        decode_designation_descriptor(rth + 20, rth[23], 0, op->verbose);
+        decode_designation_descriptor(rth + 20, rth[23], false, op->verbose);
     else
         printf("      Expected designator type of EUI-64 or NAA, got "
                "0x%x\n", desig_type);
 
-    /* A 16 byte integer worth of bytes! Seems like overkill. */
+    /* A 16 byte integer number of bytes! Seems like overkill. */
     /* Look for all 0s or all 1s in the top 8 bytes */
     all_0 = (0x0 == rth[48]);
     if (all_0)
-        all_1 = 0;
+        all_1 = false;
     else if (0xff == rth[48])
-        all_1 = 1;
-    else {
-        all_1 = 0;
-        printf("  Number of bytes represented: strange, bypass\n");
+        all_1 = true;
+    else {      /* much too large to be possible */
+        /* all_1 = false; */
+        printf("  Number of bytes represented: huge, bypass\n");
         goto skip_to_bytes_rep;
     }
     for (m = 1; m < 8; m++) {
@@ -291,7 +305,7 @@ odx_print_rod_tok(const struct opts_t * op, unsigned char * rth, int len)
             break;
     }
     if (m < 8) {
-        printf("  Number of bytes represented: strange, bypass\n");
+        printf("  Number of bytes represented: huge 2, bypass\n");
         goto skip_to_bytes_rep;
     }
     bc = sg_get_unaligned_be64(rth + 56);
@@ -319,7 +333,7 @@ skip_to_bytes_rep:
     prot_en = !!(rth[100] & 0x1);
     p_type = ((rth[100] >> 1) & 0x7);
     printf("    Protection: prot_en=%d, p_type=%d, p_i_exponent=%d",
-           prot_en, p_type, ((rth[101] >> 4) & 0xf));
+           (int)prot_en, p_type, ((rth[101] >> 4) & 0xf));
     if (prot_en)
         printf(" [type %d protection]\n", p_type + 1);
     else
@@ -340,8 +354,8 @@ skip_to_target_dev_desc:
         if ((0x2 == desig_type) || (0x3 == desig_type) ||
             (0x8 == desig_type) || op->verbose) {
             printf("  Target device descriptor:\n");
-            decode_designation_descriptor(rth + 128, rth[131], 0,
-                                          op->verbose);
+            decode_designation_descriptor(rth + 128, rth[131],
+                                          false /* to_stderr */, op->verbose);
         } else
             printf("  Target device descriptor: unexpected designator "
                    "type [0x%x]\n", desig_type);
@@ -352,8 +366,8 @@ skip_to_target_dev_desc:
 static int
 odx_rt_info(const struct opts_t * op)
 {
+    bool got_rtf_len = false;
     int res, fd, err, k, bp_chunk, num;
-    int got_rtf_len = 0;
     int a_err = 0;
     uint64_t bc;
     unsigned char rth[520];
@@ -381,7 +395,7 @@ odx_rt_info(const struct opts_t * op)
                     "bytes, so exit\n", (int)st.st_size);
             return SG_LIB_FILE_ERROR;
         }
-        ++got_rtf_len;
+        got_rtf_len = true;
     }
     bp_chunk = got_rtf_len ? 520 : 512;
     num = st.st_size / bp_chunk;
@@ -431,8 +445,8 @@ static int
 do_copy_abort(struct opts_t * op)
 {
     return pt_3party_copy_out(op->idip->fd, SA_COPY_ABORT, op->list_id,
-                              DEF_GROUP_NUM, DEF_3PC_OUT_TIMEOUT, NULL, 0, 1,
-                              op->verbose, op->verbose);
+                              DEF_GROUP_NUM, DEF_3PC_OUT_TIMEOUT, NULL, 0,
+                              true /* noisy */, op->verbose, op->verbose);
 }
 
 
@@ -447,8 +461,8 @@ report_all_toks(struct opts_t * op, struct dev_info_t * dip, int do_hex)
 
     fd = dip->fd;
     res = pt_3party_copy_in(fd, SA_ALL_ROD_TOKS, op->list_id,
-                            DEF_3PC_IN_TIMEOUT, rsp, sizeof(rsp), 1,
-                            op->verbose, op->verbose);
+                            DEF_3PC_IN_TIMEOUT, rsp, sizeof(rsp),
+                            true /* noisy */, op->verbose, op->verbose);
     if (res)
         return res;
 
@@ -583,31 +597,32 @@ do_sgl(struct opts_t * op, const char * opt, const char * buf)
 int
 main(int argc, char * argv[])
 {
-    int c, k, n, fd, flags, blk_sz, cont, err;
+    bool cont;
+    bool do_block = false;
+    bool do_info = false;
+    bool do_poll = false;
+    bool do_receive = false;
+    bool do_size = false;
+    bool prefer_rcs = false;
+    bool req_abort = false;
+    bool req_all_toks = false;
+    bool req_pt = false;
+    bool req_wut = false;
+    int c, k, n, fd, flags, blk_sz, err;
+    int do_hex = 0;
+    int ret = 0;
     uint32_t delay;
     int64_t i64, num_blks;
     uint64_t tc;
-    int req_abort = 0;
-    int req_all_toks = 0;
-    int do_block = 0;
-    int do_hex = 0;
-    int do_info = 0;
-    int do_poll = 0;
-    bool prefer_rcs = false;
-    int req_pt = 0;
-    int do_receive = 0;
-    int do_size = 0;
-    int req_wut = 0;
-    int ret = 0;
+    struct opts_t * op;
+    char * np;
+    const char * sglp = NULL;
+    const char * rrti_rcs_str = "";
     struct opts_t ops;
     struct flags_t iflag, oflag;
     struct dev_info_t ids, ods, o2ds;
     struct sg_simple_inquiry_resp sir;
     struct rrti_resp_t rrti_rsp;
-    struct opts_t * op;
-    char * np;
-    const char * sglp = NULL;
-    const char * rrti_rcs_str = "";
     char b[80];
     char bb[80];
     unsigned char rt[512];
@@ -627,16 +642,16 @@ main(int argc, char * argv[])
 
         switch (c) {
         case 'A':
-            ++req_abort;
+            req_abort = true;
             break;
         case 'a':
-            ++req_all_toks;
+            req_all_toks = true;
             break;
         case 'B':
-            ++do_block;
+            do_block = true;
             break;
         case 'D':
-            ++op->oflagp->del_tkn;
+            op->oflagp->del_tkn = true;
             break;
         case 'h':
         case '?':
@@ -646,11 +661,11 @@ main(int argc, char * argv[])
             ++do_hex;
             break;
         case 'i':
-            ++do_info;
+            do_info = true;
             break;
         case 'I':
-            ++op->iflagp->immed;
-            ++op->oflagp->immed;
+            op->iflagp->immed = true;
+            op->oflagp->immed = true;
             break;
         case 'l':
             i64 = sg_get_llnum(optarg);
@@ -663,7 +678,7 @@ main(int argc, char * argv[])
                 return SG_LIB_SYNTAX_ERROR;
             }
             op->list_id = (uint32_t)i64;
-            op->list_id_given = 1;
+            op->list_id_given = true;
             break;
         case 'O':
             op->offset_in_rod = sg_get_llnum(optarg);
@@ -673,14 +688,14 @@ main(int argc, char * argv[])
             }
             break;
         case 'p':
-            ++do_poll;
+            do_poll = true;
             break;
         case 'P':       /* takes gather list as argument */
             if (req_pt) {
                 pr2serr("Using two --pt=GL options is contradictory\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-            ++req_pt;
+            req_pt = true;
             sglp = optarg;
             break;
         case 'q':
@@ -699,10 +714,10 @@ main(int argc, char * argv[])
             strncpy(op->rtf, optarg, INOUTF_SZ - 1);
             break;
         case 'R':
-            ++do_receive;
+            do_receive = true;
             break;
         case 's':
-            ++do_size;
+            do_size = true;
             break;
         case 't':
             if (0 == strncmp("pit-def", optarg, 7))
@@ -729,7 +744,7 @@ main(int argc, char * argv[])
                 }
                 op->rod_type = (uint32_t)i64;
             }
-            ++op->rod_type_given;
+            op->rod_type_given = true;
             break;
         case 'T':
             n = sg_get_num(optarg);
@@ -758,11 +773,11 @@ main(int argc, char * argv[])
                 pr2serr("Using two --wut=SL options is contradictory\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-            ++req_wut;
+            req_wut = true;
             sglp = optarg;
             break;
         case 'y':
-            ++op->o_readonly;
+            op->o_readonly = true;
             break;
         default:
             pr2serr("unrecognised option code 0x%x ??\n", c);
@@ -845,7 +860,7 @@ main(int argc, char * argv[])
      * corresponding ROD Token placed in the RTF file (big endian, 8 byte) */
     np = getenv(ODX_RTF_LEN);
     if (np)
-        ++op->rtf_len_add;
+        op->rtf_len_add = true;
 
     if (req_pt || req_wut) {
         ret = do_sgl(op, (req_pt ? "--pt=" : "--wut="), sglp);
@@ -942,7 +957,8 @@ main(int argc, char * argv[])
     } else if (req_pt) {
         op->odx_request = ODX_READ_INTO_RODS;
         num_blks = count_sgl_blocks(op->in_sgl, op->in_sgl_elems);
-        if ((ret = do_pop_tok(op, 0, num_blks, 0, op->verbose)))
+        if ((ret = do_pop_tok(op, 0 /* blk_off */, num_blks,
+                              false /* walk_list_id */, op->verbose)))
             goto clean_up;
         else if (op->iflagp->immed)
             goto clean_up;
@@ -999,7 +1015,8 @@ main(int argc, char * argv[])
         }
         num_blks = count_sgl_blocks(op->out_sgl, op->out_sgl_elems);
         if ((ret = do_wut(op, rt, 0, num_blks, op->offset_in_rod,
-                          1 /* assume more left */, 0, op->verbose)))
+                          true /* assume more left */,
+                          false /* walk_list_id */, op->verbose)))
             goto clean_up;
         else if (op->oflagp->immed)
             goto clean_up;
@@ -1025,7 +1042,8 @@ main(int argc, char * argv[])
                     }
                 }
             }
-            print_blk_sizes(op->idip->fn, "readcap", num_blks, blk_sz, 0);
+            print_blk_sizes(op->idip->fn, "readcap", num_blks, blk_sz,
+                            false /* to_stderr */);
             if (do_info) {
                 if (0x8 & sir.byte_5) {
                     printf("3PC (third party copy) bit set in standard "
@@ -1043,7 +1061,7 @@ main(int argc, char * argv[])
             ret = get_blkdev_capacity(op, DDPT_ARG_IN, &num_blks, &blk_sz);
             if (ret)
                 goto clean_up;
-            print_blk_sizes(op->idip->fn, "block", num_blks, blk_sz, 0);
+            print_blk_sizes(op->idip->fn, "block", num_blks, blk_sz, false);
         } else {
             num_blks = 0;
             blk_sz = 0;
@@ -1069,7 +1087,7 @@ clean_up:
         close(op->rtf_fd);
     if (ret) {
         if (ret > 0)
-            print_exit_status_msg("Exit status", ret, 0);
+            print_exit_status_msg("Exit status", ret, false /* to_stderr */);
         else if (ret < 0) {
             pr2serr("Some error occurred\n");
             ret = 1;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2016 Douglas Gilbert.
+ * Copyright (c) 2010-2017 Douglas Gilbert.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -260,9 +260,9 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
 {
     int k, res, res2;
     int ibs = op->ibs;
+    int numbytes = csp->icbpt * ibs;
     int64_t offset = op->skip * ibs;
     int64_t my_skip;
-    int numbytes = csp->icbpt * ibs;
 
     if (ifull_extrap)
         *ifull_extrap = 0;
@@ -333,7 +333,7 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
         if (res < numbytes) {
             /* assume no partial reads (i.e. non integral blocks) */
             csp->icbpt = res / ibs;
-            ++csp->leave_after_write;
+            csp->leave_after_write = true;
             csp->leave_reason = 0; /* assume at end rather than error */
             csp->ocbpt = res / op->obs;
             if (verbose > 1)
@@ -351,10 +351,10 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
 int
 win32_open_if(struct opts_t * op, int flags, int verbose)
 {
-    DISK_GEOMETRY g;
-    DWORD count, share_mode, err;
-    char b[80];
     int blen;
+    DWORD count, share_mode, err;
+    DISK_GEOMETRY g;
+    char b[80];
 
     blen = sizeof(b);
     if (verbose)
@@ -391,10 +391,10 @@ win32_open_if(struct opts_t * op, int flags, int verbose)
 int
 win32_open_of(struct opts_t * op, int flags, int verbose)
 {
-    DISK_GEOMETRY g;
-    DWORD count, share_mode, err;
-    char b[80];
     int blen;
+    DWORD count, share_mode, err;
+    DISK_GEOMETRY g;
+    char b[80];
 
     blen = sizeof(b);
     if (verbose)
@@ -433,6 +433,7 @@ int
 win32_set_file_pos(struct opts_t * op, int which_arg, int64_t pos,
                    int verbose)
 {
+    int blen;
     LONG lo32 = pos & 0xffffffff;
     LONG hi32 = (pos >> 32) & 0xffffffff;
     DWORD err;
@@ -440,7 +441,6 @@ win32_set_file_pos(struct opts_t * op, int which_arg, int64_t pos,
     HANDLE fh;
     const char * cp;
     char b[80];
-    int blen;
 
     blen = sizeof(b);
     fh = (DDPT_ARG_IN == which_arg) ? op->idip->fh : op->odip->fh;
@@ -463,10 +463,10 @@ int
 win32_block_read(struct opts_t * op, unsigned char * bp, int num_bytes,
                  int verbose)
 {
+    int blen;
     DWORD num = num_bytes;
     DWORD howMany, err;
     char b[80];
-    int blen;
 
     blen = sizeof(b);
     if (verbose > 2)
@@ -488,10 +488,10 @@ int
 win32_block_read_from_of(struct opts_t * op, unsigned char * bp,
                          int num_bytes, int verbose)
 {
+    int blen;
     DWORD num = num_bytes;
     DWORD howMany, err;
     char b[80];
-    int blen;
 
     blen = sizeof(b);
     if (verbose > 2)
@@ -514,10 +514,10 @@ int
 win32_block_write(struct opts_t * op, const unsigned char * bp,
                   int num_bytes, int verbose)
 {
+    int blen;
     DWORD num = num_bytes;
     DWORD howMany, err;
     char b[80];
-    int blen;
 
     blen = sizeof(b);
     if (verbose > 2)
@@ -542,17 +542,16 @@ int
 win32_get_blkdev_capacity(struct opts_t * op, int which_arg,
                           int64_t * num_sect, int * sect_sz)
 {
-    DISK_GEOMETRY g;
-    GET_LENGTH_INFORMATION gli;
+    int blen, fname_len;
     ULARGE_INTEGER total_bytes;
     DWORD count, err;
+    int64_t byte_len, blks;
     HANDLE fh;
     const char * fname;
-    int64_t byte_len, blks;
-    int fname_len;
+    DISK_GEOMETRY g;
+    GET_LENGTH_INFORMATION gli;
     char dirName[64];
     char b[80];
-    int blen;
 
     blen = sizeof(b);
     fh = (DDPT_ARG_IN == which_arg) ? op->idip->fh : op->odip->fh;
