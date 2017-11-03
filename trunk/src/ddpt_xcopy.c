@@ -571,7 +571,7 @@ static int
 desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
                  bool is_dest)
 {
-    int fd, res, u, i_len, assoc, desig, verb;
+    int fd, res, u, i_len, assoc, desig, verb, resid;
     unsigned char rcBuff[256], *bp, *best = NULL;
     unsigned int len = 254;
     unsigned int block_size;
@@ -587,7 +587,8 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
     flp = is_dest ? op->oflagp : op->iflagp;
     block_size = is_dest ? op->obs : op->ibs;
     memset(rcBuff, 0xff, len);
-    res = sg_ll_inquiry(fd, 0, 1, VPD_DEVICE_ID, rcBuff, 4, true, verb);
+    res = sg_ll_inquiry_v2(fd, true, VPD_DEVICE_ID, rcBuff, 4, 0, &resid,
+                           true, verb);
     if (0 != res) {
         if (SG_LIB_CAT_ILLEGAL_REQ == res)
             pr2serr("Device identification VPD page not found [%s]\n",
@@ -596,15 +597,22 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
             pr2serr("VPD inquiry failed with %d [%s] , try again with "
                     "'-vv'\n", res, dip->fn);
         return res;
+    } else if (resid > 0) {
+        pr2serr("VPD response: resid indicates less than 4 bytes fetched\n");
+        return SG_LIB_CAT_MALFORMED;
     } else if (rcBuff[1] != VPD_DEVICE_ID) {
         pr2serr("invalid VPD response\n");
         return SG_LIB_CAT_MALFORMED;
     }
     len = sg_get_unaligned_be16(rcBuff + 2) + 4;
-    res = sg_ll_inquiry(fd, 0, 1, VPD_DEVICE_ID, rcBuff, len, true, verb);
+    res = sg_ll_inquiry_v2(fd, true, VPD_DEVICE_ID, rcBuff, len, 0, &resid,
+                           true, verb);
     if (0 != res) {
         pr2serr("VPD inquiry failed with %d\n", res);
         return res;
+    } else if ((len - resid) < 4) {
+        pr2serr("VPD response length only %d bytes\n", len - resid);
+        return SG_LIB_CAT_MALFORMED;
     } else if (rcBuff[1] != VPD_DEVICE_ID) {
         pr2serr("invalid VPD response\n");
         return SG_LIB_CAT_MALFORMED;
@@ -1262,14 +1270,14 @@ static int
 fetch_3pc_vpd(int fd, const char * fn, unsigned char * fixed_b,
               int fixed_blen, unsigned char ** alloc_bp, int verb)
 {
-    int res, len;
+    int res, len, resid;
     unsigned char * rp;
 
     rp = fixed_b;
     if (alloc_bp)
         *alloc_bp = fixed_b;
-    res = sg_ll_inquiry(fd, 0, 1, VPD_3PARTY_COPY, rp, fixed_blen, true,
-                        verb);
+    res = sg_ll_inquiry_v2(fd, true, VPD_3PARTY_COPY, rp, fixed_blen, 0,
+                           &resid, true, verb);
     if (res) {
         if (SG_LIB_CAT_ILLEGAL_REQ == res) {
             if (fn)
@@ -1280,6 +1288,9 @@ fetch_3pc_vpd(int fd, const char * fn, unsigned char * fixed_b,
             pr2serr("Third Party Copy VPD inquiry failed with %d, try again "
                     "with '-vv'\n", res);
         return res;
+    } else if ((fixed_blen - resid) < 4) {
+        pr2serr("3PARTY_COPY VPD response length < 4 bytes after resid\n");
+        return SG_LIB_CAT_MALFORMED;
     } else if (rp[1] != VPD_3PARTY_COPY) {
         pr2serr("invalid 3PARTY_COPY VPD response\n");
         return SG_LIB_CAT_MALFORMED;
@@ -1293,12 +1304,16 @@ fetch_3pc_vpd(int fd, const char * fn, unsigned char * fixed_b,
         }
         if (alloc_bp)
             *alloc_bp = rp;
-        res = sg_ll_inquiry(fd, 0, 1, VPD_3PARTY_COPY, rp, len, true, verb);
+        res = sg_ll_inquiry_v2(fd, true, VPD_3PARTY_COPY, rp, len, 0, &resid,
+                               true, verb);
         if (res) {
             pr2serr("3PARTY_COPY VPD inquiry failed with %d\n", res);
             if (fixed_b != rp)
                 free(rp);
             return res;
+        } else if ((len - resid) < 4) {
+            pr2serr("3PARTY_COPY VPD response length < 4 bytes after resid\n");
+            return SG_LIB_CAT_MALFORMED;
         }
     }
     return 0;
