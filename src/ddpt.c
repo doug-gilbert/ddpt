@@ -67,7 +67,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.96 20171209 [svn: r334]";
+static const char * ddpt_version_str = "0.96 20171231 [svn: r335]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -2359,62 +2359,19 @@ wrk_buffers_init(struct opts_t * op)
     if (op->has_xcopy)
         return 0;
     if (op->iflagp->direct || op->oflagp->direct) {
-        size_t psz;
+        size_t psz = sg_get_page_size();
 
-#if defined(HAVE_SYSCONF) && defined(_SC_PAGESIZE)
-        psz = sysconf(_SC_PAGESIZE); /* POSIX.1 (was getpagesize()) */
-#elif defined(SG_LIB_WIN32)
-        psz = win32_pagesize();
-#else
-        psz = 4096;     /* give up, pick likely figure */
-#endif
-
-#ifdef HAVE_POSIX_MEMALIGN
-        {
-            int err;
-            void * wp;
-
-            wp = op->wrkBuff;
-            err = posix_memalign(&wp, psz, len);
-            if (err) {
-                pr2serr("posix_memalign: error [%d] out of memory?\n", err);
-                return SG_LIB_CAT_OTHER;
-            }
-            op->wrkBuff = (unsigned char *)wp;
-            memset(op->wrkBuff, 0, len);
-            op->wrkPos = op->wrkBuff;
-            if (op->oflagp->sparing) {
-                wp = op->wrkBuff2;
-                err = posix_memalign(&wp, psz, len);
-                if (err) {
-                    pr2serr("posix_memalign(2): error [%d] out of memory?\n",
-                             err);
-                    return SG_LIB_CAT_OTHER;
-                }
-                op->wrkBuff2 = (unsigned char *)wp;
-                memset(op->wrkBuff2, 0, len);
-                op->wrkPos2 = op->wrkBuff2;
-            }
-        }
-#else   /* do not HAVE_POSIX_MEMALIGN */
-        op->wrkBuff = (unsigned char*)calloc(len + psz, 1);
-        if (0 == op->wrkBuff) {
-            pr2serr("Not enough user memory for aligned usage\n");
+        op->wrkPos = sg_memalign(len, psz, &op->wrkBuff, op->verbose > 3);
+        if (NULL == op->wrkPos) {
+            pr2serr("%s: sg_memalign: error, out of memory?\n", __func__);
             return SG_LIB_CAT_OTHER;
         }
-        op->wrkPos = (unsigned char *)(((uintptr_t)op->wrkBuff + psz - 1) &
-                                       (~((uintptr_t)psz - 1)));
-        if (op->oflagp->sparing) {
-            op->wrkBuff2 = (unsigned char*)calloc(len + psz, 1);
-            if (0 == op->wrkBuff2) {
-                pr2serr("Not enough user memory for aligned usage(2)\n");
-                return SG_LIB_CAT_OTHER;
-            }
-            op->wrkPos2 = (unsigned char *)
-                           (((uintptr_t)op->wrkBuff2 + psz - 1) &
-                            (~((uintptr_t)psz - 1)));
+        op->wrkPos2 = sg_memalign(len, psz, &op->wrkBuff2, op->verbose > 3);
+        if (NULL == op->wrkPos2) {
+            pr2serr("%s: sg_memalign: error, out of memory 2\n", __func__);
+            return SG_LIB_CAT_OTHER;
         }
-#endif  /* HAVE_POSIX_MEMALIGN */
+
     } else {
         op->wrkBuff = (unsigned char*)calloc(op->ibs_pi * op->bpt_i, 1);
         if (0 == op->wrkBuff) {
