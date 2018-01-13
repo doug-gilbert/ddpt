@@ -50,7 +50,7 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Mon Oct 23 2017 - dgilbert at interlog dot com
+* Sat Jan 13 2018 - dgilbert at interlog dot com
 - see ChangeLog
   * ddpt-0.96
 * Fri Dec 26 2014 - dgilbert at interlog dot com

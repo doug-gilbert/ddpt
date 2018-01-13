@@ -9,9 +9,10 @@ bin_PROGRAMS = ddpt ddptctl
 # INCLUDES = -I$(top_srcdir)/include -I$(top_srcdir)/include/scsi
 
 # -std=<s> can be c99, c11, c14, gnu11, etc. Default is gnu89 (gnu90 is the same)
-AM_CFLAGS = -iquote $(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W @os_cflags@
-## AM_CFLAGS = -iquote $(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W @os_cflags@ -pedantic -std=c11 --analyze
-# AM_CFLAGS = -iquote $(top_srcdir)/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall -W @os_cflags@ -pedantic -std=c++14
+AM_CPPFLAGS = -iquote ${top_srcdir}/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
+AM_CFLAGS = -Wall -W
+## AM_CFLAGS = -Wall -W -pedantic -std=c11 --analyze
+# AM_CFLAGS = -Wall -W -pedantic -std=c++14
 
 
 
@@ -60,11 +61,11 @@ endif
 
 if HAVE_SGUTILS
 INCLUDES = -I/scsi
-ddpt_LDADD = @os_libs@ @rt_libs@ @SGUTILS_LIBS@
+ddpt_LDADD = @SGUTILS_LIBS@
 else
 INCLUDES = -I$(top_srcdir)/include
 ddpt_SOURCES += $(sglib_SOURCES)
-ddpt_LDADD = @os_deps@ @os_libs@ @rt_libs@ @SGUTILS_LIBS@
+ddpt_LDADD = @os_deps@ @SGUTILS_LIBS@
 ddpt_DEPENDENCIES = @os_deps@
 endif
 
@@ -81,11 +82,11 @@ EXTRA_ddpt_SOURCES =	../lib/sg_pt_linux.c	\
 
 if HAVE_SGUTILS
 INCLUDES = -I/scsi
-ddptctl_LDADD = @os_libs@ @rt_libs@ @SGUTILS_LIBS@
+ddptctl_LDADD = @SGUTILS_LIBS@
 else
 INCLUDES = -I$(top_srcdir)/include
 ddptctl_SOURCES += $(sglib_SOURCES)
-ddptctl_LDADD = @os_deps@ @os_libs@ @rt_libs@ @SGUTILS_LIBS@
+ddptctl_LDADD = @os_deps@ @SGUTILS_LIBS@
 ddptctl_DEPENDENCIES = @os_deps@
 endif
 
