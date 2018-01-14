@@ -4434,7 +4434,7 @@ _ACEOF
 
 case "${host}" in
         *-*-linux-gnu*)
-                os_deps='sg_pt_linux.o'
+                os_deps='sg_pt_linux.o sg_pt_linux_nvme.o'
 
 
 cat >>confdefs.h <<_ACEOF
@@ -4446,7 +4446,7 @@ _ACEOF
                 os_libs=''
  ;;
         *-*-linux*)
-                os_deps='sg_pt_linux.o'
+                os_deps='sg_pt_linux.o sg_pt_linux_nvme.o'
 
 
 cat >>confdefs.h <<_ACEOF
@@ -4521,7 +4521,7 @@ _ACEOF
                 os_libs=''
  ;;
         *)
-                os_deps='sg_pt_linux.o'
+                os_deps='sg_pt_linux.o sg_pt_linux_nvme.o'
 
 
 cat >>confdefs.h <<_ACEOF
@@ -6141,4 +6141,6 @@ if test -n "$ac_unrecognized_opts" && test "$enable_option_checking" != no; then
   { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: unrecognized options: $ac_unrecognized_opts" >&5
 $as_echo "$as_me: WARNING: unrecognized options: $ac_unrecognized_opts" >&2;}
 fi
+
+
 

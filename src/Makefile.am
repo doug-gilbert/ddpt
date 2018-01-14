@@ -39,6 +39,7 @@ sglib_SOURCES =         ../lib/sg_lib.c \
                         ../lib/sg_cmds_extra.c  \
                         ../include/sg_cmds_extra.h      \
                         ../include/sg_pt.h      \
+                        ../include/sg_pt_nvme.h      \
                         ../lib/sg_pt_common.c
 
 if OS_WIN32_MINGW
@@ -68,6 +69,8 @@ ddpt_DEPENDENCIES = @os_deps@
 endif
 
 EXTRA_ddpt_SOURCES =	../lib/sg_pt_linux.c	\
+			../lib/sg_pt_linux_nvme.c	\
+			../include/sg_pt_linux.h	\
 			../include/sg_linux_inc.h	\
 			../lib/sg_pt_freebsd.c	\
 			../lib/sg_pt_osf1.c	\
@@ -93,3 +96,5 @@ EXTRA_ddptctl_SOURCES =	../lib/sg_pt_linux.c	\
 			../lib/sg_pt_solaris.c	\
 			../lib/sg_pt_win32.c	\
 			../include/sg_pt_win32.h
+
+

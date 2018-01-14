@@ -38,12 +38,12 @@ AC_DEFINE_UNQUOTED(SG_LIB_BUILD_HOST, "${host}", [ddpt Build Host])
 
 case "${host}" in
         *-*-linux-gnu*)
-                AC_SUBST([os_deps], ['sg_pt_linux.o'])
+                AC_SUBST([os_deps], ['sg_pt_linux.o sg_pt_linux_nvme.o'])
 		AC_DEFINE_UNQUOTED(SG_LIB_LINUX, 1, [ddpt on linux])
 		AC_SUBST([os_cflags], [''])
                 AC_SUBST([os_libs], ['']) ;;
         *-*-linux*)
-                AC_SUBST([os_deps], ['sg_pt_linux.o'])
+                AC_SUBST([os_deps], ['sg_pt_linux.o sg_pt_linux_nvme.o'])
 		AC_DEFINE_UNQUOTED(SG_LIB_LINUX, 1, [ddpt on linux])
 		AC_SUBST([os_cflags], [''])
                 AC_SUBST([os_libs], ['']) ;;
@@ -71,7 +71,7 @@ case "${host}" in
 		AC_SUBST([os_cflags], [''])
                 AC_SUBST([os_libs], ['']) ;;
         *)
-                AC_SUBST([os_deps], ['sg_pt_linux.o'])
+                AC_SUBST([os_deps], ['sg_pt_linux.o sg_pt_linux_nvme.o'])
 		AC_DEFINE_UNQUOTED(SG_LIB_LINUX, 1, [assume ddpt on linux])
 		AC_SUBST([os_cflags], [''])
                 AC_SUBST([os_libs], ['']) ;;
@@ -103,3 +103,5 @@ AC_ARG_ENABLE([scsistrings],
 
 # AC_PROG_LIBTOOL
 AC_OUTPUT(Makefile src/Makefile doc/Makefile)
+
+
