@@ -8,21 +8,16 @@ AC_PROG_CC
 # AC_PROG_CXX
 AC_PROG_INSTALL
 
+# AM_PROG_AR is supported and needed since automake v1.12+
+ifdef([AM_PROG_AR], [AM_PROG_AR], [])
+
 # check for headers
 AC_HEADER_STDC
-AC_CHECK_HEADERS([linux/types.h linux/bsg.h linux/kdev_t.h], [], [],
-     [[#ifdef HAVE_LINUX_TYPES_H
-     # include <linux/types.h>
-     #endif
-     ]])
 
 AC_CHECK_FUNCS(posix_fadvise)
 AC_CHECK_FUNCS(fsync)
 AC_CHECK_FUNCS(fdatasync)
-AC_CHECK_LIB(rt, clock_gettime,
-	     AC_SUBST([rt_libs], ['-lrt']),
-	     AC_SUBST([rt_libs], ['']))
-AC_CHECK_LIB(rt, clock_gettime)
+AC_CHECK_LIB(rt, clock_gettime, [LIBS="$LIBS -lrt"])
 AC_CHECK_FUNCS(clock_gettime)
 AC_CHECK_FUNCS(gettimeofday)
 AC_CHECK_FUNCS(nanosleep)
@@ -36,45 +31,44 @@ AC_CANONICAL_HOST
 
 AC_DEFINE_UNQUOTED(SG_LIB_BUILD_HOST, "${host}", [ddpt Build Host])
 
+check_for_linux_nvme_headers() {
+        AC_CHECK_HEADERS([linux/nvme_ioctl.h], [AC_DEFINE(HAVE_NVME, 1, [Found NVMe])], [], [])
+        AC_CHECK_HEADERS([linux/types.h linux/bsg.h linux/kdev_t.h], [], [],
+                        [[#ifdef HAVE_LINUX_TYPES_H
+                        # include <linux/types.h>
+                        #endif
+                        ]])
+}
+
 case "${host}" in
-        *-*-linux-gnu*)
+       *-*-android*)
                 AC_SUBST([os_deps], ['sg_pt_linux.o sg_pt_linux_nvme.o'])
-		AC_DEFINE_UNQUOTED(SG_LIB_LINUX, 1, [ddpt on linux])
-		AC_SUBST([os_cflags], [''])
-                AC_SUBST([os_libs], ['']) ;;
-        *-*-linux*)
-                AC_SUBST([os_deps], ['sg_pt_linux.o sg_pt_linux_nvme.o'])
-		AC_DEFINE_UNQUOTED(SG_LIB_LINUX, 1, [ddpt on linux])
-		AC_SUBST([os_cflags], [''])
-                AC_SUBST([os_libs], ['']) ;;
+                AC_DEFINE_UNQUOTED(SG_LIB_ANDROID, 1, [ddpt on android])
+                AC_DEFINE_UNQUOTED(SG_LIB_LINUX, 1, [ddpt on linux])
+                check_for_linux_nvme_headers;;
         *-*-freebsd*|*-*-kfreebsd*-gnu*)
                 AC_SUBST([os_deps], ['sg_pt_freebsd.o'])
-		AC_DEFINE_UNQUOTED(SG_LIB_FREEBSD, 1, [ddpt on FreeBSD])
-		AC_SUBST([os_cflags], [''])
-                AC_SUBST([os_libs], ['-lcam']);;
+                AC_DEFINE_UNQUOTED(SG_LIB_FREEBSD, 1, [ddpt on FreeBSD])
+                AC_DEFINE(HAVE_NVME, 1, [Found NVMe])
+                LIBS="$LIBS -lcam";;
         *-*-solaris*)
                 AC_SUBST([os_deps], ['sg_pt_solaris.o'])
-		AC_DEFINE_UNQUOTED(SG_LIB_SOLARIS, 1, [ddpt on Solaris])
-		AC_SUBST([os_cflags], [''])
-                AC_SUBST([os_libs], ['']);;
+                AC_DEFINE_UNQUOTED(SG_LIB_SOLARIS, 1, [ddpt on Solaris]);;
+        *-*-osf*)
+                AC_SUBST([os_deps], ['sg_pt_osf1.o'])
+                AC_DEFINE_UNQUOTED(SG_LIB_OSF1, 1, [ddpt on Tru64 UNIX]);;
         *-*-cygwin*)
                 AC_SUBST([os_deps], ['sg_pt_win32.o'])
-		AC_DEFINE_UNQUOTED(SG_LIB_WIN32, 1, [ddpt on Win32])
-		AC_DEFINE_UNQUOTED(WIN32_SPT_DIRECT, 1, [allow large buffers, aligned?])
-		AC_SUBST([os_cflags], ['-Wno-char-subscripts'])
-                AC_SUBST([os_libs], ['']) ;;
+                AC_DEFINE_UNQUOTED(SG_LIB_WIN32, 1, [ddpt on Win32])
+                CFLAGS="$CFLAGS -Wno-char-subscripts";;
         *-*-mingw*)
                 AC_SUBST([os_deps], ['sg_pt_win32.o'])
-		AC_DEFINE_UNQUOTED(SG_LIB_WIN32, 1, [ddpt on Win32])
-		AC_DEFINE_UNQUOTED(WIN32_SPT_DIRECT, 1, [allow large buffers, aligned?])
-		AC_DEFINE_UNQUOTED(SG_LIB_MINGW, 1, [also MinGW environment])
-		AC_SUBST([os_cflags], [''])
-                AC_SUBST([os_libs], ['']) ;;
-        *)
+                AC_DEFINE_UNQUOTED(SG_LIB_WIN32, 1, [ddpt on Win32])
+                AC_DEFINE_UNQUOTED(SG_LIB_MINGW, 1, [also MinGW environment]);;
+        *-*-linux-gnu* | *-*-linux* | *)
                 AC_SUBST([os_deps], ['sg_pt_linux.o sg_pt_linux_nvme.o'])
-		AC_DEFINE_UNQUOTED(SG_LIB_LINUX, 1, [assume ddpt on linux])
-		AC_SUBST([os_cflags], [''])
-                AC_SUBST([os_libs], ['']) ;;
+                AC_DEFINE_UNQUOTED(SG_LIB_LINUX, 1, [ddpt on linux])
+                check_for_linux_nvme_headers;;
 esac
 
 # Define platform-specific symbol.
@@ -83,10 +77,11 @@ AM_CONDITIONAL(OS_LINUX, [echo $host_os | grep '^linux' > /dev/null])
 AM_CONDITIONAL(OS_SOLARIS, [echo $host_os | grep '^solaris' > /dev/null])
 AM_CONDITIONAL(OS_WIN32_MINGW, [echo $host_os | grep '^mingw' > /dev/null])
 AM_CONDITIONAL(OS_WIN32_CYGWIN, [echo $host_os | grep '^cygwin' > /dev/null])
+AM_CONDITIONAL(OS_ANDROID, [echo $host_os | grep 'android' > /dev/null])
 
 AC_ARG_ENABLE([linuxbsg],
-  AC_HELP_STRING([--disable-linuxbsg], [ignore linux bsg (sgv4) if present]),
-  [AC_DEFINE_UNQUOTED(IGNORE_LINUX_BSG, 1, [ignore linux bsg], )], [])
+  AC_HELP_STRING([--disable-linuxbsg], [option ignored, this is placeholder]),
+  [AC_DEFINE_UNQUOTED(IGNORE_LINUX_BSG, 1, [option ignored], )], [])
 
 AC_ARG_ENABLE([libsgutils],
   AC_HELP_STRING([--disable-libsgutils], [ignore libsgutils if present]),
@@ -100,6 +95,10 @@ AC_ARG_ENABLE([scsistrings],
   [AS_HELP_STRING([--disable-scsistrings],
                   [Disable full SCSI sense strings])],
   [], [AC_DEFINE_UNQUOTED(SG_SCSI_STRINGS, 1, [full SCSI sense strings], )])
+
+AC_ARG_ENABLE([nvme-supp],
+  AC_HELP_STRING([--disable-nvme-supp], [remove all or most NVMe code]),
+  [AC_DEFINE_UNQUOTED(IGNORE_NVME, 1, [compile out NVMe support], )], [])
 
 # AC_PROG_LIBTOOL
 AC_OUTPUT(Makefile src/Makefile doc/Makefile)
