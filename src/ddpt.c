@@ -1,30 +1,27 @@
 /*
- * Copyright (c) 2008-2018 Douglas Gilbert.
+ * Copyright (c) 2008-2018, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- *
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 /* ddpt is a utility program for copying files. It broadly follows the syntax
@@ -67,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.96 20180113 [svn: r336]";
+static const char * ddpt_version_str = "0.96 20180209 [svn: r337]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -1663,9 +1660,12 @@ cp_construct_pt_zero_buff(struct opts_t * op, int obpt)
             return -1;
     }
     if ((op->oflagp->sparse) && (NULL == op->zeros_buff)) {
-        op->zeros_buff = (unsigned char *)calloc(obpt * op->obs, 1);
+        uint32_t pg_sz = sg_get_page_size();
+
+        op->zeros_buff = sg_memalign(obpt * op->obs, pg_sz,
+                                     &op->free_zeros_buff, false);
         if (NULL == op->zeros_buff) {
-            pr2serr("zeros_buff calloc failed\n");
+            pr2serr("zeros_buff sg_memalign failed\n");
             return -1;
         }
     }
@@ -2355,38 +2355,19 @@ static int
 wrk_buffers_init(struct opts_t * op)
 {
     int len = op->ibs_pi * op->bpt_i;
+    uint32_t psz = sg_get_page_size();
 
     if (op->has_xcopy)
         return 0;
-    if (op->iflagp->direct || op->oflagp->direct) {
-        size_t psz = sg_get_page_size();
-
-        op->wrkPos = sg_memalign(len, psz, &op->wrkBuff, op->verbose > 3);
-        if (NULL == op->wrkPos) {
-            pr2serr("%s: sg_memalign: error, out of memory?\n", __func__);
-            return SG_LIB_CAT_OTHER;
-        }
-        op->wrkPos2 = sg_memalign(len, psz, &op->wrkBuff2, op->verbose > 3);
-        if (NULL == op->wrkPos2) {
-            pr2serr("%s: sg_memalign: error, out of memory 2\n", __func__);
-            return SG_LIB_CAT_OTHER;
-        }
-
-    } else {
-        op->wrkBuff = (unsigned char*)calloc(op->ibs_pi * op->bpt_i, 1);
-        if (0 == op->wrkBuff) {
-            pr2serr("Not enough user memory\n");
-            return SG_LIB_CAT_OTHER;
-        }
-        op->wrkPos = op->wrkBuff;
-        if (op->oflagp->sparing) {
-            op->wrkBuff2 = (unsigned char*)calloc(op->ibs_pi * op->bpt_i, 1);
-            if (0 == op->wrkBuff2) {
-                pr2serr("Not enough user memory(2)\n");
-                return SG_LIB_CAT_OTHER;
-            }
-            op->wrkPos2 = op->wrkBuff2;
-        }
+    op->wrkPos = sg_memalign(len, psz, &op->free_wrkPos, op->verbose > 3);
+    if (NULL == op->wrkPos) {
+        pr2serr("%s: sg_memalign: error, out of memory?\n", __func__);
+        return SG_LIB_OS_BASE_ERR + ENOMEM;
+    }
+    op->wrkPos2 = sg_memalign(len, psz, &op->free_wrkPos2, op->verbose > 3);
+    if (NULL == op->wrkPos2) {
+        pr2serr("%s: sg_memalign: error, out of memory 2\n", __func__);
+        return SG_LIB_OS_BASE_ERR + ENOMEM;
     }
     return 0;
 }
@@ -2409,12 +2390,12 @@ cleanup_resources(struct opts_t * op)
     if (op->iflagp->errblk)
         errblk_close(op);
 
-    if (op->wrkBuff)
-        free(op->wrkBuff);
-    if (op->wrkBuff2)
-        free(op->wrkBuff2);
-    if (op->zeros_buff)
-        free(op->zeros_buff);
+    if (op->free_wrkPos)
+        free(op->free_wrkPos);
+    if (op->free_wrkPos2)
+        free(op->free_wrkPos2);
+    if (op->free_zeros_buff)
+        free(op->free_zeros_buff);
     if (FT_PT & op->idip->d_type)
         pt_close(op->idip->fd);
     else if ((op->idip->fd >= 0) && (STDIN_FILENO != op->idip->fd))
