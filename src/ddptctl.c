@@ -64,7 +64,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.96 20180209 [svn: r337]";
+const char * ddptctl_version_str = "0.96 20180222 [svn: r339]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -226,12 +226,12 @@ usage()
 
 /* If len==96 then assume it is a management ROD Token. Returns 0 if okay. */
 static int
-odx_print_rod_tok(const struct opts_t * op, unsigned char * rth, int len)
+odx_print_rod_tok(const struct opts_t * op, uint8_t * rth, int len)
 {
     bool vendor, all_0, all_1, prot_en;
     bool target_dev_desc = true;
     int m, p_type, desig_type, lbppbe;
-    unsigned char uc;
+    uint8_t uc;
     uint16_t rtl;
     uint32_t rod_t, bs;
     uint64_t bc;
@@ -367,7 +367,7 @@ odx_rt_info(const struct opts_t * op)
     int res, fd, err, k, bp_chunk, num;
     int a_err = 0;
     uint64_t bc;
-    unsigned char rth[520];
+    uint8_t rth[520];
     struct stat st;
 
     if ('\0' == op->rtf[0]) {
@@ -453,8 +453,8 @@ report_all_toks(struct opts_t * op, struct dev_info_t * dip, int do_hex)
     int res, fd, k;
     int a_err = 0;
     unsigned int len, num_mtoks;
-    unsigned char rsp[8 + (MAX_NUM_MAN_TOKS * 96)];
-    unsigned char * bp;
+    uint8_t rsp[8 + (MAX_NUM_MAN_TOKS * 96)];
+    uint8_t * bp;
 
     fd = dip->fd;
     res = pt_3party_copy_in(fd, SA_ALL_ROD_TOKS, op->list_id,
@@ -622,7 +622,7 @@ main(int argc, char * argv[])
     struct rrti_resp_t rrti_rsp;
     char b[80];
     char bb[80];
-    unsigned char rt[512];
+    uint8_t rt[512];
 
     state_init(&ops, &iflag, &oflag, &ids, &ods, &o2ds);
     op = &ops;

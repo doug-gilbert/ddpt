@@ -253,7 +253,7 @@ win32_adjust_fns_pt(struct opts_t * op)
  * success, else SG_LIB_FILE_ERROR, SG_LIB_CAT_MEDIUM_HARD or -1 . */
 int
 win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
-                    unsigned char * bp, int * ifull_extrap, int verbose)
+                    uint8_t * bp, int * ifull_extrap, int verbose)
 {
     int k, res, res2;
     int ibs = op->ibs;
@@ -457,7 +457,7 @@ win32_set_file_pos(struct opts_t * op, int which_arg, int64_t pos,
 
 /* Returns number read, -SG_LIB_CAT_MEDIUM_HARD or -1 on error */
 int
-win32_block_read(struct opts_t * op, unsigned char * bp, int num_bytes,
+win32_block_read(struct opts_t * op, uint8_t * bp, int num_bytes,
                  int verbose)
 {
     int blen;
@@ -482,7 +482,7 @@ win32_block_read(struct opts_t * op, unsigned char * bp, int num_bytes,
 
 /* Returns number read from OFILE, -SG_LIB_CAT_MEDIUM_HARD or -1 on error */
 int
-win32_block_read_from_of(struct opts_t * op, unsigned char * bp,
+win32_block_read_from_of(struct opts_t * op, uint8_t * bp,
                          int num_bytes, int verbose)
 {
     int blen;
@@ -508,8 +508,8 @@ win32_block_read_from_of(struct opts_t * op, unsigned char * bp,
 
 /* Returns number written, -SG_LIB_CAT_MEDIUM_HARD or -1 on error */
 int
-win32_block_write(struct opts_t * op, const unsigned char * bp,
-                  int num_bytes, int verbose)
+win32_block_write(struct opts_t * op, const uint8_t * bp, int num_bytes,
+                  int verbose)
 {
     int blen;
     DWORD num = num_bytes;
