@@ -851,10 +851,7 @@ check_progress(const struct opts_t * op)
         if (measure) {
             ++threshold;
             if (elapsed_ms > 80)        /* 80 milliseconds */
-{
-pr2serr("%s: finished measuring, threshold=%d\n", __func__, threshold);
                 measure = false;
-}
         }
         if (elapsed_ms >= PROGRESS2_TRIGGER_MS) {
             if (elapsed_ms >= PROGRESS_TRIGGER_MS) {
