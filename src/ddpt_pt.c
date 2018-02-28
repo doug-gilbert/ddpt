@@ -522,12 +522,16 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
         case SG_LIB_CAT_RECOVERED:
             ++op->recovered_errs;
             info_valid = sg_get_sense_info_fld(sense_b, slen, io_addrp);
-            if (info_valid)
-                pr2serr("    lba of last recovered error in this READ=0x%"
-                        PRIx64 "\n", *io_addrp);
-            else
-                pr2serr("Recovered error: [no info] reading from block=0x%"
-                        PRIx64 ", num=%d\n", from_block, blocks);
+            if (! op->quiet) {
+                if (info_valid)
+                    pr2serr("    lba of last recovered error in this READ=0x%"
+                            PRIx64 "\n", *io_addrp);
+                else
+                    pr2serr("Recovered error: [no info] reading from "
+                            "block=0x%" PRIx64 ", num=%d\n", from_block,
+                            blocks);
+            }
+            ret = 0;    /* quash error so copy will continue */
             break;
         case SG_LIB_CAT_MEDIUM_HARD:
             ++op->unrecovered_errs;
@@ -891,12 +895,15 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
         case SG_LIB_CAT_RECOVERED:
             ++op->wr_recovered_errs;
             info_valid = sg_get_sense_info_fld(sense_b, slen, &io_addr);
-            if (info_valid)
-                pr2serr("    lba of last recovered error in this WRITE=0x%"
-                        PRIx64 "\n", io_addr);
-            else
-                pr2serr("Recovered error: [no info] writing to block=0x%"
-                        PRIx64 ", num=%d\n", to_block, blocks);
+            if (! op->quiet) {
+                if (info_valid)
+                    pr2serr("    lba of last recovered error in this WRITE=0x%"
+                            PRIx64 "\n", io_addr);
+                else
+                    pr2serr("Recovered error: [no info] writing to block=0x%"
+                            PRIx64 ", num=%d\n", to_block, blocks);
+            }
+            ret = 0;    /* quash error so copy will continue */
             break;
         case SG_LIB_CAT_ABORTED_COMMAND:
         case SG_LIB_CAT_UNIT_ATTENTION:

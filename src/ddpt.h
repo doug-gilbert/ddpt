@@ -197,23 +197,17 @@ extern "C" {
 
 #define REASON_TAPE_SHORT_READ 1024     /* leave_reason indication */
 
-/* Following used for sense_key=aborted_command, asc=0x10, ascq=* which
- * contains errors associated with protection fields */
-#ifndef SG_LIB_CAT_PROTECTION
-#define SG_LIB_CAT_PROTECTION 40
-#define SG_LIB_CAT_PROTECTION_WITH_INFO 41
-#endif
 
-#define DDPT_CAT_PARAM_LST_LEN_ERR 50
-#define DDPT_CAT_INVALID_FLD_IN_PARAM 51
-#define DDPT_CAT_TOO_MANY_SEGS_IN_PARAM 52
-#define DDPT_CAT_TARGET_UNDERRUN 53
-#define DDPT_CAT_TARGET_OVERRUN 54
-#define DDPT_CAT_OP_IN_PROGRESS 55
-#define DDPT_CAT_INSUFF_RES_CREATE_ROD 56
-#define DDPT_CAT_INSUFF_RES_CREATE_RODTOK 57
-#define DDPT_CAT_CMDS_CLEARED_BY_DEV_SVR 58
-#define DDPT_CAT_TOKOP_BASE 70        /* assume less than 20 above this */
+#define DDPT_CAT_PARAM_LST_LEN_ERR 100
+#define DDPT_CAT_INVALID_FLD_IN_PARAM 101
+#define DDPT_CAT_TOO_MANY_SEGS_IN_PARAM 102
+#define DDPT_CAT_TARGET_UNDERRUN 103
+#define DDPT_CAT_TARGET_OVERRUN 104
+#define DDPT_CAT_OP_IN_PROGRESS 105
+#define DDPT_CAT_INSUFF_RES_CREATE_ROD 106
+#define DDPT_CAT_INSUFF_RES_CREATE_RODTOK 107
+#define DDPT_CAT_CMDS_CLEARED_BY_DEV_SVR 108
+#define DDPT_CAT_TOKOP_BASE 110   /* + ascq; Invalid token operation (0x23) */
 
 #define XCOPY_TO_SRC "XCOPY_TO_SRC"
 #define XCOPY_TO_DST "XCOPY_TO_DST"
