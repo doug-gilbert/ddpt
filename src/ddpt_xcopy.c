@@ -90,7 +90,7 @@
 
 
 #define LOCAL_ROD_TOKEN_SIZE 1024
-static unsigned char local_rod_token[LOCAL_ROD_TOKEN_SIZE];
+static uint8_t local_rod_token[LOCAL_ROD_TOKEN_SIZE];
 
 static const char * rec_copy_op_params_str = "Receive copy operating "
                                              "parameters";
@@ -190,9 +190,8 @@ seg_desc_from_d_type(int in_dt, int in_off, int out_dt, int out_off)
 }
 
 static int
-scsi_encode_seg_desc(struct opts_t * op, unsigned char *seg_desc,
-                     int seg_desc_type, int64_t num_blk, uint64_t src_lba,
-                     uint64_t dst_lba)
+scsi_encode_seg_desc(struct opts_t * op, uint8_t *seg_desc, int seg_desc_type,
+                     int64_t num_blk, uint64_t src_lba, uint64_t dst_lba)
 {
     int seg_desc_len = 0;
 
@@ -216,11 +215,11 @@ scsi_encode_seg_desc(struct opts_t * op, unsigned char *seg_desc,
 }
 
 static int
-a_xcopy_lid1_cmd(struct opts_t * op, unsigned char *src_desc,
-                 int src_desc_len, unsigned char *dst_desc, int dst_desc_len,
-                 int seg_desc_type, int64_t num_blk)
+a_xcopy_lid1_cmd(struct opts_t * op, uint8_t *src_desc, int src_desc_len,
+                 uint8_t *dst_desc, int dst_desc_len, int seg_desc_type,
+                 int64_t num_blk)
 {
-    unsigned char xcopyBuff[256];
+    uint8_t xcopyBuff[256];
     int desc_offset = 16;
     int seg_desc_len, verb, err_vb, fd, tmout;
     uint64_t src_lba = op->skip;
@@ -263,7 +262,7 @@ scsi_operating_parameter(struct opts_t * op, bool is_dest)
 {
     bool valid = false;
     int res, fd, ftype, pdt, snlid, verb;
-    unsigned char rcBuff[256];
+    uint8_t rcBuff[256];
     unsigned int rcBuffLen = 256, len, n, td_list = 0;
     uint32_t num, max_target_num, max_segment_num, max_segment_len;
     uint32_t max_desc_len, max_inline_data, held_data_limit;
@@ -565,11 +564,11 @@ scsi_operating_parameter(struct opts_t * op, bool is_dest)
 
 /* build xcopy(lid1) CSCD descriptor using device id VPD page */
 static int
-desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
+desc_from_vpd_id(struct opts_t * op, uint8_t *desc, int desc_len,
                  bool is_dest)
 {
     int fd, res, u, i_len, assoc, desig, verb, resid;
-    unsigned char rcBuff[256], *bp, *best = NULL;
+    uint8_t rcBuff[256], *bp, *best = NULL;
     unsigned int len = 254;
     unsigned int block_size;
     int off = -1;
@@ -692,8 +691,8 @@ do_xcopy_lid1(struct opts_t * op)
 {
     int res, ibpt, obpt, bs_same, max_bpt, blocks, oblocks;
     int src_desc_len, dst_desc_len, seg_desc_type;
-    unsigned char src_desc[256];
-    unsigned char dst_desc[256];
+    uint8_t src_desc[256];
+    uint8_t dst_desc[256];
     const struct flags_t * ifp = op->iflagp;
     const struct flags_t * ofp = op->oflagp;
     const struct dev_info_t * idip = op->idip;
@@ -961,9 +960,9 @@ cpy_op_status_str(int cos, char * b, int blen)
 /* This is xcopy(LID4) related: "ROD" == Representation Of Data
  * Used by VPD_3PARTY_COPY */
 static void
-decode_rod_descriptor(const unsigned char * buff, int len, bool to_stderr)
+decode_rod_descriptor(const uint8_t * buff, int len, bool to_stderr)
 {
-    const unsigned char * bp = buff;
+    const uint8_t * bp = buff;
     int k, bump;
     int (*print_p)(const char *, ...);
 
@@ -1007,7 +1006,7 @@ decode_rod_descriptor(const unsigned char * buff, int len, bool to_stderr)
 }
 
 struct tpc_desc_type {
-    unsigned char code;
+    uint8_t code;
     const char * name;
 };
 
@@ -1055,7 +1054,7 @@ static struct tpc_desc_type tpc_desc_arr[] = {
 };
 
 static const char *
-get_tpc_desc_name(unsigned char code)
+get_tpc_desc_name(uint8_t code)
 {
     const struct tpc_desc_type * dtp;
 
@@ -1096,12 +1095,11 @@ get_tpc_rod_name(uint32_t rod_type)
 
 /* VPD_3PARTY_COPY [3PC, third party copy] */
 static void
-decode_3party_copy_vpd(unsigned char * buff, int len, bool to_stderr,
-                       int verbose)
+decode_3party_copy_vpd(uint8_t * buff, int len, bool to_stderr, int verbose)
 {
     int k, j, m, bump, desc_type, desc_len, sa_len, pdt, csll;
     unsigned int u;
-    const unsigned char * bp;
+    const uint8_t * bp;
     const char * cp;
     uint64_t ull;
     char b[80];
@@ -1264,11 +1262,11 @@ decode_3party_copy_vpd(unsigned char * buff, int len, bool to_stderr,
 /* Note this function passes back a malloc-ed buffer if it returns 0 and
  * fixed_b != *alloc_bp which caller should free. Returns 0 on success. */
 static int
-fetch_3pc_vpd(int fd, const char * fn, unsigned char * fixed_b,
-              int fixed_blen, unsigned char ** alloc_bp, int verb)
+fetch_3pc_vpd(int fd, const char * fn, uint8_t * fixed_b, int fixed_blen,
+              uint8_t ** alloc_bp, int verb)
 {
     int res, len, resid;
-    unsigned char * rp;
+    uint8_t * rp;
 
     rp = fixed_b;
     if (alloc_bp)
@@ -1294,7 +1292,7 @@ fetch_3pc_vpd(int fd, const char * fn, unsigned char * fixed_b,
     }
     len = sg_get_unaligned_be16(rp + 2) + 4;
     if (len > fixed_blen) {
-        rp = (unsigned char *)malloc(len);
+        rp = (uint8_t *)malloc(len);
         if (NULL == rp) {
             pr2serr("Not enough user memory for %s\n", __func__);
             return SG_LIB_CAT_OTHER;
@@ -1398,8 +1396,8 @@ int
 print_3pc_vpd(struct opts_t * op, bool to_stderr)
 {
     int res, verb, len;
-    unsigned char * rp;
-    unsigned char rBuff[256];
+    uint8_t * rp;
+    uint8_t rBuff[256];
 
     verb = (op->verbose ? (op->verbose - 1) : 0);
     res = fetch_3pc_vpd(op->idip->fd, NULL, rBuff, (int)sizeof(rBuff),
@@ -1582,7 +1580,7 @@ do_rrti(struct opts_t * op, bool in0_out1, struct rrti_resp_t * rrp, int verb)
     int res, fd, off, err_vb;
     uint32_t len, rtdl;
     const char * cp;
-    unsigned char rsp[1024];
+    uint8_t rsp[1024];
     char b[400];
     char bb[80];
 
@@ -1660,7 +1658,7 @@ do_rcs(struct opts_t * op, bool in0_out1, struct rrti_resp_t * rrp, int verb)
     int res, fd, err_vb;
     uint32_t len;
     const char * cp;
-    unsigned char rsp[1024];
+    uint8_t rsp[1024];
     char b[400];
     char bb[80];
 
@@ -1732,7 +1730,7 @@ process_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a)
     uint64_t rod_sz;
     struct rrti_resp_t r;
     char b[400];
-    unsigned char uc[8];
+    uint8_t uc[8];
 
     if (op->verbose == vb_a)
         vb_b = op->verbose;
@@ -1820,7 +1818,7 @@ process_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a)
 }
 
 void
-get_local_rod_tok(unsigned char * tokp, int max_tok_len)
+get_local_rod_tok(uint8_t * tokp, int max_tok_len)
 {
     int len;
 
@@ -1832,7 +1830,7 @@ get_local_rod_tok(unsigned char * tokp, int max_tok_len)
 
 /* Do WRITE USING TOKEN command, returns 0 on success */
 int
-do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
+do_wut(struct opts_t * op, uint8_t * tokp, uint64_t blk_off,
        uint32_t num_blks, uint64_t oir, bool more_left, bool walk_list_id,
        int vb_a)
 {
@@ -1846,7 +1844,7 @@ do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
     const struct scat_gath_elem * sglp;
     uint8_t * pl;
     uint8_t * free_pl;
-    // unsigned char rt[512];
+    // uint8_t rt[512];
 
     if (op->verbose == vb_a)
         err_vb = op->verbose;
@@ -2273,7 +2271,7 @@ odx_write_from_rods(struct opts_t * op)
     uint64_t out_blk_off, num, o_num, r_o_num, oir, tc_o;
     int64_t out_num_blks, v;
     struct dev_info_t * odip = op->odip;
-    unsigned char rt[520];
+    uint8_t rt[520];
 
     vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
     got_count = (op->dd_count > 0);

@@ -509,7 +509,7 @@ struct rrti_resp_t {
     uint64_t tc;        /* transfer count (blocks) */
     /* Prior to this point response is in common with the RCS command */
     uint32_t rt_len;    /* might differ from 512, 0 if no ROD token */
-    unsigned char rod_tok[512]; /* (perhaps truncate to) ODX ROD Token */
+    uint8_t rod_tok[512]; /* (perhaps truncate to) ODX ROD Token */
 };
 
 struct sg_simple_inquiry_resp;
@@ -548,11 +548,11 @@ void print_tape_pos(const char * prefix, const char * postfix,
 #endif
 void install_signal_handlers(struct opts_t * op);
 void signals_process_delay(struct opts_t * op, int delay_type);
-void decode_designation_descriptor(const unsigned char * ucp, int len_less_4,
+void decode_designation_descriptor(const uint8_t * ucp, int len_less_4,
                                    bool to_stderr, int verb);
 int coe_process_eio(struct opts_t * op, int64_t skip);
 char * rod_type_str(uint32_t rt, char * b, int b_mlen);
-char * rt_cm_id_str(const unsigned char * rtp, int rt_len, char * b,
+char * rt_cm_id_str(const uint8_t * rtp, int rt_len, char * b,
                     int b_mlen);
 void print_exit_status_msg(const char * prefix, int exit_stat,
                            bool to_stderr);
@@ -569,11 +569,11 @@ int pt_open_of(struct opts_t * op, struct sg_simple_inquiry_resp * sirp);
 void pt_close(int fd);
 int pt_read_capacity(struct opts_t * op, bool in0_out1, int64_t * num_blks,
                      int * blk_sz);
-int pt_read(struct opts_t * op, bool in0_out1, unsigned char * buff,
+int pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
             int blocks, int * blks_readp);
-int pt_write(struct opts_t * op, const unsigned char * buff, int blocks,
+int pt_write(struct opts_t * op, const uint8_t * buff, int blocks,
              int64_t to_block);
-int pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
+int pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
                     int blocks, int64_t start_block);
 void pt_sync_cache(int fd);
 int pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
@@ -595,9 +595,9 @@ int do_rrti(struct opts_t * op, bool in0_out1, struct rrti_resp_t * rrp,
             int verb);
 int do_rcs(struct opts_t * op, bool in0_out1, struct rrti_resp_t * rrp,
            int verb);
-void get_local_rod_tok(unsigned char * tokp, int max_tok_len);
+void get_local_rod_tok(uint8_t * tokp, int max_tok_len);
 int process_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a);
-int do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
+int do_wut(struct opts_t * op, uint8_t * tokp, uint64_t blk_off,
            uint32_t num_blks, uint64_t oir, bool more_left, bool walk_list_id,
            int vb_a);
 int process_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a);
@@ -619,15 +619,14 @@ int win32_open_if(struct opts_t * optsp, int flags, int verbose);
 int win32_open_of(struct opts_t * optsp, int flags, int verbose);
 int win32_set_file_pos(struct opts_t * optsp, int if0_of1, int64_t pos,
                        int verbose);
-int win32_block_read(struct opts_t * optsp, unsigned char * bp, int num_bytes,
+int win32_block_read(struct opts_t * optsp, uint8_t * bp, int num_bytes,
                      int verbose);
-int win32_block_read_from_of(struct opts_t * optsp, unsigned char * bp,
+int win32_block_read_from_of(struct opts_t * optsp, uint8_t * bp,
                              int num_bytes, int verbose);
-int win32_block_write(struct opts_t * optsp, const unsigned char * bp,
+int win32_block_write(struct opts_t * optsp, const uint8_t * bp,
                       int num_bytes, int verbose);
 int win32_cp_read_block(struct opts_t * optsp, struct cp_state_t * csp,
-                        unsigned char * wrkPos, int * ifull_extrap,
-                        int verbose);
+                        uint8_t * wrkPos, int * ifull_extrap, int verbose);
 void win32_sleep_ms(int millisecs);
 
 int sg_do_wscan(char letter, int do_scan, int verb);

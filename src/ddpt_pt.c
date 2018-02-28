@@ -256,7 +256,7 @@ pt_read_capacity(struct opts_t * op, bool in0_out1, int64_t * num_blks,
     int protect = (in0_out1 ? op->wrprotect : op->rdprotect);
     int sg_fd = (in0_out1 ? op->odip->fd : op->idip->fd);
     unsigned int ui;
-    unsigned char rcBuff[RCAP16_REPLY_LEN];
+    uint8_t rcBuff[RCAP16_REPLY_LEN];
 
     verb = (op->verbose ? op->verbose - 1: 0);
     memset(rcBuff, 0, sizeof(rcBuff));
@@ -305,7 +305,7 @@ pt_read_capacity(struct opts_t * op, bool in0_out1, int64_t * num_blks,
 
 /* Build a SCSI READ or WRITE CDB. */
 static int
-pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
+pt_build_scsi_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
                   int64_t start_block, bool write_true,
                   const struct flags_t * fp, int protect)
 {
@@ -372,9 +372,9 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
     case 6:
         if (0 == opcode_sa)
             opcode_sa = opc_arr[0];
-        cdbp[0] = (unsigned char)opcode_sa;
+        cdbp[0] = (uint8_t)opcode_sa;
         sg_put_unaligned_be24((uint32_t)(0x1fffff & start_block), cdbp + 1);
-        cdbp[4] = (256 == blocks) ? 0 : (unsigned char)blocks;
+        cdbp[4] = (256 == blocks) ? 0 : (uint8_t)blocks;
         if (blocks > 256) {
             pr2serr("for 6 byte commands, maximum number of blocks is 256\n");
             return 1;
@@ -393,8 +393,8 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
     case 10:
         if (0 == opcode_sa)
             opcode_sa = opc_arr[1];
-        cdbp[0] = (unsigned char)opcode_sa;
-        cdbp[1] = (unsigned char)options_byte;
+        cdbp[0] = (uint8_t)opcode_sa;
+        cdbp[1] = (uint8_t)options_byte;
         sg_put_unaligned_be32((uint32_t)start_block, cdbp + 2);
         sg_put_unaligned_be16((uint16_t)blocks, cdbp + 7);
         if (blocks & (~0xffff)) {
@@ -406,27 +406,27 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
     case 12:
         if (0 == opcode_sa)
             opcode_sa = opc_arr[2];
-        cdbp[0] = (unsigned char)opcode_sa;
-        cdbp[1] = (unsigned char)options_byte;
+        cdbp[0] = (uint8_t)opcode_sa;
+        cdbp[1] = (uint8_t)options_byte;
         sg_put_unaligned_be32((uint32_t)start_block, cdbp + 2);
         sg_put_unaligned_be32((uint32_t)blocks, cdbp + 6);
         break;
     case 16:
         if (0 == opcode_sa)
             opcode_sa = opc_arr[3];
-        cdbp[0] = (unsigned char)opcode_sa;
-        cdbp[1] = (unsigned char)options_byte;
+        cdbp[0] = (uint8_t)opcode_sa;
+        cdbp[1] = (uint8_t)options_byte;
         sg_put_unaligned_be64(start_block, cdbp + 2);
         sg_put_unaligned_be32((uint32_t)blocks, cdbp + 10);
         break;
     case 32:
         if (0 == opcode_sa)
             opcode_sa = opc_arr[4];
-        cdbp[0] = (unsigned char)DDPT_VARIABLE_LEN_OC;
-        cdbp[7] = (unsigned char)0x18;  /* additional length=>32 byte cdb */
+        cdbp[0] = (uint8_t)DDPT_VARIABLE_LEN_OC;
+        cdbp[7] = (uint8_t)0x18;  /* additional length=>32 byte cdb */
         rw_sa = opcode_sa;
         sg_put_unaligned_be16((uint16_t)rw_sa, cdbp + 8);
-        cdbp[10] = (unsigned char)options_byte;
+        cdbp[10] = (uint8_t)options_byte;
         sg_put_unaligned_be64(start_block, cdbp + 12);
         sg_put_unaligned_be32((uint32_t)blocks, cdbp + 28);
         break;
@@ -446,7 +446,7 @@ pt_build_scsi_cdb(unsigned char * cdbp, int cdb_sz, unsigned int blocks,
  * -2 -> ENOMEM
  * -1 other errors */
 static int
-pt_low_read(struct opts_t * op, bool in0_out1, unsigned char * buff,
+pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
             int blocks, int64_t from_block, int bs, uint64_t * io_addrp)
 {
     bool info_valid;
@@ -455,8 +455,8 @@ pt_low_read(struct opts_t * op, bool in0_out1, unsigned char * buff,
     const struct dev_info_t * dip = (in0_out1 ? op->odip : op->idip);
     const struct flags_t * fp = (in0_out1 ? op->oflagp : op->iflagp);
     struct sg_pt_base * ptvp = (in0_out1 ? op->odip->ptvp : op->idip->ptvp);
-    unsigned char rdCmd[MAX_SCSI_CDBSZ];
-    unsigned char sense_b[SENSE_BUFF_LEN];
+    uint8_t rdCmd[MAX_SCSI_CDBSZ];
+    uint8_t sense_b[SENSE_BUFF_LEN];
     struct sg_scsi_sense_hdr ssh;
 
     if (pt_build_scsi_cdb(rdCmd, fp->cdbsz, blocks, from_block, false,
@@ -589,7 +589,7 @@ pt_low_read(struct opts_t * op, bool in0_out1, unsigned char * buff,
  * SG_LIB_CAT_MEDIUM_HARD, SG_LIB_CAT_ABORTED_COMMAND,
  * -2 -> ENOMEM, -1 other errors */
 int
-pt_read(struct opts_t * op, bool in0_out1, unsigned char * buff, int blocks,
+pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff, int blocks,
         int * blks_readp)
 {
     bool may_coe = false;
@@ -600,7 +600,7 @@ pt_read(struct opts_t * op, bool in0_out1, unsigned char * buff, int blocks,
     uint64_t io_addr;
     int64_t lba;
     struct flags_t * fp;
-    unsigned char * bp;
+    uint8_t * bp;
     const char * iop;
 
     if (in0_out1) {
@@ -825,7 +825,7 @@ err_out:
  * SG_LIB_CAT_ABORTED_COMMAND, -2 -> recoverable (ENOMEM),
  * -1 -> unrecoverable error + others */
 static int
-pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
+pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
              int64_t to_block, int bs)
 {
     bool info_valid;
@@ -835,8 +835,8 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
     struct sg_pt_base * ptvp = op->odip->ptvp;
     const struct flags_t * fp = op->oflagp;
     const char * desc;
-    unsigned char wrCmd[MAX_SCSI_CDBSZ];
-    unsigned char sense_b[SENSE_BUFF_LEN];
+    uint8_t wrCmd[MAX_SCSI_CDBSZ];
+    uint8_t sense_b[SENSE_BUFF_LEN];
 
     if (pt_build_scsi_cdb(wrCmd, fp->cdbsz, blocks, to_block, 1, fp,
                           op->wrprotect)) {
@@ -932,7 +932,7 @@ pt_low_write(struct opts_t * op, const unsigned char * buff, int blocks,
  * SG_LIB_CAT_MEDIUM_HARD, SG_LIB_CAT_ABORTED_COMMAND,
  * -2 -> ENOMEM, -1 other errors */
 int
-pt_write(struct opts_t * op, const unsigned char * buff, int blocks,
+pt_write(struct opts_t * op, const uint8_t * buff, int blocks,
          int64_t to_block)
 {
     bool first = true;
@@ -985,7 +985,7 @@ pt_write(struct opts_t * op, const unsigned char * buff, int blocks,
  * translates this to the ATA DATA SET MANAGEMENT command with the trim
  * field set. Returns 0 on success. */
 int
-pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
+pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
                 int blocks, int64_t start_block)
 {
     int k, ret, res, sense_cat, vt;
@@ -993,8 +993,8 @@ pt_write_same16(struct opts_t * op, const unsigned char * buff, int bs,
     uint32_t unum;
     uint64_t llba;
     struct sg_pt_base * ptvp = op->odip->ptvp;
-    unsigned char wsCmdBlk[16];
-    unsigned char sense_b[SENSE_BUFF_LEN];
+    uint8_t wsCmdBlk[16];
+    uint8_t sense_b[SENSE_BUFF_LEN];
 
     memset(wsCmdBlk, 0, sizeof(wsCmdBlk));
     wsCmdBlk[0] = 0x93;         /* WRITE SAME(16) opcode */
@@ -1079,7 +1079,7 @@ pt_sync_cache(int fd)
 }
 
 static int
-pt_tpc_process_res(int cp_ret, int sense_cat, const unsigned char * sense_b,
+pt_tpc_process_res(int cp_ret, int sense_cat, const uint8_t * sense_b,
                    int sense_len)
 {
     bool sb_ok;
@@ -1156,9 +1156,9 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
     bool has_lid;
     int k, res, ret, sense_cat, tmout;
     struct sg_pt_base * ptvp;
-    unsigned char xcopyCmdBlk[DDPT_TPC_OUT_CMDLEN] =
+    uint8_t xcopyCmdBlk[DDPT_TPC_OUT_CMDLEN] =
       {DDPT_TPC_OUT_CMD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    unsigned char sense_b[SENSE_BUFF_LEN];
+    uint8_t sense_b[SENSE_BUFF_LEN];
     char cname[80];
 
     if (vb < 0)
@@ -1167,7 +1167,7 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
         err_vb = 0;
     sg_get_opcode_sa_name(DDPT_TPC_OUT_CMD, sa, 0 /* pdt */, sizeof(cname),
                           cname);
-    xcopyCmdBlk[1] = (unsigned char)(sa & 0x1f);
+    xcopyCmdBlk[1] = (uint8_t)(sa & 0x1f);
     switch (sa) {
     case 0x0:   /* XCOPY(LID1) */
     case 0x1:   /* XCOPY(LID4) */
@@ -1179,7 +1179,7 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
         sg_put_unaligned_be32(list_id, xcopyCmdBlk + 6);
         has_lid = true;
         sg_put_unaligned_be32((uint32_t)param_len, xcopyCmdBlk + 10);
-        xcopyCmdBlk[14] = (unsigned char)(group_num & 0x1f);
+        xcopyCmdBlk[14] = (uint8_t)(group_num & 0x1f);
         break;
     case 0x1c:  /* COPY OPERATION ABORT */
         sg_put_unaligned_be32(list_id, xcopyCmdBlk + 2);
@@ -1220,7 +1220,7 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
     }
     set_scsi_pt_cdb(ptvp, xcopyCmdBlk, sizeof(xcopyCmdBlk));
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
-    set_scsi_pt_data_out(ptvp, (unsigned char *)paramp, param_len);
+    set_scsi_pt_data_out(ptvp, (uint8_t *)paramp, param_len);
     res = do_scsi_pt(ptvp, sg_fd, tmout, vb);
     ret = sg_cmds_process_resp(ptvp, cname, res, 0, sense_b, noisy,
                                ((err_vb > 0) ? err_vb : 0), &sense_cat);
@@ -1242,9 +1242,9 @@ pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
 {
     int k, res, ret, sense_cat, tmout;
     struct sg_pt_base * ptvp;
-    unsigned char rcvcopyresCmdBlk[DDPT_TPC_IN_CMDLEN] =
+    uint8_t rcvcopyresCmdBlk[DDPT_TPC_IN_CMDLEN] =
       {DDPT_TPC_IN_CMD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    unsigned char sense_b[SENSE_BUFF_LEN];
+    uint8_t sense_b[SENSE_BUFF_LEN];
     char cname[64];
 
     if (vb < 0)
@@ -1253,9 +1253,9 @@ pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
         err_vb = 0;
     sg_get_opcode_sa_name(DDPT_TPC_IN_CMD, sa, 0 /* pdt */,
                           (int)sizeof(cname), cname);
-    rcvcopyresCmdBlk[1] = (unsigned char)(sa & 0x1f);
+    rcvcopyresCmdBlk[1] = (uint8_t)(sa & 0x1f);
     if (sa <= 4)        /* LID1 variants */
-        rcvcopyresCmdBlk[2] = (unsigned char)(list_id);
+        rcvcopyresCmdBlk[2] = (uint8_t)(list_id);
     else if ((sa >= 5) && (sa <= 7))    /* LID4 variants */
         sg_put_unaligned_be32(list_id, rcvcopyresCmdBlk + 2);
     sg_put_unaligned_be32((uint32_t)mx_resp_len, rcvcopyresCmdBlk + 10);
@@ -1275,7 +1275,7 @@ pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
     }
     set_scsi_pt_cdb(ptvp, rcvcopyresCmdBlk, sizeof(rcvcopyresCmdBlk));
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
-    set_scsi_pt_data_in(ptvp, (unsigned char *)resp, mx_resp_len);
+    set_scsi_pt_data_in(ptvp, (uint8_t *)resp, mx_resp_len);
     res = do_scsi_pt(ptvp, sg_fd, tmout, vb);
     ret = sg_cmds_process_resp(ptvp, cname, res, mx_resp_len, sense_b, noisy,
                                ((err_vb > 0) ? err_vb : 0), &sense_cat);

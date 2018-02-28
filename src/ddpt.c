@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.96 20180209 [svn: r337]";
+static const char * ddpt_version_str = "0.96 20180222 [svn: r339]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -631,7 +631,7 @@ do_fadvise(struct opts_t * op, int bytes_if, int bytes_of, int bytes_of2)
 /* Main copy loop's read (input) via pt. Returns 0 on success, else see
  * pt_read()'s return values. */
 static int
-cp_read_pt(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
+cp_read_pt(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
 {
     int res;
     int blks_read = 0;
@@ -671,7 +671,7 @@ cp_read_pt(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
  * and SG_LIB_CAT_MEDIUM_HARD if the coe_limit is exceeded. */
 static int
 coe_cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
-                      unsigned char * bp, int numread_errno)
+                      uint8_t * bp, int numread_errno)
 {
     int res, res2, k, total_read, num_read;
     int ibs = op->ibs_pi;
@@ -781,8 +781,7 @@ short_read:
  * Returns 0 on success, else SG_LIB_FILE_ERROR, SG_LIB_CAT_MEDIUM_HARD,
  * SG_LIB_CAT_OTHER or -1 . */
 static int
-cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
-                  unsigned char * bp)
+cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
 {
     int res, res2, in_type;
     int64_t offset = op->skip * op->ibs_pi;
@@ -901,7 +900,7 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
 /* Main copy loop's read (input) for tape device. Returns 0 on success,
  * else SG_LIB_CAT_MEDIUM_HARD, SG_LIB_CAT_OTHER or -1 . */
 static int
-cp_read_tape(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
+cp_read_tape(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
 {
     int res, err, num;
 
@@ -974,7 +973,7 @@ cp_read_tape(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
 /* Main copy loop's read (input) for a fifo. Returns 0 on success, else
  * SG_LIB_CAT_OTHER or -1 . */
 static int
-cp_read_fifo(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
+cp_read_fifo(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
 {
     int res, k, err;
     int64_t offset = op->skip * op->ibs;
@@ -1023,8 +1022,7 @@ cp_read_fifo(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
 /* Main copy loop's write (to of2) for regular file. Returns 0 if success,
  * else -1 on error. */
 static int
-cp_write_of2(struct opts_t * op, struct cp_state_t * csp,
-             const unsigned char * bp)
+cp_write_of2(struct opts_t * op, struct cp_state_t * csp, const uint8_t * bp)
 {
     bool got_part;
     int res, off, err;
@@ -1063,7 +1061,7 @@ cp_write_of2(struct opts_t * op, struct cp_state_t * csp,
 /* Main copy loop's read (output (of)) via pt. Returns 0 on success, else
  * see pt_read()'s return values. */
 static int
-cp_read_of_pt(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
+cp_read_of_pt(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
 {
     int res, blks_read;
 
@@ -1083,7 +1081,7 @@ cp_read_of_pt(struct opts_t * op, struct cp_state_t * csp, unsigned char * bp)
  * or -1 . */
 static int
 cp_read_of_block_reg(struct opts_t * op, struct cp_state_t * csp,
-                     unsigned char * bp)
+                     uint8_t * bp)
 {
     int res, err;
     int64_t offset = op->seek * op->obs;
@@ -1166,7 +1164,7 @@ cp_read_of_block_reg(struct opts_t * op, struct cp_state_t * csp,
  * see pt_write()'s return values. */
 static int
 cp_write_pt(struct opts_t * op, struct cp_state_t * csp, int seek_delta,
-            int blks, const unsigned char * bp)
+            int blks, const uint8_t * bp)
 {
     int res;
     int numbytes;
@@ -1176,7 +1174,7 @@ cp_write_pt(struct opts_t * op, struct cp_state_t * csp, int seek_delta,
         return 0;
     if (csp->partial_write_bytes > 0) {
         if (op->oflagp->pad) {
-            unsigned char * ncbp = (unsigned char *)bp;
+            uint8_t * ncbp = (uint8_t *)bp;
 
             numbytes = blks * op->obs;
             numbytes += csp->partial_write_bytes;
@@ -1209,7 +1207,7 @@ cp_write_pt(struct opts_t * op, struct cp_state_t * csp, int seek_delta,
  * or -1 . */
 static int
 cp_write_tape(struct opts_t * op, struct cp_state_t * csp,
-              const unsigned char * bp, bool could_be_last)
+              const uint8_t * bp, bool could_be_last)
 {
     static bool printed_ew_message = false;     /* <<<< static local */
     bool got_early_warning = false;
@@ -1229,7 +1227,7 @@ cp_write_tape(struct opts_t * op, struct cp_state_t * csp,
         if (op->oflagp->nopad)
             ++op->out_partial;
         else {
-            unsigned char * ncbp = (unsigned char *)bp;
+            uint8_t * ncbp = (uint8_t *)bp;
 
             ++csp->ocbpt;
             ++blks;
@@ -1312,7 +1310,7 @@ ew_retry:
  * SG_LIB_CAT_MEDIUM_HARD or -1 . */
 static int
 cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
-                   int seek_delta, int blks, const unsigned char * bp)
+                   int seek_delta, int blks, const uint8_t * bp)
 {
     bool got_part = false;
     int64_t offset;
@@ -1334,7 +1332,7 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
                 ++blks;
                 res = blks * obs;
                 if (res > numbytes)
-                    memset((unsigned char *)bp + numbytes, 0,
+                    memset((uint8_t *)bp + numbytes, 0,
                            res - numbytes);
                 numbytes = res;
                 if (op->verbose > 1)
@@ -1379,7 +1377,7 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
     {
         if (csp->partial_write_bytes > 0) {
             if (op->oflagp->pad) {
-                unsigned char * ncbp = (unsigned char *)bp;
+                uint8_t * ncbp = (uint8_t *)bp;
 
                 numbytes += csp->partial_write_bytes;
                 ++csp->ocbpt;
@@ -1524,7 +1522,7 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
  * for all file types. Returns 0 on success. */
 static int
 cp_finer_comp_wr(struct opts_t * op, struct cp_state_t * csp,
-                 const unsigned char * b1p, const unsigned char * b2p)
+                 const uint8_t * b1p, const uint8_t * b2p)
 {
     bool done_sigs_delay = false;
     bool need_wr, trim_check, need_tr;
@@ -1776,7 +1774,7 @@ do_rw_copy(struct opts_t * op)
     int id_type = op->idip->d_type;
     int od_type = op->odip->d_type;
     struct cp_state_t * csp;
-    unsigned char * wPos = op->wrkPos;
+    uint8_t * wPos = op->wrkPos;
     struct cp_state_t cp_st;
 
     continual_read = (op->reading_fifo && (op->dd_count < 0));

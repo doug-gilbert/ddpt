@@ -1390,7 +1390,7 @@ signals_process_delay(struct opts_t * op, int delay_type)
 }
 
 void
-decode_designation_descriptor(const unsigned char * bp, int len_less_4,
+decode_designation_descriptor(const uint8_t * bp, int len_less_4,
                               bool to_stderr, int verb)
 {
     int (*print_p)(const char *, ...);
@@ -1480,7 +1480,7 @@ rod_type_str(uint32_t rt, char * b, int b_mlen)
 }
 
 char *
-rt_cm_id_str(const unsigned char * rtp, int rt_len, char * b, int b_mlen)
+rt_cm_id_str(const uint8_t * rtp, int rt_len, char * b, int b_mlen)
 {
     int m, num;
 
