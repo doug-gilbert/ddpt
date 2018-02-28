@@ -1,30 +1,27 @@
 /*
- * Copyright (c) 2013-2017 Douglas Gilbert.
+ * Copyright (c) 2013-2018, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- *
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 /*
@@ -304,7 +301,7 @@ scsi_operating_parameter(struct opts_t * op, bool is_dest)
     }
     if (op->verbose > 2) {
         pr2serr("\nOutput %s response in hex:\n", rec_copy_op_params_str);
-        dStrHexErr((const char *)rcBuff, len, 1);
+        hex2stderr(rcBuff, len, 1);
     }
     snlid = rcBuff[4] & 0x1;
     max_target_num = sg_get_unaligned_be16(rcBuff + 8);
@@ -619,7 +616,7 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
     }
     if (op->verbose > 2) {
         pr2serr("Output VPD_DEVICE_ID (0x83) page in hex:\n");
-        dStrHexErr((const char *)rcBuff, len, 1);
+        hex2stderr(rcBuff, len, 1);
     }
 
     while ((u = sg_vpd_dev_id_iter(rcBuff + 4, len - 4, &off, 0, -1, -1)) ==
@@ -679,7 +676,7 @@ desc_from_vpd_id(struct opts_t * op, unsigned char *desc, int desc_len,
             sg_put_unaligned_be24((uint32_t)block_size, desc + 29);
             if (op->verbose > 3) {
                 pr2serr("Descriptor in hex (bs %d):\n", block_size);
-                dStrHexErr((const char *)desc, 32, 1);
+                hex2stderr(desc, 32, 1);
             }
             return 32;
         }
@@ -1257,7 +1254,7 @@ decode_3party_copy_vpd(unsigned char * buff, int len, bool to_stderr,
             break;
         default:
             print_p("Unexpected type=%d\n", desc_type);
-            dStrHexErr((const char *)bp, bump, 1);
+            hex2stderr(bp, bump, 1);
             break;
         }
     }
@@ -1326,9 +1323,9 @@ get_3pc_vpd_blkdev_lims(struct opts_t * op, struct dev_info_t * dip)
     bool found = false;
     int res, verb, n, len, bump, desc_type, desc_len, k;
     uint32_t max_ito = 0;
-    unsigned char * rp;
-    unsigned char * bp;
-    unsigned char rBuff[256];
+    uint8_t * rp;
+    uint8_t * bp;
+    uint8_t rBuff[256];
 
     verb = (op->verbose ? (op->verbose - 1) : 0);
     rp = rBuff;
@@ -1359,7 +1356,7 @@ get_3pc_vpd_blkdev_lims(struct opts_t * op, struct dev_info_t * dip)
             if (op->verbose > 3) {
                 pr2serr("3PARTY_COPY Copy VPD, Block Device ROD Token "
                         "Limits descriptor:\n");
-                dStrHexErr((const char *)bp, desc_len, 1);
+                hex2stderr(bp, desc_len, 1);
             }
             if (desc_len < 32) {
                 pr2serr("3PARTY_COPY Copy VPD, Block Device ROD Token "
@@ -1469,9 +1466,11 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
 {
     int res, k, j, n, len, fd, tmout, sz_bdrd, elems, pl_sz, err_vb;
     uint32_t num;
+    uint32_t pg_sz = sg_get_page_size();
     uint64_t lba, sg0_off;
     const struct scat_gath_elem * sglp;
-    unsigned char * pl;
+    uint8_t * pl;
+    uint8_t * free_pl;
 
     if (vb_a)
         pr2serr("%s: blk_off=%" PRIu64 ", num_blks=%"  PRIu32 "\n", __func__,
@@ -1504,12 +1503,11 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
         elems = 1;
         pl_sz = 32;
     }
-    pl = (unsigned char *)malloc(pl_sz);
+    pl = sg_memalign(pl_sz, pg_sz, &free_pl, false);
     if (NULL == pl) {
-        pr2serr("Not enough user memory for %s\n", __func__);
-        return SG_LIB_CAT_OTHER;
+        pr2serr("%s: Not enough user memory\n", __func__);
+        return SG_LIB_OS_BASE_ERR + ENOMEM;
     }
-    memset(pl, 0, pl_sz);
     if (op->rod_type_given) {
         pl[2] = 0x2;            /* RTV bit */
         sg_put_unaligned_be32((uint32_t)op->rod_type, pl + 8);
@@ -1571,7 +1569,7 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
                 pr2serr("%s: too many list_id_s 'in progress'\n", __func__);
         }
     }
-    free(pl);
+    free(free_pl);
     return res;
 }
 
@@ -1609,7 +1607,7 @@ do_rrti(struct opts_t * op, bool in0_out1, struct rrti_resp_t * rrp, int verb)
     }
     if (verb > 1) {
         pr2serr("\nRRTI [%d] response in hex:\n", rrti_num);
-        dStrHexErr((const char *)rsp, len, 1);
+        hex2stderr(rsp, len, 1);
     }
     if (NULL == rrp)
         return 0;
@@ -1687,7 +1685,7 @@ do_rcs(struct opts_t * op, bool in0_out1, struct rrti_resp_t * rrp, int verb)
     }
     if (verb > 1) {
         pr2serr("\nRCS [%d] response in hex:\n", rcs_num);
-        dStrHexErr((const char *)rsp, len, 1);
+        hex2stderr(rsp, len, 1);
     }
     if (NULL == rrp)
         return 0;
@@ -1842,10 +1840,12 @@ do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
     int len, k, j, n, fd, res, tmout, sz_bdrd, elems, pl_sz;
     int err_vb = 0;
     uint32_t num;
+    uint32_t pg_sz = sg_get_page_size();
     uint64_t lba, sg0_off;
     struct flags_t * flp;
     const struct scat_gath_elem * sglp;
-    unsigned char * pl;
+    uint8_t * pl;
+    uint8_t * free_pl;
     // unsigned char rt[512];
 
     if (op->verbose == vb_a)
@@ -1878,10 +1878,10 @@ do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
         elems = 1;
         pl_sz = 540 + 16;
     }
-    pl = (unsigned char *)malloc(pl_sz);
+    pl = sg_memalign(pl_sz, pg_sz, &free_pl, op->verbose > 3);
     if (NULL == pl) {
-        pr2serr("Not enough user memory for %s\n", __func__);
-        return SG_LIB_CAT_OTHER;
+        pr2serr("%s Not enough user memory\n", __func__);
+        return SG_LIB_OS_BASE_ERR + ENOMEM;
     }
     memset(pl, 0, pl_sz);
     if (! rodt_blk_zero) {
@@ -1948,7 +1948,7 @@ do_wut(struct opts_t * op, unsigned char * tokp, uint64_t blk_off,
                 pr2serr("%s: too many list_id_s 'in progress'\n", __func__);
         }
     }
-    free(pl);
+    free(free_pl);
     return res;
 }
 
@@ -2645,6 +2645,7 @@ static int
 odx_setup_and_run(struct opts_t * op, int * whop)
 {
     int fd, res, req;
+    uint32_t pg_sz = sg_get_page_size();
     struct dev_info_t * dip;
 
     if (whop)
@@ -2662,10 +2663,12 @@ odx_setup_and_run(struct opts_t * op, int * whop)
             return SG_LIB_CAT_OTHER;
         dip = op->idip;
         dip->fd = fd;
-        dip->odxp = (struct block_rodtok_vpd *)malloc(sizeof(*dip->odxp));
+        dip->odxp = (struct block_rodtok_vpd *)
+                        sg_memalign(sizeof(*dip->odxp), pg_sz,
+                                    &dip->free_odxp, op->verbose > 3);
         if (NULL == dip->odxp) {
-            pr2serr("Not enough user memory for %s\n", __func__);
-            return SG_LIB_CAT_OTHER;
+            pr2serr("%s: Not enough user memory\n", __func__);
+            return SG_LIB_OS_BASE_ERR + ENOMEM;
         }
         memset(dip->odxp, 0, sizeof(*dip->odxp));
         res = get_3pc_vpd_blkdev_lims(op, dip);
@@ -2680,10 +2683,12 @@ odx_setup_and_run(struct opts_t * op, int * whop)
             return SG_LIB_CAT_OTHER;
         dip = op->odip;
         dip->fd = fd;
-        dip->odxp = (struct block_rodtok_vpd *)malloc(sizeof(*dip->odxp));
+        dip->odxp = (struct block_rodtok_vpd *)
+                        sg_memalign(sizeof(*dip->odxp), pg_sz,
+                                    &dip->free_odxp, op->verbose > 3);
         if (NULL == dip->odxp) {
             pr2serr("Not enough user memory for %s 2\n", __func__);
-            return SG_LIB_CAT_OTHER;
+            return SG_LIB_OS_BASE_ERR + ENOMEM;
         }
         memset(dip->odxp, 0, sizeof(*dip->odxp));
         res = get_3pc_vpd_blkdev_lims(op, dip);
@@ -2746,5 +2751,13 @@ do_odx(struct opts_t * op)
         op->rtf_fd = -1;
     }
 the_end:
+    if (op->idip && op->idip->free_odxp)
+        free(op->idip->free_odxp);
+    if (op->idip && op->odip->free_odxp)
+        free(op->odip->free_odxp);
+    if (op->idip && op->o2dip->free_odxp)
+        free(op->o2dip->free_odxp);
     return ret;
 }
+
+

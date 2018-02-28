@@ -1,30 +1,27 @@
 /*
- * Copyright (c) 2013-2017 Douglas Gilbert.
+ * Copyright (c) 2013-2018, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- *
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 /*
@@ -705,9 +702,10 @@ void
 calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
 {
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+    bool use_out_full;
     struct timespec end_tm, res_tm;
     double a, b, r;
-    int secs, h, m, use_out_full;
+    int secs, h, m, elapsed_secs;
 
     if (op->start_tm_valid && (op->start_tm.tv_sec || op->start_tm.tv_nsec)) {
         use_out_full = ((0 == op->in_full) && (op->obs > 0));
@@ -718,6 +716,7 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
             --res_tm.tv_sec;
             res_tm.tv_nsec += 1000000000;
         }
+        elapsed_secs = res_tm.tv_sec;
         a = res_tm.tv_sec;
         a += (0.000001 * (res_tm.tv_nsec / 1000));
         if (use_out_full)
@@ -742,27 +741,28 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
             secs = (int)(((double)op->ibs_hold * op->dd_count) /
                          (r * 1000000));
             if (secs > 10) {
+                pr2serr("%s%d%% complete, ", leadin,
+                        (100 * elapsed_secs) / (secs + elapsed_secs));
                 h = secs / 3600;
                 secs = secs - (h * 3600);
                 m = secs / 60;
                 secs = secs - (m * 60);
                 if (h > 0)
-                    pr2serr("%sestimated time remaining: %d:%02d:%02d\n",
-                            leadin, h, m, secs);
+                    pr2serr("estimated time remaining: %d:%02d:%02d\n",
+                            h, m, secs);
                 else
-                    pr2serr("%sestimated time remaining: %d:%02d\n",
-                            leadin, m, secs);
+                    pr2serr("estimated time remaining: %d:%02d\n", m, secs);
             }
         }
     }
 #elif defined(HAVE_GETTIMEOFDAY)
+    bool use_out_full;
     struct timeval end_tm, res_tm;
     double a, b, r;
-    int secs, h, m;
-    int64_t blks;
+    int secs, h, m, elapsed_secs;
 
     if (op->start_tm_valid && (op->start_tm.tv_sec || op->start_tm.tv_usec)) {
-        blks = op->in_full;
+        use_out_full = ((0 == op->in_full) && (op->obs > 0));
         gettimeofday(&end_tm, NULL);
         res_tm.tv_sec = end_tm.tv_sec - op->start_tm.tv_sec;
         res_tm.tv_usec = end_tm.tv_usec - op->start_tm.tv_usec;
@@ -770,9 +770,13 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
             --res_tm.tv_sec;
             res_tm.tv_usec += 1000000;
         }
+        elapsed_secs = res_tm.tv_sec;
         a = res_tm.tv_sec;
         a += (0.000001 * res_tm.tv_usec);
-        b = (double)op->ibs_hold * blks;
+        if (use_out_full)
+            b = (double)op->obs * op->out_full;
+        else
+            b = (double)op->ibs_hold * op->in_full;
         pr2serr("%stime to %s data%s: %d.%06d secs", leadin,
                 (op->read1_or_transfer ? "read" : "transfer"),
                 (contin ? " so far" : ""), (int)res_tm.tv_sec,
@@ -791,22 +795,143 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
             secs = (int)(((double)op->ibs_hold * op->dd_count) /
                          (r * 1000000));
             if (secs > 10) {
+                pr2serr("%s%d%% complete, ", leadin,
+                        (100 * elapsed_secs) / (secs + elapsed_secs));
                 h = secs / 3600;
                 secs = secs - (h * 3600);
                 m = secs / 60;
                 secs = secs - (m * 60);
                 if (h > 0)
-                    pr2serr("%sestimated time remaining: "
-                            "%d:%02d:%02d\n", leadin, h, m, secs);
+                    pr2serr("estimated time remaining: %d:%02d:%02d\n",
+                            h, m, secs);
                 else
-                    pr2serr("%sestimated time remaining: "
-                            "%d:%02d\n", leadin, m, secs);
+                    pr2serr("estimated time remaining: %d:%02d\n", m, secs);
             }
         }
     }
 #else   /* no clock reading functions available */
+    if (op) { ; }        // suppress warning
     if (leadin) { ; }    // suppress warning
     if (contin) { ; }    // suppress warning
+#endif
+}
+
+static bool
+check_progress(const struct opts_t * op)
+{
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+    static bool have_prev, measure;
+    static struct timespec prev_true_tm;
+    static int count, threshold;
+    bool res = false;
+    uint32_t elapsed_ms, ms;
+    struct timespec now_tm, res_tm;
+
+    if (op->progress) {
+        if (! have_prev) {
+            have_prev = true;
+            measure = true;
+            clock_gettime(CLOCK_MONOTONIC, &prev_true_tm);
+            return false;       /* starting reference */
+        }
+        if (! measure) {
+            if (++count >= threshold)
+                count = 0;
+            else
+                return false;
+        }
+        clock_gettime(CLOCK_MONOTONIC, &now_tm);
+        res_tm.tv_sec = now_tm.tv_sec - prev_true_tm.tv_sec;
+        res_tm.tv_nsec = now_tm.tv_nsec - prev_true_tm.tv_nsec;
+        if (res_tm.tv_nsec < 0) {
+            --res_tm.tv_sec;
+            res_tm.tv_nsec += 1000000000;
+        }
+        elapsed_ms = (1000 * res_tm.tv_sec) + (res_tm.tv_nsec / 1000000);
+        if (measure) {
+            ++threshold;
+            if (elapsed_ms > 80)        /* 80 milliseconds */
+{
+pr2serr("%s: finished measuring, threshold=%d\n", __func__, threshold);
+                measure = false;
+}
+        }
+        if (elapsed_ms >= PROGRESS2_TRIGGER_MS) {
+            if (elapsed_ms >= PROGRESS_TRIGGER_MS) {
+                ms = PROGRESS_TRIGGER_MS;
+                res = true;
+            } else if (op->progress > 1) {
+                ms = PROGRESS2_TRIGGER_MS;
+                res = true;
+            }
+        }
+        if (res) {
+            prev_true_tm.tv_sec += (ms / 1000);
+            prev_true_tm.tv_nsec += (ms % 1000) * 1000000;
+            if (prev_true_tm.tv_nsec >= 1000000000) {
+                ++prev_true_tm.tv_sec;
+                prev_true_tm.tv_nsec -= 1000000000;
+            }
+        }
+    }
+    return res;
+
+#elif defined(HAVE_GETTIMEOFDAY)
+    static bool have_prev, measure;
+    static struct timeval prev_true_tm;
+    static int count, threshold;
+    bool res = false;
+    uint32_t elapsed_ms, ms;
+    struct timeval now_tm, res_tm;
+
+    if (op->progress) {
+        if (! have_prev) {
+            have_prev = true;
+            gettimeofday(&prev_true_tm, NULL);
+            return false;       /* starting reference */
+        }
+        if (! measure) {
+            if (++count >= threshold)
+                count = 0;
+            else
+                return false;
+        }
+        gettimeofday(&now_tm, NULL);
+        res_tm.tv_sec = now_tm.tv_sec - prev_true_tm.tv_sec;
+        res_tm.tv_usec = now_tm.tv_usec - prev_true_tm.tv_usec;
+        if (res_tm.tv_usec < 0) {
+            --res_tm.tv_sec;
+            res_tm.tv_usec += 1000000;
+        }
+        elapsed_ms = (1000 * res_tm.tv_sec) + (res_tm.tv_usec / 1000);
+        if (measure) {
+            ++threshold;
+            if (elapsed_ms > 80)        /* 80 milliseconds */
+                measure = false;
+        }
+        if (elapsed_ms >= PROGRESS2_TRIGGER_MS) {
+            if (elapsed_ms >= PROGRESS_TRIGGER_MS) {
+                ms = PROGRESS_TRIGGER_MS;
+                res = true;
+            } else if (op->progress > 1) {
+                ms = PROGRESS2_TRIGGER_MS;
+                res = true;
+            }
+        }
+        if (res) {
+            prev_true_tm.tv_sec += (ms / 1000);
+            prev_true_tm.tv_usec += (ms % 1000) * 1000;
+            if (prev_true_tm.tv_usec >= 1000000) {
+                ++prev_true_tm.tv_sec;
+                prev_true_tm.tv_usec -= 1000000;
+            }
+        }
+    }
+    return res;
+
+#else   /* no clock reading functions available */
+    if (op) { ; }    // suppress warning
+    return false;
 #endif
 }
 
@@ -1162,6 +1287,10 @@ signals_process_delay(struct opts_t * op, int delay_type)
                 else
                     op->subsequent_wdelay = true;
             }
+            if (op->progress && (DELAY_COPY_SEGMENT == delay_type)) {
+                if (check_progress(op))
+                    calc_duration_throughput("", true, op);
+            }
             if (delay) {
                 sigprocmask(SIG_SETMASK, &op->orig_mask, NULL);
                 if (op->verbose > 3)
@@ -1250,6 +1379,10 @@ signals_process_delay(struct opts_t * op, int delay_type)
                 delay = op->wdelay;
             else
                 op->subsequent_wdelay = true;
+        }
+        if (op->progress && (DELAY_COPY_SEGMENT == delay_type)) {
+            if (check_progress(op))
+                calc_duration_throughput("", true, op);
         }
         if (delay)
             sleep_ms(op->delay);
@@ -1708,3 +1841,5 @@ the_end:
         fclose(fp);
     return res;
 }
+
+

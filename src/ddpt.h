@@ -1,34 +1,31 @@
-#ifndef DDPT_H
-#define DDPT_H
-
 /*
- * Copyright (c) 2008-2017 Douglas Gilbert.
+ * Copyright (c) 2008-2018, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- *
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ * THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+#ifndef DDPT_H
+#define DDPT_H
 
 /* This is a C header file for the ddpt utility. See ddpt.c and ddpt.8
  * for more information.
@@ -133,6 +130,10 @@ extern "C" {
 #define DEF_GROUP_NUM 0
 #define DEF_LID4_LID 257        /* just above the LID1 highest of 255 */
 #define DEF_LID4_WR_LID 258
+
+/* status=progress or status=progress,progress */
+#define PROGRESS_TRIGGER_MS 120000      /* milliseconds: 2 minutes */
+#define PROGRESS2_TRIGGER_MS 60000      /* milliseconds: 1 minute */
 
 #ifdef SG_LIB_LINUX
 #ifndef RAW_MAJOR
@@ -348,6 +349,7 @@ struct dev_info_t {
     uint32_t xc_max_bytes;
     char fn[INOUTF_SZ];
     struct block_rodtok_vpd * odxp;
+    uint8_t * free_odxp;
     struct sg_pt_base * ptvp;
 };
 
@@ -396,6 +398,7 @@ struct opts_t {
     int wrprotect;
     int coe_limit;
     int coe_count;
+    int progress;       /* status=progress */
     int verbose;
     int do_help;
     int odx_request;    /* ODX_REQ_NONE==0 for no ODX */
@@ -448,11 +451,12 @@ struct opts_t {
     struct flags_t * oflagp;
     struct dev_info_t * odip;
     struct dev_info_t * o2dip;
-    unsigned char * wrkBuff;
-    unsigned char * wrkPos;
-    unsigned char * wrkBuff2;
-    unsigned char * wrkPos2;
-    unsigned char * zeros_buff;
+    uint8_t * wrkPos;
+    uint8_t * free_wrkPos;
+    uint8_t * wrkPos2;
+    uint8_t * free_wrkPos2;
+    uint8_t * zeros_buff;
+    uint8_t * free_zeros_buff;
     char rtf[INOUTF_SZ];        /* ODX: ROD token filename */
 #ifdef SG_LIB_WIN32
     int wscan;          /* only used on Windows, for scanning devices */
@@ -637,3 +641,5 @@ size_t win32_pagesize(void);
 #endif
 
 #endif  /* DDPT_H guard against multiple includes */
+
+
