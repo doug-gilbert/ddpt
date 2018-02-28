@@ -2,7 +2,7 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.96 [20180222] [svn: r339]
+Changelog for ddpt-0.96 [20180224] [svn: r340]
   - add status=progress option, report every 2 minutes
   - add support for Receive copy status(lid4) command
   - add prefer_rcs flag and conversion for xcopy(odx)
@@ -14,7 +14,7 @@ Changelog for ddpt-0.96 [20180222] [svn: r339]
   - fix reading fifo (stdin) and writing to regular file
   - rework pr2serr() handling
   - improve xcopy(odx) error reporting
-  - point svn:externals to rev 754 of sg3_utils
+  - point svn:externals to rev 756 of sg3_utils
   - convert many two valued 'int's to bool
   - upgrade automake to version 1.15 (U16.04)
     - cleanup configure.ac + Makefile.am
