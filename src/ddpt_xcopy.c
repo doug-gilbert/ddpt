@@ -1504,7 +1504,7 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
     pl = sg_memalign(pl_sz, pg_sz, &free_pl, false);
     if (NULL == pl) {
         pr2serr("%s: Not enough user memory\n", __func__);
-        return SG_LIB_OS_BASE_ERR + ENOMEM;
+        return sg_convert_errno(ENOMEM);
     }
     if (op->rod_type_given) {
         pl[2] = 0x2;            /* RTV bit */
@@ -1876,10 +1876,10 @@ do_wut(struct opts_t * op, uint8_t * tokp, uint64_t blk_off,
         elems = 1;
         pl_sz = 540 + 16;
     }
-    pl = sg_memalign(pl_sz, pg_sz, &free_pl, op->verbose > 3);
+    pl = sg_memalign(pl_sz, pg_sz, &free_pl, false);
     if (NULL == pl) {
         pr2serr("%s Not enough user memory\n", __func__);
-        return SG_LIB_OS_BASE_ERR + ENOMEM;
+        return sg_convert_errno(ENOMEM);
     }
     memset(pl, 0, pl_sz);
     if (! rodt_blk_zero) {
@@ -2663,10 +2663,10 @@ odx_setup_and_run(struct opts_t * op, int * whop)
         dip->fd = fd;
         dip->odxp = (struct block_rodtok_vpd *)
                         sg_memalign(sizeof(*dip->odxp), pg_sz,
-                                    &dip->free_odxp, op->verbose > 3);
+                                    &dip->free_odxp, false);
         if (NULL == dip->odxp) {
             pr2serr("%s: Not enough user memory\n", __func__);
-            return SG_LIB_OS_BASE_ERR + ENOMEM;
+            return sg_convert_errno(ENOMEM);
         }
         memset(dip->odxp, 0, sizeof(*dip->odxp));
         res = get_3pc_vpd_blkdev_lims(op, dip);
@@ -2683,10 +2683,10 @@ odx_setup_and_run(struct opts_t * op, int * whop)
         dip->fd = fd;
         dip->odxp = (struct block_rodtok_vpd *)
                         sg_memalign(sizeof(*dip->odxp), pg_sz,
-                                    &dip->free_odxp, op->verbose > 3);
+                                    &dip->free_odxp, false);
         if (NULL == dip->odxp) {
             pr2serr("Not enough user memory for %s 2\n", __func__);
-            return SG_LIB_OS_BASE_ERR + ENOMEM;
+            return sg_convert_errno(ENOMEM);
         }
         memset(dip->odxp, 0, sizeof(*dip->odxp));
         res = get_3pc_vpd_blkdev_lims(op, dip);

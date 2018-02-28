@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.96 20180224 [svn: r340]";
+static const char * ddpt_version_str = "0.96 20180227 [svn: r341]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -1664,7 +1664,7 @@ cp_construct_pt_zero_buff(struct opts_t * op, int obpt)
                                      &op->free_zeros_buff, false);
         if (NULL == op->zeros_buff) {
             pr2serr("zeros_buff sg_memalign failed\n");
-            return -1;
+            return sg_convert_errno(ENOMEM);
         }
     }
     return 0;
@@ -2357,15 +2357,15 @@ wrk_buffers_init(struct opts_t * op)
 
     if (op->has_xcopy)
         return 0;
-    op->wrkPos = sg_memalign(len, psz, &op->free_wrkPos, op->verbose > 3);
+    op->wrkPos = sg_memalign(len, psz, &op->free_wrkPos, false);
     if (NULL == op->wrkPos) {
         pr2serr("%s: sg_memalign: error, out of memory?\n", __func__);
-        return SG_LIB_OS_BASE_ERR + ENOMEM;
+        return sg_convert_errno(ENOMEM);
     }
-    op->wrkPos2 = sg_memalign(len, psz, &op->free_wrkPos2, op->verbose > 3);
+    op->wrkPos2 = sg_memalign(len, psz, &op->free_wrkPos2, false);
     if (NULL == op->wrkPos2) {
         pr2serr("%s: sg_memalign: error, out of memory 2\n", __func__);
-        return SG_LIB_OS_BASE_ERR + ENOMEM;
+        return sg_convert_errno(ENOMEM);
     }
     return 0;
 }

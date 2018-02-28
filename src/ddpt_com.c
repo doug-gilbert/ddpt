@@ -1498,106 +1498,66 @@ void
 print_exit_status_msg(const char * prefix, int exit_stat, bool to_stderr)
 {
     int (*print_p)(const char *, ...);
-    char b[80];
+    int n;
+    char b[256];
+    const int b_len = sizeof(b);
 
+    if (0 == exit_stat)
+        return;
     print_p = to_stderr ? pr2serr : printf;
-    if (prefix && exit_stat)
-        snprintf(b, sizeof(b), "%s: ", prefix);
+    if (prefix)
+        snprintf(b, b_len, "%s: ", prefix);
     else
         b[0] = '\0';
-    switch(exit_stat) {
-    case SG_LIB_CAT_CLEAN:      /* 0 */
-        break;
-    case SG_LIB_SYNTAX_ERROR:   /* 1 */
-        print_p("%ssyntax error\n", b);
-        break;
-    case SG_LIB_CAT_NOT_READY:   /* 2 */
-        print_p("%sdevice not ready\n", b);
-        break;
-    case SG_LIB_CAT_MEDIUM_HARD:   /* 3 */
-        print_p("%smedium or hardware error\n", b);
-        break;
-    case SG_LIB_CAT_ILLEGAL_REQ:   /* 5 */
-        print_p("%sillegal request\n", b);
-        break;
-    case SG_LIB_CAT_UNIT_ATTENTION:   /* 6 */
-        print_p("%sunit attention\n", b);
-        break;
-    case SG_LIB_CAT_DATA_PROTECT:   /* 7 */
-        print_p("%sdata protect\n", b);
-        break;
-    case SG_LIB_CAT_INVALID_OP:   /* 9 */
-        print_p("%sinvalid opcode\n", b);
-        break;
-    case SG_LIB_CAT_COPY_ABORTED:   /* 10 */
-        print_p("%scopy aborted\n", b);
-        break;
-    case SG_LIB_CAT_ABORTED_COMMAND:   /* 11 */
-        print_p("%saborted command\n", b);
-        break;
-    case SG_LIB_CAT_MISCOMPARE:   /* 14 */
-        print_p("%smiscompare\n", b);
-        break;
-    case SG_LIB_FILE_ERROR:   /* 15 */
-        print_p("%sfile error\n", b);
-        break;
-    case SG_LIB_CAT_NO_SENSE:   /* 20 */
-        print_p("%sno sense (but possible warning/error)\n", b);
-        break;
-    case SG_LIB_CAT_RECOVERED:   /* 21 */
-        print_p("%srecovered error (possible future errors)\n", b);
-        break;
-    case SG_LIB_CAT_RES_CONFLICT:   /* 24 */
-        print_p("%sSCSI status: reservation conflict\n", b);
-        break;
-    case SG_LIB_CAT_TIMEOUT:   /* 33 */
-        print_p("%sSCSI command timeout\n", b);
-        break;
-    case SG_LIB_CAT_PROTECTION:   /* 40 */
-        print_p("%sprotection error\n", b);
-        break;
-    case SG_LIB_CAT_PROTECTION_WITH_INFO:   /* 41 */
-        print_p("%sprotection error with info\n", b);
-        break;
-    case DDPT_CAT_PARAM_LST_LEN_ERR:   /* 50 */
+    n = (int)strlen(b);
+    if (n >= (b_len - 1))
+        return;         /* prefix too big for internal buffer */
+
+    if (exit_stat < 0) {
+        print_p("%sunexpected negative exit status value: %d\n", b,
+                 exit_stat);
+        return;
+    }
+    if ((exit_stat > 0) && (exit_stat <= 99)) { /* SG_LIB_UNUSED_ABOVE */
+        if (sg_exit2str(exit_stat, false, b_len - n, b + n))
+            print_p("%s\n", b);
+        else
+            print_p("%sunexpected exit status value: %d\n", b, exit_stat);
+        return;
+    }
+
+    /* here only if exit_stat > 99 (SG_LIB_UNUSED_ABOVE) */
+    switch (exit_stat) {
+    case DDPT_CAT_PARAM_LST_LEN_ERR:   /* 100 */
         print_p("%sparameter list length error\n", b);
         break;
-    case DDPT_CAT_INVALID_FLD_IN_PARAM:   /* 51 */
+    case DDPT_CAT_INVALID_FLD_IN_PARAM:   /* 101 */
         print_p("%sinvalid field in parameter list\n", b);
         break;
-    case DDPT_CAT_TOO_MANY_SEGS_IN_PARAM:   /* 52 */
+    case DDPT_CAT_TOO_MANY_SEGS_IN_PARAM:   /* 102 */
         print_p("%stoo many segments in parameter list\n", b);
         break;
-    case DDPT_CAT_TARGET_UNDERRUN:   /* 53 */
+    case DDPT_CAT_TARGET_UNDERRUN:   /* 103 */
         print_p("%starget underrun\n", b);
         break;
-    case DDPT_CAT_TARGET_OVERRUN:   /* 54 */
+    case DDPT_CAT_TARGET_OVERRUN:   /* 104 */
         print_p("%starget overrun\n", b);
         break;
-    case DDPT_CAT_OP_IN_PROGRESS:   /* 55 */
+    case DDPT_CAT_OP_IN_PROGRESS:   /* 105 */
         print_p("%soperation in progress [list_id in use]\n", b);
         break;
-    case DDPT_CAT_INSUFF_RES_CREATE_ROD:   /* 56 */
+    case DDPT_CAT_INSUFF_RES_CREATE_ROD:   /* 106 */
         print_p("%sinsufficient resources to create ROD\n", b);
         break;
-    case DDPT_CAT_INSUFF_RES_CREATE_RODTOK:   /* 57 */
+    case DDPT_CAT_INSUFF_RES_CREATE_RODTOK:   /* 107 */
         print_p("%sinsufficient resources to create ROD Token\n", b);
         break;
-    case DDPT_CAT_CMDS_CLEARED_BY_DEV_SVR:   /* 58 */
+    case DDPT_CAT_CMDS_CLEARED_BY_DEV_SVR:   /* 108 */
         print_p("%scommands cleared by device servers\n", b);
-        break;
-    case SG_LIB_CAT_MALFORMED:   /* 97 */
-        print_p("%sresponse to SCSI command malformed\n", b);
-        break;
-    case SG_LIB_CAT_SENSE:   /* 98 */
-        print_p("%ssome other error/warning in sense data\n", b);
-        break;
-    case SG_LIB_CAT_OTHER:   /* 99 */
-        print_p("%ssome other error/warning, not sense data related\n", b);
         break;
     default:
         if ((exit_stat >= DDPT_CAT_TOKOP_BASE) &&
-            (exit_stat < (DDPT_CAT_TOKOP_BASE + 20))) {
+            (exit_stat < 126)) {        /* 126+127 used by Unix OSes */
             print_p("%sinvalid token operation, ", b);
             switch (exit_stat - DDPT_CAT_TOKOP_BASE) {  /* asc=0x23 */
             case 0:     /* asc=0x23, asq=0x0 */
@@ -1638,13 +1598,9 @@ print_exit_status_msg(const char * prefix, int exit_stat, bool to_stderr)
                         exit_stat - DDPT_CAT_TOKOP_BASE);
                 break;
             }
-        } else {
-            if (exit_stat >= 0)
-                print_p("%sunexpected exit status value: %d [0x%x]\n", b,
-                        exit_stat, exit_stat);
-            else
-                print_p("%sunexpected exit status value: %d\n", b, exit_stat);
-        }
+        } else
+            print_p("%sunexpected exit status value: %d [0x%x]\n", b,
+                    exit_stat, exit_stat);
         break;
     }
 }
