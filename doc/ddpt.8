@@ -1,4 +1,4 @@
-.TH DDPT "8" "January 2018" "ddpt\-0.96" DDPT
+.TH DDPT "8" "March 2018" "ddpt\-0.96" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -77,7 +77,7 @@ force flag is also given (i.e. 'iflag=pt,force').
 This utility supports two types of offloaded copies. Both are based on the
 EXTENDED COPY (XCOPY or xcopy) family of SCSI commands. The first uses the
 XCOPY(LID1) command to do a disk to disk copy. LID1 stands for List
-IDentifier length of 1 byte and the command is described in the SPC\-4 drafts
+Identifier length of 1 byte and the command is described in the SPC\-4 drafts
 and the earlier SPC\-3 and SPC\-2 standards. Recent SPC\-4 drafts have added
 the XCOPY(LID4) sub\-family of copy offloaded commands. There is a subset of
 XCOPY(LID4), specialized for offloaded disk to disk copies, that is known by
@@ -103,14 +103,14 @@ For "bs=512", \fIBPT\fR defaults to 128 so that 64 KiB (or less) is read
 from \fIIFILE\fR into the copy buffer. This option is treated differently
 in ODX and is typically only needed for testing; see ODX section.
 .br
-The optional \fIOBPC\fR (Output Blocks Per Check) argument controls
-controls the granularity of sparse writes, write sparing and trim checks.
-The default granularity is the size of the copy buffer (i.e. \fIBPT * IBS\fR
-bytes). That can be reduced by specifying \fIOBPC\fR. The finest
-granularity is when \fIOBPC\fR is 1 which implies the unit of each check
-is \fIOBS\fR bytes. When \fIOBPC\fR is 0, or not given, the default
-granularity is used. Large \fIOBPC\fR values are rounded down so that
-\fIOBPC*OBS\fR does not exceed the size of the copy buffer.
+The optional \fIOBPC\fR (Output Blocks Per Check) argument controls the
+granularity of sparse writes, write sparing and trim checks. The default
+granularity is the size of the copy buffer (i.e. \fIBPT * IBS\fR bytes). That
+can be reduced by specifying \fIOBPC\fR. The finest granularity is when
+\fIOBPC\fR is 1 which implies the unit of each check is \fIOBS\fR bytes.
+When \fIOBPC\fR is 0, or not given, the default granularity is used. Large
+\fIOBPC\fR values are rounded down so that \fIOBPC*OBS\fR does not exceed
+the size of the copy buffer.
 .br
 odx: may be used to limit the data represented by each ROD. Mainly for
 testing.
@@ -348,6 +348,16 @@ news is good news".  The default action of ddpt is to show the throughput (in
 megabytes per second) and the time taken to do the copy after the "records
 in" and "records out" lines at the end of the copy. As a convenience the
 value 'null' is accepted for \fISTAT\fR and does nothing.
+.br
+A \fISTAT\fR value of 'progress' prints a progress report (to stderr) every
+two minutes. If 'progress' is used twice, either by repeating
+the 'status=progress' argument or by entering 'status=progress,progress',
+then a progress report is printed every minute. Note that care is taken not
+to flood the OS with calls to check the time which would slow down the copy
+process.
+.br
+Note the GNU's dd supports 'noxfer', 'none' and 'progress' with similar
+semantics.
 .TP
 \fBto\fR=\fITO\fR
 odx, xcopy: where \fITO\fR is am xcopy originating command timeout in seconds.
