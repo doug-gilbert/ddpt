@@ -114,6 +114,9 @@ the size of the copy buffer.
 .br
 odx: may be used to limit the data represented by each ROD. Mainly for
 testing.
+.br
+If \fIBPT\fR is too large on Linux, the obscure "Invalid argument" error
+value (EINVAL) is returned.
 .TP
 \fBbs\fR=\fIBS\fR
 where \fIBS\fR is the \fIIFILE\fR and \fIOFILE\fR block size in bytes.
