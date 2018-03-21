@@ -497,7 +497,7 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
     ret = sg_cmds_process_resp(ptvp, "READ", res, bs * blocks, sense_b,
                                false /* noisy */, vt, &sense_cat);
     if (-1 == ret)
-        ;
+        ret = sg_convert_errno(get_scsi_pt_os_err(ptvp));
     else if (-2 == ret) {
         slen = get_scsi_pt_sense_len(ptvp);
         ret = sense_cat;
@@ -886,7 +886,7 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
     ret = sg_cmds_process_resp(ptvp, desc, res, bs * blocks, sense_b,
                                false /* noisy */, vt, &sense_cat);
     if (-1 == ret)
-        ;
+        ret = sg_convert_errno(get_scsi_pt_os_err(ptvp));
     else if (-2 == ret) {
         slen = get_scsi_pt_sense_len(ptvp);
         ret = sense_cat;
@@ -1040,7 +1040,7 @@ pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
     ret = sg_cmds_process_resp(ptvp, "Write same(16)", res, 0, sense_b,
                                true /*noisy */, vt, &sense_cat);
     if (-1 == ret)
-        ;
+        ret = sg_convert_errno(get_scsi_pt_os_err(ptvp));
     else if (-2 == ret) {
         switch (sense_cat) {
         case SG_LIB_CAT_RECOVERED:
@@ -1231,11 +1231,15 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
     res = do_scsi_pt(ptvp, sg_fd, tmout, vb);
     ret = sg_cmds_process_resp(ptvp, cname, res, 0, sense_b, noisy,
                                ((err_vb > 0) ? err_vb : 0), &sense_cat);
-    if ((-1 == ret) &&
-        (SCSI_PT_RESULT_STATUS == get_scsi_pt_result_category(ptvp)) &&
-        (SAM_STAT_RESERVATION_CONFLICT == get_scsi_pt_status_response(ptvp)))
-        ret = SG_LIB_CAT_RES_CONFLICT;
-    else
+    if (-1 == ret) {
+        int sstatus = get_scsi_pt_status_response(ptvp);
+
+        if ((SCSI_PT_RESULT_STATUS == get_scsi_pt_result_category(ptvp)) &&
+            (SAM_STAT_RESERVATION_CONFLICT == sstatus))
+            ret = SG_LIB_CAT_RES_CONFLICT;
+        else
+            ret = sg_convert_errno(get_scsi_pt_os_err(ptvp));
+    } else
         ret = pt_tpc_process_res(ret, sense_cat, sense_b,
                                  get_scsi_pt_sense_len(ptvp));
     destruct_scsi_pt_obj(ptvp);
@@ -1286,11 +1290,15 @@ pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
     res = do_scsi_pt(ptvp, sg_fd, tmout, vb);
     ret = sg_cmds_process_resp(ptvp, cname, res, mx_resp_len, sense_b, noisy,
                                ((err_vb > 0) ? err_vb : 0), &sense_cat);
-    if ((-1 == ret) &&
-        (SCSI_PT_RESULT_STATUS == get_scsi_pt_result_category(ptvp)) &&
-        (SAM_STAT_RESERVATION_CONFLICT == get_scsi_pt_status_response(ptvp)))
-        ret = SG_LIB_CAT_RES_CONFLICT;
-    else
+    if (-1 == ret) {
+        int sstatus = get_scsi_pt_status_response(ptvp);
+
+        if ((SCSI_PT_RESULT_STATUS == get_scsi_pt_result_category(ptvp)) &&
+            (SAM_STAT_RESERVATION_CONFLICT == sstatus))
+            ret = SG_LIB_CAT_RES_CONFLICT;
+        else
+            ret = sg_convert_errno(get_scsi_pt_os_err(ptvp));
+    } else
         ret = pt_tpc_process_res(ret, sense_cat, sense_b,
                                  get_scsi_pt_sense_len(ptvp));
     destruct_scsi_pt_obj(ptvp);
