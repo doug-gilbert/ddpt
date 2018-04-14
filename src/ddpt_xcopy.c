@@ -685,7 +685,7 @@ desc_from_vpd_id(struct opts_t * op, uint8_t *desc, int desc_len,
 }
 
 /* Called from main() in ddpt.c . Returns 0 on success or a positive
- * errno value if problems. This is for a xcopy(LID1) disk->disk copy. */
+ * errno value if problems. This is for a xcopy(LID1) disk-->disk copy. */
 int
 do_xcopy_lid1(struct opts_t * op)
 {
@@ -809,7 +809,7 @@ do_xcopy_lid1(struct opts_t * op)
         }
     }
     if (op->verbose > 1)
-        pr2serr("do_xcopy_lid1: xcopy->%s will use ibpt=%d, obpt=%d\n",
+        pr2serr("%s: xcopy->%s will use ibpt=%d, obpt=%d\n", __func__,
                 (ifp->xcopy ? idip->fn : odip->fn),  ibpt, obpt);
     seg_desc_type = seg_desc_from_d_type(simplified_dt(op->idip), 0,
                                          simplified_dt(op->odip), 0);
@@ -1411,52 +1411,6 @@ print_3pc_vpd(struct opts_t * op, bool to_stderr)
     return res;
 }
 
-uint64_t
-count_sgl_blocks(const struct scat_gath_elem * sglp, int elems)
-{
-    int k;
-    uint64_t num;
-
-    for (k = 0, num = 0; k < elems; ++k, ++sglp)
-        num += sglp->num;
-    return num;
-}
-
-/* Return maximum number of blocks from the available num_blks that are
- * available in the scatter gather list, given several constraints. First
- * bypass blk_off blocks in the list. Then check that elems and
- * max_descriptors is not exceeded. If max_descriptors is 0 then it is not
- * constraining. The return value is always <= num_blks. */
-static uint64_t
-count_restricted_sgl_blocks(const struct scat_gath_elem * sglp, int elems,
-                            uint64_t blk_off, uint32_t num_blks,
-                            uint32_t max_descriptors)
-{
-    int k, j, md;
-    uint64_t res;
-
-    if ((0 == max_descriptors) || (max_descriptors > INT_MAX))
-        md = INT_MAX;
-    else
-        md = (int)max_descriptors;
-    for (k = 0; k < elems; ++k, ++sglp) {
-        if ((uint64_t)sglp->num > blk_off)
-            break;
-        blk_off -= sglp->num;
-    }
-    if (k >= elems)
-        return 0;
-    for (j = 0, res = 0;
-         (k < elems) && (j < md) && (res < (uint64_t)num_blks);
-         ++k, ++j, ++sglp) {
-        if (0 == j)
-            res = (uint64_t)sglp->num - blk_off;
-        else
-            res += (uint64_t)sglp->num;
-    }
-    return (res < (uint64_t)num_blks) ? res : (uint64_t)num_blks;
-}
-
 /* Do POPULATE_TOKEN command, returns 0 on success */
 int
 do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
@@ -1480,20 +1434,20 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
     else
         err_vb = 0;
     fd = op->idip->fd;
-    if (op->in_sgl) {
+    if (op->i_sgli.sgl) {
         sg0_off = blk_off;
-        for (k = 0, sglp = op->in_sgl; k < op->in_sgl_elems; ++k, ++sglp) {
+        for (k = 0, sglp = op->i_sgli.sgl; k < op->i_sgli.elems; ++k, ++sglp) {
             if ((uint64_t)sglp->num >= sg0_off)
                 break;
             sg0_off -= sglp->num;
         }
-        if (k >= op->in_sgl_elems) {
+        if (k >= op->i_sgli.elems) {
             pr2serr("%s: exhausted sgl_elems [%d], miscalculation\n",
-                    __func__, op->in_sgl_elems);
+                    __func__, op->i_sgli.elems);
             return SG_LIB_CAT_MALFORMED;
         }
         /* remain sg elements is worst case, might use less */
-        elems = op->in_sgl_elems - k;
+        elems = op->i_sgli.elems - k;
         pl_sz = 16 + (16 * elems);
     } else {
         sg0_off = 0;    /* compilers should be smarter */
@@ -1855,20 +1809,20 @@ do_wut(struct opts_t * op, uint8_t * tokp, uint64_t blk_off,
                 " oir=0x%" PRIx64 "\n", __func__, blk_off, num_blks, oir);
     flp = op->oflagp;
     rodt_blk_zero = (RODT_BLK_ZERO == op->rod_type);
-    if (op->out_sgl) {
-        sglp = op->out_sgl;
-        for (k = 0, sg0_off = blk_off; k < op->out_sgl_elems; ++k, ++sglp) {
+    if (op->o_sgli.sgl) {
+        sglp = op->o_sgli.sgl;
+        for (k = 0, sg0_off = blk_off; k < op->o_sgli.elems; ++k, ++sglp) {
             if ((uint64_t)sglp->num >= sg0_off)
                 break;
             sg0_off -= sglp->num;
         }
-        if (k >= op->out_sgl_elems) {
+        if (k >= op->o_sgli.elems) {
             pr2serr("%s: exhausted sgl_elems [%d], miscalculation\n",
-                    __func__, op->out_sgl_elems);
+                    __func__, op->o_sgli.elems);
             return SG_LIB_CAT_MALFORMED;
         }
         /* remain sg elements is worst case, might use less */
-        elems = op->out_sgl_elems - k;
+        elems = op->o_sgli.elems - k;
         pl_sz = 540 + (16 * elems);
     } else {
         sg0_off = 0;    /* compilers should be smarter */
@@ -2025,7 +1979,7 @@ static int
 odx_check_sgl(struct opts_t * op, uint64_t num_blks, bool in0_out1)
 {
     uint32_t allowed_descs;
-    uint32_t num_elems = in0_out1 ? op->out_sgl_elems : op->in_sgl_elems;
+    uint32_t num_elems = in0_out1 ? op->o_sgli.elems : op->i_sgli.elems;
     struct dev_info_t * dip = in0_out1 ? op->odip : op->idip;
     struct flags_t * flp = in0_out1 ? op->oflagp : op->iflagp;
     const char * sgl_nm = in0_out1 ? "scatter" : "gather";
@@ -2091,7 +2045,7 @@ static int
 odx_full_zero_copy(struct opts_t * op)
 {
     bool got_count;
-    int k, res, out_blk_sz, out_num_elems, vb3;
+    int k, res, out_blk_sz, out_elems, vb3;
     uint64_t out_blk_off, num, tc;
     int64_t out_num_blks, v;
     struct dev_info_t * odip = op->odip;
@@ -2110,11 +2064,12 @@ odx_full_zero_copy(struct opts_t * op)
     if (res)
         return res;
     v = out_num_blks;
-    if (op->out_sgl) {  /* scatter list */
-        out_num_elems = op->out_sgl_elems;
-        out_num_blks = count_sgl_blocks(op->out_sgl, out_num_elems);
+    if (op->o_sgli.sgl) {  /* scatter list */
+        out_elems = op->o_sgli.elems;
+        sgl_sum_scan(&op->o_sgli, op->verbose > 4);
+        out_num_blks = op->o_sgli.sum;
     } else { /* no scatter list */
-        out_num_elems = 1;
+        out_elems = 1;
         out_num_blks = got_count ? op->dd_count : 0;
     }
     if (0 == op->dd_count) {
@@ -2152,10 +2107,10 @@ odx_full_zero_copy(struct opts_t * op)
         if ((odip->odxp->max_tok_xfer_size > 0) &&
             (num > odip->odxp->max_tok_xfer_size))
             num = odip->odxp->max_tok_xfer_size;
-        if (op->out_sgl)
-            num = count_restricted_sgl_blocks(op->out_sgl, out_num_elems,
-                                              out_blk_off, num,
-                                              odip->odxp->max_range_desc);
+        if (op->o_sgli.sgl)
+            num = count_sgl_blocks_from(op->o_sgli.sgl, out_elems,
+                                        out_blk_off, num,
+                                        odip->odxp->max_range_desc);
         if ((res = do_wut(op, local_rod_token, out_blk_off, num, 0, 0,
                           ! op->list_id_given, vb3)))
             return res;
@@ -2179,7 +2134,7 @@ static int
 odx_read_into_rods(struct opts_t * op)
 {
     bool got_count;
-    int k, res, in_blk_sz, in_num_elems, vb3;
+    int k, res, in_blk_sz, in_elems, vb3;
     uint64_t in_blk_off, num, tc_i;
     int64_t in_num_blks, u;
     struct dev_info_t * idip = op->idip;
@@ -2191,16 +2146,17 @@ odx_read_into_rods(struct opts_t * op)
     if (res)
         return res;
     u = in_num_blks;
-    if (op->in_sgl) {   /* gather list */
-        in_num_elems = op->in_sgl_elems;
-        in_num_blks = count_sgl_blocks(op->in_sgl, in_num_elems);
+    if (op->i_sgli.sgl) {   /* gather list */
+        in_elems = op->i_sgli.elems;
+        sgl_sum_scan(&op->i_sgli, op->verbose > 4);
+        in_num_blks = op->i_sgli.sum;
         if (got_count && (in_num_blks != op->dd_count)) {
             pr2serr("%s: count= value not equal to the sum of gather nums\n",
                     __func__);
             return SG_LIB_CAT_OTHER;
         }
     } else {
-        in_num_elems = 1;
+        in_elems = 1;
         in_num_blks = got_count ? op->dd_count : 0;
     }
     if (0 == op->dd_count) {
@@ -2236,10 +2192,10 @@ odx_read_into_rods(struct opts_t * op)
         if ((idip->odxp->max_tok_xfer_size > 0) &&
             (num > idip->odxp->max_tok_xfer_size))
             num = idip->odxp->max_tok_xfer_size;
-        if (op->in_sgl)
-            num = count_restricted_sgl_blocks(op->in_sgl, in_num_elems,
-                                              in_blk_off, num,
-                                              idip->odxp->max_range_desc);
+        if (op->i_sgli.sgl)
+            num = count_sgl_blocks_from(op->i_sgli.sgl, in_elems,
+                                        in_blk_off, num,
+                                        idip->odxp->max_range_desc);
         if (op->verbose > 2)
             pr2serr("%s: k=%d, in_blk_off=0x%" PRIx64 ", i_num=%" PRIu64 "\n",
                     __func__, k, in_blk_off, num);
@@ -2267,7 +2223,7 @@ static int
 odx_write_from_rods(struct opts_t * op)
 {
     bool got_count;
-    int k, res, n, off, out_blk_sz, out_num_elems, err, vb3;
+    int k, res, n, off, out_blk_sz, out_elems, err, vb3;
     uint64_t out_blk_off, num, o_num, r_o_num, oir, tc_o;
     int64_t out_num_blks, v;
     struct dev_info_t * odip = op->odip;
@@ -2279,11 +2235,12 @@ odx_write_from_rods(struct opts_t * op)
     if (res)
         return res;
     v = out_num_blks;
-    if (op->out_sgl) {  /* scatter list */
-        out_num_elems = op->out_sgl_elems;
-        out_num_blks = count_sgl_blocks(op->out_sgl, out_num_elems);
+    if (op->o_sgli.sgl) {  /* scatter list */
+        out_elems = op->o_sgli.elems;
+        sgl_sum_scan(&op->o_sgli, op->verbose > 4);
+        out_num_blks = op->o_sgli.sum;
     } else { /* no scatter list */
-        out_num_elems = 1;
+        out_elems = 1;
         out_num_blks = got_count ? op->dd_count : 0;
     }
     if (0 == op->dd_count) {
@@ -2384,10 +2341,10 @@ odx_write_from_rods(struct opts_t * op)
             if ((odip->odxp->max_tok_xfer_size > 0) &&
                 (r_o_num > odip->odxp->max_tok_xfer_size))
                 r_o_num = odip->odxp->max_tok_xfer_size;
-            if (op->out_sgl)
-                r_o_num = count_restricted_sgl_blocks(op->out_sgl,
-                                out_num_elems, out_blk_off, r_o_num,
-                                odip->odxp->max_range_desc);
+            if (op->o_sgli.sgl)
+                r_o_num = count_sgl_blocks_from(op->o_sgli.sgl, out_elems,
+                                                out_blk_off, r_o_num,
+                                                odip->odxp->max_range_desc);
             res = do_wut(op, rt, out_blk_off, r_o_num, oir,
                          (r_o_num < o_num), ! op->list_id_given, vb3);
             if (res)
@@ -2415,7 +2372,7 @@ odx_full_copy(struct opts_t * op)
 {
     bool got_count, ok, oneto1;
     int k, res, in_blk_sz, out_blk_sz, in_mult, out_mult;
-    int in_num_elems, out_num_elems, vb3;
+    int in_elems, out_elems, vb3;
     uint64_t in_blk_off, out_blk_off, num, o_num, r_o_num, oir, tc_i, tc_o;
     int64_t in_num_blks, out_num_blks, u, uu, v, vv;
     struct dev_info_t * idip = op->idip;
@@ -2451,21 +2408,23 @@ odx_full_copy(struct opts_t * op)
             return SG_LIB_CAT_OTHER;
         }
     }
-    if (op->in_sgl) {   /* gather list */
-        in_num_elems = op->in_sgl_elems;
-        in_num_blks = count_sgl_blocks(op->in_sgl, in_num_elems);
+    if (op->i_sgli.sgl) {   /* gather list */
+        in_elems = op->i_sgli.elems;
+        sgl_sum_scan(&op->i_sgli, op->verbose > 4);
+        in_num_blks = op->i_sgli.sum;
         if (got_count && (in_num_blks != op->dd_count)) {
             pr2serr("%s: count= value not equal to the sum of gather nums\n",
                     __func__);
             return SG_LIB_CAT_OTHER;
         }
     } else {
-        in_num_elems = 1;
+        in_elems = 1;
         in_num_blks = got_count ? op->dd_count : 0;
     }
-    if (op->out_sgl) {  /* scatter list */
-        out_num_elems = op->out_sgl_elems;
-        out_num_blks = count_sgl_blocks(op->out_sgl, out_num_elems);
+    if (op->o_sgli.sgl) {  /* scatter list */
+        out_elems = op->o_sgli.elems;
+        sgl_sum_scan(&op->o_sgli, op->verbose > 4);
+        out_num_blks = op->o_sgli.sum;
         if (oneto1) {
             if (got_count && (out_num_blks != op->dd_count)) {
                 pr2serr("%s: count= value not equal to the sum of scatter "
@@ -2484,7 +2443,7 @@ odx_full_copy(struct opts_t * op)
             }
         } else { /* unequal block size */
             u = out_blk_sz * out_num_blks;
-            if (op->in_sgl && (u != (in_blk_sz * in_num_blks))) {
+            if (op->i_sgli.sgl && (u != (in_blk_sz * in_num_blks))) {
                 pr2serr("%s: number of blocks in both lists need to reflect "
                         "the same number of bytes, but don't\n", __func__);
                 return SG_LIB_SYNTAX_ERROR;
@@ -2497,7 +2456,7 @@ odx_full_copy(struct opts_t * op)
             }
         }
     } else { /* no scatter list */
-        out_num_elems = 1;
+        out_elems = 1;
         if (got_count) {
             if (oneto1)
                 out_num_blks = op->dd_count;
@@ -2564,10 +2523,9 @@ odx_full_copy(struct opts_t * op)
         if ((idip->odxp->max_tok_xfer_size > 0) &&
             (num > idip->odxp->max_tok_xfer_size))
             num = idip->odxp->max_tok_xfer_size;
-        if (op->in_sgl)
-            num = count_restricted_sgl_blocks(op->in_sgl, in_num_elems,
-                                              in_blk_off, num,
-                                              idip->odxp->max_range_desc);
+        if (op->i_sgli.sgl)
+            num = count_sgl_blocks_from(op->i_sgli.sgl, in_elems,
+                                 in_blk_off, num, idip->odxp->max_range_desc);
         if (! oneto1) {
             if (in_mult) {
                 o_num = num / in_mult;
@@ -2615,10 +2573,10 @@ odx_full_copy(struct opts_t * op)
             if ((odip->odxp->max_tok_xfer_size > 0) &&
                 (r_o_num > odip->odxp->max_tok_xfer_size))
                 r_o_num = odip->odxp->max_tok_xfer_size;
-            if (op->out_sgl)
-                r_o_num = count_restricted_sgl_blocks(op->out_sgl,
-                                out_num_elems, out_blk_off, r_o_num,
-                                odip->odxp->max_range_desc);
+            if (op->o_sgli.sgl)
+                r_o_num = count_sgl_blocks_from(op->o_sgli.sgl, out_elems,
+                                                out_blk_off, r_o_num,
+                                                odip->odxp->max_range_desc);
             res = do_wut(op, local_rod_token, out_blk_off, r_o_num, oir,
                          (r_o_num < o_num), ! op->list_id_given, vb3);
             if (res)

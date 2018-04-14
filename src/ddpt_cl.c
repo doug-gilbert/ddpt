@@ -25,7 +25,8 @@
  */
 
 /*
- * This file contains command line (hence '_cl') helper functions for ddpt.
+ * This file contains command line (hence '_cl') helper functions for
+ * parsing options and arguments for ddpt.
  */
 
 /* Was needed for posix_fadvise() */
@@ -64,10 +65,6 @@
 #include "sg_cmds_extra.h"
 #include "sg_pt.h"
 #include "sg_pr2serr.h"
-
-
-static struct scat_gath_elem in_fixed_sgl[MAX_FIXED_SGL_ELEMS];
-static struct scat_gath_elem out_fixed_sgl[MAX_FIXED_SGL_ELEMS];
 
 
 void
@@ -137,6 +134,7 @@ primary_help:
            "    verbose     0->normal(def), 1->some noise, 2->more noise, "
            "etc\n"
            "                -1->quiet (stderr->/dev/null)\n"
+           "    --dry-run    do preparation, bypass copy\n"
            "    --help      print out this usage message then exit\n"
            "    --job=JF    JF is job file containing options\n"
            "    --odx       do ODX copy rather than normal rw copy\n"
@@ -186,7 +184,8 @@ secondary_help:
            "    of2         additional output file (def: /dev/null), "
            "OFILE2 should be\n"
            "                regular file or pipe\n"
-           "    oseek       block position to start writing in OFILE\n"
+           "    oseek       block position to start writing in OFILE (same "
+           "as seek)\n"
            "    prio        xcopy: set priority field to PRIO (def: 1)\n"
            "    protect     set rdprotect and/or wrprotect fields on "
            "pt commands\n"
@@ -320,85 +319,74 @@ argcargv(char * cmd_line, char ** argv, int max_args)
     return argc;
 }
 
-/* Returns the number of times 'ch' is found in string 's' given the
- * string's length. */
+/* Allocates and then populates a scatter gether list (array) and returns
+ * it via *sgl_pp. Return of 0 is okay, else error number (in which case
+ * NULL is written to *sgl_pp) . */
 static int
-num_chs_in_str(const char * s, int slen, int ch)
+skip_seek(struct opts_t * op, const char * key, const char * buf,
+          struct scat_gath_elem ** sgl_pp, int * num_elems_p)
 {
-    int res = 0;
+    bool def_hex = false;
+    int len, err;
+    int vb = op->verbose;  /* needs to appear before skip/seek= on cl */
+    int64_t ll;
+    const char * cp;
 
-    while (--slen >= 0) {
-        if (ch == s[slen])
-            ++res;
+    len = (int)strlen(buf);
+    if ((('-' == buf[0]) && (1 == len)) || ((len > 1) && ('@' == buf[0])) ||
+        ((len > 2) && ('H' == toupper(buf[0])) && ('@' == buf[1]))) {
+        if ('H' == toupper(buf[0])) {
+            cp = buf + 2;
+            def_hex = true;
+        } else if ('-' == buf[0])
+            cp = buf;
+        else
+            cp = buf + 1;
+        *sgl_pp = file2sgl(cp, def_hex, num_elems_p, &err, true);
+        if (NULL == *sgl_pp) {
+            pr2serr("bad argument to '%s=' [err=%d]\n", key, err);
+            return err ? err : SG_LIB_SYNTAX_ERROR;
+        }
+        if (vb > 1)
+            pr2serr("%s: file, %d sgl elements\n", key, *num_elems_p);
+    } else if (num_either_ch_in_str(buf, len, ',', ' ') > 0) {
+        *sgl_pp = cli2sgl(buf, num_elems_p, vb > 0);
+        if (NULL == *sgl_pp) {
+            pr2serr("bad cli argument to '%s='\n", key);
+            return SG_LIB_SYNTAX_ERROR;
+        }
+        if (vb > 1)
+            pr2serr("%s: cli, %d sgl elements\n", key, *num_elems_p);
+    } else {    /* single number on command line (e.g. skip=1234) */
+        *sgl_pp = (struct scat_gath_elem *)
+                                calloc(1, sizeof(struct scat_gath_elem));
+        if (NULL == *sgl_pp) {
+            pr2serr("No memory available for '%s='\n", key);
+            return sg_convert_errno(ENOMEM);
+        }
+        ll = sg_get_llnum(buf);
+        if (-1LL == ll) {
+            pr2serr("bad argument to '%s='\n", key);
+            return SG_LIB_SYNTAX_ERROR;
+        }
+        (*sgl_pp)->lba = (uint64_t)ll;
+        *num_elems_p = 1;
+        if (vb > 1)
+            pr2serr("%s: single, half a sgl element\n", key);
     }
-    return res;
+    return 0;
 }
 
 static int
 do_skip(struct opts_t * op, const char * key, const char * buf)
 {
-    int len, res, got;
-
-    len = (int)strlen(buf);
-    if ((('-' == buf[0]) && (1 == len)) || ((len > 1) && ('@' == buf[0]))) {
-        res = file_to_sgl(((len > 1) ? (buf + 1) : buf), in_fixed_sgl, &got,
-                          MAX_FIXED_SGL_ELEMS);
-        if (res) {
-            pr2serr("bad argument to '%s='\n", key);
-            return SG_LIB_SYNTAX_ERROR;
-        }
-        op->in_sgl = in_fixed_sgl;
-        op->in_sgl_elems = got;
-    } else if (num_chs_in_str(buf, len, ',') > 0) {
-        res = cl_to_sgl(buf, in_fixed_sgl, &got, MAX_FIXED_SGL_ELEMS);
-        if (res) {
-            pr2serr("bad argument to '%s='\n", key);
-            return SG_LIB_SYNTAX_ERROR;
-        }
-        op->in_sgl = in_fixed_sgl;
-        op->in_sgl_elems = got;
-    } else {
-        op->skip = sg_get_llnum(buf);
-        if (-1LL == op->skip) {
-            pr2serr("bad argument to '%s='\n", key);
-            return SG_LIB_SYNTAX_ERROR;
-        }
-    }
-    return 0;
+    return skip_seek(op, key, buf, &op->i_sgli.sgl, &op->i_sgli.elems);
 }
 
 static int
 do_seek(struct opts_t * op, const char * key, const char * buf)
 {
-    int len, res;
-    int got = 0;
-
-    len = (int)strlen(buf);
-    if ((('-' == buf[0]) && (1 == len)) || ((len > 1) && ('@' == buf[0]))) {
-        res = file_to_sgl(((len > 1) ? (buf + 1) : buf), out_fixed_sgl, &got,
-                          MAX_FIXED_SGL_ELEMS);
-        if (res) {
-            pr2serr("bad argument to '%s='\n", key);
-            return SG_LIB_SYNTAX_ERROR;
-        }
-        op->out_sgl = out_fixed_sgl;
-        op->out_sgl_elems = got;
-    } else if (num_chs_in_str(buf, len, ',') > 0) {
-        res = cl_to_sgl(buf, out_fixed_sgl, &got, MAX_FIXED_SGL_ELEMS);
-        if (res) {
-            pr2serr("bad argument to '%s='\n", key);
-            return SG_LIB_SYNTAX_ERROR;
-        }
-        op->out_sgl = out_fixed_sgl;
-        op->out_sgl_elems = got;
-    } else {
-        op->seek = sg_get_llnum(buf);
-        if (-1LL == op->seek) {
-            pr2serr("bad argument to '%s='\n", key);
-            return SG_LIB_SYNTAX_ERROR;
-        }
-    }
-    return 0;
+    return skip_seek(op, key, buf, &op->o_sgli.sgl, &op->o_sgli.elems);
 }
 
 /* Process arguments given to 'conv=" option. Returns 0 on success,
@@ -591,7 +579,9 @@ flags_process(const char * arg, struct flags_t * fp)
 static int
 default_bpt_i(int ibs)
 {
-    if (ibs < 8)
+    if (ibs < 4)
+        return DEF_BPT_LT4;     /* currently 16384 (2**14), may change */
+    else if (ibs < 8)
         return DEF_BPT_LT8;
     else if (ibs < 64)
         return DEF_BPT_LT64;
@@ -886,6 +876,7 @@ jf_process(struct opts_t * op, const char * jf_name, const char * version_str,
     FILE * fp;
     char * cp;
     char * argv[DDPT_MAX_JF_ARGS_PER_LINE];
+    struct stat a_stat;
     char b[4096];
     char bb[256];
 
@@ -893,6 +884,15 @@ jf_process(struct opts_t * op, const char * jf_name, const char * version_str,
     if (jf_depth > DDPT_MAX_JF_DEPTH) {
         pr2serr("error parsing job_file: %s, depth=%d too great\n", jf_name,
                 jf_depth);
+        return SG_LIB_FILE_ERROR;
+    }
+    if (stat(jf_name, &a_stat) < 0) {
+        pr2serr("unable to stat job_file: %s, depth=%d\n", jf_name, jf_depth);
+        return sg_convert_errno(errno);
+    }
+    if (S_ISBLK(a_stat.st_mode) || S_ISCHR(a_stat.st_mode)) {
+        pr2serr("job_file: %s, depth=%d is char or block device, unlikely\n",
+                jf_name, jf_depth);
         return SG_LIB_FILE_ERROR;
     }
     if (op->verbose)
@@ -1033,7 +1033,9 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 return SG_LIB_SYNTAX_ERROR;
             }
             op->ibs = n;
+            op->ibs_pi = n;
             op->obs = n;
+            op->obs_pi = n;
         } else if (0 == strcmp(key, "cbs"))
             pr2serr("the cbs= option is ignored\n");
         else if (0 == strcmp(key, "cdbsz")) {
@@ -1095,6 +1097,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
             }
             op->ibs_given = true;
             op->ibs = n;
+            op->ibs_pi = n;
         } else if ((0 == strcmp(key, "id_usage")) ||
                    (0 == strcmp(key, "id-usage"))) {
             if (isdigit(buf[0])) {
@@ -1128,9 +1131,9 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 pr2serr("bad argument to 'iflag='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-        } else if (0 == strcmp(key, "intio")) {
+        } else if (0 == strcmp(key, "intio"))
             op->interrupt_io = sg_get_num(buf);
-        } else if (0 == strcmp(key, "iseek")) {
+        else if (0 == strcmp(key, "iseek")) {
             res = do_skip(op, key, buf);
             if (res)
                 return res;
@@ -1167,6 +1170,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
             }
             op->obs_given = true;
             op->obs = n;
+            op->obs_pi = n;
         } else if (strcmp(key, "of") == 0) {
             if ('\0' != op->odip->fn[0]) {
                 pr2serr("Second OFILE argument??\n");
@@ -1306,6 +1310,10 @@ cl_process(struct opts_t * op, int argc, char * argv[],
             }
         }
         /* look for long options that start with '--' */
+        else if (0 == strncmp(key, "--dry-run", 9))
+            op->dry_run = true;
+        else if (0 == strncmp(key, "--dry_run", 9))
+            op->dry_run = true;
         else if (0 == strncmp(key, "--help", 6))
             ++op->do_help;
         else if (0 == strncmp(key, "--job", 5)) {
@@ -1335,6 +1343,10 @@ cl_process(struct opts_t * op, int argc, char * argv[],
          * concaternated (e.g. '-vvvx') */
         else if ((keylen > 1) && ('-' == key[0]) && ('-' != key[1])) {
             res = 0;
+            n = num_chs_in_str(key + 1, keylen - 1, 'd');
+            if (n > 0)
+                op->dry_run = true;
+            res += n;
             n = num_chs_in_str(key + 1, keylen - 1, 'h');
             op->do_help += n;
             res += n;
@@ -1372,20 +1384,6 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 pr2serr("For more information use '--help'\n");
             return SG_LIB_SYNTAX_ERROR;
         }
-    }
-    if ((op->verbose > 3) && op->in_sgl) {
-        pr2serr("Input (scatter-)gather list (%d elements):\n",
-                op->in_sgl_elems);
-        for (k = 0; k < op->in_sgl_elems; ++k)
-            pr2serr("  lba: 0x%" PRIx64 ", number: 0x%" PRIx32 "\n",
-                    op->in_sgl[k].lba, op->in_sgl[k].num);
-    }
-    if ((op->verbose > 3) && op->out_sgl) {
-        pr2serr("Output scatter(-gather) list (%d elements):\n",
-                op->out_sgl_elems);
-        for (k = 0; k < op->out_sgl_elems; ++k)
-            pr2serr("  lba: 0x%" PRIx64 ", number: 0x%" PRIx32 "\n",
-                    op->out_sgl[k].lba, op->out_sgl[k].num);
     }
     return cl_sanity_defaults(op);
 }

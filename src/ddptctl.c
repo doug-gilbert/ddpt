@@ -64,7 +64,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.96 20180321 [svn: r345]";
+const char * ddptctl_version_str = "0.96 20180413 [svn: r346]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -121,8 +121,6 @@ const char * ddptctl_version_str = "0.96 20180321 [svn: r345]";
 #define DEF_ROD_TOK_FILE "ddptctl_rod_tok.bin"
 
 
-static struct scat_gath_elem fixed_sgl[MAX_FIXED_SGL_ELEMS];
-
 static struct option long_options[] = {
         {"abort", no_argument, 0, 'A'},
         {"all-toks", no_argument, 0, 'a'},
@@ -130,6 +128,8 @@ static struct option long_options[] = {
         {"block", no_argument, 0, 'b'},
         {"del-tkn", no_argument, 0, 'D'},
         {"del_tkn", no_argument, 0, 'D'},
+        {"dry-run", no_argument, 0, 'd'},
+        {"dry_run", no_argument, 0, 'd'},
         {"help", no_argument, 0, 'h'},
         {"hex", no_argument, 0, 'H'},
         {"info", no_argument, 0, 'i'},
@@ -159,21 +159,22 @@ static void
 usage()
 {
     pr2serr("Usage: "
-            "ddptctl [--abort] [--all_toks] [--block] [--del_tkn] [--help] "
-            "[--hex]\n"
-            "               [-immed] [--info] [--list_id=LID] [--oir=OIR] "
-            "[--poll]\n"
-            "               [--pt=GL] [--readonly] [--receive] [--rtf=RTF] "
-            "[rtype=RTYPE]\n"
-            "               [--size] [--timeout=ITO[,CMD]] [--verbose] "
-            "[--version]\n"
-            "               [--wut=SL] [DEVICE]\n"
+            "ddptctl [--abort] [--all_toks] [--block] [--del_tkn] "
+            "[--dry-run]\n"
+            "               [--help] [--hex] [-immed] [--info] "
+            "[--list_id=LID]\n"
+            "               [--oir=OIR] [--poll] [--pt=GL] [--readonly] "
+            "[--receive]\n"
+            "               [--rtf=RTF] [rtype=RTYPE] [--size] "
+            "[--timeout=ITO[,CMD]]\n"
+            "               [--verbose] [--version] [--wut=SL] [DEVICE]\n"
             "  where:\n"
             "    --abort|-A            call COPY OPERATION ABORT command\n"
             "    --all_toks|-a         call REPORT ALL ROD TOKENS command\n"
             "    --block|-B            treat as block DEVICE (def: use "
             "SCSI commands)\n"
             "    --del_tkn|-D          set DEL_TKN bit in WUT command\n"
+            "    --dry-run|-d          do preparation, bypass copy\n"
             "    --help|-h             print out usage message\n"
             "    --hex|-H              print response in ASCII hexadecimal\n"
             "    --immed|-I            set IMMED bit in PT or WUT, exit "
@@ -539,53 +540,77 @@ write_to_rtf(struct opts_t * op, const struct rrti_resp_t * rp)
     return 0;
 }
 
-/* Returns the number of times 'ch' is found in string 's' given the
- * string's length. */
 static int
-num_chs_in_str(const char * s, int slen, int ch)
+sgl_helper(struct opts_t * op, const char * opt, const char * buf,
+           struct scat_gath_elem ** sgl_pp, int * num_elems_p)
 {
-    int res = 0;
+    bool def_hex = false;
+    int len, err;
+    int vb = op->verbose;
+    int64_t ll;
+    const char * cp;
 
-    while (--slen >= 0) {
-        if (ch == s[slen])
-            ++res;
+    len = (int)strlen(buf);
+    if ((('-' == buf[0]) && (1 == len)) || ((len > 1) && ('@' == buf[0])) ||
+        ((len > 2) && ('H' == toupper(buf[0])) && ('@' == buf[1]))) {
+        if ('H' == toupper(buf[0])) {
+            cp = buf + 2;
+            def_hex = true;
+        } else if ('-' == buf[0])
+            cp = buf;
+        else
+            cp = buf + 1;
+        *sgl_pp = file2sgl(cp, def_hex, num_elems_p, &err, true);
+        if (NULL == *sgl_pp) {
+            pr2serr("bad argument to '%s=' [err=%d]\n", opt, err);
+            return err;
+        }
+        if (vb > 1)
+            pr2serr("%s: file, %d sgl elements\n", opt, *num_elems_p);
+    } else if (num_either_ch_in_str(buf, len, ',', ' ') > 0) {
+        *sgl_pp = cli2sgl(buf, num_elems_p, vb > 0);
+        if (NULL == *sgl_pp) {
+            pr2serr("bad cli argument to '%s='\n", opt);
+            return SG_LIB_SYNTAX_ERROR;
+        }
+        if (vb > 1)
+            pr2serr("%s: cli, %d sgl elements\n", opt, *num_elems_p);
+    } else {
+        *sgl_pp = (struct scat_gath_elem *)
+                        calloc(1, sizeof(struct scat_gath_elem));
+        if (NULL == *sgl_pp) {
+            pr2serr("No memory available for '%s='\n", opt);
+            return sg_convert_errno(ENOMEM);
+        }
+        ll = sg_get_llnum(buf);
+        if (-1LL == ll) {
+            pr2serr("bad argument to '%s='\n", opt);
+            return SG_LIB_SYNTAX_ERROR;
+        }
+        (*sgl_pp)->lba = (uint64_t)ll;
+        *num_elems_p = 1;
+        if (vb > 1)
+            pr2serr("%s: single, half a sgl element\n", opt);
     }
-    return res;
+    return 0;
 }
 
 static int
 do_sgl(struct opts_t * op, const char * opt, const char * buf)
 {
-    int k, len, res, got;
+    int k, res, got;
 
-    len = (int)strlen(buf);
-    if ((('-' == buf[0]) && (1 == len)) || ((len > 1) && ('@' == buf[0]))) {
-        res = file_to_sgl(((len > 1) ? (buf + 1) : buf), fixed_sgl, &got,
-                          MAX_FIXED_SGL_ELEMS);
-        if (res) {
-            pr2serr("bad argument to '%s'\n", opt);
-            return SG_LIB_SYNTAX_ERROR;
-        }
-    } else if (num_chs_in_str(buf, len, ',') > 0) {
-        res = cl_to_sgl(buf, fixed_sgl, &got, MAX_FIXED_SGL_ELEMS);
-        if (res) {
-            pr2serr("bad argument to '%s'\n", opt);
-            return SG_LIB_SYNTAX_ERROR;
-        }
-    } else {
-        pr2serr("bad argument to '%s', need at least one LBA,NUM pair\n",
-                 opt);
-        return SG_LIB_SYNTAX_ERROR;
-    }
-    op->in_sgl = fixed_sgl;
-    op->in_sgl_elems = got;
-    op->out_sgl = fixed_sgl;
-    op->out_sgl_elems = got;
+    res = sgl_helper(op, opt, buf, &op->i_sgli.sgl, &got);
+    if (res)
+        return res;
+    op->i_sgli.elems = got;
+    op->o_sgli.sgl = op->i_sgli.sgl;
+    op->o_sgli.elems = got;
     if (op->verbose > 3) {
-        pr2serr("scatter-gather list (%d elements):\n", op->in_sgl_elems);
-        for (k = 0; k < op->in_sgl_elems; ++k)
+        pr2serr("%s: scatter-gather list (%d elements):\n", opt, got);
+        for (k = 0; k < got; ++k)
             pr2serr("  lba: 0x%" PRIx64 ", number: 0x%" PRIx32 "\n",
-                    op->in_sgl[k].lba, op->in_sgl[k].num);
+                    op->i_sgli.sgl[k].lba, op->i_sgli.sgl[k].num);
     }
     return 0;
 }
@@ -603,7 +628,7 @@ main(int argc, char * argv[])
     bool prefer_rcs = false;
     bool req_abort = false;
     bool req_all_toks = false;
-    bool req_pt = false;
+    bool req_pop = false;
     bool req_wut = false;
     int c, k, n, fd, flags, blk_sz, err;
     int do_hex = 0;
@@ -688,11 +713,11 @@ main(int argc, char * argv[])
             do_poll = true;
             break;
         case 'P':       /* takes gather list as argument */
-            if (req_pt) {
+            if (req_pop) {
                 pr2serr("Using two --pt=GL options is contradictory\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-            req_pt = true;
+            req_pop = true;
             sglp = optarg;
             break;
         case 'q':
@@ -813,7 +838,7 @@ main(int argc, char * argv[])
         ++k;
         op->odx_request = ODX_READ_INTO_RODS;
     }
-    if (req_pt) {
+    if (req_pop) {
         ++k;
         op->odx_request = ODX_READ_INTO_RODS;
     }
@@ -859,8 +884,8 @@ main(int argc, char * argv[])
     if (np)
         op->rtf_len_add = true;
 
-    if (req_pt || req_wut) {
-        ret = do_sgl(op, (req_pt ? "--pt=" : "--wut="), sglp);
+    if (req_pop || req_wut) {
+        ret = do_sgl(op, (req_pop ? "--pt=" : "--wut="), sglp);
         if (ret)
             return ret;
     }
@@ -909,6 +934,10 @@ main(int argc, char * argv[])
     }
 
     if (req_abort) {
+        if (op->dry_run) {
+            pr2serr("bypass copy abort\n");
+            goto clean_up;
+        }
         ret = do_copy_abort(op);
         if (ret)
             goto clean_up;
@@ -951,9 +980,14 @@ main(int argc, char * argv[])
             if (ret)
                 goto clean_up;
         }
-    } else if (req_pt) {
+    } else if (req_pop) {
         op->odx_request = ODX_READ_INTO_RODS;
-        num_blks = count_sgl_blocks(op->in_sgl, op->in_sgl_elems);
+        sgl_sum_scan(&op->i_sgli, op->verbose > 4);
+        num_blks = op->i_sgli.sum;
+        if (op->dry_run) {
+            pr2serr("bypass populate token\n");
+            goto clean_up;
+        }
         if ((ret = do_pop_tok(op, 0 /* blk_off */, num_blks,
                               false /* walk_list_id */, op->verbose)))
             goto clean_up;
@@ -1010,7 +1044,12 @@ main(int argc, char * argv[])
                 pr2serr("unable to read %d bytes from '%s', only got %d "
                         "bytes\n", (int)sizeof(rt), op->rtf, ret);
         }
-        num_blks = count_sgl_blocks(op->out_sgl, op->out_sgl_elems);
+        sgl_sum_scan(&op->o_sgli, op->verbose > 4);
+        num_blks = op->o_sgli.sum;
+        if (op->dry_run) {
+            pr2serr("bypass write using token\n");
+            goto clean_up;
+        }
         if ((ret = do_wut(op, rt, 0, num_blks, op->offset_in_rod,
                           true /* assume more left */,
                           false /* walk_list_id */, op->verbose)))
@@ -1068,11 +1107,11 @@ main(int argc, char * argv[])
         printf("Expecting to see an option; try again with '-h'\n");
 
 clean_up:
-    if ((req_pt || req_wut) && op->iflagp->immed && (0 == ret))
+    if ((req_pop || req_wut) && op->iflagp->immed && (0 == ret))
         pr2serr("Started ODX %s command in immediate mode.\nUser may need "
                 "--list_id=%" PRIu32 " on following invocation with "
                 "--receive or\n--poll for completion\n",
-                (req_pt ? "Populate Token" : "Write Using Token"),
+                (req_pop ? "Populate Token" : "Write Using Token"),
                 op->list_id);
     if (op->idip->fd >= 0) {
         if (op->idip->d_type & FT_PT)

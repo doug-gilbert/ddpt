@@ -305,11 +305,12 @@ pt_read_capacity(struct opts_t * op, bool in0_out1, int64_t * num_blks,
 
 /* Build a SCSI READ or WRITE CDB. */
 static int
-pt_build_scsi_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
-                  int64_t start_block, bool write_true,
-                  const struct flags_t * fp, int protect)
+pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
+                     int64_t start_block, bool write_true,
+                     const struct flags_t * fp, int protect)
 {
     int opcode_sa, options_byte, rw_sa;
+    uint64_t s_block = (uint64_t)start_block;
     int * opc_arr;
     int rd_opcode[] = {DDPT_READ6_OC, DDPT_READ10_OC, DDPT_READ12_OC,
                        DDPT_READ16_OC, DDPT_READ32_SA};
@@ -373,13 +374,17 @@ pt_build_scsi_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
         if (0 == opcode_sa)
             opcode_sa = opc_arr[0];
         cdbp[0] = (uint8_t)opcode_sa;
-        sg_put_unaligned_be24((uint32_t)(0x1fffff & start_block), cdbp + 1);
+        sg_put_unaligned_be24((uint32_t)(0x1fffff & s_block), cdbp + 1);
         cdbp[4] = (256 == blocks) ? 0 : (uint8_t)blocks;
         if (blocks > 256) {
             pr2serr("for 6 byte commands, maximum number of blocks is 256\n");
             return 1;
+        } else if (0 == blocks) {
+            pr2serr("for 6 byte commands, cannot send '0 blocks' reads or "
+                    "writes\n");
+            return 1;
         }
-        if ((start_block + blocks - 1) & (~0x1fffff)) {
+        if (s_block > 0x1fffff) {
             pr2serr("for 6 byte commands, can't address blocks beyond %d\n",
                     0x1fffff);
             return 1;
@@ -393,22 +398,30 @@ pt_build_scsi_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
     case 10:
         if (0 == opcode_sa)
             opcode_sa = opc_arr[1];
-        cdbp[0] = (uint8_t)opcode_sa;
-        cdbp[1] = (uint8_t)options_byte;
-        sg_put_unaligned_be32((uint32_t)start_block, cdbp + 2);
-        sg_put_unaligned_be16((uint16_t)blocks, cdbp + 7);
         if (blocks & (~0xffff)) {
             pr2serr("for 10 byte commands, maximum number of blocks is %d\n",
                     0xffff);
             return 1;
         }
+        if (s_block > UINT32_MAX) {
+            pr2serr("for 10 byte commands, starting LBA exceeds 32 bits\n");
+            return 1;
+        }
+        cdbp[0] = (uint8_t)opcode_sa;
+        cdbp[1] = (uint8_t)options_byte;
+        sg_put_unaligned_be32((uint32_t)s_block, cdbp + 2);
+        sg_put_unaligned_be16((uint16_t)blocks, cdbp + 7);
         break;
     case 12:
         if (0 == opcode_sa)
             opcode_sa = opc_arr[2];
+        if (s_block > UINT32_MAX) {
+            pr2serr("for 12 byte commands, starting LBA exceeds 32 bits\n");
+            return 1;
+        }
         cdbp[0] = (uint8_t)opcode_sa;
         cdbp[1] = (uint8_t)options_byte;
-        sg_put_unaligned_be32((uint32_t)start_block, cdbp + 2);
+        sg_put_unaligned_be32((uint32_t)s_block, cdbp + 2);
         sg_put_unaligned_be32((uint32_t)blocks, cdbp + 6);
         break;
     case 16:
@@ -416,7 +429,7 @@ pt_build_scsi_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
             opcode_sa = opc_arr[3];
         cdbp[0] = (uint8_t)opcode_sa;
         cdbp[1] = (uint8_t)options_byte;
-        sg_put_unaligned_be64(start_block, cdbp + 2);
+        sg_put_unaligned_be64(s_block, cdbp + 2);
         sg_put_unaligned_be32((uint32_t)blocks, cdbp + 10);
         break;
     case 32:
@@ -427,7 +440,7 @@ pt_build_scsi_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
         rw_sa = opcode_sa;
         sg_put_unaligned_be16((uint16_t)rw_sa, cdbp + 8);
         cdbp[10] = (uint8_t)options_byte;
-        sg_put_unaligned_be64(start_block, cdbp + 12);
+        sg_put_unaligned_be64(s_block, cdbp + 12);
         sg_put_unaligned_be32((uint32_t)blocks, cdbp + 28);
         break;
     default:
@@ -459,8 +472,8 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
     uint8_t sense_b[SENSE_BUFF_LEN];
     struct sg_scsi_sense_hdr ssh;
 
-    if (pt_build_scsi_cdb(rdCmd, fp->cdbsz, blocks, from_block, false,
-                          fp, protect)) {
+    if (pt_build_scsi_rw_cdb(rdCmd, fp->cdbsz, blocks, from_block, false,
+                             fp, protect)) {
         pr2serr("bad rd cdb build, from_block=%" PRId64 ", blocks=%d\n",
                 from_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
@@ -842,8 +855,8 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
     uint8_t wrCmd[MAX_SCSI_CDBSZ];
     uint8_t sense_b[SENSE_BUFF_LEN];
 
-    if (pt_build_scsi_cdb(wrCmd, fp->cdbsz, blocks, to_block, 1, fp,
-                          op->wrprotect)) {
+    if (pt_build_scsi_rw_cdb(wrCmd, fp->cdbsz, blocks, to_block, 1, fp,
+                             op->wrprotect)) {
         pr2serr("bad wr cdb build, to_block=%" PRId64 ", blocks=%d\n",
                 to_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
@@ -998,7 +1011,7 @@ pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
     int k, ret, res, sense_cat, vt;
     int sg_fd = op->odip->fd;
     uint32_t unum;
-    uint64_t llba;
+    uint64_t s_block = start_block;
     struct sg_pt_base * ptvp = op->odip->ptvp;
     uint8_t wsCmdBlk[16];
     uint8_t sense_b[SENSE_BUFF_LEN];
@@ -1007,8 +1020,7 @@ pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
     wsCmdBlk[0] = 0x93;         /* WRITE SAME(16) opcode */
     /* set UNMAP; clear wrprotect, anchor, pbdata, lbdata */
     wsCmdBlk[1] = 0x8;
-    llba = start_block;
-    sg_put_unaligned_be64(llba, wsCmdBlk + 2);
+    sg_put_unaligned_be64(s_block, wsCmdBlk + 2);
     unum = blocks;
     sg_put_unaligned_be32(unum, wsCmdBlk + 10);
     if (op->verbose > 2) {
