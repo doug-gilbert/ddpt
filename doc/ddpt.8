@@ -1,4 +1,4 @@
-.TH DDPT "8" "April 2018" "ddpt\-0.96" DDPT
+.TH DDPT "8" "May 2018" "ddpt\-0.96" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -22,7 +22,7 @@ For comparison here is the synopsis for GNU's dd command:
 [\fIbs=BS\fR] [\fIcbs=CBS\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
 [\fIibs=IBS\fR] [\fIif=IFILE\fR] [\fIiflag=FLAGS\fR] [\fIobs=OBS\fR]
 [\fIof=OFILE\fR] [\fIoflag=FLAGS\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR]
-[\fIstatus=STAT\fR] [\fI\-\-dry\-run\fR] [\fI\-\-help\fR] [\fI\-\-version\fR]
+[\fIstatus=STAT\fR] [\fI\-\-help\fR] [\fI\-\-version\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
@@ -161,7 +161,7 @@ If a 'hard' gather list is given to \fIskip=SKIP\fR or a 'hard' scatter list
 is given to \fIseek=SEEK\fR then typically \fIcount=COUNT\fR should not be
 supplied. This is because a 'hard' scatter gather list implies a transfer
 count. If both are given then ddpt will exit if they are unequal, the force
-flas can be used to override this action. See the SCATTER GATHER LISTS
+flag can be used to override this action. See the SCATTER GATHER LISTS
 section below for a discussion of 'hard' and 'soft' scatter gather lists.
 .TP
 \fBdelay\fR=\fIMS[,W_MS]\fR
@@ -375,6 +375,11 @@ does all the argument and option processing, opens given file and devices but
 bypasses the copy stage. For complex command line invocations or for testing
 invocations to be placed in script files, this option may be useful to check
 for syntax and related errors.
+.br
+When used once the logic bypasses the copy just before it would normally
+start copying. When used twice (or more) it goes deeper into the copy to the
+IO call level before bypassing the calls. To see (on stderr) information
+for each IO this option combination may be useful: '\-ddvv'.
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 reports usage message then exits.
@@ -510,7 +515,9 @@ monotonic and whether it has overlapping elements. The term monotonic is
 used to indicate whether each LBA is in ascending order, with each LBA
 greater than the previous element's LBA. Overlapping refers to the
 situation when any element's LBA range intersects with any other element's
-range. Overlapping elements are not good (but not necessarily fatal). The
+range. Elements that have zero number of blocks (i.e. degenerate) are
+ignored for determining monotonic and overlapping (and the lowest LBA).
+Overlapping elements are not good (but not necessarily fatal). The
 above mentioned WRITE SCATTERED command allows the medium's logic to write
 elements in any order it prefers. That means if elements overlap, then the
 user doesn't know which one gets written last (overwriting the one written
@@ -528,15 +535,18 @@ but cause no associated action. This utility uses the concept of
 a 'hard' and 'soft' scatter gather list: a 'soft' list is one in which
 the last element's number_of_blocks is zero (i.e. it's degenerate). A
 list with a non\-zero number_of_blocks in its last element is
-considered 'hard'. Notice that the special case when only A1 is given on
-the command line (and N1 is set to zero) forms a 1 element degenerate
+considered 'hard'. Notice that the special case when only A1 is given on the
+command line (and hence N1 defaults to zero) forms a 1 element degenerate
 scatter gather list. The difference between a hard and soft list is the
 way the sum of number_of_blocks of all elements is used by this utility.
 For 'hard' lists that sum is used for \fICOUNT\fR when the \fIcount=COUNT\fR
 option is not given; and if \fIcount=COUNT\fR is given and the counts differ
 then those two values are output and this utility exits with a syntax error.
-For a 'soft' list the degenerate last element is interpreted as "from there
-to the end of the copy" where the \fICOUNT\fR is determined some other way.
+For a 'soft' list the degenerate last element is interpreted as "from the
+highest LBA in the list to the end of the copy" where the \fICOUNT\fR is
+determined some other way. The "highest LBA" is calculated from all
+elements that have a non\-zero number of blocks plus the LBA of the last
+element (regardless of whether it is degenerate or not).
 .PP
 Some implementation details: Logical Block Addresses (LBAs) are stored in
 64 bit integers which is more than sufficient to span even the largest
@@ -624,6 +634,11 @@ block device (accessed via Unix read() and write() commands, a pass\-through
 device, an ODX offloaded copy or a XCOPY(LID1) offloaded copy respectively.
 Other special file types that are sometimes referred to are "fifo"
 and "tape".
+.TP
+00 [i]
+This replaces \fIIFILE\fR with a source of 0x0 bytes. Can only be used
+on input and an error is generated if the \fIif=IFILE\fR option is also
+given. Equivalent to using "if=/dev/zero" or an equivalent.
 .TP
 append [o] [reg], [io] [odx]
 causes the O_APPEND flag to be added to the open of \fIOFILE\fR. For regular
@@ -793,7 +808,7 @@ Token in a odx full copy. In a large odx full copy several ROD Tokens may
 be used (one after the other). The default action is to set the DEL_TKN bit
 on the last WUT command of each ROD. Either way it should not make much
 difference because the copy manager deletes a ROD Token when its inactivity
-time-out occurs.
+time\-out occurs.
 .TP
 nofm [o] [tape]
 no File Mark (FM) on close when writing to tape. See TAPE section.
@@ -1250,7 +1265,7 @@ are given, suffix multipliers cannot be used.
 .PP
 If a numeric argument is required to fit in 32 bits and is too large then
 an error is reported. Usually negative numbers are not permitted
-but "count=-1" is a special case and means "all available"; "verbose=-1"
+but "count=\-1" is a special case and means "all available"; "verbose=\-1"
 is another special case.
 .SH NOTES
 Copying data behind an Operating System's back can cause problems. In the
@@ -1523,7 +1538,7 @@ the PRE\-FETCH command (see SBC\-4) yields this status.
 .B 26
 the \fIDEVICE\fR reports a SCSI status of "busy". SAM\-5 defines this
 status as the logical unit is temporarily unable to process a command.
-It is recommended to re-issue the command.
+It is recommended to re\-issue the command.
 .TP
 .B 27
 the \fIDEVICE\fR reports a SCSI status of "task set full".

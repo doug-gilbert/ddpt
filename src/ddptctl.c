@@ -64,7 +64,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.96 20180413 [svn: r346]";
+const char * ddptctl_version_str = "0.96 20180503 [svn: r347]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -174,7 +174,8 @@ usage()
             "    --block|-B            treat as block DEVICE (def: use "
             "SCSI commands)\n"
             "    --del_tkn|-D          set DEL_TKN bit in WUT command\n"
-            "    --dry-run|-d          do preparation, bypass copy\n"
+            "    --dry-run|-d          do preparation, bypass modifying "
+            "operations\n"
             "    --help|-h             print out usage message\n"
             "    --hex|-H              print response in ASCII hexadecimal\n"
             "    --immed|-I            set IMMED bit in PT or WUT, exit "
@@ -600,17 +601,17 @@ do_sgl(struct opts_t * op, const char * opt, const char * buf)
 {
     int k, res, got;
 
-    res = sgl_helper(op, opt, buf, &op->i_sgli.sgl, &got);
+    res = sgl_helper(op, opt, buf, &op->i_sgli.sglp, &got);
     if (res)
         return res;
     op->i_sgli.elems = got;
-    op->o_sgli.sgl = op->i_sgli.sgl;
+    op->o_sgli.sglp = op->i_sgli.sglp;
     op->o_sgli.elems = got;
     if (op->verbose > 3) {
         pr2serr("%s: scatter-gather list (%d elements):\n", opt, got);
         for (k = 0; k < got; ++k)
             pr2serr("  lba: 0x%" PRIx64 ", number: 0x%" PRIx32 "\n",
-                    op->i_sgli.sgl[k].lba, op->i_sgli.sgl[k].num);
+                    op->i_sgli.sglp[k].lba, op->i_sgli.sglp[k].num);
     }
     return 0;
 }
@@ -657,7 +658,7 @@ main(int argc, char * argv[])
     while (1) {
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "AaBDhHiIl:O:pP:qr:Rst:T:vVw:y",
+        c = getopt_long(argc, argv, "AaBdDhHiIl:O:pP:qr:Rst:T:vVw:y",
                         long_options, &option_index);
         if (c == -1)
             break;
@@ -671,6 +672,9 @@ main(int argc, char * argv[])
             break;
         case 'B':
             do_block = true;
+            break;
+        case 'd':
+            ++op->dry_run;
             break;
         case 'D':
             op->oflagp->del_tkn = true;
@@ -822,7 +826,7 @@ main(int argc, char * argv[])
     }
     if ('\0' == op->idip->fn[0]) {
         if (! op->rtf[0]) {
-            pr2serr("missing device name!\n");
+            pr2serr("missing device name!\n\n");
             usage();
             return SG_LIB_SYNTAX_ERROR;
         }
@@ -982,7 +986,7 @@ main(int argc, char * argv[])
         }
     } else if (req_pop) {
         op->odx_request = ODX_READ_INTO_RODS;
-        sgl_sum_scan(&op->i_sgli, op->verbose > 4);
+        sgl_sum_scan(&op->i_sgli, "req_pop", op->verbose > 1);
         num_blks = op->i_sgli.sum;
         if (op->dry_run) {
             pr2serr("bypass populate token\n");
@@ -1044,7 +1048,7 @@ main(int argc, char * argv[])
                 pr2serr("unable to read %d bytes from '%s', only got %d "
                         "bytes\n", (int)sizeof(rt), op->rtf, ret);
         }
-        sgl_sum_scan(&op->o_sgli, op->verbose > 4);
+        sgl_sum_scan(&op->o_sgli, "req_wut", op->verbose > 1);
         num_blks = op->o_sgli.sum;
         if (op->dry_run) {
             pr2serr("bypass write using token\n");

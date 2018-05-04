@@ -222,8 +222,8 @@ a_xcopy_lid1_cmd(struct opts_t * op, uint8_t *src_desc, int src_desc_len,
     uint8_t xcopyBuff[256];
     int desc_offset = 16;
     int seg_desc_len, verb, err_vb, fd, tmout;
-    uint64_t src_lba = op->skip;
-    uint64_t dst_lba = op->seek;
+    uint64_t src_lba = op->i_sgli.lowest_lba;
+    uint64_t dst_lba = op->o_sgli.lowest_lba;
 
     fd = (op->iflagp->xcopy) ? op->idip->fd : op->odip->fd;
     verb = (op->verbose > 1) ? (op->verbose - 2) : 0;
@@ -697,7 +697,12 @@ do_xcopy_lid1(struct opts_t * op)
     const struct flags_t * ofp = op->oflagp;
     const struct dev_info_t * idip = op->idip;
     const struct dev_info_t * odip = op->odip;
+    struct cp_state_t * csp;
+    struct cp_state_t cp_st;
 
+    csp = &cp_st;
+    cp_state_init(csp, op);
+    memset(csp, 0, sizeof(*csp));
     if (op->list_id_given && (op->list_id > UCHAR_MAX)) {
         pr2serr("list_id for xcopy(LID1) cannot exceed 255\n");
         return SG_LIB_SYNTAX_ERROR;
@@ -849,10 +854,12 @@ do_xcopy_lid1(struct opts_t * op)
             }
             break;
         }
-        op->in_full += blocks;
-        op->out_full += oblocks;
-        op->skip += blocks;
-        op->seek += oblocks;
+        op->stats.in_full += blocks;
+        op->stats.out_full += oblocks;
+        if (! sgl_iter_add(&csp->in_iter, blocks, true /* relative */))
+            pr2serr("%s: sgl_iter_add(in) failed\n", __func__);
+        if (! sgl_iter_add(&csp->out_iter, oblocks, true))
+            pr2serr("%s: sgl_iter_add(out) failed\n", __func__);
         op->num_xcopy++;
         op->dd_count -= blocks;
         if (op->dd_count > 0)
@@ -1423,7 +1430,11 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
     const struct scat_gath_elem * sglp;
     uint8_t * pl;
     uint8_t * free_pl;
+    struct cp_state_t * csp;
+    struct cp_state_t cp_st;
 
+    csp = &cp_st;
+    cp_state_init(csp, op);
     if (vb_a)
         pr2serr("%s: blk_off=%" PRIu64 ", num_blks=%"  PRIu32 "\n", __func__,
                 blk_off, num_blks);
@@ -1434,9 +1445,10 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
     else
         err_vb = 0;
     fd = op->idip->fd;
-    if (op->i_sgli.sgl) {
+    if (op->i_sgli.sglp) {
         sg0_off = blk_off;
-        for (k = 0, sglp = op->i_sgli.sgl; k < op->i_sgli.elems; ++k, ++sglp) {
+        sglp = op->i_sgli.sglp;
+        for (k = 0; k < op->i_sgli.elems; ++k, ++sglp) {
             if ((uint64_t)sglp->num >= sg0_off)
                 break;
             sg0_off -= sglp->num;
@@ -1469,6 +1481,8 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
     /* if inactivity_to=0 then cm takes default in TPC VPD page */
     sg_put_unaligned_be32((uint32_t)op->inactivity_to, pl + 4);
 
+    len = 32;           /* temporary, stop uninitialized warning */
+    sz_bdrd = 16;       /* temporary, stop uninitialized warning */
     if (sglp) {
         lba = sglp->lba + sg0_off;
         num = sglp->num - sg0_off;
@@ -1490,6 +1504,7 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
         sz_bdrd = k * 16;
         sg_put_unaligned_be16(sz_bdrd, pl + 14);
         len = n + 1;
+#if 0           /* should always have sgl. so this shouldn't ... */
     } else {    /* assume count= and possibly skip= given */
         sz_bdrd = 16;       /* single element */
         sg_put_unaligned_be16(sz_bdrd, pl + 14);
@@ -1500,6 +1515,7 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
         sg_put_unaligned_be64(lba, pl + 16);
         sg_put_unaligned_be32(num_blks, pl + 24);
         len = 32;
+#endif
     }
     n = len - 2;
     sg_put_unaligned_be16((uint16_t)n, pl + 0);
@@ -1809,8 +1825,8 @@ do_wut(struct opts_t * op, uint8_t * tokp, uint64_t blk_off,
                 " oir=0x%" PRIx64 "\n", __func__, blk_off, num_blks, oir);
     flp = op->oflagp;
     rodt_blk_zero = (RODT_BLK_ZERO == op->rod_type);
-    if (op->o_sgli.sgl) {
-        sglp = op->o_sgli.sgl;
+    if (op->o_sgli.sglp) {
+        sglp = op->o_sgli.sglp;
         for (k = 0, sg0_off = blk_off; k < op->o_sgli.elems; ++k, ++sglp) {
             if ((uint64_t)sglp->num >= sg0_off)
                 break;
@@ -1848,6 +1864,7 @@ do_wut(struct opts_t * op, uint8_t * tokp, uint64_t blk_off,
         sg_put_unaligned_be64(oir, pl + 8);
     memcpy(pl + 16, tokp, 512);
 
+    sz_bdrd = 16;       /* temporary, stop uninitialized warning */
     if (sglp) {
         lba = sglp->lba + sg0_off;
         num = sglp->num - sg0_off;
@@ -1868,6 +1885,7 @@ do_wut(struct opts_t * op, uint8_t * tokp, uint64_t blk_off,
         }
         sz_bdrd = 16 * k;
         sg_put_unaligned_be16(sz_bdrd, pl + 534);
+#if 0           /* should always have sgl. so this shouldn't ... */
     } else {
         sz_bdrd = 16;   /* single element */
         sg_put_unaligned_be16(sz_bdrd, pl + 534);
@@ -1877,6 +1895,7 @@ do_wut(struct opts_t * op, uint8_t * tokp, uint64_t blk_off,
                     num_blks);
         sg_put_unaligned_be64(lba, pl + 536);
         sg_put_unaligned_be32(num_blks, pl + 544);
+#endif
     }
     len = 536 +  sz_bdrd;
     n = len - 2;
@@ -2064,9 +2083,9 @@ odx_full_zero_copy(struct opts_t * op)
     if (res)
         return res;
     v = out_num_blks;
-    if (op->o_sgli.sgl) {  /* scatter list */
+    if (op->o_sgli.sglp) {  /* scatter list */
         out_elems = op->o_sgli.elems;
-        sgl_sum_scan(&op->o_sgli, op->verbose > 4);
+        sgl_sum_scan(&op->o_sgli, "odx full zero", op->verbose > 1);
         out_num_blks = op->o_sgli.sum;
     } else { /* no scatter list */
         out_elems = 1;
@@ -2080,7 +2099,7 @@ odx_full_zero_copy(struct opts_t * op)
     if ((op->dd_count < 0) && (0 == out_num_blks)) {
         if (1 == op->verbose)
             pr2serr("%s: zero the lot after scaling for seek=\n", __func__);
-        v -= op->seek;
+        v -= op->o_sgli.lowest_lba;
         if (v < 0) {
             pr2serr("%s: seek exceeds out device size\n", __func__);
             return SG_LIB_SYNTAX_ERROR;
@@ -2089,7 +2108,7 @@ odx_full_zero_copy(struct opts_t * op)
     }
     out_blk_off = 0;
     op->dd_count = out_num_blks;
-    op->dd_count_start = op->dd_count;
+    op->stats.dd_count_start = op->dd_count;
 
     /* Build fixed format ROD Token Block Zero; specified by SBC-3 */
     memset(local_rod_token, 0, sizeof(local_rod_token));
@@ -2107,8 +2126,8 @@ odx_full_zero_copy(struct opts_t * op)
         if ((odip->odxp->max_tok_xfer_size > 0) &&
             (num > odip->odxp->max_tok_xfer_size))
             num = odip->odxp->max_tok_xfer_size;
-        if (op->o_sgli.sgl)
-            num = count_sgl_blocks_from(op->o_sgli.sgl, out_elems,
+        if (op->o_sgli.sglp)
+            num = count_sgl_blocks_from(op->o_sgli.sglp, out_elems,
                                         out_blk_off, num,
                                         odip->odxp->max_range_desc);
         if ((res = do_wut(op, local_rod_token, out_blk_off, num, 0, 0,
@@ -2121,7 +2140,7 @@ odx_full_zero_copy(struct opts_t * op)
                     __func__);
             // ouch, think about this one
         }
-        op->out_full += tc;
+        op->stats.out_full += tc;
         out_blk_off += num;
         op->dd_count -= tc;
     }
@@ -2146,9 +2165,9 @@ odx_read_into_rods(struct opts_t * op)
     if (res)
         return res;
     u = in_num_blks;
-    if (op->i_sgli.sgl) {   /* gather list */
+    if (op->i_sgli.sglp) {   /* gather list */
         in_elems = op->i_sgli.elems;
-        sgl_sum_scan(&op->i_sgli, op->verbose > 4);
+        sgl_sum_scan(&op->i_sgli, "read into rods", op->verbose > 1);
         in_num_blks = op->i_sgli.sum;
         if (got_count && (in_num_blks != op->dd_count)) {
             pr2serr("%s: count= value not equal to the sum of gather nums\n",
@@ -2167,7 +2186,7 @@ odx_read_into_rods(struct opts_t * op)
     if ((op->dd_count < 0) && (0 == in_num_blks)) {
         if (op->verbose > 1)
             pr2serr("%s: read the lot after scaling for skip=\n", __func__);
-        u -= op->skip;
+        u -= op->i_sgli.lowest_lba;
         if (u < 0) {
             pr2serr("%s: skip exceeds input device size\n", __func__);
             return SG_LIB_SYNTAX_ERROR;
@@ -2177,7 +2196,7 @@ odx_read_into_rods(struct opts_t * op)
 
     in_blk_off = 0;
     op->dd_count = in_num_blks;
-    op->dd_count_start = op->dd_count;
+    op->stats.dd_count_start = op->dd_count;
     if (op->verbose > 1)
         pr2serr("%s: about to read %" PRIi64 " blocks\n", __func__,
                 in_num_blks);
@@ -2192,8 +2211,8 @@ odx_read_into_rods(struct opts_t * op)
         if ((idip->odxp->max_tok_xfer_size > 0) &&
             (num > idip->odxp->max_tok_xfer_size))
             num = idip->odxp->max_tok_xfer_size;
-        if (op->i_sgli.sgl)
-            num = count_sgl_blocks_from(op->i_sgli.sgl, in_elems,
+        if (op->i_sgli.sglp)
+            num = count_sgl_blocks_from(op->i_sgli.sglp, in_elems,
                                         in_blk_off, num,
                                         idip->odxp->max_range_desc);
         if (op->verbose > 2)
@@ -2209,7 +2228,7 @@ odx_read_into_rods(struct opts_t * op)
                     "count\n", __func__);
             // ouch, think about this one
         }
-        op->in_full += tc_i;
+        op->stats.in_full += tc_i;
         in_blk_off += tc_i;
         op->dd_count -= tc_i;
     }
@@ -2235,9 +2254,9 @@ odx_write_from_rods(struct opts_t * op)
     if (res)
         return res;
     v = out_num_blks;
-    if (op->o_sgli.sgl) {  /* scatter list */
+    if (op->o_sgli.sglp) {  /* scatter list */
         out_elems = op->o_sgli.elems;
-        sgl_sum_scan(&op->o_sgli, op->verbose > 4);
+        sgl_sum_scan(&op->o_sgli, "write from rods", op->verbose > 1);
         out_num_blks = op->o_sgli.sum;
     } else { /* no scatter list */
         out_elems = 1;
@@ -2251,7 +2270,7 @@ odx_write_from_rods(struct opts_t * op)
     if ((op->dd_count < 0) && (0 == out_num_blks)) {
         if (op->verbose > 1)
             pr2serr("%s: write the lot after scaling for seek=\n", __func__);
-        v -= op->seek;
+        v -= op->o_sgli.lowest_lba;
         if (v < 0) {
             pr2serr("%s: seek exceeds out device size\n", __func__);
             return SG_LIB_SYNTAX_ERROR;
@@ -2261,7 +2280,7 @@ odx_write_from_rods(struct opts_t * op)
 
     out_blk_off = 0;
     op->dd_count = out_num_blks;
-    op->dd_count_start = op->dd_count;
+    op->stats.dd_count_start = op->dd_count;
     if (op->verbose > 1)
         pr2serr("%s: about to write %" PRIi64 " blocks (seen from output)\n",
                     __func__, out_num_blks);
@@ -2341,8 +2360,8 @@ odx_write_from_rods(struct opts_t * op)
             if ((odip->odxp->max_tok_xfer_size > 0) &&
                 (r_o_num > odip->odxp->max_tok_xfer_size))
                 r_o_num = odip->odxp->max_tok_xfer_size;
-            if (op->o_sgli.sgl)
-                r_o_num = count_sgl_blocks_from(op->o_sgli.sgl, out_elems,
+            if (op->o_sgli.sglp)
+                r_o_num = count_sgl_blocks_from(op->o_sgli.sglp, out_elems,
                                                 out_blk_off, r_o_num,
                                                 odip->odxp->max_range_desc);
             res = do_wut(op, rt, out_blk_off, r_o_num, oir,
@@ -2356,7 +2375,7 @@ odx_write_from_rods(struct opts_t * op)
                         "count\n", __func__);
                 // ouch, could have over-drained ROD
             }
-            op->out_full += tc_o;
+            op->stats.out_full += tc_o;
             out_blk_off += tc_o;
             op->dd_count -= tc_o;
         }
@@ -2408,9 +2427,9 @@ odx_full_copy(struct opts_t * op)
             return SG_LIB_CAT_OTHER;
         }
     }
-    if (op->i_sgli.sgl) {   /* gather list */
+    if (op->i_sgli.sglp) {   /* gather list */
         in_elems = op->i_sgli.elems;
-        sgl_sum_scan(&op->i_sgli, op->verbose > 4);
+        sgl_sum_scan(&op->i_sgli, "odx full(in)", op->verbose > 1);
         in_num_blks = op->i_sgli.sum;
         if (got_count && (in_num_blks != op->dd_count)) {
             pr2serr("%s: count= value not equal to the sum of gather nums\n",
@@ -2421,9 +2440,9 @@ odx_full_copy(struct opts_t * op)
         in_elems = 1;
         in_num_blks = got_count ? op->dd_count : 0;
     }
-    if (op->o_sgli.sgl) {  /* scatter list */
+    if (op->o_sgli.sglp) {  /* scatter list */
         out_elems = op->o_sgli.elems;
-        sgl_sum_scan(&op->o_sgli, op->verbose > 4);
+        sgl_sum_scan(&op->o_sgli, "odx full(out)", op->verbose > 1);
         out_num_blks = op->o_sgli.sum;
         if (oneto1) {
             if (got_count && (out_num_blks != op->dd_count)) {
@@ -2443,7 +2462,7 @@ odx_full_copy(struct opts_t * op)
             }
         } else { /* unequal block size */
             u = out_blk_sz * out_num_blks;
-            if (op->i_sgli.sgl && (u != (in_blk_sz * in_num_blks))) {
+            if (op->i_sgli.sglp && (u != (in_blk_sz * in_num_blks))) {
                 pr2serr("%s: number of blocks in both lists need to reflect "
                         "the same number of bytes, but don't\n", __func__);
                 return SG_LIB_SYNTAX_ERROR;
@@ -2476,8 +2495,8 @@ odx_full_copy(struct opts_t * op)
         if (op->verbose > 1)
             pr2serr("%s: copy the lot after scaling for skip= and seek=\n",
                     __func__);
-        u -= op->skip;
-        v -= op->seek;
+        u -= op->i_sgli.lowest_lba;
+        v -= op->o_sgli.lowest_lba;
         if (u < 0) {
             pr2serr("%s: skip exceeds input device size\n", __func__);
             return SG_LIB_SYNTAX_ERROR;
@@ -2508,7 +2527,7 @@ odx_full_copy(struct opts_t * op)
     in_blk_off = 0;
     out_blk_off = 0;
     op->dd_count = in_num_blks;
-    op->dd_count_start = op->dd_count;
+    op->stats.dd_count_start = op->dd_count;
     if (op->verbose > 1)
         pr2serr("%s: about to copy %" PRIi64 " blocks (seen from input)\n",
                     __func__, in_num_blks);
@@ -2523,8 +2542,8 @@ odx_full_copy(struct opts_t * op)
         if ((idip->odxp->max_tok_xfer_size > 0) &&
             (num > idip->odxp->max_tok_xfer_size))
             num = idip->odxp->max_tok_xfer_size;
-        if (op->i_sgli.sgl)
-            num = count_sgl_blocks_from(op->i_sgli.sgl, in_elems,
+        if (op->i_sgli.sglp)
+            num = count_sgl_blocks_from(op->i_sgli.sglp, in_elems,
                                  in_blk_off, num, idip->odxp->max_range_desc);
         if (! oneto1) {
             if (in_mult) {
@@ -2559,7 +2578,7 @@ odx_full_copy(struct opts_t * op)
                     "count\n", __func__);
             // ouch, think about this one
         }
-        op->in_full += tc_i;
+        op->stats.in_full += tc_i;
         in_blk_off += tc_i;
 
         for (oir = 0; o_num > 0; oir += r_o_num, o_num -= r_o_num) {
@@ -2573,8 +2592,8 @@ odx_full_copy(struct opts_t * op)
             if ((odip->odxp->max_tok_xfer_size > 0) &&
                 (r_o_num > odip->odxp->max_tok_xfer_size))
                 r_o_num = odip->odxp->max_tok_xfer_size;
-            if (op->o_sgli.sgl)
-                r_o_num = count_sgl_blocks_from(op->o_sgli.sgl, out_elems,
+            if (op->o_sgli.sglp)
+                r_o_num = count_sgl_blocks_from(op->o_sgli.sglp, out_elems,
                                                 out_blk_off, r_o_num,
                                                 odip->odxp->max_range_desc);
             res = do_wut(op, local_rod_token, out_blk_off, r_o_num, oir,
@@ -2588,7 +2607,7 @@ odx_full_copy(struct opts_t * op)
                         "count\n", __func__);
                 // ouch, could have over-drained ROD
             }
-            op->out_full += tc_o;
+            op->stats.out_full += tc_o;
             out_blk_off += tc_o;
         }
         op->dd_count -= tc_i;

@@ -263,13 +263,13 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
 
     if (ifull_extrap)
         *ifull_extrap = 0;
-    if (offset != csp->if_filepos) {
+    if (offset != csp->in_iter.filepos) {
         if (verbose > 2)
             pr2serr("moving if filepos: new_pos=%" PRId64 "\n",
                     (int64_t)offset);
         if (win32_set_file_pos(op, DDPT_ARG_IN, offset, verbose))
             return SG_LIB_FILE_ERROR;
-        csp->if_filepos = offset;
+        csp->in_iter.filepos = offset;
     }
     res = win32_block_read(op, bp, numbytes, verbose);
     if (res < 0) {
@@ -286,20 +286,20 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
                 my_skip = op->skip;
                 for (k = 0; k < csp->icbpt;
                      ++k, ++my_skip, bp += ibs, offset += ibs) {
-                    if (offset != csp->if_filepos) {
+                    if (offset != csp->in_iter.filepos) {
                         if (verbose > 2)
                             pr2serr("moving if filepos: new_pos=%" PRId64
                                     "\n", (int64_t)offset);
                         if (win32_set_file_pos(op, DDPT_ARG_IN, offset,
                             verbose))
                             return SG_LIB_FILE_ERROR;
-                        csp->if_filepos = offset;
+                        csp->in_iter.filepos = offset;
                     }
                     memset(bp, 0, ibs);
                     res = win32_block_read(op, bp, ibs, verbose);
                     if (ibs == res) {
                         zero_coe_limit_count(op);
-                        csp->if_filepos += ibs;
+                        csp->in_iter.filepos += ibs;
                         if (verbose > 2)
                             pr2serr("reading 1 block, skip=%" PRId64 " : "
                                     "okay\n", my_skip);
@@ -337,7 +337,7 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
                 pr2serr("short read, requested %d blocks, got %d blocks\n",
                         numbytes / ibs, csp->icbpt);
         }
-        csp->if_filepos += res;
+        csp->in_iter.filepos += res;
         if (ifull_extrap)
             *ifull_extrap = csp->icbpt;
     }
