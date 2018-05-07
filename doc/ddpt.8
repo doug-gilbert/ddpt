@@ -427,146 +427,6 @@ the entry on \fI\-\-job=JF\fR above. For sanity \fIJF\fR is checked to make
 sure it is "regular" (i.e. not a device file like /dev/sdc) and for non
 ASCII characters lest it be a binary file by accident. Failing those checks
 may be overridden by 'iflag=force' or 'oflag=force'.
-.SH COUNT
-When the \fIcount=COUNT\fR option is not given (or \fICOUNT\fR is '\-1')
-then an attempt is made to deduce \fICOUNT\fR as follows.
-.PP
-When both or either \fIIFILE\fR and \fIOFILE\fR are block devices, then
-the minimum size, expressed in units of input blocks, is used. When both
-or either \fIIFILE\fR and \fIOFILE\fR are pass\-through devices, then the
-minimum size, expressed in units of input blocks, is used.
-.PP
-If a regular file is used as input, its size, expressed in units of input
-blocks (and rounded up if necessary) is used. Note that the rounding up
-of the deduced \fICOUNT\fR may result in a partial read of the last input
-block and a corresponding partial write to \fIOFILE\fR if it is a regular
-file. After a regular file to regular file copy the length of \fIOFILE\fR
-will be the same as \fIIFILE\fR unless \fIOFILE\fR existed and its length
-was already greater than that of \fIIFILE\fR. To get a copy like the
-standard Unix cp command, use oflag=trunc with ddpt.
-.PP
-The size of pt devices is deduced from the SCSI READ CAPACITY command.
-Block device sizes (or their partition sizes) are obtained from the
-operating system, if available.
-.PP
-If \fIskip=SKIP\fR or \fIskip=SEEK\fR are given and the \fICOUNT\fR is
-deduced (i.e. not explicitly given) then that size is scaled back so
-that the copy will not overrun the file or device.
-.PP
-If \fICOUNT\fR is not given and \fIIFILE\fR is a fifo (and stdin is
-treated as a fifo) then \fIIFILE\fR is read until an EOF is detected.
-If \fICOUNT\fR is not given and \fIIFILE\fR is a /dev/zero (or
-equivalent) then zeros are read until an error occurs (e.g. file
-system full).
-.PP
-If \fICOUNT\fR is not given and cannot be deduced then an error message
-is issued and no copy takes place.
-.SH SCATTER GATHER LISTS
-The \fIskip=SKIP\fR and \fIseek=SEEK\fR options (and their aliases) can
-take scatter gather lists. These can be explicit on the command line,
-fed in through stdin or in a file whose name is prefixed by "@" or "H@"
-on the command line. For large scatter gather lists, placing them in a
-file is the most practical as command lines are limited in length.
-Scatter gather list is a collective term for either a scatter list or
-a gather list. The actual implementation of each list is an array.
-Syntactically a scatter list and a gather list are the same.
-.PP
-Conceptually these scatter gather lists refer to what happens at the "far
-end" (e.g. on a hard disk), not what happens in the computer's memory.
-So a gather list is associated with the read part of a copy (i.e. the
-first half) where a list of Logical Blocks (identified by their addresses,
-hence LBAs) and a number of consecutive, following blocks are "gathered"
-from the medium (e.g.  a SSD). They are formed into a linear sequence of
-bytes that is transferred into a segment in the computer's RAM. The second
-half of the copy, the write part, may use a scatter list. A scatter list
-starts with a linear sequence of bytes, taken from the segment, that is
-then "scattered" on the medium as indicated by the list of LBA and
-number_of_block pairs.
-.PP
-In the simplest form a scatter gather list is given on the command line
-and has the form: A1,N1[,A2,N2[,A3,N3...]]. There must be an even number
-of items (i.e. for every An there should be a following Nn) with one
-exception: when A1 alone is given, in which case the value 0 is assumed
-for N1. Comma is the simplest separator for the command line, but
-whitespace may also be used (but needs to be escaped because the shell
-usually interprets whitespace as an option separator). In a file (or
-read from stdin or file redirection) more flexibility is permitted in
-the format. The LBA, number_of_blocks pairs could all appear on one
-line in a file but the line length is limited to 1024 characters. So
-for longer scatter gather lists one pair per line is recommended in file
-format. Also in file format everything from and including '#' is ignored
-as are lines that are empty or only contain whitespace(s).
-.PP
-By default all numbers given for LBA and number_of_blocks items are in
-decimal with optional suffix multipliers. Hex numbers use either a "0x"
-prefix or a 'h' suffix (hex notation and suffix multipliers cannot be
-mixed). In the case of a 'H@' lead\-in to the filename on the command line,
-all numbers are interpreted as hex with no suffix multipliers permitted.
-Further, with the 'H@' lead\-in the file make contain the string 'HEX'
-before any numbers are given. The 'HEX' is ignored. The point of this is
-to catch when a scatter gather list file with default hexadecimal numbers
-is given without the 'H@' lead\-in; in this case this utility will exit
-saying that file is in the wrong format.
-.PP
-Permitting scatter gather lists brings lots of flexibility (including the
-possibility to use the SCSI WRITE SCATTERED command) but with that comes
-complexity. Each scatter gather list is scanned to determine if it is
-monotonic and whether it has overlapping elements. The term monotonic is
-used to indicate whether each LBA is in ascending order, with each LBA
-greater than the previous element's LBA. Overlapping refers to the
-situation when any element's LBA range intersects with any other element's
-range. Elements that have zero number of blocks (i.e. degenerate) are
-ignored for determining monotonic and overlapping (and the lowest LBA).
-Overlapping elements are not good (but not necessarily fatal). The
-above mentioned WRITE SCATTERED command allows the medium's logic to write
-elements in any order it prefers. That means if elements overlap, then the
-user doesn't know which one gets written last (overwriting the one written
-to the same LBA earlier). Determining whether a element ranges overlap
-is difficult in the general case (so this utility doesn't do it) but easy
-in the case of a monotonic scatter gather list (so this utility does do
-it). Warnings are issued in dangerous situations, with the force flag
-allowing the warning to be overridden.
-.PP
-Another special case is "degenerate" scatter gather list elements. Any
-element that has zero in its number_of_blocks field is considered
-degenerate. The definition of the SCSI WRITE SCATTERED command clearly
-states that degenerate elements are valid, thus do not cause an error,
-but cause no associated action. This utility uses the concept of
-a 'hard' and 'soft' scatter gather list: a 'soft' list is one in which
-the last element's number_of_blocks is zero (i.e. it's degenerate). A
-list with a non\-zero number_of_blocks in its last element is
-considered 'hard'. Notice that the special case when only A1 is given on the
-command line (and hence N1 defaults to zero) forms a 1 element degenerate
-scatter gather list. The difference between a hard and soft list is the
-way the sum of number_of_blocks of all elements is used by this utility.
-For 'hard' lists that sum is used for \fICOUNT\fR when the \fIcount=COUNT\fR
-option is not given; and if \fIcount=COUNT\fR is given and the counts differ
-then those two values are output and this utility exits with a syntax error.
-For a 'soft' list the degenerate last element is interpreted as "from the
-highest LBA in the list to the end of the copy" where the \fICOUNT\fR is
-determined some other way. The "highest LBA" is calculated from all
-elements that have a non\-zero number of blocks plus the LBA of the last
-element (regardless of whether it is degenerate or not).
-.PP
-Some implementation details: Logical Block Addresses (LBAs) are stored in
-64 bit integers which is more than sufficient to span even the largest
-disk array behind a logical device, even if the block size is one byte
-which is unlikely. The number_of_blocks field is a 32 bit integer and this
-is more problematic. The reason is that SCSI WRITE commands (and their
-variants) only allocate at most a 32 bit integer for this value. Further,
-modern operating systems do not allow any driver to get that amount
-of system RAM, even if the machine has it available. A 32 bit integer
-for number_of_blocks with each block at 512 bytes is around 2 TB of
-storage. Unix system calls (in Linux) also limit each read(2) and write(2)
-system call to 32 bits of single bytes which is 4 GB. The problem for
-this utility is that the number_of_blocks can easily exceed 32 bits
-when a single scatter gather list element refers to the whole device.
-The action taken by this utility is to allow larger than 32 bit
-number_of_blocks values to be given on the command line (or in a scatter
-gather list file). However such a large element will be split into multiple
-elements internally. This will be visible to the user when the
-\fIverbose=VERB\fR option (or one of its variants) is used with an elevated
-value.
 .SH CONVERSIONS
 One or more conversions can be given to the "conv=" option. If more than
 one is given, they should be comma separated. ddpt does not perform the
@@ -969,6 +829,152 @@ invoke SCSI XCOPY(LID1) logic and send the XCOPY command to the either
 \fIIFILE\fR or \fIOFILE\fR depending on which flag this called. If both are
 given (i.e. an invocation including 'iflag=xcopy  oflag=xcopy') then send
 the XCOPY(LID1) to \fIOFILE\fR.
+.SH COUNT
+When the \fIcount=COUNT\fR option is not given (or \fICOUNT\fR is '\-1')
+then an attempt is made to deduce \fICOUNT\fR as follows.
+.PP
+When both or either \fIIFILE\fR and \fIOFILE\fR are block devices, then
+the minimum size, expressed in units of input blocks, is used. When both
+or either \fIIFILE\fR and \fIOFILE\fR are pass\-through devices, then the
+minimum size, expressed in units of input blocks, is used.
+.PP
+If a regular file is used as input, its size, expressed in units of input
+blocks (and rounded up if necessary) is used. Note that the rounding up
+of the deduced \fICOUNT\fR may result in a partial read of the last input
+block and a corresponding partial write to \fIOFILE\fR if it is a regular
+file. After a regular file to regular file copy the length of \fIOFILE\fR
+will be the same as \fIIFILE\fR unless \fIOFILE\fR existed and its length
+was already greater than that of \fIIFILE\fR. To get a copy like the
+standard Unix cp command, use oflag=trunc with ddpt.
+.PP
+The size of pt devices is deduced from the SCSI READ CAPACITY command.
+Block device sizes (or their partition sizes) are obtained from the
+operating system, if available.
+.PP
+If \fIskip=SKIP\fR or \fIskip=SEEK\fR are given and the \fICOUNT\fR is
+deduced (i.e. not explicitly given) then that size is scaled back so
+that the copy will not overrun the file or device.
+.PP
+If \fICOUNT\fR is not given and \fIIFILE\fR is a fifo (and stdin is
+treated as a fifo) then \fIIFILE\fR is read until an EOF is detected.
+If \fICOUNT\fR is not given and \fIIFILE\fR is a /dev/zero (or
+equivalent) then zeros are read until an error occurs (e.g. file
+system full).
+.PP
+If \fICOUNT\fR is not given and cannot be deduced then an error message
+is issued and no copy takes place.
+.SH SCATTER GATHER LISTS
+The \fIskip=SKIP\fR and \fIseek=SEEK\fR options (and their aliases) can take
+scatter gather lists. These can be explicit on the command line, fed in
+through stdin or in a file whose name is prefixed by "@" or "H@" on the
+command line. For large scatter gather lists, placing them in a file is the
+most practical as command lines are limited in length. Scatter gather
+list (sgl) is a collective term for either a scatter list or a gather list.
+The actual implementation of each sgl is an array. Syntactically a scatter
+list and a gather list are the same.
+.PP
+Conceptually these sgl_s refer to what happens at the "far end" (e.g. within
+a hard disk), not what happens in the computer's memory. So a gather list is
+associated with the read part of a copy (i.e. the first half) where a list
+of Logical Blocks (LBs, identified by their addresses, hence LBAs) and a
+number of consecutive, following blocks are "gathered" from the medium (e.g.
+a SSD). They are formed into a linear sequence of bytes that is transferred
+into a segment in the computer's RAM. The second half of the copy, the write
+part, may use a scatter list. A scatter list starts with a linear sequence of
+bytes, taken from the segment, that is transferred to the device and
+then "scattered" on the medium as indicated by the list of LBA and
+number_of_block pairs.
+.PP
+In the simplest form a sgl is given on the command line and has the form:
+A1,N1[,A2,N2[,A3,N3...]]. There must be an even number of items (i.e. for
+every An there should be a following Nn) with one exception: when A1 alone
+is given, in which case the value 0 is assumed for N1. Comma is the simplest
+separator for the command line, but whitespace may also be used (but needs
+to be escaped because the shell usually interprets whitespace as an option
+separator). In a file (or read from stdin or file redirection) more
+flexibility is permitted in the format. The LBA, number_of_blocks pairs
+could all appear on one line in a file but the line length is limited to
+1024 characters. So for longer sgl_s one pair per line is recommended in
+file format. Also in file format everything from and including '#' is
+ignored as are lines that are empty or only contain whitespace(s).
+.PP
+Each pair becomes one element (or more, see below) of the sgl. By default
+all numbers given for LBA and number_of_blocks items are in decimal with
+optional suffix multipliers. Hex numbers use either a "0x" prefix or a 'h'
+suffix (hex notation and suffix multipliers cannot be mixed). In the case
+of a 'H@' lead\-in to the filename on the command line, all numbers are
+interpreted as hex with no suffix multipliers permitted. Further, with
+the 'H@' lead\-in the file may contain the string 'HEX' before any numbers
+are given. The 'HEX' is ignored. The point of this is to catch when a sgl
+file with default hexadecimal numbers is given without the 'H@' lead\-in;
+in this case this utility will exit saying that file is in the wrong format.
+.PP
+Allowing sgl_s brings lots of flexibility (including the possibility to use
+the SCSI WRITE SCATTERED command) but with that comes complexity. Every sgl
+is scanned to determine if it is monotonic and whether it has overlapping
+elements. The term monotonic is used to indicate whether each LBA is in
+ascending order, with each LBA greater than the previous element's LBA.
+Overlapping refers to the situation when any element's LBA range intersects
+with any other element's range. Elements that have zero number of
+blocks (described here as "degenerate") are ignored for determining
+monotonic and overlapping (and the lowest LBA). Overlapping elements are not
+ideal (but not necessarily fatal). The above mentioned WRITE SCATTERED
+command allows the medium's logic to write elements in any order it prefers.
+That means if elements overlap, then the user doesn't know which one gets
+written last (overwriting the one written to the same LBA earlier).
+Determining whether element ranges overlap is difficult in the general
+case (so this utility doesn't do it) but easy in the case of a monotonic
+sgl (so this utility does do it). Warnings are issued in dangerous
+situations, with the force flag allowing the warning to be overridden.
+.PP
+A degenerate sgl element is one that has zero in its number_of_blocks field.
+Normally degenerate elements are ignored with some exceptions. The
+definition of the SCSI WRITE SCATTERED command clearly states that degenerate
+elements are valid, thus do not cause an error, but cause no associated
+action. This utility uses the concept of a 'hard' and 'soft' sgl: a 'soft'
+sgl is one in which the last element's number_of_blocks is zero (i.e. its
+last element is degenerate). A sgl with a non\-zero number_of_blocks in its
+last element is considered 'hard'. The difference between a hard and soft
+sgl is the way the sum of number_of_blocks of all elements is used by this
+utility.  For a 'hard' sgl that sum is used for \fICOUNT\fR when the
+\fIcount=COUNT\fR option is not given; and if \fIcount=COUNT\fR is given
+and the counts differ then those two values are output and this utility
+exits with a syntax error. For a 'soft' sgl the degenerate last element
+is interpreted as "from the highest LBA in the list to the end of the
+copy" where the \fICOUNT\fR is determined some other way. The "highest
+LBA" is calculated from all elements that have a non\-zero number of blocks
+plus the LBA of the last element (regardless of whether it is degenerate
+or not).
+.PP
+The rules in the above paragraph make a one item skip or seek argument (e.g.
+kip=0x123) in this utility first become a one element sgl (e.g. containing
+the pair [0x123, 0x0]). Since this is the last element, it is a soft sgl
+and the transfer will start from the given argument (i.e. 0x123) and
+continues for the number of blocks indicated by some other mechanism (e.g.
+an option such as \fIcount=COUNT\fR or the length of \fIIFILE\fR). This
+mirrors what the classic
+.B dd
+command does with its skip= and seek= options.
+.PP
+Some sgl implementation details: Logical Block Addresses (LBAs) are stored
+in 64 bit integers which is more than sufficient to span even the largest
+disk array behind a logical device, even if the block size is one byte
+which is unlikely. The number_of_blocks field is a 32 bit integer and this
+is more problematic. The reason is that SCSI WRITE commands (and their
+variants) only allocate at most a 32 bit integer for this value. Further,
+modern operating systems do not allow any driver to get large amounts
+of system RAM, even if the machine has it available. A 32 bit integer
+for number_of_blocks with each block at 512 bytes is around 2 TB of
+storage. Unix system calls (in Linux) also limit each read(2) and write(2)
+system call to 32 bits of single bytes which is 4 GB. The problem for
+this utility is that the number_of_blocks can easily exceed 32 bits
+when a single scatter gather list element refers to the whole device.
+The action taken by this utility is to allow larger than 32 bit
+number_of_blocks values to be given on the command line (or in a scatter
+gather list file). However such a large element will be split into multiple
+elements internally. This will be visible to the user when the
+\fIverbose=VERB\fR option (or one of its variants) is used with an elevated
+value.
 .SH XCOPY
 This section describes XCOPY(LID1) support with this utility. For ODX
 support (XCOPY(LID4) subset) see the ODX section.

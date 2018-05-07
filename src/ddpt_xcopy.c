@@ -2429,7 +2429,7 @@ odx_full_copy(struct opts_t * op)
     }
     if (op->i_sgli.sglp) {   /* gather list */
         in_elems = op->i_sgli.elems;
-        sgl_sum_scan(&op->i_sgli, "odx full(in)", op->verbose > 1);
+        sgl_sum_scan(&op->i_sgli, "odx full[in]", op->verbose > 1);
         in_num_blks = op->i_sgli.sum;
         if (got_count && (in_num_blks != op->dd_count)) {
             pr2serr("%s: count= value not equal to the sum of gather nums\n",
@@ -2442,7 +2442,7 @@ odx_full_copy(struct opts_t * op)
     }
     if (op->o_sgli.sglp) {  /* scatter list */
         out_elems = op->o_sgli.elems;
-        sgl_sum_scan(&op->o_sgli, "odx full(out)", op->verbose > 1);
+        sgl_sum_scan(&op->o_sgli, "odx full[out]", op->verbose > 1);
         out_num_blks = op->o_sgli.sum;
         if (oneto1) {
             if (got_count && (out_num_blks != op->dd_count)) {

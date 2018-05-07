@@ -264,18 +264,22 @@ struct val_str_t {
  * read(2)s and write(2)s. User can give larger than 31 bit 'num's but they
  * are split into several consecutive elements. */
 struct scat_gath_elem {
-    uint64_t lba;       /* of first block */
-    uint32_t num;       /* number of blocks */
+    uint64_t lba;       /* of start block */
+    uint32_t num;       /* number of blocks from and including start block */
 };
 
 /* Iterator on a scatter gather list (which are arrays). IFILE and OFILE have
- * iterators, not OFILE2 */
+ * iterators, not OFILE2. The iterator is a "post increment" type starting
+ * [0,0]. If the sgl is accessed in a linear fashion, after the last IO the
+ * iterator will be at [<elems>, 0]. To make that more obvious
+ * sgl_iter_print() outputs that as [<elems>, EOL] */
 struct sgl_iter_t {
+    int it_e_ind;       /* iterator element index into sglp array */
+    int it_bk_off;      /* iterator: 0 <= i_blk_off < (sglp + i_e_ind)->num */
+    /* underlying (what iterator points to) and filepos, if needed */
     int elems;          /* elements in sglp array */
-    int elem_ind;       /* current index into sglp array */
-    uint32_t blk_off;   /* 0 <= blk_off < (sglp + elem_ind)->num */
     struct scat_gath_elem * sglp;  /* start of scatter gather list array */
-    int64_t filepos;    /* for deciding if file pointer needs to be moved */
+    int64_t filepos;    /* file 'pos' is a byte offset in reg/block file */
 };
 
 /* Holds one scatter gather list and its associated metadata */
@@ -292,7 +296,6 @@ struct sgl_info_t {
     int64_t high_lba_p1;  /* highest LBA plus 1, next write from and above */
     int64_t lowest_lba; /* initialized to 0 */
     int64_t sum;        /* of all 'num' elements in 'sgl' */
-    int64_t iter_off;   /* of all 'num' elements in 'sgl' */
     struct scat_gath_elem * sglp;  /* an array on heap [0..elems), owner */
 };
 
@@ -374,9 +377,9 @@ struct cp_state_t {
     struct cp_statistics_t stats;  /* running totals kept here */
     struct sgl_iter_t in_iter;
     struct sgl_iter_t out_iter;
-    uint8_t * low_bp;   /* byte pointer to start of work segment */
-    uint8_t * base_bp;  /* byte pointer to start of sub-segment */
-    uint8_t * cur_bp;   /* pointer in sub-segment for start of current IO */
+    uint8_t * low_bp;      /* byte pointer to start of work segment */
+    uint8_t * subseg_bp;   /* byte pointer to start of sub-segment */
+    uint8_t * cur_bp;    /* pointer in sub-segment for start of current IO */
     int64_t * cur_countp;  /* points to in_full, out_full, or is NULL for
                             * don't count */
     const char * buf_name; /* optional buffer name for debugging */
@@ -670,23 +673,21 @@ void sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str,
 uint64_t count_sgl_blocks_from(const struct scat_gath_elem * sglp, int elems,
                                uint64_t blk_off, uint32_t num_blks,
                                uint32_t max_descriptors /* from blk_off */);
-/* A trailing zero length (num==0) element is interpreted as from there
- * to end of the copy, assumed to be known some other way (e.g. a count=COUNT
- * argument) */
-uint32_t last_sgl_elem_num(const struct scat_gath_elem * sglp, int elems);
-/* Given a (positive) blk_count, an iterator (*iter_p) is adjusted. If
- * relative is true the adjustment (an addition) is from the current
- * position of the iterator. If relative is false then the adjustment is from
- * the start of the sgl. The sgl_iter_adjust(itp, 0, false) call sets the
- * iterator to the start of the sgl. Returns true unless blk_count takes
- * iterator to one past last element (normal end indication) or beyond. */
+
+/* Given a blk_count, the iterator (*iter_p) is moved toward the EOL. If
+ * relative is true the move is from the current position of the iterator.
+ * If relative is false then the move is from the start of the sgl. The
+ * sgl_iter_add(itp, 0, false) call sets the iterator to the start of the
+ * sgl. Returns true unless blk_count takes iterator two or more past the
+ * last element. So if blk_count takes the iterator to the EOL, this
+ * function returns true. */
 bool sgl_iter_add(struct sgl_iter_t * iter_p, uint64_t blk_count,
                   bool relative);
-/* Move the iterator from its current position towards the start of the
- * scatter gather list (i.e. backwards) for blk_count blocks. Returns
- * true if iterator is valid after the move, else return false. N.B.
- * if false is returned, then the iterator is invalid and may need to
- * set to a valid value. */
+/* Move the iterator from its current position (which may be to EOL) towards
+ * the start of the sgl (i.e. backwards) for blk_count blocks. Returns true
+ * if iterator is valid after the move, else returns false. N.B. if false is
+ * returned, then the iterator is invalid and may need to set it to a valid
+ * value. */
 bool sgl_iter_sub(struct sgl_iter_t * iter_p, uint64_t blk_count);
 
 /* Returns the number of times 'ch' is found in string 's' given the
@@ -718,16 +719,20 @@ int build_degen_sgl(struct scat_gath_elem ** sge_pp, int64_t start_lba);
  * is freed). */
 int append2sgl(struct scat_gath_elem ** sge_pp, int cur_elems,
                int64_t extra_blks, int64_t start_lba);
-/* Dummy function for testing iterators. Matches ddpt_rw_f typedef. */
-int iter_sgl_dummy(struct dev_info_t * dip, int ddpt_arg,
-                   struct cp_state_t * csp, struct opts_t * op);
+
+/* Returns true if associated iterator is monotonic (increasing) and not
+ * fragmented. Empty sgl and single element degenerate considered linear.
+ * Assumes sgl_sum_scan() has been called on sgl. */
+bool is_iter_linear(const struct sgl_info_t * sglip);
 /* Returns LBA referred to by iterator if valid or returns DDPT_LBA_INVALID
  * (-1) if at end or invalid. */
 int64_t sgl_iter_lba(const struct sgl_iter_t * itp);
-/* Returns true of no sgl or sgl is at the end [elems, 0], otherwise it
+/* Returns true of no sgl or sgl is at the end [<elems>, 0], otherwise it
  * returns false. */
 bool sgl_iter_at_end(const struct sgl_iter_t * itp);
-/* Returns true if either argument is 0/NULL or a 1 element list with both
+void sgl_iter_print(const struct sgl_iter_t * itp, const char * leadin);
+
+/* Returns true if either argument is NULL/0 or a 1 element list with both
  * lba and num 0; otherwise returns false. */
 bool sgl_empty(struct scat_gath_elem * sglp, int elems);
 /* Returns >= 0 if sgl can be simplified to a single LBA. So an empty sgl
