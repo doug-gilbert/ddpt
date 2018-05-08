@@ -1359,15 +1359,19 @@ cp_read_of_block_reg(struct opts_t * op, struct cp_state_t * csp,
             pr2serr("read(sparing): requested bytes=%d, res=%d\n", numbytes,
                     res);
         if (res < 0) {
-            pr2serr("read(sparing), seek=%" PRId64 "\n", op->seek);
+            pr2serr("read(sparing), seek=%" PRId64 "\n", csp->cur_out_lba);
             return (-SG_LIB_CAT_MEDIUM_HARD == res) ? -res : -1;
-        } else if (res == numbytes) {
-            csp->out_iter.filepos += numbytes;
-            return 0;
         } else {
-            if (vb > 2)
-                pr2serr("short read\n");
-            return -1;
+            csp->blks_xfer = res / obs;
+            csp->bytes_xfer = res;
+            csp->out_iter.filepos += res;
+	    if (res == numbytes)
+                return 0;
+            else {
+                if (vb > 2)
+                    pr2serr("%s: short read\n", __func__);
+                return -1;
+	    }
         }
     } else
 #endif
@@ -1406,17 +1410,17 @@ cp_read_of_block_reg(struct opts_t * op, struct cp_state_t * csp,
         if (res < 0) {
             pr2serr("read(sparing), seek=%" PRId64 " : %s\n", offset,
                     safe_strerror(err));
-            return -1;
+            return sg_convert_errno(err);
         }
         csp->blks_xfer = res / obs;
         csp->bytes_xfer = res;
-        if (res == numbytes) {
-            csp->out_iter.filepos += numbytes;
+        csp->out_iter.filepos += res;
+        if (res == numbytes)
             return 0;
-        } else {
+        else {
             if (vb > 2)
-                pr2serr("short read\n");
-            return 1;
+                pr2serr("%s: short read\n", __func__);
+            return -1;
         }
     }
 }
@@ -2972,6 +2976,9 @@ do_falloc(struct opts_t * op)
 #else   /* other than SG_LIB_LINUX */
 #ifdef HAVE_POSIX_FALLOCATE
     int res;
+    int obs = op->obs_pi;
+    int64_t oseek = op->o_sgli.lowest_lba * obs;        /* fpos */
+    int64_t o_count = op->dd_count * op->ibs_pi;        /* bytes */
 
     /* If not on Linux, use posix_fallocate(). (That sets the file size to its
      * full length, so re-invoking ddpt with oflag=resume will do nothing.) */
