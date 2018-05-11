@@ -581,7 +581,7 @@ desc_from_vpd_id(struct opts_t * op, uint8_t *desc, int desc_len,
     dip = is_dest ? op->odip : op->idip;
     fd = dip->fd;
     flp = is_dest ? op->oflagp : op->iflagp;
-    block_size = is_dest ? op->obs : op->ibs;
+    block_size = is_dest ? op->obs_lb : op->ibs_lb;
     memset(rcBuff, 0xff, len);
     res = sg_ll_inquiry_v2(fd, true, VPD_DEVICE_ID, rcBuff, 4, 0, &resid,
                            true, verb);
@@ -779,22 +779,22 @@ do_xcopy_lid1(struct opts_t * op)
     } else
         return SG_LIB_CAT_INVALID_OP;
 
-    bs_same = (op->ibs == op->obs);
+    bs_same = (op->ibs_lb == op->obs_lb);
     max_bpt = bs_same ? MAX_XC_BPT : MAX_XC_BPT_POW2;
     if (op->bpt_given) {
         ibpt = op->bpt_i;
         ibpt = (ibpt > max_bpt) ? max_bpt : ibpt;
-        obpt = bs_same ? ibpt : ((op->ibs * op->bpt_i) / op->obs);
+        obpt = bs_same ? ibpt : ((op->ibs_lb * op->bpt_i) / op->obs_lb);
         if (ifp->dc || ofp->dc) {
-            if ((uint32_t)(obpt * op->obs) > odip->xc_max_bytes) {
+            if ((uint32_t)(obpt * op->obs_lb) > odip->xc_max_bytes) {
                 pr2serr("bpt too large (max %" PRIu32 " blocks)\n",
-                        odip->xc_max_bytes / (uint32_t)op->obs);
+                        odip->xc_max_bytes / (uint32_t)op->obs_lb);
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else {
-            if ((uint32_t)(ibpt * op->ibs) > idip->xc_max_bytes) {
+            if ((uint32_t)(ibpt * op->ibs_lb) > idip->xc_max_bytes) {
                 pr2serr("bpt too large (max %" PRIu32 " blocks)\n",
-                        idip->xc_max_bytes / (uint32_t)op->ibs);
+                        idip->xc_max_bytes / (uint32_t)op->ibs_lb);
                 return SG_LIB_SYNTAX_ERROR;
             }
         }
@@ -802,15 +802,15 @@ do_xcopy_lid1(struct opts_t * op)
         uint32_t r;
 
         if (ifp->dc || ofp->dc) {
-            r = odip->xc_max_bytes / (uint32_t)op->obs;
+            r = odip->xc_max_bytes / (uint32_t)op->obs_lb;
             obpt = (r > INT_MAX) ? INT_MAX : (int)r;
-            ibpt = bs_same ? obpt : ((op->obs * obpt) / op->ibs);
+            ibpt = bs_same ? obpt : ((op->obs_lb * obpt) / op->ibs_lb);
             ibpt = (ibpt > max_bpt) ? max_bpt : ibpt;
-            obpt = bs_same ? ibpt : ((op->ibs * ibpt) / op->obs);
+            obpt = bs_same ? ibpt : ((op->ibs_lb * ibpt) / op->obs_lb);
         } else {
-            r = idip->xc_max_bytes / (uint32_t)op->ibs;
+            r = idip->xc_max_bytes / (uint32_t)op->ibs_lb;
             ibpt = (r > (uint32_t)max_bpt) ? max_bpt : (int)r;
-            obpt = bs_same ? ibpt : ((op->ibs * ibpt) / op->obs);
+            obpt = bs_same ? ibpt : ((op->ibs_lb * ibpt) / op->obs_lb);
         }
     }
     if (op->verbose > 1)
@@ -822,7 +822,7 @@ do_xcopy_lid1(struct opts_t * op)
     res = 0;
     while (op->dd_count > 0) {
         blocks = (op->dd_count > ibpt) ? ibpt : op->dd_count;
-        oblocks = bs_same ? blocks : ((op->ibs * blocks) / op->obs);
+        oblocks = bs_same ? blocks : ((op->ibs_lb * blocks) / op->obs_lb);
 
         res = a_xcopy_lid1_cmd(op, src_desc, src_desc_len, dst_desc,
                                dst_desc_len, seg_desc_type, blocks);
@@ -1765,7 +1765,7 @@ process_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a)
                 return SG_LIB_CAT_OTHER;
             }
             if (op->rtf_len_add) {
-                rod_sz = r.tc * op->ibs;
+                rod_sz = r.tc * op->ibs_lb;
                 sg_put_unaligned_be64(rod_sz, uc + 0);
                 res = write(op->rtf_fd, uc, 8);
                 if (res < 0) {
@@ -2027,7 +2027,7 @@ fetch_read_cap(struct opts_t * op, bool in0_out1, int64_t * num_blks,
                int * blk_sz)
 {
     int res;
-    int bs = in0_out1 ? op->obs : op->ibs;
+    int bs = in0_out1 ? op->obs_lb : op->ibs_lb;
     struct dev_info_t * dip = in0_out1 ? op->odip : op->idip;
     struct flags_t * flagp = in0_out1 ? op->oflagp : op->iflagp;
     const char * oip = in0_out1 ? "o" : "i";
@@ -2330,16 +2330,16 @@ odx_write_from_rods(struct opts_t * op)
             off = 56;
         }
         num = sg_get_unaligned_be64(rt + off);
-        o_num = num / (unsigned int)op->obs;
+        o_num = num / (unsigned int)op->obs_lb;
         if (o_num > 0xffffffffffLL) {
             pr2serr("%s: ROD size seems too large (%" PRIu64 " blocks "
                     "each %d bytes)\nTry again with conv=rtf_len\n", __func__,
-                    o_num, op->obs);
+                    o_num, op->obs_lb);
             return SG_LIB_CAT_OTHER;
         }
         if (0 == o_num) {
             pr2serr("%s: ROD size is less than 1 block (%d bytes). Try "
-                    "again with conv=rtf_len\n", __func__, op->obs);
+                    "again with conv=rtf_len\n", __func__, op->obs_lb);
             return SG_LIB_CAT_OTHER;
         }
         num = o_num;
@@ -2718,7 +2718,7 @@ do_odx(struct opts_t * op)
         calc_duration_init(op);
     ret = odx_setup_and_run(op, &who);
     if (0 == op->status_none)
-        print_stats("", op, who);
+        print_stats("", op, who, true);
     if (op->do_time)
         calc_duration_throughput("", false /* contin */, op);
     if (op->rtf_fd >= 0) {

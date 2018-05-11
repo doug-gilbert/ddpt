@@ -269,7 +269,7 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
         if (verbose > 2)
             pr2serr("moving if filepos: new_pos=%" PRId64 "\n",
                     (int64_t)offset);
-        if (win32_set_file_pos(op, DDPT_ARG_IN, offset, verbose))
+        if (win32_set_file_pos(op->idip, offset, verbose))
             return SG_LIB_FILE_ERROR;
         csp->in_iter.filepos = offset;
     }
@@ -292,8 +292,7 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
                         if (verbose > 2)
                             pr2serr("moving if filepos: new_pos=%" PRId64
                                     "\n", (int64_t)offset);
-                        if (win32_set_file_pos(op, DDPT_ARG_IN, offset,
-                            verbose))
+                        if (win32_set_file_pos(op->idip, offset, verbose))
                             return SG_LIB_FILE_ERROR;
                         csp->in_iter.filepos = offset;
                     }
@@ -430,8 +429,7 @@ win32_open_of(struct opts_t * op, int flags, int verbose)
 
 /* Returns 0 on success, 1 on error */
 int
-win32_set_file_pos(struct opts_t * op, int which_arg, int64_t pos,
-                   int verbose)
+win32_set_file_pos(struct dev_info_t * dip, int64_t pos, int verbose)
 {
     int blen;
     LONG lo32 = pos & 0xffffffff;
@@ -443,8 +441,8 @@ win32_set_file_pos(struct opts_t * op, int which_arg, int64_t pos,
     char b[80];
 
     blen = sizeof(b);
-    fh = (DDPT_ARG_IN == which_arg) ? op->idip->fh : op->odip->fh;
-    cp = (DDPT_ARG_IN == which_arg) ? "in" : "out";
+    fh = dip->fh;
+    cp = dip->dir_n;
     if (verbose > 2)
         pr2serr("SetFilePointer( 0x%" PRIx64 ", %s)\n", pos, cp);
     lo_ret = SetFilePointer(fh, lo32, &hi32, FILE_BEGIN);

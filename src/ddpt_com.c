@@ -202,17 +202,20 @@ state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
     idip->d_type = FT_OTHER;
     idip->fd = -1;
     idip->reg_sz = -1;
+    idip->ddpt_arg = DDPT_ARG_IN;
+    idip->dir_n = "in";
+    op->idip = idip;
     odip->d_type = FT_OTHER;
     odip->fd = -1;
     odip->reg_sz = -1;
+    odip->ddpt_arg = DDPT_ARG_OUT;
+    odip->dir_n = "out";
+    op->odip = odip;
     o2dip->d_type = FT_OTHER;
     o2dip->fd = -1;
-    op->idip = idip;
-    idip->dir_n = "in";
-    op->odip = odip;
-    odip->dir_n = "out";
-    op->o2dip = o2dip;
+    o2dip->ddpt_arg = DDPT_ARG_OUT2;
     o2dip->dir_n = "out2";
+    op->o2dip = o2dip;
     ifp->cdbsz = DEF_SCSI_CDBSZ;
     ofp->cdbsz = DEF_SCSI_CDBSZ;
 #ifdef HAVE_POSIX_FADVISE
@@ -226,8 +229,9 @@ state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
 
 /* When who<=0 print both in+out, when who==1 print in, else print out */
 void
-print_stats(const char * str, struct opts_t * op, int who)
+print_stats(const char * str, struct opts_t * op, int who, bool estimate)
 {
+    const char * cp;
     struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
 #ifdef SG_LIB_LINUX
@@ -238,7 +242,7 @@ print_stats(const char * str, struct opts_t * op, int who)
     if ((op->dd_count > 0) && (! op->reading_fifo)) {
         pr2serr("  remaining block count=%" PRId64, op->dd_count);
         // if ((who < 2) && (op->in_full <= sp->dd_count_start) &&
-        if ((who < 2) && (sp->in_full <= sp->dd_count_start) &&
+        if (estimate && (who < 2) && (sp->in_full <= sp->dd_count_start) &&
             (sp->dd_count_start >= 4196)) {
             /* with ints will overflow around 4 TB for bs=1 */
             // int num = (int)((op->in_full * 100) / 4196);
@@ -258,13 +262,14 @@ print_stats(const char * str, struct opts_t * op, int who)
     if (who < 2)
         pr2serr("%s%" PRId64 "+%d records in\n", str, sp->in_full,
                 sp->in_partial);
-    if (1 != who)
-        pr2serr("%s%" PRId64 "+%d records out\n", str, sp->out_full,
-                sp->out_partial);
+    if (1 != who) {
+        cp = (op->oflagp->nowrite && (sp->out_full || sp->out_partial)) ?
+                        " [not done due to nowrite flag]" : "";
+        pr2serr("%s%" PRId64 "+%d records out%s\n", str, sp->out_full,
+                sp->out_partial, cp);
+    }
     if (op->out_sparse_active || op->out_sparing_active) {
         if (op->out_trim_active) {
-            const char * cp;
-
             cp = sp->trim_errs ? "attempted trim" : "trimmed";
             if (sp->out_sparse_partial > 0)
                 pr2serr("%s%" PRId64 "+%d %s records out\n", str,
@@ -434,16 +439,25 @@ unix_dd_filetype(const char * filename, int verbose)
 
 /* Categorize file by using the stat() system call on its filename.
  * If not found FT_ERROR returned. The FT_* constants are a bit mask
- * and later logic can combine them (e.g. FT_BLOCK | FT_PT).
- */
+ * and later logic can combine them (e.g. FT_BLOCK | FT_PT). */
 int
-dd_filetype(const char * filename, int verbose)
+dd_filetype(const char * filename, int vb)
 {
+    int ret;
+    char b[160];
+
 #ifdef SG_LIB_WIN32
-    return win32_dd_filetype(filename, verbose);
+    ret = win32_dd_filetype(filename, vb);
 #else
-    return unix_dd_filetype(filename, verbose);
+    ret = unix_dd_filetype(filename, vb);
 #endif
+
+    if (vb > 2) {
+        dd_filetype_str(ret, b, sizeof(b), filename);
+        pr2serr("%s: guess %s filetype is: %s\n", __func__,
+                filename ? filename : "<empty>", b);
+    }
+    return ret;
 }
 
 char *
@@ -741,7 +755,7 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
     struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
     if (op->start_tm_valid && (op->start_tm.tv_sec || op->start_tm.tv_nsec)) {
-        use_out_full = ((0 == sp->in_full) && (op->obs > 0));
+        use_out_full = ((0 == sp->in_full) && (op->obs_lb > 0));
         clock_gettime(CLOCK_MONOTONIC, &end_tm);
         res_tm.tv_sec = end_tm.tv_sec - op->start_tm.tv_sec;
         res_tm.tv_nsec = end_tm.tv_nsec - op->start_tm.tv_nsec;
@@ -753,7 +767,7 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
         a = res_tm.tv_sec;
         a += (0.000001 * (res_tm.tv_nsec / 1000));
         if (use_out_full)
-            b = (double)op->obs * sp->out_full;
+            b = (double)op->obs_lb * sp->out_full;
         else
             b = (double)op->ibs_hold * sp->in_full;
         pr2serr("%stime to %s data%s: %d.%06d secs", leadin,
@@ -796,7 +810,7 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
 
     sp = sp ? sp : &op->stats;
     if (op->start_tm_valid && (op->start_tm.tv_sec || op->start_tm.tv_usec)) {
-        use_out_full = ((0 == sp->in_full) && (op->obs > 0));
+        use_out_full = ((0 == sp->in_full) && (op->obs_lb > 0));
         gettimeofday(&end_tm, NULL);
         res_tm.tv_sec = end_tm.tv_sec - op->start_tm.tv_sec;
         res_tm.tv_usec = end_tm.tv_usec - op->start_tm.tv_usec;
@@ -808,7 +822,7 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
         a = res_tm.tv_sec;
         a += (0.000001 * res_tm.tv_usec);
         if (use_out_full)
-            b = (double)op->obs * sp->out_full;
+            b = (double)op->obs_lb * sp->out_full;
         else
             b = (double)op->ibs_hold * sp->in_full;
         pr2serr("%stime to %s data%s: %d.%06d secs", leadin,
@@ -850,6 +864,7 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
 #endif
 }
 
+/* Returns true when it time to output a progress report; else false. */
 static bool
 check_progress(const struct opts_t * op)
 {
@@ -887,12 +902,17 @@ check_progress(const struct opts_t * op)
             if (elapsed_ms > 80)        /* 80 milliseconds */
                 measure = false;
         }
-        if (elapsed_ms >= PROGRESS2_TRIGGER_MS) {
-            if (elapsed_ms >= PROGRESS_TRIGGER_MS) {
-                ms = PROGRESS_TRIGGER_MS;
-                res = true;
-            } else if (op->progress > 1) {
-                ms = PROGRESS2_TRIGGER_MS;
+        if (elapsed_ms >= PROGRESS3_TRIGGER_MS) {
+            if (elapsed_ms >= PROGRESS2_TRIGGER_MS) {
+                if (elapsed_ms >= PROGRESS_TRIGGER_MS) {
+                    ms = PROGRESS_TRIGGER_MS;
+                    res = true;
+                } else if (op->progress > 1) {
+                    ms = PROGRESS2_TRIGGER_MS;
+                    res = true;
+                }
+            } else if (op->progress > 2) {
+                ms = PROGRESS3_TRIGGER_MS;
                 res = true;
             }
         }
@@ -940,12 +960,17 @@ check_progress(const struct opts_t * op)
             if (elapsed_ms > 80)        /* 80 milliseconds */
                 measure = false;
         }
-        if (elapsed_ms >= PROGRESS2_TRIGGER_MS) {
-            if (elapsed_ms >= PROGRESS_TRIGGER_MS) {
-                ms = PROGRESS_TRIGGER_MS;
-                res = true;
-            } else if (op->progress > 1) {
-                ms = PROGRESS2_TRIGGER_MS;
+        if (elapsed_ms >= PROGRESS3_TRIGGER_MS) {
+            if (elapsed_ms >= PROGRESS2_TRIGGER_MS) {
+                if (elapsed_ms >= PROGRESS_TRIGGER_MS) {
+                    ms = PROGRESS_TRIGGER_MS;
+                    res = true;
+                } else if (op->progress > 1) {
+                    ms = PROGRESS2_TRIGGER_MS;
+                    res = true;
+                }
+            } else if (op->progress > 2) {
+                ms = PROGRESS3_TRIGGER_MS;
                 res = true;
             }
         }
@@ -1196,11 +1221,14 @@ install_signal_handlers(struct opts_t * op)
     const char * sname = "SIGINFO";
 #endif
 
-    if (op->verbose > 2)
+    if (op->verbose > 2) {
         pr2serr(" >> %s signal implementation assumed "
                 "[SA_NOCLDSTOP=%d],\n >>   will %smask out signals during "
                 "IO\n", (SA_NOCLDSTOP ? "modern" : "old"), SA_NOCLDSTOP,
                 (op->interrupt_io ? "not " : ""));
+        if (! op->interrupt_io)
+            pr2serr(" >>   then check for signals between IOs\n");
+    }
 #if SA_NOCLDSTOP
     bool unblock_starting_mask = false;
     int num_members = 0;
@@ -1319,8 +1347,11 @@ signals_process_delay(struct opts_t * op, int delay_type)
                     op->subsequent_wdelay = true;
             }
             if (op->progress && (DELAY_COPY_SEGMENT == delay_type)) {
-                if (check_progress(op))
+                if (check_progress(op)) {
                     calc_duration_throughput("", true, op);
+                    if (op->verbose)
+                        print_stats("", op, 0 /* both in and out */, false);
+                }
             }
             if (delay) {
                 sigprocmask(SIG_SETMASK, &op->orig_mask, NULL);
@@ -1362,7 +1393,7 @@ signals_process_delay(struct opts_t * op, int delay_type)
         if (interrupt) {
             pr2serr("Interrupted by signal %s\n",
                     get_signal_name(interrupt, b, sizeof(b)));
-            print_stats("", op, 0 /* both in and out */);
+            print_stats("", op, 0 /* both in and out */, true);
             /* Don't show next message if using oflag=pre-alloc and we didn't
              * use FALLOC_FL_KEEP_SIZE */
             if ((! op->reading_fifo) && (FT_REG & op->odip->d_type_hold)
@@ -1385,7 +1416,7 @@ signals_process_delay(struct opts_t * op, int delay_type)
             // Could more cleanup or suggestions be made here?
         } else {
             pr2serr("Progress report:\n");
-            print_stats("  ", op, 0);
+            print_stats("  ", op, 0, true);
             if (op->do_time)
                 calc_duration_throughput("  ", true /* contin */, op);
             pr2serr("  continuing ...\n");
@@ -1415,8 +1446,11 @@ signals_process_delay(struct opts_t * op, int delay_type)
                 op->subsequent_wdelay = true;
         }
         if (op->progress && (DELAY_COPY_SEGMENT == delay_type)) {
-            if (check_progress(op))
+            if (check_progress(op)) {
                 calc_duration_throughput("", true, op);
+                if (op->verbose)
+                    print_stats("", op, 0 /* both in and out */, false);
+            }
         }
         if (delay)
             sleep_ms(op->delay);
@@ -2196,13 +2230,12 @@ num_either_ch_in_str(const char * s, int slen, int ch1, int ch2)
 }
 
 static int
-sgl_iter_forward_blks(struct dev_info_t * dip, int ddpt_arg,
-                      struct sgl_iter_t * itp, uint32_t n_blks,
-                      struct cp_state_t * csp, ddpt_rw_f fp,
+sgl_iter_forward_blks(struct dev_info_t * dip, struct sgl_iter_t * itp,
+                      uint32_t n_blks, struct cp_state_t * csp, ddpt_rw_f fp,
                       struct opts_t * op)
 {
     bool more;
-    bool in_side = (DDPT_ARG_IN == ddpt_arg);
+    bool in_side = (DDPT_ARG_IN == dip->ddpt_arg);
     int b_off = 0;
     int res = 0;
     int vb = op->verbose;
@@ -2246,14 +2279,19 @@ sgl_iter_forward_blks(struct dev_info_t * dip, int ddpt_arg,
                 }
                 csp->cur_bp = csp->subseg_bp + b_off;
                 /* function pointer call to workers */
-                if ((res = fp(dip, ddpt_arg, csp, op)))
+                if ((res = fp(dip, csp, op)))
                     return res;
                 if (csp->blks_xfer < (int)rem_blks) {
-                    if (vb)
-                        pr2serr("%s(more): [%s] shorted, got %d blocks (%d "
-                                "bytes), leave_reason=%d\n", __func__,
-                                dip->dir_n, csp->blks_xfer, csp->bytes_xfer,
-                                csp->leave_reason);
+                    if (vb) {
+                        pr2serr("%s(more): [%s] shorted, got %d blocks",
+                                __func__, dip->dir_n, csp->blks_xfer);
+                        if (csp->bytes_xfer > 0)
+                            pr2serr(" (%d bytes)", csp->bytes_xfer);
+                        if (csp->leave_reason)
+                            pr2serr(", leave_reason=%d\n", csp->leave_reason);
+                        else
+                            pr2serr("\n");
+                    }
                     b_off += ((csp->bytes_xfer >= 0) ? csp->bytes_xfer :
                                      (csp->blks_xfer * dip->bs_pi));
                     csp->rem_seg_bytes = b_off;
@@ -2289,14 +2327,19 @@ sgl_iter_forward_blks(struct dev_info_t * dip, int ddpt_arg,
                     csp->cur_out_num = rem_blks;
                 }
                 csp->cur_bp = csp->subseg_bp + b_off;
-                if ((res = fp(dip, ddpt_arg, csp, op)))
+                if ((res = fp(dip, csp, op)))
                     return res;
                 if (csp->blks_xfer < (int)rem_blks) {
-                    if (vb)
-                        pr2serr("%s(last): [%s] shorted, got %d blocks (%d "
-                                "bytes), leave_reason=%d\n", __func__,
-                                dip->dir_n, csp->blks_xfer, csp->bytes_xfer,
-                                csp->leave_reason);
+                    if (vb) {
+                        pr2serr("%s(more): [%s] shorted, got %d blocks",
+                                __func__, dip->dir_n, csp->blks_xfer);
+                        if (csp->bytes_xfer > 0)
+                            pr2serr(" (%d bytes)", csp->bytes_xfer);
+                        if (csp->leave_reason)
+                            pr2serr(", leave_reason=%d\n", csp->leave_reason);
+                        else
+                            pr2serr("\n");
+                    }
                     b_off += ((csp->bytes_xfer >= 0) ? csp->bytes_xfer :
                                      (csp->blks_xfer * dip->bs_pi));
                     csp->rem_seg_bytes = b_off;
@@ -2327,18 +2370,14 @@ sgl_iter_forward_blks(struct dev_info_t * dip, int ddpt_arg,
  * beginning). Returns 0 for okay else an error number. -9999 is returned
  * for an unexpected error with the iterator. */
 int
-cp_via_sgl_iter(struct dev_info_t * dip, int ddpt_arg,
-                struct cp_state_t * csp, int add_blks, ddpt_rw_f fp,
-                struct opts_t * op)
+cp_via_sgl_iter(struct dev_info_t * dip, struct cp_state_t * csp,
+                int add_blks, ddpt_rw_f fp, struct opts_t * op)
 {
     int e_ind, elems;
     int vb = op->verbose;
     uint32_t n_blks;
     struct sgl_iter_t * itp;
-    const char * arg_str = NULL;
-
-    if (vb)
-        arg_str = ddpt_arg_str(ddpt_arg);
+    const char * arg_str = dip->dir_n;
 
     if (add_blks < 0) {
         pr2serr("%s: [%s] don't support backward iteration\n", __func__,
@@ -2349,7 +2388,7 @@ cp_via_sgl_iter(struct dev_info_t * dip, int ddpt_arg,
     if (0 == n_blks)
         return 0;       /* valid, nothing to do */
 
-    switch (ddpt_arg) {
+    switch (dip->ddpt_arg) {
     case DDPT_ARG_IN:
         itp = &csp->in_iter;
         break;
@@ -2361,11 +2400,11 @@ cp_via_sgl_iter(struct dev_info_t * dip, int ddpt_arg,
             return 0;
         if (fp) {               /* call worker directly */
             csp->cur_out_num = n_blks;
-            return (*fp)(dip, ddpt_arg, csp, op);
+            return (*fp)(dip, csp, op);
         }
         return 0;
     default:
-        pr2serr("%s: bad ddpt_arg: %d\n", __func__, ddpt_arg);
+        pr2serr("%s: bad ddpt_arg: %d\n", __func__, dip->ddpt_arg);
         return SG_LIB_SYNTAX_ERROR;
     }
     e_ind = itp->it_e_ind;
@@ -2392,7 +2431,7 @@ cp_via_sgl_iter(struct dev_info_t * dip, int ddpt_arg,
         else
             pr2serr("prior lba=0x%" PRIx64 "\n", lba);
     }
-    return sgl_iter_forward_blks(dip, ddpt_arg, itp, n_blks, csp, fp, op);
+    return sgl_iter_forward_blks(dip, itp, n_blks, csp, fp, op);
 }
 
 /* Assumes sgli_p->elems and sgli_p->slp are setup and the other fields
@@ -2504,7 +2543,7 @@ sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str, bool b_vb)
     sgli_p->sum = sum;
     sgli_p->sum_hard = (elems > 0) ? ! degen : false;
     if (b_vb) {
-        pr2serr("%s: from: %s: elems=%d, arr %spresent, monotonic=%s\n",
+        pr2serr("%s: from: %s: elems=%d, sgl %spresent, monotonic=%s\n",
                 __func__, caller, sgli_p->elems, (sgli_p->sglp ? "" : "not "),
                 (sgli_p->monotonic ? "true" : "false"));
         pr2serr("  sum=%" PRId64 ", lowest=0x%" PRIx64 ", high_lba_p1=",

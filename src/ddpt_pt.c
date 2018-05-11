@@ -623,12 +623,12 @@ pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff, int blocks,
 
     if (in0_out1) {
         bs = op->obs_pi;
-        pi_len = op->obs_pi - op->obs;
+        pi_len = op->obs_pi - op->obs_lb;
         fp = op->oflagp;
         iop = "ofile";
     } else {
         bs = op->ibs_pi;
-        pi_len = op->ibs_pi - op->ibs;
+        pi_len = op->ibs_pi - op->ibs_lb;
         fp = op->iflagp;
         iop = "ifile";
     }

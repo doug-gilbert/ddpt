@@ -93,12 +93,15 @@ primary_help:
            "             [seek=SEEK] [skip=SKIP] [status=STAT] [to=TO] "
            "[verbose=VERB]\n"
 #ifdef SG_LIB_WIN32
-           "             [--help] [--odx] [--verbose] [--version] [--wscan] "
-           "[--xcopy]\n"
+           "             [--help] [--odx] [--quiet] [--verbose] [--version] "
+           "[--wscan]\n"
+           "             [--xcopy]"
 #else
-           "             [--help] [--odx] [--verbose] [--version] [--xcopy]\n"
+           "             [--help] [--odx] [--quiet] [--verbose] [--version] "
+           "[--xcopy]\n"
+           "             "
 #endif
-           "             [JF]\n"
+           "[JF]\n"
            "  where the main options are:\n"
            "    bpt         input Blocks Per Transfer (BPT) (def: 128 when "
            "IBS is 512)\n"
@@ -133,18 +136,20 @@ primary_help:
            "                'progress' reports every 2 minutes on progress\n"
            "    verbose     0->normal(def), 1->some noise, 2->more noise, "
            "etc\n"
-           "                -1->quiet (stderr->/dev/null)\n"
-           "    --dry-run    do preparation, bypass copy\n"
-           "    --help      print out this usage message then exit\n"
-           "    --job=JF    JF is job file containing options\n"
-           "    --odx       do ODX copy rather than normal rw copy\n"
-           "    --verbose   equivalent to verbose=1\n"
-           "    --version   print version information then exit\n"
+           "                -1->quiet (same as --quiet option)\n"
+           "  --dry-run|-d    do preparation, bypass copy\n"
+           "  --help|-h     print out this usage message then exit\n"
+           "  --job=JF|-j JF    JF is job file containing options\n"
+           "  --odx|-o       do ODX copy rather than normal rw copy\n"
+           "  --quiet|-q     suppresses messages (by redirecting them "
+           "to /dev/null)\n"
+           "  --verbose|-v    equivalent to verbose=1\n"
+           "  --version|-V    print version information then exit\n"
 #ifdef SG_LIB_WIN32
-           "    --wscan     windows scan for device names and volumes\n"
+           "  --wscan|-w     windows scan for device names and volumes\n"
 #endif
-           "    --xcopy     do xcopy(LID1) rather than normal rw copy\n"
-           "    JF          job file: a file containing options; can not "
+           "  --xcopy|-x    do xcopy(LID1) rather than normal rw copy\n"
+           "  JF            job file: a file containing options; can not "
            "start\n"
            "                with '-' or contain '='. Parsed when seen\n"
            "\nCopy all or part of IFILE to OFILE, IBS*BPT bytes at a time. "
@@ -590,19 +595,19 @@ flags_process(const char * arg, struct flags_t * fp)
  * EIO on the SG_IO ioctl. So reduce it in that case.
  * N.B. FreeBSD may reduce bpt later if pt is used on IFILE or OFILE. */
 static int
-default_bpt_i(int ibs)
+default_bpt_i(int ibs_lb)
 {
-    if (ibs < 4)
+    if (ibs_lb < 4)
         return DEF_BPT_LT4;     /* currently 16384 (2**14), may change */
-    else if (ibs < 8)
+    else if (ibs_lb < 8)
         return DEF_BPT_LT8;
-    else if (ibs < 64)
+    else if (ibs_lb < 64)
         return DEF_BPT_LT64;
-    else if (ibs < 1024)
+    else if (ibs_lb < 1024)
         return DEF_BPT_LT1024;
-    else if (ibs < 8192)
+    else if (ibs_lb < 8192)
         return DEF_BPT_LT8192;
-    else if (ibs < 31768)
+    else if (ibs_lb < 31768)
         return DEF_BPT_LT32768;
     else
         return DEF_BPT_GE32768;
@@ -636,37 +641,37 @@ cl_sanity_defaults(struct opts_t * op)
     } else
         def_bs = DEF_BLOCK_SIZE;
 
-    if ((0 == op->ibs) && (0 == op->obs)) {
-        op->ibs = def_bs;
-        op->ibs_pi = op->ibs;
-        op->obs = def_bs;
-        op->obs_pi = op->obs;
-        if (op->idip->fn[0])
+    if ((0 == op->ibs_lb) && (0 == op->obs_lb)) {
+        op->ibs_lb = def_bs;
+        op->ibs_pi = op->ibs_lb;
+        op->obs_lb = def_bs;
+        op->obs_pi = op->obs_lb;
+        if (op->idip->fn[0] && (! op->quiet))
             pr2serr("Assume block size of %d bytes for both input and "
                     "output\n", def_bs);
-    } else if (0 == op->obs) {
-        op->obs = def_bs;
-        op->obs_pi = op->obs;
-        if ((op->ibs != def_bs) && op->odip->fn[0])
+    } else if (0 == op->obs_lb) {
+        op->obs_lb = def_bs;
+        op->obs_pi = op->obs_lb;
+        if ((op->ibs_lb != def_bs) && op->odip->fn[0] && (! op->quiet))
             pr2serr("Neither obs nor bs given so set obs=%d (default "
-                    "block size)\n", op->obs);
-    } else if (0 == op->ibs) {
-        op->ibs = def_bs;
-        op->ibs_pi = op->ibs;
-        if (op->obs != def_bs)
+                    "block size)\n", op->obs_lb);
+    } else if (0 == op->ibs_lb) {
+        op->ibs_lb = def_bs;
+        op->ibs_pi = op->ibs_lb;
+        if ((op->obs_lb != def_bs) && (! op->quiet))
             pr2serr("Neither ibs nor bs given so set ibs=%d (default "
-                    "block size)\n", op->ibs);
+                    "block size)\n", op->ibs_lb);
     }
-    op->ibs_hold = op->ibs;
+    op->ibs_hold = op->ibs_lb;
     if (op->bpt_given && (op->bpt_i < 1)) {
         op->bpt_given = false;
         /* want to allow bpt=0,<num> where BPT takes the default, for ODX */
     }
     if (! op->bpt_given)
-        op->bpt_i = default_bpt_i(op->ibs);
+        op->bpt_i = default_bpt_i(op->ibs_lb);
 
-    if ((op->ibs != op->obs) && (ODX_REQ_NONE == op->odx_request) &&
-        (0 != ((op->ibs * op->bpt_i) % op->obs))) {
+    if ((op->ibs_lb != op->obs_lb) && (ODX_REQ_NONE == op->odx_request) &&
+        (0 != ((op->ibs_lb * op->bpt_i) % op->obs_lb))) {
         pr2serr("when 'ibs' and 'obs' differ, ((ibs*bpt)/obs) must have "
                 "no remainder (bpt=%d)\n", op->bpt_i);
         return SG_LIB_SYNTAX_ERROR;
@@ -718,14 +723,15 @@ cl_sanity_defaults(struct opts_t * op)
             if (! ofp->nowrite)
                 ofp->nowrite = true;
         }
-        if ((op->ibs > 0) && (op->obs > 0) && (op->ibs != op->obs)) {
+        if ((op->ibs_lb > 0) && (op->obs_lb > 0) &&
+            (op->ibs_lb != op->obs_lb)) {
             pr2serr("self flag doesn't support unequal ibs= and obs=\n");
             return SG_LIB_SYNTAX_ERROR;
-        } else if (op->ibs > 0) {    /* force ibs==obs */
-            op->obs = op->ibs;
+        } else if (op->ibs_lb > 0) {    /* force ibs_lb==obs */
+            op->obs_lb = op->ibs_lb;
             op->obs_pi = op->ibs_pi;
-        } else if (op->obs > 0) {
-            op->ibs = op->obs;
+        } else if (op->obs_lb > 0) {
+            op->ibs_lb = op->obs_lb;
             op->ibs_pi = op->obs_pi;
         }
 
@@ -998,6 +1004,8 @@ int
 cl_process(struct opts_t * op, int argc, char * argv[],
            const char * version_str, int jf_depth)
 {
+    bool seek_seen = false;
+    bool skip_seen = false;
     char str[STR_SZ];
     char * key;
     char * buf;
@@ -1023,7 +1031,12 @@ cl_process(struct opts_t * op, int argc, char * argv[],
         //   or '=' is the trailing character.
         keylen = (int)strlen(key);
         // check for option names, in alphabetical order
+        // check important ones for duplication
         if (0 == strcmp(key, "bpt")) {
+            if (op->bpt_given) {
+                pr2serr("Only one bpt= argument please\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
             cp = strchr(buf, ',');
             if (cp)
                 *cp = '\0';
@@ -1059,9 +1072,9 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                         "'ibs=' or 'obs='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-            op->ibs = n;
+            op->ibs_lb = n;
             op->ibs_pi = n;
-            op->obs = n;
+            op->obs_lb = n;
             op->obs_pi = n;
         } else if (0 == strcmp(key, "cbs"))
             pr2serr("the cbs= option is ignored\n");
@@ -1085,6 +1098,11 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strcmp(key, "count")) {
+            if (op->count_given) {
+                pr2serr("second 'count=' argument detected, only one "
+                        "please\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
             if (0 != strcmp("-1", buf)) {
                 op->dd_count = sg_get_llnum(buf);
                 if (-1LL == op->dd_count) {
@@ -1123,7 +1141,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 return SG_LIB_SYNTAX_ERROR;
             }
             op->ibs_given = true;
-            op->ibs = n;
+            op->ibs_lb = n;
             op->ibs_pi = n;
         } else if ((0 == strcmp(key, "id_usage")) ||
                    (0 == strcmp(key, "id-usage"))) {
@@ -1161,9 +1179,14 @@ cl_process(struct opts_t * op, int argc, char * argv[],
         } else if (0 == strcmp(key, "intio"))
             op->interrupt_io = sg_get_num(buf);
         else if (0 == strcmp(key, "iseek")) {
+            if (skip_seen) {
+                pr2serr("Only one skip= (or iseek=) argument please\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
             res = do_skip(op, key, buf);
             if (res)
                 return res;
+            skip_seen = true;
         } else if (0 == strcmp(key, "ito")) {
             n = sg_get_num(buf);
             if (-1 == n) {
@@ -1196,7 +1219,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 return SG_LIB_SYNTAX_ERROR;
             }
             op->obs_given = true;
-            op->obs = n;
+            op->obs_lb = n;
             op->obs_pi = n;
         } else if (strcmp(key, "of") == 0) {
             if ('\0' != op->odip->fn[0]) {
@@ -1220,9 +1243,14 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strcmp(key, "oseek")) {
+            if (seek_seen) {
+                pr2serr("Only one seek= (or oseek=) argument please\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
             res = do_seek(op, key, buf);
             if (res)
                 return res;
+            seek_seen = true;
         } else if (0 == strcmp(key, "prio")) {
             n = sg_get_num(buf);
             if ((n < 0) || (n > 7)) {
@@ -1296,13 +1324,23 @@ cl_process(struct opts_t * op, int argc, char * argv[],
             }
             op->rod_type_given = true;
         } else if (0 == strcmp(key, "seek")) {
+            if (seek_seen) {
+                pr2serr("Only one seek= (or oseek=) argument please\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
             res = do_seek(op, key, buf);
             if (res)
                 return res;
+            seek_seen = true;
         } else if (0 == strcmp(key, "skip")) {
+            if (skip_seen) {
+                pr2serr("Only one skip= (or iseek=) argument please\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
             res = do_skip(op, key, buf);
             if (res)
                 return res;
+            skip_seen = true;
         } else if (0 == strcmp(key, "status")) {
             if (0 == strncmp(buf, "null", 4))
                 ;
@@ -1313,8 +1351,11 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 op->do_time = false;
             } else if (0 == strncmp(buf, "progress", 8)) {
                 ++op->progress;
-                if (0 == strncmp(buf, "progress,progress", 17))
+                if (0 == strncmp(buf, "progress,progress", 17)) {
                     ++op->progress;
+                    if (0 == strncmp(buf, "progress,progress,progress", 25))
+                        ++op->progress;
+                }
             } else {
                 pr2serr("'status=' expects 'none', 'noxfer' or 'null'\n");
                 return SG_LIB_SYNTAX_ERROR;
@@ -1354,11 +1395,13 @@ cl_process(struct opts_t * op, int argc, char * argv[],
             }
         } else if (0 == strncmp(key, "--odx", 5))
             op->has_odx = true;
+        else if (0 == strncmp(key, "--quiet", 7))
+            op->quiet = true;
         else if (0 == strncmp(key, "--verb", 6))
             ++op->verbose;
         else if (0 == strncmp(key, "--vers", 6)) {
             pr2serr("%s\n", version_str);
-            return -1;
+            return -1;          /* want early exit */
         }
 #ifdef SG_LIB_WIN32
         else if (0 == strncmp(key, "--wscan", 7))
@@ -1379,6 +1422,9 @@ cl_process(struct opts_t * op, int argc, char * argv[],
             n = num_chs_in_str(key + 1, keylen - 1, 'o');
             op->has_odx = (n > 0);
             res += n;
+            n = num_chs_in_str(key + 1, keylen - 1, 'q');
+            op->quiet = (n > 0);
+            res += n;
             n = num_chs_in_str(key + 1, keylen - 1, 'v');
             op->verbose += n;
             res += n;
@@ -1398,7 +1444,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
                 pr2serr("Unrecognised short option in '%s', try '--help'\n",
                         key);
                 if (0 == op->do_help)
-                    return -1;
+                    return -1;          /* early exit */
             }
         } else if (('\0' == *buf) && (orig_strlen == (int)strlen(str))) {
             res = jf_process(op, str, version_str, jf_depth);

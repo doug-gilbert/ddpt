@@ -13,8 +13,8 @@ devices that understand the SCSI command set.
 [\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR] [\fIrtf=RTF\fR]
 [\fIrtype=RTYPE\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR]
 [\fIto=TO\fR] [\fIverbose=VERB\fR] [\fI\-\-dry\-run\fR] [\fI\-\-help\fR]
-[\fI\-\-job=JF\fR] [\fI\-\-odx\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR]
-[\fI\-\-wscan\fR] [\fI\-\-xcopy\fR] [\fIJF\fR]
+[\fI\-\-job=JF\fR] [\fI\-\-odx\fR] [\fI\-\-quiet\fR] [\fI\-\-verbose\fR]
+[\fI\-\-version\fR] [\fI\-\-wscan\fR] [\fI\-\-xcopy\fR] [\fIJF\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
 .PP
@@ -269,6 +269,14 @@ then some other command should be consuming that data (e.g. 'md5sum OFILE2'),
 otherwise this utility will block. The write to \fIOFILE2\fR occurs before
 the write to \fIOFILE\fR and prior to sparse writing and write sparing
 logic. So everything read is written to \fIOFILE2\fR.
+.br
+\fIOFILE2\fR is not truncated before writing. Assuming that the \fIOFILE2\fR
+length is shorter than what is written (or it is created) then its contents
+should be the concaternation of all segments (each of ibs*bpt bytes long,
+with the last segment being possibly shorter). The gather list given to
+\fIskip=SKIP\fR effects what is read into each segment so it indirectly
+effects what is written to \fIOFILE2\fR. However the scatter list given to
+\fIseek=SEEK\fR has no effect on what is written to \fIOFILE2\fR.
 .TP
 \fBoflag\fR=\fIFLAGS\fR
 where \fIFLAGS\fR is a comma separated list of one or more flags outlined
@@ -345,7 +353,8 @@ value 'null' is accepted for \fISTAT\fR and does nothing.
 A \fISTAT\fR value of 'progress' prints a progress report (to stderr) every
 two minutes. If 'progress' is used twice, either by repeating
 the 'status=progress' argument or by entering 'status=progress,progress',
-then a progress report is printed every minute. Note that care is taken not
+then a progress report is printed every minute. If it is used thrice, the
+a progress report is printed every 30 seconds. Note that care is taken not
 to flood the OS with calls to check the time which would slow down the copy
 process.
 .br
@@ -367,8 +376,10 @@ A value of 1 reports extra information that is not repetitive. A value
 (i.e. other that READ and WRITE). Error processing is not considered
 repetitive. Values of 3 and 4 yield reporting for all SCSI commands, plus
 Unix read() and write() calls, so there can be a lot of output.
+.br
 If \fIVERB\fR is "\-1" then reporting that would have been sent to stderr
-is redirected to /dev/null essentially throwing it away.
+is redirected to /dev/null essentially throwing it away. It has the same
+action as the \fI\-\-quiet\fR option.
 .TP
 \fB\-d\fR, \fB\-\-dry\-run\fR
 does all the argument and option processing, opens given file and devices but
@@ -397,6 +408,11 @@ lines and anything from and including a '#' in a job file line is ignored.
 \fB\-o\fR, \fB\-\-odx\fR
 indicates to this utility that one of the four odx variants is requested.
 See ODX section.
+.TP
+\fB\-q\fR, \fB\-\-quiet\fR
+redirects the messages (sent to stderr) to /dev/null which is essentially
+throwing them away. That redirect takes place after the command line
+arguments are parsed and associated sanity checks performed.
 .TP
 \fB\-v\fR, \fB\-\-verbose\fR
 equivalent of \fIverbose=1\fR. If \fI\-\-verbose\fR appears twice then
@@ -975,6 +991,48 @@ gather list file). However such a large element will be split into multiple
 elements internally. This will be visible to the user when the
 \fIverbose=VERB\fR option (or one of its variants) is used with an elevated
 value.
+.SH SANITY CHECKS
+With powerful data tools, the ability to accidentally overwrite and hence
+lose important data is ever present. So a significant portion of the code
+is dedicated to checking the input arguments for duplications and
+contradictions. But nothing beats re\-reading the command line (which can
+be quite long) before hitting the enter key.
+.PP
+Other useful possibilities are to use job files (see the \fIJF\fR argument
+and the \fI\-\-job=JF\fR option) and the \fI\-\-dry\-run\fR option.
+The "dry run" option is becoming popular in modern command line utilities
+and more or less does what the user would expect. Firstly it parses all
+the command line arguments then opens \fIIFILE\fR, \fIOFILE\fR and
+\fIOFILE2\fR as directed by the command line and does any meta\-data
+operations that it would typically do (e.g. check a pass\-though or
+block device's logical block size and object if it differs from
+\fIBS\fR, \fIIBS\fR or \fIOBS\fR (whichever applies). Then just at the point
+where the code would commence the actually copy (or read) it does a
+premature exit. If the \fI\-\-dry\-run\fR option is given twice, the code
+continues into the copy logic and bypasses the low level read and write
+calls (and file repositioning). That inner level of "dry run" is useful
+for debugging and can be used with multiple \fIverbose=VERB\fR options.
+.PP
+The \fIverbose=VERB\fR option sends diagnostic messages to stderr. The more
+times the \fIverbose=VERB\fR option is used, the greater the volume of
+diagnostic messages. When use three or more times then diagnostic messages
+are generated for each read to, and write from, the working copy buffer;
+so the volume of messages is proportional to the number of reads and writes
+that are done. This can easily be in the megabyte range. If used less than
+three times, the reads and writes associated with the copy do not generate
+diagnostic messages (unless they cause abnormal situations). Do the
+diagnostic messages are mainly associated with command line parsing and
+fetching meta\-data about the given files, plus messages from the cleanup
+at the end of the copy.
+.PP
+The following command line arguments are checked that they don't appear
+more than once: \fIbpt=BPT[,OBPC]\fR, \fIbs=BS\fR, \fIcount=COUNT\fR,
+\fIibs=IBS\fR, \fIif=IFILE\fR, \fIiseek=SKIP\fR, \fIobs=OBS\fR,
+\fIof=OFILE\fR, \fIof2=OFILE2\fR, \fIoseek=SEEK\fR, \fIseek=SEEK\fR and
+\fIskip=SKIP\fR. On the other hand some arguments are additive, for example
+\fIiflag=FLAGS\fR, \fIoflag=FLAGS\fR, \fIstatus=STAT\fR and
+\fI\-\-verbose\fR
+zzzzzz
 .SH XCOPY
 This section describes XCOPY(LID1) support with this utility. For ODX
 support (XCOPY(LID4) subset) see the ODX section.
