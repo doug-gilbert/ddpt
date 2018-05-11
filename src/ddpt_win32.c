@@ -350,6 +350,7 @@ int
 win32_open_if(struct opts_t * op, int flags, int verbose)
 {
     int blen;
+    int ibs = op->ibs_pi;
     DWORD count, share_mode, err;
     DISK_GEOMETRY g;
     char b[80];
@@ -377,9 +378,9 @@ win32_open_if(struct opts_t * op, int flags, int verbose)
                 win32_errmsg(err, b, blen));
         return 1;
     }
-    if ((int)g.BytesPerSector != op->ibs) {
+    if ((int)g.BytesPerSector != ibs) {
         pr2serr("Specified in block size (%d) doesn't match device geometry "
-                "block size: %d\n", op->ibs, (int)g.BytesPerSector);
+                "block size: %d\n", ibs, (int)g.BytesPerSector);
         return 1;
     }
     return 0;
