@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.97 20180511 [svn: r351]";
+static const char * ddpt_version_str = "0.97 20180516 [svn: r352]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -128,13 +128,13 @@ static int cp_read_of_block_reg(struct opts_t * op, struct cp_state_t * csp,
 
 
 /* Returns open input file descriptor (>= 0) or a negative value
- * (-SG_LIB_FILE_ERROR or -SG_LIB_CAT_OTHER) if error.
+ * (sg3_utils style error code) if error.
  */
 static int
 open_if(struct opts_t * op)
 {
     int fd = -SG_LIB_FILE_ERROR;
-    int flags;
+    int flags, err;
     int vb = op->verbose;
     char ebuff[EBUFF_SZ];
     struct flags_t * ifp = op->iflagp;
@@ -144,7 +144,7 @@ open_if(struct opts_t * op)
     idip->d_type = dd_filetype(ifn, vb);
     if (FT_ERROR & idip->d_type) {
         pr2serr("unable to access %s\n", ifn);
-        goto file_err;
+        return -SG_LIB_FILE_ERROR;
     } else if (((FT_BLOCK | FT_TAPE | FT_OTHER) & idip->d_type) && ifp->pt)
         idip->d_type |= FT_PT;
     if (vb)
@@ -157,19 +157,17 @@ open_if(struct opts_t * op)
 
     if ((FT_TAPE & idip->d_type) && (FT_PT & idip->d_type)) {
         pr2serr("SCSI tape device %s not supported via pt\n", ifn);
-        goto file_err;
+        return -SG_LIB_FILE_ERROR;
     }
     if (FT_PT & idip->d_type) {
         fd = pt_open_if(op, NULL);
-        if (-1 == fd)
-            goto file_err;
-        else if (fd < -1)
-            goto other_err;
+        if (fd < 0)
+            return fd;
     }
 #ifdef SG_LIB_WIN32
     else if (FT_BLOCK & idip->d_type) {
         if (win32_open_if(op, (ifp->excl ? O_EXCL : 0), vb))
-            goto file_err;
+            return -SG_LIB_FILE_ERROR;
         fd = 0;
     }
 #endif
@@ -183,9 +181,10 @@ open_if(struct opts_t * op)
             flags |= O_SYNC;
         fd = open(ifn, flags);
         if (fd < 0) {
+            err = errno;
             pr2serr("could not open %s for reading: %s\n", ifn,
-                    safe_strerror(errno));
-            goto file_err;
+                    safe_strerror(err));
+            return -sg_convert_errno(err);
         } else {
             if (sg_set_binary_mode(fd) < 0)
                 perror("sg_set_binary_mode");
@@ -218,23 +217,18 @@ open_if(struct opts_t * op)
     }
 #endif
     return fd;
-
-file_err:
-    return -SG_LIB_FILE_ERROR;
-other_err:
-    return -SG_LIB_CAT_OTHER;
 }
 
-/* Returns open output file descriptor (>= 0), -1 for don't
+/* Returns open output file descriptor (>= 0), -9999 for don't
  * bother opening (e.g. /dev/null), or a more negative value
- * (-SG_LIB_FILE_ERROR or -SG_LIB_CAT_OTHER) if error.
+ * (sg3_utils style error code) if error.
  */
 static int
 open_of(struct opts_t * op)
 {
     bool outf_exists = false;
     int fd = -SG_LIB_FILE_ERROR;
-    int flags;
+    int flags, err;
     int vb = op->verbose;
     struct flags_t * ofp = op->oflagp;
     struct dev_info_t * odip = op->odip;
@@ -254,20 +248,18 @@ open_of(struct opts_t * op)
 
     if ((FT_TAPE & odip->d_type) && (FT_PT & odip->d_type)) {
         pr2serr("SCSI tape device %s not supported via pt\n", ofn);
-        goto file_err;
+        return -SG_LIB_FILE_ERROR;
     }
     if (FT_PT & odip->d_type) {
         fd = pt_open_of(op, NULL);
-        if (-1 == fd)
-            goto file_err;
-        else if (fd < -1)
-            goto other_err;
+        if (fd < 0)
+            return fd;
     } else if (FT_DEV_NULL & odip->d_type)
-        fd = -1; /* don't bother opening */
+        fd = -9999; /* don't bother opening */
 #ifdef SG_LIB_WIN32
     else if (FT_BLOCK & odip->d_type) {
         if (win32_open_of(op, (ofp->excl ? O_EXCL : 0), vb))
-            goto file_err;
+            return -SG_LIB_FILE_ERROR;
         fd = 0;
     }
 #endif
@@ -281,7 +273,7 @@ open_of(struct opts_t * op)
         else if (ofp->pt) {
             /* if oflag=pt, then creating a regular file is unhelpful */
             pr2serr("Cannot create a regular file called %s as a pt\n", ofn);
-            goto other_err;
+            return -SG_LIB_FILE_ERROR;
         }
         flags = ofp->sparing ? O_RDWR : O_WRONLY;
         if (! outf_exists)
@@ -304,15 +296,17 @@ open_of(struct opts_t * op)
                 flags |= O_TRUNC;
         }
         if ((fd = open(ofn, flags, 0666)) < 0) {
+            err = errno;
             pr2serr("could not open %s for writing: %s\n", ofn,
-                    safe_strerror(errno));
-            goto file_err;
+                    safe_strerror(err));
+            return -sg_convert_errno(err);
         }
         if (needs_ftruncate && (offset > 0)) {
             if (ftruncate(fd, offset) < 0) {
+                err = errno;
                 pr2serr("could not ftruncate %s after open (seek): %s\n",
-                        ofn, safe_strerror(errno));
-                goto file_err;
+                        ofn, safe_strerror(err));
+                return -sg_convert_errno(err);
             }
             /* N.B. file offset (pointer) not changed by ftruncate */
         }
@@ -344,11 +338,6 @@ open_of(struct opts_t * op)
     }
 #endif
     return fd;
-
-file_err:
-    return -SG_LIB_FILE_ERROR;
-other_err:
-    return -SG_LIB_CAT_OTHER;
 }
 
 /* Set file pointer (byte position) of file associated with dip (assumed to
@@ -852,7 +841,7 @@ cp_write_same_wrap(struct dev_info_t * dip, struct cp_state_t * csp,
     }
 }
 
-/* Error occurred on block/regular read. coe active so assume all full
+/* Error occurred on block/regular read. coe>0 so assume all full
  * blocks prior to error are good (if any) and start to read from the
  * block containing the error, one block at a time, until ibpt. Supply
  * zeros for unreadable blocks. Return 0 if successful, SG_LIB_CAT_OTHER
@@ -2765,14 +2754,14 @@ open_files_devices(struct opts_t * op)
         idip->d_type = FT_DEV_NULL;
         idip->fd = 9998;        /* unlikely file descriptor */
     } else {
-        pr2serr("'if=IFILE' option must be given. For stdin as input use "
+        pr2serr("'if=IFILE' operand must be given. For stdin as input use "
                 "'if=-'\n");
         pr2serr("For more information use '--help'\n");
         return SG_LIB_SYNTAX_ERROR;
     }
 
     if ('\0' == odip->fn[0])
-        strcpy(odip->fn, "."); /* treat no 'of=OFILE' option as /dev/null */
+        strcpy(odip->fn, "."); /* treat no 'of=OFILE' operand as /dev/null */
     if (('-' == odip->fn[0]) && ('\0' == odip->fn[1])) {
         fd = STDOUT_FILENO;
         odip->d_type = FT_FIFO;
@@ -2782,8 +2771,12 @@ open_files_devices(struct opts_t * op)
                     "pipe]\n");
     } else {
         fd = open_of(op);
-        if (fd < -1)
-            return -fd;
+        if (fd < 0) {
+            if (-9999 == fd)    /* -9999 indicates /dev/null, didn't open */
+                fd = -1;
+            else
+                return -fd;     /* negated sg3_utils style error code */
+        }
     }
     odip->fd = fd;
 
@@ -3148,7 +3141,8 @@ main(int argc, char * argv[])
 
     op = &ops;
     state_init(op, &iflag, &oflag, &ids, &ods, &o2ds);
-    ret = cl_process(op, argc, argv, ddpt_version_str, jf_depth);
+    op->primary_ddpt = true;
+    ret = cl_parse(op, argc, argv, ddpt_version_str, jf_depth);
     if (op->do_help > 0) {
         ddpt_usage(op->do_help);
         return 0;

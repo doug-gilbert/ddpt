@@ -128,12 +128,12 @@ pt_destruct_obj(void * vp)
 }
 
 /* Opens given device with the pass-through interface. If successful sends
- * a standard INQUIRY request. Returns file descriptor (>=0) if successful,
- * -1 if open fails, -2 if standard INQUIRY fails. */
+ * a standard INQUIRY request. Returns file descriptor (>=0) if successful;
+ * otherwise returns negated sg3_utils error code if open or INQUIRY fails. */
 int
 pt_open_if(struct opts_t * op, struct sg_simple_inquiry_resp * sirp)
 {
-    int verb, flags, fl, fd;
+    int verb, flags, fl, fd, res;
     struct flags_t * fp = op->iflagp;
     struct dev_info_t * dip = op->idip;
     const char * fn = op->idip->fn;
@@ -152,12 +152,12 @@ pt_open_if(struct opts_t * op, struct sg_simple_inquiry_resp * sirp)
         if (-EBUSY == fd) {
             pr2serr("open %s for pass-through reports BUSY,\n"
                     "  use iflag=block to wait until ready\n", fn);
-            return -1;
+            return -sg_convert_errno(-fd);
         }
         if (op->o_readonly) {
             pr2serr("could not open %s ro as pass-through: %s\n", fn,
                         safe_strerror(-fd));
-            return -1;
+            return -sg_convert_errno(-fd);
         } else {
             fl = O_RDONLY;
             if (op->verbose)
@@ -167,13 +167,13 @@ pt_open_if(struct opts_t * op, struct sg_simple_inquiry_resp * sirp)
                 < 0) {
                 pr2serr("could not open %s [rw or ro] as pass-through: %s\n",
                         fn, safe_strerror(-fd));
-                return -1;
+                return -sg_convert_errno(-fd);
             }
         }
     }
-    if (sg_simple_inquiry(fd, &sir, 0, verb)) {
+    if ((res = sg_simple_inquiry(fd, &sir, 0, verb))) {
         pr2serr("INQUIRY failed on %s\n", fn);
-        return -2;
+        return (res < 0) ? -sg_convert_errno(-res) : -res;
     }
     dip->pdt = sir.peripheral_type;
     if (op->verbose) {
@@ -191,12 +191,12 @@ pt_open_if(struct opts_t * op, struct sg_simple_inquiry_resp * sirp)
 }
 
 /* Opens given device with the pass-through interface. If successful sends
- * a standard INQUIRY request. Returns file descriptor (>=0) if successful,
- * -1 if open fails, -2 if standard INQUIRY fails. */
+ * a standard INQUIRY request. Returns file descriptor (>=0) if successful;
+ * otherwise returns negated sg3_utils error code if open or INQUIRY fails. */
 int
 pt_open_of(struct opts_t * op, struct sg_simple_inquiry_resp * sirp)
 {
-    int verb, flags, fd;
+    int verb, flags, fd, res;
     struct sg_simple_inquiry_resp sir;
     struct flags_t * fp = op->oflagp;
     struct dev_info_t * dip = op->odip;
@@ -212,18 +212,17 @@ pt_open_of(struct opts_t * op, struct sg_simple_inquiry_resp * sirp)
     if (fp->sync)
         flags |= O_SYNC;
     if ((fd = scsi_pt_open_flags(fn, flags, op->verbose)) < 0) {
-        if (-EBUSY == fd) {
+        if (-EBUSY == fd)
             pr2serr("open %s for pass-through reports BUSY,\n"
                     "  use oflag=block to wait until ready\n", fn);
-            return -1;
-        }
-        pr2serr("could not open %s for pass-through: %s\n", fn,
-                safe_strerror(-fd));
-        return -1;
+        else
+            pr2serr("could not open %s for pass-through: %s\n", fn,
+                    safe_strerror(-fd));
+        return -sg_convert_errno(-fd);
     }
-    if (sg_simple_inquiry(fd, &sir, 0, verb)) {
+    if ((res = sg_simple_inquiry(fd, &sir, 0, verb))) {
         pr2serr("INQUIRY failed on %s\n", fn);
-        return -2;
+        return (res < 0) ? -sg_convert_errno(-res) : -res;
     }
     dip->pdt = sir.peripheral_type;
     if (op->verbose) {
