@@ -200,6 +200,7 @@ secondary_help:
            "(10 mins))\n\n");
     pr2serr("FLAGS: (arguments to oflag= and oflag=; may be comma "
             "separated)\n"
+            "  00 (i)         input will be all 0x0 bytes\n"
             "  append (o)     append (part of) IFILE to end of OFILE\n"
             "  atomic (o,pt)  use WRITE ATOMIC(16) on OFILE\n"
             "  block (pt)     pt opens are non blocking by default\n"
@@ -244,7 +245,7 @@ tertiary_help:
             "(disk->ROD)\n"
             "                 and/or WRITE USING TOKEN (ROD->disk) "
             "commands\n"
-            "  pad (o)        pad blocks shorter than OBS with zeroes\n"
+            "  pad (o)        pad blocks shorter than OBS with zeros\n"
             "  pre-alloc (o)  use fallocate() before copy to set OFILE to "
             "its\n"
             "                 expected size\n"
@@ -257,9 +258,9 @@ tertiary_help:
             "segments\n"
             "  sparing (o)    read OFILE prior to a write; don't write if "
             "same\n"
-            "  sparse (o)     don't write blocks of zeroes; move file "
+            "  sparse (o)     don't write blocks of zeros; move file "
             "pointer\n"
-            "                 or if OFILE is pt assume it contains zeroes "
+            "                 or if OFILE is pt assume it contains zeros "
             "already\n"
             "  ssync (o,pt)   at end of copy do SCSI SYNCHRONIZE CACHE\n"
             "  strunc (o)     sparse copy using ftruncate to extend OFILE "
@@ -380,13 +381,23 @@ skip_seek(struct opts_t * op, const char * key, const char * buf,
 static int
 do_skip(struct opts_t * op, const char * key, const char * buf)
 {
-    return skip_seek(op, key, buf, &op->i_sgli.sgl, &op->i_sgli.elems);
+    int ret;
+
+    ret = skip_seek(op, key, buf, &op->i_sgli.sglp, &op->i_sgli.elems);
+    if (0 == ret)
+        sgl_sum_scan(&op->i_sgli, key, (op->verbose > 1));
+    return ret;
 }
 
 static int
 do_seek(struct opts_t * op, const char * key, const char * buf)
 {
-    return skip_seek(op, key, buf, &op->o_sgli.sgl, &op->o_sgli.elems);
+    int ret;
+
+    ret = skip_seek(op, key, buf, &op->o_sgli.sglp, &op->o_sgli.elems);
+    if (0 == ret)
+        sgl_sum_scan(&op->o_sgli, key, (op->verbose > 1));
+    return ret;
 }
 
 /* Process arguments given to 'conv=" option. Returns 0 on success,
@@ -563,6 +574,8 @@ flags_process(const char * arg, struct flags_t * fp)
             fp->verify = true;
         else if (0 == strcmp(cp, "xcopy"))
             fp->xcopy = true;
+        else if (0 == strcmp(cp, "00"))
+            fp->zero = true;
         else {
             pr2serr("unrecognised flag: %s\n", cp);
             return 1;
@@ -601,16 +614,19 @@ static int
 cl_sanity_defaults(struct opts_t * op)
 {
     int def_bs = DEF_BLOCK_SIZE;
+    int vb = op->verbose;
     const char * cp;
     char * csp;
     char * cdp;
     char b[80];
     struct flags_t * ifp = op->iflagp;
     struct flags_t * ofp = op->oflagp;
+    struct sgl_info_t * i_sglip = &op->i_sgli;
+    struct sgl_info_t * o_sglip = &op->o_sgli;
 
     cp = getenv(DDPT_DEF_BS);
     if (cp) {
-        if (op->verbose)
+        if (vb)
             pr2serr("  %s=%s environment variable detected, modifying block "
                     "size default\n", DDPT_DEF_BS, cp);
         if ((1 == sscanf(cp, "%d", &def_bs)) && (def_bs > 0))
@@ -622,17 +638,21 @@ cl_sanity_defaults(struct opts_t * op)
 
     if ((0 == op->ibs) && (0 == op->obs)) {
         op->ibs = def_bs;
+        op->ibs_pi = op->ibs;
         op->obs = def_bs;
+        op->obs_pi = op->obs;
         if (op->idip->fn[0])
             pr2serr("Assume block size of %d bytes for both input and "
                     "output\n", def_bs);
     } else if (0 == op->obs) {
         op->obs = def_bs;
+        op->obs_pi = op->obs;
         if ((op->ibs != def_bs) && op->odip->fn[0])
             pr2serr("Neither obs nor bs given so set obs=%d (default "
                     "block size)\n", op->obs);
     } else if (0 == op->ibs) {
         op->ibs = def_bs;
+        op->ibs_pi = op->ibs;
         if (op->obs != def_bs)
             pr2serr("Neither ibs nor bs given so set ibs=%d (default "
                     "block size)\n", op->ibs);
@@ -651,13 +671,13 @@ cl_sanity_defaults(struct opts_t * op)
                 "no remainder (bpt=%d)\n", op->bpt_i);
         return SG_LIB_SYNTAX_ERROR;
     }
-    if ((op->skip < 0) || (op->seek < 0)) {
-        pr2serr("neither skip nor seek can be negative\n");
-        return SG_LIB_SYNTAX_ERROR;
-    }
-    if ((ofp->append > 0) && (op->seek > 0)) {
-        pr2serr("Can't use both append and seek switches\n");
-        return SG_LIB_SYNTAX_ERROR;
+    if ((ofp->append > 0) && (op->o_sgli.elems > 0)) {
+        /* seek= has possible sgl, want lowest LBA ... */
+        sgl_sum_scan(&op->o_sgli, "oflag=append", vb > 1);
+        if (op->o_sgli.lowest_lba > 0) {
+            pr2serr("Can't use both append and seek switches\n");
+            return SG_LIB_SYNTAX_ERROR;
+        }
     }
     if (op->bpt_i < 1) {
         pr2serr("internal BPT value 0, cannot continue\n");
@@ -678,7 +698,7 @@ cl_sanity_defaults(struct opts_t * op)
     if (ofp->trunc) {
         if (ofp->resume) {
             ofp->trunc = false;
-            if (op->verbose)
+            if (vb)
                 pr2serr("trunc ignored due to resume flag, "
                         "otherwise open_of() truncates too early\n");
         } else if (ofp->append) {
@@ -689,7 +709,7 @@ cl_sanity_defaults(struct opts_t * op)
             return SG_LIB_SYNTAX_ERROR;
         }
     }
-    if (ifp->self || ofp->self) {
+    if (ifp->self || ofp->self) {  /* self trim: move relevant stuff to out */
         if (! ofp->self)
             ofp->self = true;
         if (ifp->wsame16 || ofp->wsame16) {
@@ -698,24 +718,26 @@ cl_sanity_defaults(struct opts_t * op)
             if (! ofp->nowrite)
                 ofp->nowrite = true;
         }
+        if ((op->ibs > 0) && (op->obs > 0) && (op->ibs != op->obs)) {
+            pr2serr("self flag doesn't support unequal ibs= and obs=\n");
+            return SG_LIB_SYNTAX_ERROR;
+        } else if (op->ibs > 0) {    /* force ibs==obs */
+            op->obs = op->ibs;
+            op->obs_pi = op->ibs_pi;
+        } else if (op->obs > 0) {
+            op->ibs = op->obs;
+            op->ibs_pi = op->obs_pi;
+        }
+
         if ('\0' == op->odip->fn[0])
             strcpy(op->odip->fn, op->idip->fn);
-        if ((0 == op->seek) && (op->skip > 0)) {
-            if (op->ibs == op->obs)
-                op->seek = op->skip;
-            else if (op->obs > 0) {
-                int64_t l;
-
-                l = op->skip * op->ibs;
-                op->seek = l / op->obs;
-                if ((op->seek * op->obs) != l) {
-                    pr2serr("self cannot translate skip to seek "
-                            "properly, try different skip value\n");
-                    return SG_LIB_SYNTAX_ERROR;
-                }
-            }
-            if (op->verbose)
-                pr2serr("self: set seek=%" PRId64 "\n", op->seek);
+        if (sgl_empty(o_sglip->sglp, o_sglip->elems) &&
+            (! sgl_empty(i_sglip->sglp, i_sglip->elems))) {
+            /* move in sgl to out sgl */
+            *o_sglip = *i_sglip;        /* structure assignment */
+            memset(i_sglip, 0, sizeof(struct sgl_info_t));
+            if (vb)
+                pr2serr("self: moved in sgl to out sgl\n");
         }
     }
     if (ofp->wsame16)
@@ -739,7 +761,7 @@ cl_sanity_defaults(struct opts_t * op)
                 if (! ofp->xcopy)
                     ofp->xcopy = true;
 #endif
-                if (op->verbose > 1)
+                if (vb > 1)
                     pr2serr("Default dictates which device to send xcopy "
                             "command to:\n");
             } else {
@@ -752,14 +774,14 @@ cl_sanity_defaults(struct opts_t * op)
                     if (! ofp->xcopy)
                         ofp->xcopy = true;
                 }
-                if (op->verbose > 1)
+                if (vb > 1)
                     pr2serr("%s dictates which device to send xcopy "
                             "command to:\n",
                             (csp ? XCOPY_TO_SRC : XCOPY_TO_DST));
             }
         }
-        if (op->verbose) {
-            if (op->verbose > 1)
+        if (vb) {
+            if (vb > 1)
                 pr2serr("  ");
             pr2serr("Will send xcopy command to %s [%s=%s]\n",
                     (ifp->xcopy ? "src" : "dst"),
@@ -771,7 +793,7 @@ cl_sanity_defaults(struct opts_t * op)
         if (ifp->xcopy) {
             if (! ifp->pt) {
                 ifp->pt = true;
-                if (op->verbose > 3)
+                if (vb > 3)
                     pr2serr("Setting pt (pass-through) on IFILE for "
                             "xcopy\n");
 
@@ -779,7 +801,7 @@ cl_sanity_defaults(struct opts_t * op)
         } else {
             if (! ofp->pt) {
                 ofp->pt = true;
-                if (op->verbose > 3)
+                if (vb > 3)
                     pr2serr("Setting pt (pass-through) on OFILE for "
                             "xcopy\n");
             }
@@ -797,14 +819,14 @@ cl_sanity_defaults(struct opts_t * op)
         if (op->idip->fn[0] && op->odip->fn[0]) {
             op->odx_request = ODX_COPY;
             if (RODT_BLK_ZERO == op->rod_type) {
-                if (op->verbose > 1)
+                if (vb > 1)
                     cp = "zero output blocks: call WRITE USING TOKEN(s), "
                          "repeatedly";
                 else
                     cp = "zero output blocks";
 
             } else {
-                if (op->verbose > 1)
+                if (vb > 1)
                     cp = "full copy: POPULATE TOKEN then WRITE USING "
                          "TOKEN(s), repeatedly";
                 else
@@ -812,11 +834,11 @@ cl_sanity_defaults(struct opts_t * op)
             }
         } else if (op->idip->fn[0]) {
             op->odx_request = ODX_READ_INTO_RODS;
-            if (op->verbose)
+            if (vb)
                 cp = "read to tokens; disk-->ROD";
         } else if (op->odip->fn[0]) {
             op->odx_request = ODX_WRITE_FROM_RODS;
-            if (op->verbose)
+            if (vb)
                 cp = "write from tokens; ROD-->disk";
         } else {
             pr2serr("Not enough options given to do ODX (xcopy(LID4))\n");
@@ -825,15 +847,15 @@ cl_sanity_defaults(struct opts_t * op)
         csp = getenv(ODX_RTF_LEN);
         if (csp)
                 op->rtf_len_add = true;
-        if (op->verbose) {
+        if (vb) {
             pr2serr("ODX: %s%s\n", cp, (csp ? "\n    [ODX_RTF_LEN "
                     "environment variable present]" : ""));
-            if ((op->verbose > 1) && op->rod_type_given)
+            if ((vb > 1) && op->rod_type_given)
                 pr2serr("ODX: ROD type: %s\n",
                         rod_type_str(op->rod_type, b, sizeof(b)));
         }
     }
-    if (op->verbose) {      /* report flags used but not supported */
+    if (vb) {      /* report flags used but not supported */
 #ifndef SG_LIB_LINUX
         if (ifp->flock || ofp->flock)
             pr2serr("warning: 'flock' flag not supported on this "
@@ -863,6 +885,11 @@ cl_sanity_defaults(struct opts_t * op)
         pr2serr("oflag=ff disallowed, can only be used for input\n");
         return SG_LIB_SYNTAX_ERROR;
     }
+    if (ofp->zero) {
+        pr2serr("oflag=00 disallowed, can only be used for input\n");
+        return SG_LIB_SYNTAX_ERROR;
+    }
+    op->bs_same = (op->ibs_pi == op->obs_pi);
     return 0;
 }
 
@@ -1311,9 +1338,9 @@ cl_process(struct opts_t * op, int argc, char * argv[],
         }
         /* look for long options that start with '--' */
         else if (0 == strncmp(key, "--dry-run", 9))
-            op->dry_run = true;
+            ++op->dry_run;
         else if (0 == strncmp(key, "--dry_run", 9))
-            op->dry_run = true;
+            ++op->dry_run;
         else if (0 == strncmp(key, "--help", 6))
             ++op->do_help;
         else if (0 == strncmp(key, "--job", 5)) {
@@ -1344,8 +1371,7 @@ cl_process(struct opts_t * op, int argc, char * argv[],
         else if ((keylen > 1) && ('-' == key[0]) && ('-' != key[1])) {
             res = 0;
             n = num_chs_in_str(key + 1, keylen - 1, 'd');
-            if (n > 0)
-                op->dry_run = true;
+            op->dry_run += n;
             res += n;
             n = num_chs_in_str(key + 1, keylen - 1, 'h');
             op->do_help += n;

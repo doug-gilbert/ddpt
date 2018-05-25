@@ -471,6 +471,7 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
     uint8_t rdCmd[MAX_SCSI_CDBSZ];
     uint8_t sense_b[SENSE_BUFF_LEN];
     struct sg_scsi_sense_hdr ssh;
+    struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
     if (pt_build_scsi_rw_cdb(rdCmd, fp->cdbsz, blocks, from_block, false,
                              fp, protect)) {
@@ -486,7 +487,7 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
     }
 
     if (NULL == ptvp) {
-        pr2serr("pt_low_read: ptvp NULL?\n");
+        pr2serr("%s: ptvp NULL?\n", __func__);
         return -1;
     }
     clear_scsi_pt_obj(ptvp);
@@ -501,9 +502,9 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
            ((-EINTR == res) || (-EAGAIN == res))) {
         /* resubmit in these cases */
         if (-EINTR == res)
-            ++op->interrupted_retries;
+            ++sp->interrupted_retries;
         else
-            ++op->io_eagains;
+            ++sp->io_eagains;
     }
 
     vt = ((op->verbose > 1) ? (op->verbose - 1) : op->verbose);
@@ -521,19 +522,19 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
         case SG_LIB_CAT_RES_CONFLICT:
         case SG_LIB_CAT_DATA_PROTECT:
         case SG_LIB_CAT_ABORTED_COMMAND:
-            ++op->unrecovered_errs;
+            ++sp->unrecovered_errs;
             break;
         case SG_LIB_CAT_UNIT_ATTENTION:
             break;
         case SG_LIB_CAT_PROTECTION:
             /* no retry, might have INFO field */
-            ++op->unrecovered_errs;
+            ++sp->unrecovered_errs;
             info_valid = sg_get_sense_info_fld(sense_b, slen, io_addrp);
             if (info_valid)
                 ret = SG_LIB_CAT_PROTECTION_WITH_INFO;
             break;
         case SG_LIB_CAT_RECOVERED:
-            ++op->recovered_errs;
+            ++sp->recovered_errs;
             info_valid = sg_get_sense_info_fld(sense_b, slen, io_addrp);
             if (! op->quiet) {
                 if (info_valid)
@@ -547,7 +548,7 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
             ret = 0;    /* quash error so copy will continue */
             break;
         case SG_LIB_CAT_MEDIUM_HARD:
-            ++op->unrecovered_errs;
+            ++sp->unrecovered_errs;
             info_valid = sg_get_sense_info_fld(sense_b, slen, io_addrp);
             /* MMC and MO devices don't necessarily set VALID bit */
             if (info_valid || ((*io_addrp > 0) &&
@@ -571,14 +572,14 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
                         info_valid = sg_get_sense_info_fld(sense_b, slen,
                                                            io_addrp);
                         if (info_valid) {
-                            ++op->unrecovered_errs;
+                            ++sp->unrecovered_errs;
                             ret = SG_LIB_CAT_MEDIUM_HARD_WITH_INFO;
                             break;
                         } else
                             pr2serr("MMC READ gave 'illegal mode for this "
                                     "track' and ILI but no LBA of failure\n");
                     }
-                    ++op->unrecovered_errs;
+                    ++sp->unrecovered_errs;
                     ret = SG_LIB_CAT_MEDIUM_HARD;
                 }
             }
@@ -592,7 +593,7 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
     /* We are going to re-read those good blocks */
     if ((SG_LIB_CAT_MEDIUM_HARD_WITH_INFO != ret) &&
         (SG_LIB_CAT_PROTECTION_WITH_INFO != ret))
-        op->sum_of_resids += get_scsi_pt_resid(ptvp);
+        sp->sum_of_resids += get_scsi_pt_resid(ptvp);
     return ret;
 }
 
@@ -607,27 +608,25 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
  * -2 -> ENOMEM, -1 other errors */
 int
 pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff, int blocks,
-        int * blks_readp)
+        int64_t from_block, int * blks_readp)
 {
     bool may_coe = false;
     bool use_io_addr;
     int res, blks, xferred, pi_len, bs, retries_tmp;
     int ret = 0;
-    int64_t from_block;
     uint64_t io_addr;
     int64_t lba;
     struct flags_t * fp;
     uint8_t * bp;
     const char * iop;
+    struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
     if (in0_out1) {
-        from_block = op->seek;
         bs = op->obs_pi;
         pi_len = op->obs_pi - op->obs;
         fp = op->oflagp;
         iop = "ofile";
     } else {
-        from_block = op->skip;
         bs = op->ibs_pi;
         pi_len = op->ibs_pi - op->ibs;
         fp = op->iflagp;
@@ -681,9 +680,9 @@ pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff, int blocks,
                 pr2serr(">>> retrying pt read: starting lba=%" PRId64 " [0x%"
                         PRIx64 "] blocks=%d\n", lba, (uint64_t)lba, blks);
                 --retries_tmp;
-                ++op->num_retries;
-                if (op->unrecovered_errs > 0)
-                    --op->unrecovered_errs;
+                ++sp->num_retries;
+                if (sp->unrecovered_errs > 0)
+                    --sp->unrecovered_errs;
             } else
                 use_io_addr = true;
             ret = SG_LIB_CAT_MEDIUM_HARD;
@@ -709,9 +708,9 @@ pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff, int blocks,
                 pr2serr(">>> retrying pt read: starting lba=%" PRId64 " [0x%"
                         PRIx64 "] blocks=%d\n", lba, (uint64_t)lba, blks);
                 --retries_tmp;
-                ++op->num_retries;
-                if (op->unrecovered_errs > 0)
-                    --op->unrecovered_errs;
+                ++sp->num_retries;
+                if (sp->unrecovered_errs > 0)
+                    --sp->unrecovered_errs;
                 break;
             }
             ret = res;
@@ -738,8 +737,8 @@ pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff, int blocks,
         }
         errblk_put(io_addr, op);
         if (fp->coe) {
-            ++op->in_partial;
-            --op->in_full;
+            ++sp->in_partial;
+            --sp->in_full;
         }
         blks = (int)(io_addr - (uint64_t)lba);
         if (blks > 0) {
@@ -854,6 +853,7 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
     const char * desc;
     uint8_t wrCmd[MAX_SCSI_CDBSZ];
     uint8_t sense_b[SENSE_BUFF_LEN];
+    struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
     if (pt_build_scsi_rw_cdb(wrCmd, fp->cdbsz, blocks, to_block, 1, fp,
                              op->wrprotect)) {
@@ -875,7 +875,7 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
     }
 
     if (NULL == ptvp) {
-        pr2serr("pt_low_write: of_ptvp NULL?\n");
+        pr2serr("%s: of_ptvp NULL?\n", __func__);
         return -1;
     }
     clear_scsi_pt_obj(ptvp);
@@ -890,9 +890,9 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
            ((-EINTR == res) || (-EAGAIN == res))) {
         /* resubmit in these cases */
         if (-EINTR == res)
-            ++op->interrupted_retries;
+            ++sp->interrupted_retries;
         else
-            ++op->io_eagains;
+            ++sp->io_eagains;
     }
 
     vt = ((op->verbose > 1) ? (op->verbose - 1) : op->verbose);
@@ -906,7 +906,7 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
 
         switch (sense_cat) {
         case SG_LIB_CAT_RECOVERED:
-            ++op->wr_recovered_errs;
+            ++sp->wr_recovered_errs;
             info_valid = sg_get_sense_info_fld(sense_b, slen, &io_addr);
             if (! op->quiet) {
                 if (info_valid)
@@ -928,11 +928,11 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
         case SG_LIB_CAT_RES_CONFLICT:
         case SG_LIB_CAT_DATA_PROTECT:
         case SG_LIB_CAT_PROTECTION:
-            ++op->wr_unrecovered_errs;
+            ++sp->wr_unrecovered_errs;
             break;
         case SG_LIB_CAT_MEDIUM_HARD:
         default:
-            ++op->wr_unrecovered_errs;
+            ++sp->wr_unrecovered_errs;
             if (fp->coe) {
                 pr2serr(">> ignored errors for out blk=%" PRId64 " for %d "
                         "bytes\n", to_block, bs * blocks);
@@ -959,6 +959,7 @@ pt_write(struct opts_t * op, const uint8_t * buff, int blocks,
     int retries_tmp;
     int ret = 0;
     int bs = op->obs_pi;
+    struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
     retries_tmp = op->oflagp->retries;
     while (1) {
@@ -989,9 +990,9 @@ pt_write(struct opts_t * op, const uint8_t * buff, int blocks,
                     PRIx64 "] blocks=%d\n", to_block, (uint64_t)to_block,
                     blocks);
             --retries_tmp;
-            ++op->num_retries;
-            if (op->wr_unrecovered_errs > 0)
-                --op->wr_unrecovered_errs;
+            ++sp->num_retries;
+            if (sp->wr_unrecovered_errs > 0)
+                --sp->wr_unrecovered_errs;
         } else
             break;
         first = false;
@@ -1001,7 +1002,8 @@ pt_write(struct opts_t * op, const uint8_t * buff, int blocks,
 
 /* This function performs a "trim" on a pt device. In the SCSI command set
  * this is either done with the UNMAP command or WRITE SAME command. This
- * function uses WRITE SAME(16) with the unmap bit set. In Linux libata
+ * function uses WRITE SAME(16) with the UNMAP bit set. Doesn't assume NDOB
+ * bit is supported so sends 1 block which will be ignored. In Linux libata
  * translates this to the ATA DATA SET MANAGEMENT command with the trim
  * field set. Returns 0 on success. */
 int
@@ -1015,10 +1017,11 @@ pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
     struct sg_pt_base * ptvp = op->odip->ptvp;
     uint8_t wsCmdBlk[16];
     uint8_t sense_b[SENSE_BUFF_LEN];
+    struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
     memset(wsCmdBlk, 0, sizeof(wsCmdBlk));
     wsCmdBlk[0] = 0x93;         /* WRITE SAME(16) opcode */
-    /* set UNMAP; clear wrprotect, anchor, pbdata, lbdata */
+    /* set: UNMAP; clear wrprotect, anchor, NDOB */
     wsCmdBlk[1] = 0x8;
     sg_put_unaligned_be64(s_block, wsCmdBlk + 2);
     unum = blocks;
@@ -1033,7 +1036,7 @@ pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
     }
 
     if (NULL == ptvp) {
-        pr2serr("pt_write_same16: ptvp NULL?\n");
+        pr2serr("%s: ptvp NULL?\n", __func__);
         return -1;
     }
     clear_scsi_pt_obj(ptvp);
@@ -1045,9 +1048,9 @@ pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
            ((-EINTR == res) || (-EAGAIN == res))) {
         /* resubmit in these cases */
         if (-EINTR == res)
-            ++op->interrupted_retries;
+            ++sp->interrupted_retries;
         else
-            ++op->io_eagains;
+            ++sp->io_eagains;
     }
     ret = sg_cmds_process_resp(ptvp, "Write same(16)", res, 0, sense_b,
                                true /*noisy */, vt, &sense_cat);
@@ -1205,7 +1208,7 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
         has_lid = true;
         break;
     default:
-        pr2serr("pt_3party_copy_out: unknown service action 0x%x\n", sa);
+        pr2serr("%s: unknown service action 0x%x\n", __func__, sa);
         return -1;
     }
     tmout = (timeout_secs > 0) ? timeout_secs : DEF_PT_TIMEOUT;

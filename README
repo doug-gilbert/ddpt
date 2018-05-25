@@ -88,10 +88,19 @@ The ./configure script supports these extra options:
   - '--disable-libsgutils' stops the build using the libsgutils library
     if it is found. Instead the copy of those files found under the
     include and lib directories is used.
-  - '--disable-linuxbsg' drops Linux bsg driver support. This is only
+  - '--disable-linuxbsg' does nothing and is only present for backward
+    compatibility
     for testing and should no longer be necessary.
   - '--disable-scsistrings' excludes the asc/ascq and command name strings
     (defined by SCSI/T10) in an attempt to reduce the size of executables.
+  - '--disable-nvme-supp' instructs the build to ignore the added NVMe
+    detection code added in version 0.96
+  - '--disable-fast-lebe' . A header called sg_unaligned.h has several
+    implementations of inline functions for alignment moves and byte
+    swapping. The default is to use little and big endian specific code that
+    depends on the non-standard bswap_<16|32|64> functions. This option
+    forces the use of more generic implementations that depend on C shift
+    operators.
 
 At the request of some Linux distributions, this package will attempt to
 use the libsgutils library (name varies between distributions) at build time.
@@ -139,4 +148,6 @@ See README.win32
 
 
 Douglas Gilbert
-6th November 2017
+25th April 2018
+
+

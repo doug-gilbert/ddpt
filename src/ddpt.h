@@ -117,6 +117,7 @@ extern "C" {
 #define DDPT_MAX_JF_LINES 1000
 #define DDPT_MAX_JF_ARGS_PER_LINE 16
 #define DDPT_COUNT_INDEFINITE (-1)
+#define DDPT_LBA_INVALID DDPT_COUNT_INDEFINITE
 
 #define VPD_DEVICE_ID 0x83
 #define VPD_3PARTY_COPY 0x8f
@@ -141,22 +142,24 @@ extern "C" {
 #define RAW_MAJOR 255   /*unlikey value */
 #endif
 #define DEV_NULL_MINOR_NUM 3
+#define DEV_ZERO_MINOR_NUM 5
 #endif
 
 #define SG_LIB_FLOCK_ERR 90
 
-/* File type categories */
-#define FT_OTHER 1              /* unknown (unable to identify) */
+/* File/device type groups, (N.B. powers of 2), so file can be multiple */
+#define FT_OTHER 1              /* unknown (unable to identify), default */
 #define FT_PT 2                 /* SCSI commands can be sent via a
                                    pass-through */
 #define FT_REG 4                /* a normal (regular) file */
 #define FT_DEV_NULL 8           /* either "/dev/null" or "." as filename */
+                                /* as input equivalent to /dev/zero */
 #define FT_TAPE 16              /* tape style device */
 #define FT_BLOCK 32             /* block device */
 #define FT_FIFO 64              /* fifo (named or unnamed pipe (stdout)) */
 #define FT_CHAR 128             /* char dev, doesn't fit another category */
-#define FT_ERROR 256            /* couldn't "stat" file */
-#define FT_ALL_FF 512           /* iflag=ff so input will be 0xff bytes */
+#define FT_ALL_FF 256           /* iflag=ff so input will be 0xff bytes */
+#define FT_ERROR 0x800000       /* couldn't "stat" file */
 
 /* ODX type requested */
 #define ODX_REQ_NONE 0          /* some other type of copy */
@@ -193,10 +196,14 @@ extern "C" {
 #define MAX_UNIT_ATTENTIONS 10
 #define MAX_ABORTED_CMDS 16
 
-#define DELAY_COPY_SEGMENT 0
-#define DELAY_WRITE 1
+/* So ddpt does not hog all the CPU and IO resources, allow delays defined
+ * by delay=MS[,W_MS] . Used in signals_process_delay(). */
+#define DELAY_COPY_SEGMENT 0    /* after each copy segment (prior to next) */
+#define DELAY_WRITE 1   /* prior to each write, may be muliple per segment */
 
-#define REASON_TAPE_SHORT_READ 1024     /* leave_reason indication */
+/* cp_state_t::leave_reason indication */
+#define REASON_EOF_ON_READ 0
+#define REASON_TAPE_SHORT_READ 1024
 
 
 #define DDPT_CAT_PARAM_LST_LEN_ERR 100
@@ -208,6 +215,7 @@ extern "C" {
 #define DDPT_CAT_INSUFF_RES_CREATE_ROD 106
 #define DDPT_CAT_INSUFF_RES_CREATE_RODTOK 107
 #define DDPT_CAT_CMDS_CLEARED_BY_DEV_SVR 108
+#define DDPT_CAT_SEE_LEAVE_REASON 109   /* see cp_state_t::leave_reason */
 #define DDPT_CAT_TOKOP_BASE 110   /* + ascq; Invalid token operation (0x23) */
 
 #define XCOPY_TO_SRC "XCOPY_TO_SRC"
@@ -244,30 +252,52 @@ extern "C" {
 
 #define MAX_FIXED_SGL_ELEMS 128         /* same for gl and sl; MS max is 64 */
 
+struct sg_pt_base;
 
+
+struct val_str_t {
+    int num;
+    const char * name;
+};
+
+/* Sizing matches largest SCSI READ and WRITE commands plus those of Unix
+ * read(2)s and write(2)s. User can give larger than 31 bit 'num's but they
+ * are split into several consecutive elements. */
 struct scat_gath_elem {
     uint64_t lba;       /* of first block */
     uint32_t num;       /* number of blocks */
 };
 
-/* Type of iterators into scatter gather lists (which are arrays) */
+/* Iterator on a scatter gather list (which are arrays). IFILE and OFILE have
+ * iterators, not OFILE2 */
 struct sgl_iter_t {
-    int elem_ind;       /* current index into above array */
-    uint32_t blk_off;   /* 0 <= blk_off < array[elem_ind].num */
+    int elems;          /* elements in sglp array */
+    int elem_ind;       /* current index into sglp array */
+    uint32_t blk_off;   /* 0 <= blk_off < (sglp + elem_ind)->num */
+    struct scat_gath_elem * sglp;  /* start of scatter gather list array */
+    int64_t filepos;    /* for deciding if file pointer needs to be moved */
 };
 
+/* Holds one scatter gather list and its associated metadata */
 struct sgl_info_t {
+    bool fragmented;    /* only valid if 'monotonic' is true. Thence true
+                         * if gaps between first and last LBA, else false */
     bool monotonic;     /* LBAs grow larger in [0..elems). Allow LBAn ==
                          * LBAn+1 only if NUMn is zero */
-    bool overlapping;   /* only valid if 'monotonic' is true. xxxxxzzzzzz */
+    bool overlapping;   /* only valid if 'monotonic' is true. Means at least
+                         * one LBA is in two sgl elements. Makes sgl
+                         * sensitive to order its elements are processed */
     bool sum_hard;      /* 'num' in last element of 'sgl' is > 0 */
     int elems;          /* number of elements; when 0 'sgl' must be NULL */
-    int64_t highest_lba;/* initialized to -1 */
-    int64_t lowest_lba;
+    int64_t high_lba_p1;  /* highest LBA plus 1, next write from and above */
+    int64_t lowest_lba; /* initialized to 0 */
     int64_t sum;        /* of all 'num' elements in 'sgl' */
-    struct scat_gath_elem * sgl;  /* its an array on heap [0..elems) */
+    int64_t iter_off;   /* of all 'num' elements in 'sgl' */
+    struct scat_gath_elem * sglp;  /* an array on heap [0..elems), owner */
 };
 
+/* Info from SCSI Third Party Copy VPD page (0x8f), descriptor 0 (Block
+ * device ROD Limits). */
 struct block_rodtok_vpd {
     uint16_t max_range_desc;
     uint32_t max_inactivity_to;
@@ -275,6 +305,97 @@ struct block_rodtok_vpd {
     uint32_t max_tok_xfer_size;
     uint32_t optimal_xfer_count;
 };
+
+/* one instance per file/device: if, of and of2 */
+struct dev_info_t {
+    int d_type;         /* one of FT_* values */
+    int d_type_hold;
+    int fd;
+#ifdef SG_LIB_WIN32
+    HANDLE fh;
+#endif
+    int pdt;
+    int prot_type;      /* from RCAP(16) or 0 */
+    int p_i_exp;        /* protection intervals (PIs) exponent */
+    int bs_pi;          /* block size plus PI, if any */
+    uint32_t xc_min_bytes;
+    uint32_t xc_max_bytes;
+    int64_t reg_sz;     /* regular file size in bytes, -1 --> no info */
+    char fn[INOUTF_SZ];
+    struct block_rodtok_vpd * odxp;
+    uint8_t * free_odxp;
+    struct sg_pt_base * ptvp;
+    const char * dir_n; /* points to "in", "out" or "out2" */
+};
+
+struct cp_statistics_t {
+    bool copied_from_working;
+    int64_t in_full;    /* full blocks read from IFILE so far */
+    int64_t out_full;   /* full blocks written to OFILE so far */
+    int64_t dd_count_start;     /* dd_count prior to start of copy/read */
+    int64_t out_sparse; /* used for sparse, sparing + trim */
+    int in_partial;
+    int out_partial;
+    int out_sparse_partial;
+    int recovered_errs;          /* on reads */
+    int unrecovered_errs;        /* on reads */
+    int wr_recovered_errs;
+    int wr_unrecovered_errs;
+    int trim_errs;
+    int num_retries;
+    int sum_of_resids;
+    int interrupted_retries;
+    int io_eagains;
+};
+
+/* state of working variables within do_copy(). Note that block size from
+ * the copy buffer's perspective is dip->bs_pi bytes. */
+struct cp_state_t {
+    bool leave_after_write;     /* partial read then EOF or error */
+    bool in_soft;       /* keep going at end of in sgl */
+    bool out_soft;      /* keep going at end of out sgl */
+    bool reading;
+    int icbpt;          /* input, current blocks_per_transfer */
+    int ocbpt;          /* output, current blocks_per_transfer */
+    int bytes_read;     /* previous IO: into the working buffer */
+    int bytes_of;       /* previous IO: bytes written to of */
+    int bytes_of2;      /* previous IO: bytes written to of2 */
+    int blks_xfer;  /* prev IO: blocks transferred (e.g. bytes_read/ibs) */
+    int bytes_xfer; /* prev IO: bytes transferred, -1 -> block device */
+    int leave_reason;   /* ==0 for no error (e.g. EOF) */
+    int rem_seg_bytes;  /* remaining valid bytes in buffer (after short) */
+    int partial_write_bytes;
+    uint32_t cur_in_num;   /* current in number of blocks */
+    uint32_t cur_out_num;  /* current out number of blocks */
+    uint64_t cur_in_lba;   /* current in starts at this logical block */
+    uint64_t prev_in_lba;  /* previous in leaves file "pointer" here */
+    uint64_t cur_out_lba;  /* current out starts at this logical block */
+    uint64_t prev_out_lba; /* previous out leaves file "pointer" here */
+    struct cp_statistics_t stats;  /* running totals kept here */
+    struct sgl_iter_t in_iter;
+    struct sgl_iter_t out_iter;
+    uint8_t * low_bp;   /* byte pointer to start of work segment */
+    uint8_t * base_bp;  /* byte pointer to start of sub-segment */
+    uint8_t * cur_bp;   /* pointer in sub-segment for start of current IO */
+    int64_t * cur_countp;  /* points to in_full, out_full, or is NULL for
+                            * don't count */
+    const char * buf_name; /* optional buffer name for debugging */
+};
+
+/* This data is extracted from the response of the Receive ROD Token
+ * Information (RRTI) command and the Receive Copy Status (RCS) command. */
+struct rrti_resp_t {
+    uint8_t for_sa;     /* response to service action */
+    uint8_t cstat;      /* copy operation status */
+    uint8_t xc_cstatus; /* extended copy completion status */
+    uint8_t sense_len;  /* (parameter data, actual) sense data length */
+    uint32_t esu_del;   /* estimated status update delay (ms) */
+    uint64_t tc;        /* transfer count (blocks) */
+    /* Prior to this point response * is in common with the RCS command */
+    uint32_t rt_len;    /* might differ from 512, 0 if no ROD token */
+    uint8_t rod_tok[512]; /* (perhaps truncate to) ODX ROD Token */
+};
+
 
 /* One instance for arguments to iflag= , another instance for oflag=
  * conv= arguments are mapped to flag arguments.
@@ -332,6 +453,7 @@ struct flags_t {
     bool wsame16;       /* given trim or unmap then wsame16 is set. Trim/unmap
                          * done on pt using SCSI WRITE SAME(16) command */
     bool xcopy;         /* xcopy(LID1) requested */
+    bool zero;          /* iflag=00 makes input all 0x0 bytes */
 
     int bytchk;         /* set field (2 bit) in WRITE AND VERIFY */
     int cdbsz;          /* 6, 10, 12, 16 or 32 */
@@ -347,36 +469,16 @@ struct flags_t {
                          * if all zeros */
 };
 
-/* one instance per file/device: if, of and of2 */
-struct dev_info_t {
-    int d_type;         /* one of FT_* values */
-    int d_type_hold;
-    int fd;
-#ifdef SG_LIB_WIN32
-    HANDLE fh;
-#endif
-    int pdt;
-    int prot_type;      /* from RCAP(16) or 0 */
-    int p_i_exp;        /* protection intervals (PIs) exponent */
-    int bs_pi;          /* block size plus PI, if any */
-    uint32_t xc_min_bytes;
-    uint32_t xc_max_bytes;
-    char fn[INOUTF_SZ];
-    struct block_rodtok_vpd * odxp;
-    uint8_t * free_odxp;
-    struct sg_pt_base * ptvp;
-};
-
 /* Command line options plus some other state variables.
  * The _given fields indicate whether option was given or if true, the
  * corresponding value takes its default value when false. */
 struct opts_t {
     bool bpt_given;     /* true when bpt= given, BPT --> bpt_i */
     bool bs_given;      /* bs=BS given, check if ibs= or obs= also given */
+    bool bs_same;       /* true when ibs[_pi] and obs[_pi] the same */
     bool cdbsz_given;
     bool count_given;   /* count=COUNT value placed in dd_count variable */
     bool do_time;       /* default true, set false by --status=none */
-    bool dry_run;       /* do preparation, bypass copy (read or write) */
     bool has_odx;       /* --odx: equivalent to iflag=odx or oflag=odx */
     bool has_xcopy;     /* --xcopy (LID1): iflag=xcopy or oflag=xcopy */
     bool ibs_given;
@@ -401,20 +503,22 @@ struct opts_t {
     /* command line related variables */
     int delay;          /* intra copy segment delay in milliseconds */
     int wdelay;         /* delay prior to each write in copy segment */
+    int dry_run;        /* do preparation, bypass copy; >1 go deeper */
     int ibs;
     int ibs_pi;    /* if (protect) ibs_pi = ibs+pi_len else ibs_pi=ibs */
+    int ibs_hold;       /* not sure why we need this hold */
     int obs;
     int obs_pi;    /* if (protect) obs_pi = obs+pi_len else obs_pi=obs */
     int bpt_i;          /* Blocks Per Transfer, input sized blocks */
     int obpch;          /* output blocks per check, granularity of sparse,
-                         * sparing and trim checks for zeros */
+                         * sparing and trim checks for zeros (def: 0) */
     int id_usage;       /* xcopy(LID1) List identifier usage, init to -1 */
     int prio;           /* xcopy(LID1) related */
     int rdprotect;
     int wrprotect;
     int coe_limit;
     int coe_count;
-    int progress;       /* status=progress */
+    int progress;       /* status=progress , report every 2 minutes */
     int verbose;
     int do_help;
     int odx_request;    /* ODX_REQ_NONE==0 for no ODX */
@@ -424,51 +528,34 @@ struct opts_t {
     uint32_t list_id;           /* xcopy(LID1) and odx related */
     uint32_t rod_type;          /* ODX: ROD type */
     int64_t offset_in_rod;      /* ODX: units are obs bytes */
-    /* iseek= is a synonym for skip= ; oseek= is a synonym for seek= */
-    int64_t skip;       /* unit: ibs except when in_sgl is nz, then byte */
-    int64_t seek;       /* unit: obs except when out_sgl is nz, then byte */
     /* working variables and statistics */
     int64_t dd_count;   /* -1 for not specified, 0 for no blocks to copy */
                         /* after copy/read starts, decrements to 0 */
                         /* unit is ibs (input block size) */
-    int64_t dd_count_start;     /* dd_count prior to start of copy/read */
-    int64_t in_full;    /* full blocks read from IFILE so far */
-    int64_t out_full;   /* full blocks written to OFILE so far */
-    int64_t out_sparse; /* used for sparse, sparing + trim */
     int64_t lowest_unrecovered;         /* on reads */
     int64_t highest_unrecovered;        /* on reads */
+    int64_t resume_iblks;       /* nz when this indicates restart point */
     int64_t num_xcopy;                  /* xcopy(LID1) */
-    int in_partial;
     int max_aborted;
     int max_uas;
-    int out_partial;
-    int out_sparse_partial;
-    int recovered_errs;          /* on reads */
-    int unrecovered_errs;        /* on reads */
-    int wr_recovered_errs;
-    int wr_unrecovered_errs;
-    int trim_errs;
+    int err_to_report;
     int read_tape_numbytes;
     int last_tape_read_len;  /* Length of previous tape read */
     unsigned int consec_same_len_reads;
-    int num_retries;
-    int sum_of_resids;
-    int interrupted_retries;
-    int io_eagains;
-    int err_to_report;
-    int ibs_hold;
     FILE * errblk_fp;
     struct flags_t * iflagp;
     struct dev_info_t * idip;
     struct flags_t * oflagp;
     struct dev_info_t * odip;
-    struct dev_info_t * o2dip;
+    struct dev_info_t * o2dip;  /* of2=OFILE2  xxxx */
     uint8_t * wrkPos;
     uint8_t * free_wrkPos;
     uint8_t * wrkPos2;
     uint8_t * free_wrkPos2;
     uint8_t * zeros_buff;
     uint8_t * free_zeros_buff;
+    struct cp_statistics_t * stp;  /* NULL or points to cp_state_t's copy */
+    struct cp_statistics_t stats;  /* copied here after internal copy done */
     struct sgl_info_t i_sgli; /* in scatter gather list info including list */
     struct sgl_info_t o_sgli; /* out scatter gather list info */
     char rtf[INOUTF_SZ];        /* ODX: ROD token filename */
@@ -492,48 +579,27 @@ struct opts_t {
 #endif
 };
 
-/* state of working variables within do_copy() */
-/* permits do_copy() to be broken up into lots of helpers */
-struct cp_state_t {
-    bool leave_after_write;     /* partial read then EOF or error */
-    int icbpt;          /* input, current blocks_per_transfer */
-    int ocbpt;          /* output, current blocks_per_transfer */
-    int bytes_read;     /* into the working buffer */
-    int bytes_of;       /* bytes written to of */
-    int bytes_of2;      /* bytes written to of2 */
-    int leave_reason;   /* ==0 for no error (e.g. EOF) */
-    int partial_write_bytes;
-    int64_t if_filepos;
-    int64_t of_filepos;
-    struct sgl_iter_t in_iter;
-    struct sgl_iter_t out_iter;
-};
-
-struct val_str_t {
-    int num;
-    const char * name;
-};
-
-/* This data is extracted from the response of the Receive ROD Token
- * Information (RRTI) command and the Receive Copy Status (RCS) command. */
-struct rrti_resp_t {
-    uint8_t for_sa;     /* response to service action */
-    uint8_t cstat;      /* copy operation status */
-    uint8_t xc_cstatus; /* extended copy completion status */
-    uint8_t sense_len;  /* (parameter data, actual) sense data length */
-    uint32_t esu_del;   /* estimated status update delay (ms) */
-    uint64_t tc;        /* transfer count (blocks) */
-    /* Prior to this point response * is in common with the RCS command */
-    uint32_t rt_len;    /* might differ from 512, 0 if no ROD token */
-    uint8_t rod_tok[512]; /* (perhaps truncate to) ODX ROD Token */
-};
 
 struct sg_simple_inquiry_resp;
 
-typedef int (*ddpt_rw_f)(struct dev_info_t * dip, uint64_t lba,
-                         uint32_t num_blks, uint8_t * bp,
-                         struct opts_t * op);
+typedef int (*ddpt_rw_f)(struct dev_info_t * dip, int ddpt_arg,
+                         struct cp_state_t * csp, struct opts_t * op);
 
+extern const char * ddpt_arg_strs[];
+
+/* Some inline functions */
+
+/* Make sure multiplication doesn't overflow int */
+static inline int x_mult_div(int x, int mult, int div)
+{
+    return ((int64_t)x * mult) / div;
+}
+
+/* Make sure multiplication doesn't overflow int */
+static inline int x_mult_rem(int x, int mult, int rem)
+{
+    return ((int64_t)x * mult) % rem;
+}
 
 /* Functions declared below are shared by different compilation units */
 
@@ -541,6 +607,7 @@ typedef int (*ddpt_rw_f)(struct dev_info_t * dip, uint64_t lba,
 /* No global function defined in ddpt.c apart from main() */
 
 /* defined in ddpt_com.c */
+const char * get_ddpt_arg_str(int ddpt_arg);
 void sleep_ms(int millisecs);
 void state_init(struct opts_t * op, struct flags_t * ifp,
                 struct flags_t * ofp, struct dev_info_t * idip,
@@ -582,9 +649,15 @@ struct scat_gath_elem * file2sgl(const char * file_name, bool def_hex,
 /* Assumes sgli_p->elems and sgli_p->slp are setup and the other fields
  * in struct sgl_info_t are zeroed. This function will populate the other
  * fields in that structure. Does one pass through the scatter gather list
- * (array). Sets these fields in struct sgl_info_t: lowest_lba, monotonic,
- * overlapping, sum and sum_hard.  */
-void sgl_sum_scan(struct sgl_info_t * sgli_p, bool b_verbose);
+ * (array). Sets these fields in struct sgl_info_t: fragmented, lowest_lba,
+ * high_lba_p1, monotonic, overlapping, sum and sum_hard. Degenerate
+ * elements (i.e. those with 0 blocks) are ignored apart from when one is
+ * last which makes sum_hard false and its LBA becomes high_lba_p1 if it
+ * is the highest in the list. An empty sgl is equivalent to a 1 element
+ * list with [0, 0], so sum_hard==false, monit==true, fragmented==false
+ * overlapping ==false . */
+void sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str,
+                  bool b_verbose);
 /* Return minimum(num_blks, <blocks_from_sgl-post-blk_off>). First it
  * starts skipping blk_off blocks and if elems is exceeded then it
  * returns 0. Then it sums up the number of blocks from each subsequent
@@ -592,14 +665,29 @@ void sgl_sum_scan(struct sgl_info_t * sgli_p, bool b_verbose);
  * also stops counting if that sum exceeds num_blks. If max_descriptors is
  * 0 then it is not constraining. Note that elems and blk_off are relative
  * to the start of the sgl; while num_blks and max_descriptors are relative
- * to the sgl+blk_off . */
+ * to the sgl+blk_off . id_str may be NULL, present to enhance verbose
+ * output. */
 uint64_t count_sgl_blocks_from(const struct scat_gath_elem * sglp, int elems,
                                uint64_t blk_off, uint32_t num_blks,
-                               uint32_t max_descriptors);
+                               uint32_t max_descriptors /* from blk_off */);
 /* A trailing zero length (num==0) element is interpreted as from there
  * to end of the copy, assumed to be known some other way (e.g. a count=COUNT
  * argument) */
 uint32_t last_sgl_elem_num(const struct scat_gath_elem * sglp, int elems);
+/* Given a (positive) blk_count, an iterator (*iter_p) is adjusted. If
+ * relative is true the adjustment (an addition) is from the current
+ * position of the iterator. If relative is false then the adjustment is from
+ * the start of the sgl. The sgl_iter_adjust(itp, 0, false) call sets the
+ * iterator to the start of the sgl. Returns true unless blk_count takes
+ * iterator to one past last element (normal end indication) or beyond. */
+bool sgl_iter_add(struct sgl_iter_t * iter_p, uint64_t blk_count,
+                  bool relative);
+/* Move the iterator from its current position towards the start of the
+ * scatter gather list (i.e. backwards) for blk_count blocks. Returns
+ * true if iterator is valid after the move, else return false. N.B.
+ * if false is returned, then the iterator is invalid and may need to
+ * set to a valid value. */
+bool sgl_iter_sub(struct sgl_iter_t * iter_p, uint64_t blk_count);
 
 /* Returns the number of times 'ch' is found in string 's' given the
  * string's length. */
@@ -607,21 +695,55 @@ int num_chs_in_str(const char * s, int slen, int ch);
 /* Returns the number of times either 'ch1' or 'ch2' is found in
  * string 's' given the string's length. */
 int num_either_ch_in_str(const char * s, int slen, int ch1, int ch2);
-/* Takes an iterator (iter_p) to a scatter gather list (sgl) array starting
- * at start_p. The iterator is then moved forward (toward the end of the sgl)
- * when add_blks is positive or moved backward when add_blks is negative. If
- * fp is non-NULL then *fp (a function) is called for each sg element
- * traversed by the iter_p. Returns 0 for okay else an error number. -9999
- * is returned for an unexpected error with the iterator. */
-int sgl_iter_add_blks(const struct scat_gath_elem * start_p, int sgl_elems,
-                      struct sgl_iter_t * iter_p, int add_blks,
-                      struct dev_info_t * dip, uint8_t * bp, int b_len,
-                      ddpt_rw_f fp, struct opts_t * op);
+/* Copies abs(add_blks) blocks for current position of file/device (referred
+ * to by dip) to or from a segment of the computer's ram. The copy is into
+ * ram when ddpt_arg is 0 (i.e. a "read"), otherwise it is from ram (i.e. a
+ * "write"). IO is performed by the fp (callback function) and the iterator
+ * (or file pointer) is moved forward (i.e. toward the end) when add_blks > 0.
+ * When add_blks < 0, the iterator is moved backward (i.e. toward the
+ * beginning). Returns 0 for okay else an error number. -9999 is returned
+ * for an unexpected error with the iterator. */
+int cp_via_sgl_iter(struct dev_info_t * dip, int ddpt_arg,
+                    struct cp_state_t * csp, int add_blks, ddpt_rw_f fp,
+                    struct opts_t * op);
 /* Returns number elements in scatter gather list (array) whose pointer
  * is written to *sge_pp. On error returns negated error number and
  * NULL is written to *sge_pp . The caller is responsible for freeing
  * memory associated with *sge_pp . */
 int build_sgl(struct scat_gath_elem ** sge_pp, int64_t count, int64_t offs);
+/* Builds single element sgl with (*sge_pp)->num==0 . */
+int build_degen_sgl(struct scat_gath_elem ** sge_pp, int64_t start_lba);
+/* Similar to build_sgl but appends to existing sgl whose length is cur_elems.
+ * Note that *sge_pp will probably change (in which case the previous *sge_pp
+ * is freed). */
+int append2sgl(struct scat_gath_elem ** sge_pp, int cur_elems,
+               int64_t extra_blks, int64_t start_lba);
+/* Dummy function for testing iterators. Matches ddpt_rw_f typedef. */
+int iter_sgl_dummy(struct dev_info_t * dip, int ddpt_arg,
+                   struct cp_state_t * csp, struct opts_t * op);
+/* Returns LBA referred to by iterator if valid or returns DDPT_LBA_INVALID
+ * (-1) if at end or invalid. */
+int64_t sgl_iter_lba(const struct sgl_iter_t * itp);
+/* Returns true of no sgl or sgl is at the end [elems, 0], otherwise it
+ * returns false. */
+bool sgl_iter_at_end(const struct sgl_iter_t * itp);
+/* Returns true if either argument is 0/NULL or a 1 element list with both
+ * lba and num 0; otherwise returns false. */
+bool sgl_empty(struct scat_gath_elem * sglp, int elems);
+/* Returns >= 0 if sgl can be simplified to a single LBA. So an empty sgl
+ * will return 0; a one element sgl will return its LBA. A multiple element
+ * sgl only returns the first element's LBA (that is not degenerate) if the
+ * sgl is monotonic and not fragmented. In the extreme case takes last
+ * element's LBA if all prior elements are degenerate. Else returns -1 .
+ * Assumes sgl_sum_scan() has been called. */
+int64_t get_low_lba_from_linear(const struct sgl_info_t * sglip);
+/* If bad arguments returns -1, otherwise returns the lowest LBA in *sglp .
+ * If no elements considered returns 0. If ignore_degen is true than
+ * ignores all elements with num_blks zero unless always_last is also
+ * true in which case the last element is always considered. */
+int64_t get_lowest_lba(const struct scat_gath_elem * sglp, int num_elems,
+                       bool ignore_degen, bool always_last);
+void cp_state_init(struct cp_state_t * csp, struct opts_t * op);
 
 
 /* defined in ddpt_pt.c */
@@ -633,9 +755,11 @@ void pt_close(int fd);
 int pt_read_capacity(struct opts_t * op, bool in0_out1, int64_t * num_blks,
                      int * blk_sz);
 int pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
-            int blocks, int * blks_readp);
+            int blocks, int64_t from_block, int * blks_readp);
 int pt_write(struct opts_t * op, const uint8_t * buff, int blocks,
              int64_t to_block);
+/* Sets UNMAP bit and no other flags, sends 1 block (which should be
+ * ignored by device). */
 int pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
                     int blocks, int64_t start_block);
 void pt_sync_cache(int fd);

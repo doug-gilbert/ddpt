@@ -1,8 +1,7 @@
-PROPS-END
 #
 #  HEX
 
-0,1m,2m,1m,4m,4g
+0,1m, 2m,1m, 4m,4g
 #
 
 

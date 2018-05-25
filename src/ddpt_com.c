@@ -118,6 +118,7 @@
 #include "sg_lib.h"
 #include "sg_pr2serr.h"
 
+const char * ddpt_arg_strs[] = {"if", "of", "of2"};
 
 static const char * errblk_file = "errblk.txt";
 
@@ -167,12 +168,22 @@ sleep_ms(int millisecs)
 #endif
 }
 
+const char *
+ddpt_arg_str(int ddpt_arg)
+{
+    if ((ddpt_arg < 0) || (ddpt_arg >= (int)SG_ARRAY_SIZE(ddpt_arg_strs)))
+        return "bad ddpt_arg";
+    else
+        return ddpt_arg_strs[ddpt_arg];
+}
+
 void
 state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
            struct dev_info_t * idip, struct dev_info_t * odip,
            struct dev_info_t * o2dip)
 {
     memset(op, 0, sizeof(struct opts_t));       /* sets bools to false */
+    op->bs_same = true;                         /* most likely case */
     op->dd_count = DDPT_COUNT_INDEFINITE;       /* -1 */
     op->highest_unrecovered = -1;
     op->do_time = true;    /* default was false (0) in sg_dd */
@@ -190,13 +201,18 @@ state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
     memset(o2dip, 0, sizeof(struct dev_info_t));
     idip->d_type = FT_OTHER;
     idip->fd = -1;
+    idip->reg_sz = -1;
     odip->d_type = FT_OTHER;
     odip->fd = -1;
+    odip->reg_sz = -1;
     o2dip->d_type = FT_OTHER;
     o2dip->fd = -1;
     op->idip = idip;
+    idip->dir_n = "in";
     op->odip = odip;
+    odip->dir_n = "out";
     op->o2dip = o2dip;
+    o2dip->dir_n = "out2";
     ifp->cdbsz = DEF_SCSI_CDBSZ;
     ofp->cdbsz = DEF_SCSI_CDBSZ;
 #ifdef HAVE_POSIX_FADVISE
@@ -212,6 +228,7 @@ state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
 void
 print_stats(const char * str, struct opts_t * op, int who)
 {
+    struct cp_statistics_t * sp = &op->stats;
 #ifdef SG_LIB_LINUX
     /* Print tape read summary if necessary . */
     print_tape_summary(op, 0, str);
@@ -219,71 +236,75 @@ print_stats(const char * str, struct opts_t * op, int who)
 
     if ((op->dd_count > 0) && (! op->reading_fifo)) {
         pr2serr("  remaining block count=%" PRId64, op->dd_count);
-        if ((who < 2) && (op->in_full <= op->dd_count_start) &&
-            (op->dd_count_start >= 4196)) {
-            /* with ints will overflow around 8 TB for bs=1 */
-            int num = (int)((op->in_full * 100) / 4196);
-            int den = (int)(op->dd_count_start / 4196);  /* will be >= 1 */
+        // if ((who < 2) && (op->in_full <= sp->dd_count_start) &&
+        if ((who < 2) && (sp->in_full <= sp->dd_count_start) &&
+            (sp->dd_count_start >= 4196)) {
+            /* with ints will overflow around 4 TB for bs=1 */
+            // int num = (int)((op->in_full * 100) / 4196);
+            int num = (int)((sp->in_full * 100) / 4196);
+            int den = (int)(sp->dd_count_start / 4196);  /* will be >= 1 */
             int percent;
 
             percent = num / den;
-            if ((100 == percent) && (op->in_full < op->dd_count_start))
+            // if ((100 == percent) && (op->in_full < op->dd_count_start))
+            if ((100 == percent) &&
+                (sp->in_full < sp->dd_count_start))
                 --percent;      /* don't want rounding to 100 % */
             pr2serr("   %d%% completed\n", percent);
         } else
             pr2serr("\n");
     }
     if (who < 2)
-        pr2serr("%s%" PRId64 "+%d records in\n", str, op->in_full,
-                op->in_partial);
+        pr2serr("%s%" PRId64 "+%d records in\n", str, sp->in_full,
+                sp->in_partial);
     if (1 != who)
-        pr2serr("%s%" PRId64 "+%d records out\n", str, op->out_full,
-                op->out_partial);
+        pr2serr("%s%" PRId64 "+%d records out\n", str, sp->out_full,
+                sp->out_partial);
     if (op->out_sparse_active || op->out_sparing_active) {
         if (op->out_trim_active) {
             const char * cp;
 
-            cp = op->trim_errs ? "attempted trim" : "trimmed";
-            if (op->out_sparse_partial > 0)
+            cp = sp->trim_errs ? "attempted trim" : "trimmed";
+            if (sp->out_sparse_partial > 0)
                 pr2serr("%s%" PRId64 "+%d %s records out\n", str,
-                        op->out_sparse, op->out_sparse_partial, cp);
+                        sp->out_sparse, sp->out_sparse_partial, cp);
             else
                 pr2serr("%s%" PRId64 " %s records out\n", str,
-                        op->out_sparse, cp);
-        } else if (op->out_sparse_partial > 0)
+                        sp->out_sparse, cp);
+        } else if (sp->out_sparse_partial > 0)
             pr2serr("%s%" PRId64 "+%d bypassed records out\n", str,
-                    op->out_sparse, op->out_sparse_partial);
+                    sp->out_sparse, sp->out_sparse_partial);
         else
             pr2serr("%s%" PRId64 " bypassed records out\n", str,
-                    op->out_sparse);
+                    sp->out_sparse);
     }
-    if (op->recovered_errs > 0)
-        pr2serr("%s%d recovered read errors\n", str, op->recovered_errs);
-    if (op->num_retries > 0)
-        pr2serr("%s%d retries attempted\n", str, op->num_retries);
-    if (op->unrecovered_errs > 0)
-        pr2serr("%s%d unrecovered read error%s\n", str, op->unrecovered_errs,
-                ((1 == op->unrecovered_errs) ? "" : "s"));
-    if (op->unrecovered_errs && (op->highest_unrecovered >= 0))
+    if (sp->recovered_errs > 0)
+        pr2serr("%s%d recovered read errors\n", str, sp->recovered_errs);
+    if (sp->num_retries > 0)
+        pr2serr("%s%d retries attempted\n", str, sp->num_retries);
+    if (sp->unrecovered_errs > 0)
+        pr2serr("%s%d unrecovered read error%s\n", str, sp->unrecovered_errs,
+                ((1 == sp->unrecovered_errs) ? "" : "s"));
+    if (sp->unrecovered_errs && (op->highest_unrecovered >= 0))
         pr2serr("lowest unrecovered read lba=%" PRId64 ", highest "
                 "unrecovered lba=%" PRId64 "\n", op->lowest_unrecovered,
                 op->highest_unrecovered);
-    if (op->wr_recovered_errs > 0)
-        pr2serr("%s%d recovered write errors\n", str, op->wr_recovered_errs);
-    if (op->wr_unrecovered_errs > 0)
+    if (sp->wr_recovered_errs > 0)
+        pr2serr("%s%d recovered write errors\n", str, sp->wr_recovered_errs);
+    if (sp->wr_unrecovered_errs > 0)
         pr2serr("%s%d unrecovered write error%s\n", str,
-                op->wr_unrecovered_errs,
-                ((1 == op->wr_unrecovered_errs) ? "" : "s"));
-    if (op->trim_errs)
-        pr2serr("%s%d trim errors\n", str, op->trim_errs);
-    if (op->interrupted_retries > 0)
+                sp->wr_unrecovered_errs,
+                ((1 == sp->wr_unrecovered_errs) ? "" : "s"));
+    if (sp->trim_errs)
+        pr2serr("%s%d trim errors\n", str, sp->trim_errs);
+    if (sp->interrupted_retries > 0)
         pr2serr("%s%d %s after interrupted system call(s)\n",
-                str, op->interrupted_retries,
-                ((1 == op->interrupted_retries) ? "retry" : "retries"));
-    if (op->io_eagains > 0)
+                str, sp->interrupted_retries,
+                ((1 == sp->interrupted_retries) ? "retry" : "retries"));
+    if (sp->io_eagains > 0)
         pr2serr("%s%d %s after EAGAIN error(s) during IO\n",
-                str, op->io_eagains,
-                ((1 == op->io_eagains) ? "retry" : "retries"));
+                str, sp->io_eagains,
+                ((1 == sp->io_eagains) ? "retry" : "retries"));
     if (op->has_xcopy)
         pr2serr("%s%" PRId64 " xcopy command%s done\n", str, op->num_xcopy,
                 ((1 == op->num_xcopy) ? "" : "s"));
@@ -363,8 +384,9 @@ unix_dd_filetype(const char * filename, int verbose)
 #ifdef SG_LIB_LINUX
         /* major() and minor() defined in sys/sysmacros.h */
         if ((MEM_MAJOR == major(st.st_rdev)) &&
-            (DEV_NULL_MINOR_NUM == minor(st.st_rdev)))
-            return FT_DEV_NULL;
+            ((DEV_NULL_MINOR_NUM == minor(st.st_rdev)) ||
+             (DEV_ZERO_MINOR_NUM == minor(st.st_rdev))))
+            return FT_DEV_NULL; /* treat /dev/null + /dev/zero the same */
         if (SCSI_GENERIC_MAJOR == major(st.st_rdev))
             return FT_PT;
         if (SCSI_TAPE_MAJOR == major(st.st_rdev))
@@ -390,6 +412,8 @@ unix_dd_filetype(const char * filename, int verbose)
                 return FT_PT;
             else if (0 == memcmp("sa", bname, 2))
                 return FT_TAPE;
+            else if (0 == strcmp("zero", bname))
+                return FT_DEV_NULL;  /* treat /dev/null+/dev/zero the same */
             else
                 return FT_BLOCK;  /* freebsd doesn't have block devices! */
         }
@@ -713,9 +737,10 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
     struct timespec end_tm, res_tm;
     double a, b, r;
     int secs, h, m, elapsed_secs;
+    struct cp_statistics_t * sp = &op->stats;
 
     if (op->start_tm_valid && (op->start_tm.tv_sec || op->start_tm.tv_nsec)) {
-        use_out_full = ((0 == op->in_full) && (op->obs > 0));
+        use_out_full = ((0 == sp->in_full) && (op->obs > 0));
         clock_gettime(CLOCK_MONOTONIC, &end_tm);
         res_tm.tv_sec = end_tm.tv_sec - op->start_tm.tv_sec;
         res_tm.tv_nsec = end_tm.tv_nsec - op->start_tm.tv_nsec;
@@ -727,9 +752,9 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
         a = res_tm.tv_sec;
         a += (0.000001 * (res_tm.tv_nsec / 1000));
         if (use_out_full)
-            b = (double)op->obs * op->out_full;
+            b = (double)op->obs * sp->out_full;
         else
-            b = (double)op->ibs_hold * op->in_full;
+            b = (double)op->ibs_hold * sp->in_full;
         pr2serr("%stime to %s data%s: %d.%06d secs", leadin,
                 (op->read1_or_transfer ? "read" : "transfer"),
                 (contin ? " so far" : ""), (int)res_tm.tv_sec,
@@ -767,9 +792,10 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
     struct timeval end_tm, res_tm;
     double a, b, r;
     int secs, h, m, elapsed_secs;
+    struct cp_statistics_t * sp = &op->stats;
 
     if (op->start_tm_valid && (op->start_tm.tv_sec || op->start_tm.tv_usec)) {
-        use_out_full = ((0 == op->in_full) && (op->obs > 0));
+        use_out_full = ((0 == sp->in_full) && (op->obs > 0));
         gettimeofday(&end_tm, NULL);
         res_tm.tv_sec = end_tm.tv_sec - op->start_tm.tv_sec;
         res_tm.tv_usec = end_tm.tv_usec - op->start_tm.tv_usec;
@@ -781,9 +807,9 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
         a = res_tm.tv_sec;
         a += (0.000001 * res_tm.tv_usec);
         if (use_out_full)
-            b = (double)op->obs * op->out_full;
+            b = (double)op->obs * sp->out_full;
         else
-            b = (double)op->ibs_hold * op->in_full;
+            b = (double)op->ibs_hold * sp->in_full;
         pr2serr("%stime to %s data%s: %d.%06d secs", leadin,
                 (op->read1_or_transfer ? "read" : "transfer"),
                 (contin ? " so far" : ""), (int)res_tm.tv_sec,
@@ -1171,8 +1197,8 @@ install_signal_handlers(struct opts_t * op)
 
     if (op->verbose > 2)
         pr2serr(" >> %s signal implementation assumed "
-                "[SA_NOCLDSTOP=%d], %smasking during IO\n",
-                (SA_NOCLDSTOP ? "modern" : "old"), SA_NOCLDSTOP,
+                "[SA_NOCLDSTOP=%d],\n >>   will %smask out signals during "
+                "IO\n", (SA_NOCLDSTOP ? "modern" : "old"), SA_NOCLDSTOP,
                 (op->interrupt_io ? "not " : ""));
 #if SA_NOCLDSTOP
     bool unblock_starting_mask = false;
@@ -1341,13 +1367,16 @@ signals_process_delay(struct opts_t * op, int delay_type)
             if ((! op->reading_fifo) && (FT_REG & op->odip->d_type_hold)
                  && (0 == op->oflagp->prealloc)) {
                 if (op->oflagp->strunc) {
-                    int64_t osize = (op->seek * op->obs);
+                    int64_t osize = get_low_lba_from_linear(&op->o_sgli);
 
-                    pr2serr(">> Did not perform: "
-                            "'truncate --size=%" PRId64 " %s'\n",
-                            osize, op->odip->fn);
-                    pr2serr(">> User should check and perform by hand if "
-                            "necessary\n");
+                    if (osize > 0) {
+                        osize *= op->obs_pi;
+                        pr2serr(">> Did not perform: "
+                                "'truncate --size=%" PRId64 " %s'\n",
+                                osize, op->odip->fn);
+                        pr2serr(">> User should check and perform by hand "
+                                "if necessary\n");
+                    }
                 }
                 pr2serr("To resume, invoke with same arguments plus "
                         "oflag=resume\n");
@@ -1425,9 +1454,9 @@ coe_process_eio(struct opts_t * op, int64_t skip)
         if (skip > op->highest_unrecovered)
             op->highest_unrecovered = skip;
     }
-    ++op->unrecovered_errs;
-    ++op->in_partial;
-    --op->in_full;
+    ++op->stats.unrecovered_errs;
+    ++op->stats.in_partial;
+    --op->stats.in_full;
     pr2serr(">> unrecovered read error at blk=%" PRId64 ", "
             "substitute zeros\n", skip);
     return 0;
@@ -1609,18 +1638,18 @@ print_exit_status_msg(const char * prefix, int exit_stat, bool to_stderr)
     }
 }
 
-/* Return minimum(num_blks, <blocks_from_sgl-post-blk_off>). First it
- * starts skipping blk_off blocks and if elems is exceeded then it
+/* Return minimum(num_blks, <blocks_from_sgl-post-skip_blks>). First it
+ * starts skipping skip_blks blocks and if elems is exceeded then it
  * returns 0. Then it sums up the number of blocks from each subsequent
  * sg element checking that elems and max_descriptors are not exceeded. It
  * also stops counting if that sum exceeds num_blks. If max_descriptors is
- * 0 then it is not constraining. Note that elems and blk_off are relative
+ * 0 then it is not constraining. Note that elems and skip_blks are relative
  * to the start of the sgl; while num_blks and max_descriptors are relative
- * to the sgl+blk_off . */
+ * to the sgl+skip_blks . */
 uint64_t
 count_sgl_blocks_from(const struct scat_gath_elem * sglp, int elems,
-                      uint64_t blk_off, uint32_t num_blks,
-                      uint32_t max_descriptors)
+                      uint64_t skip_blks, uint32_t num_blks,
+                      uint32_t max_descriptors /* from skip_blks */)
 {
     int k, j, md;
     uint64_t res;
@@ -1629,22 +1658,102 @@ count_sgl_blocks_from(const struct scat_gath_elem * sglp, int elems,
         md = INT_MAX;
     else
         md = (int)max_descriptors;
+
     for (k = 0; k < elems; ++k, ++sglp) {
-        if ((uint64_t)sglp->num > blk_off)
+        if ((uint64_t)sglp->num < skip_blks)
+            skip_blks -= sglp->num;
+        else
             break;
-        blk_off -= sglp->num;
     }
     if (k >= elems)
         return 0;
+
     for (j = 0, res = 0;
          (k < elems) && (j < md) && (res < (uint64_t)num_blks);
          ++k, ++j, ++sglp) {
         if (0 == j)
-            res = (uint64_t)sglp->num - blk_off;  /* will be positive */
+            res = (uint64_t)sglp->num - skip_blks;  /* will be positive */
         else
             res += (uint64_t)sglp->num;
     }
     return (res < (uint64_t)num_blks) ? res : (uint64_t)num_blks;
+}
+
+/* Given a (positive) blk_count, an iterator (*iter_p) is adjusted. If
+ * relative is true the adjustment (an addition) is from the current
+ * position of the iterator. If relative is false then the adjustment is from
+ * the start of the sgl. The sgl_iter_adjust(itp, 0, false) call sets the
+ * iterator to the start of the sgl. Returns true unless blk_count takes
+ * iterator to one past last element (normal end indication) or beyond. */
+bool
+sgl_iter_add(struct sgl_iter_t * iter_p, uint64_t blk_count, bool relative)
+{
+    bool first;
+    int k = relative ? iter_p->elem_ind : 0;
+    uint64_t bc = 0;
+    const struct scat_gath_elem * sglp = iter_p->sglp + k;
+
+    for (first = true; k < iter_p->elems; ++k, ++sglp) {
+        if (first && relative) {
+            bc = blk_count + iter_p->blk_off;
+            if ((uint64_t)sglp->num < bc)
+                blk_count -= (sglp->num - iter_p->blk_off);
+            else
+                break;
+            first = false;
+        } else {
+	    if (first)
+		first = false;
+            bc = blk_count;
+            if ((uint64_t)sglp->num < bc)
+                blk_count -= sglp->num;
+            else
+                break;
+        }
+    }
+    if (k >= iter_p->elems)
+        return false;
+    iter_p->elem_ind = k;
+    iter_p->blk_off = (uint32_t)bc;
+    return true;
+}
+
+/* Move the iterator from its current position towards the start of the
+ * scatter gather list (i.e. backwards) for blk_count blocks. Returns
+ * true if iterator is valid after the move, else return false. N.B.
+ * if false is returned, then the iterator is invalid and may need to
+ * set to a valid value. */
+bool
+sgl_iter_sub(struct sgl_iter_t * iter_p, uint64_t blk_count)
+{
+    bool first;
+    int k = iter_p->elem_ind;
+    uint64_t bc = 0;
+    const struct scat_gath_elem * sglp = iter_p->sglp + k;
+
+    for (first = true; k >= 0; --k, --sglp) {
+        if (first) {
+	    if (blk_count > iter_p->blk_off)
+		blk_count -= iter_p->blk_off;
+	    else {
+		iter_p->blk_off -= blk_count;
+		break;
+	    }
+	    first = false;
+	} else {
+            bc = blk_count;
+            if (bc > (uint64_t)sglp->num)
+                blk_count -= sglp->num;
+            else
+                break;
+        }
+    }
+    if (k < 0)
+        return false;
+    iter_p->elem_ind = k;
+    if (! first)
+        iter_p->blk_off = (uint32_t)bc;
+    return true;
 }
 
 uint32_t
@@ -1662,7 +1771,7 @@ last_sgl_elem_num(const struct scat_gath_elem * sglp, int elems)
 struct scat_gath_elem *
 cli2sgl(const char * inp, int * arr_elemsp, bool b_vb)
 {
-    bool split;
+    bool split, full_pair;
     int in_len, k, j, n;
     const int max_nbs = INT32_MAX - 1;  /* 2**31 - 2; leaving headroom */
     int64_t ll, large_num;
@@ -1695,6 +1804,7 @@ cli2sgl(const char * inp, int * arr_elemsp, bool b_vb)
             goto err_out;
         }
         j = 0;
+        full_pair = true;
         for (k = 0, sge_p = res_p, split = false; k < n; ++k, ++sge_p) {
             if (split) {
                 /* splitting given elem with large number_of_blocks into
@@ -1715,6 +1825,7 @@ cli2sgl(const char * inp, int * arr_elemsp, bool b_vb)
                 }
                 continue;
             }
+            full_pair = false;
             ll = sg_get_llnum(lcp);
             if (-1 != ll) {
                 sge_p->lba = (uint64_t)ll;
@@ -1736,6 +1847,7 @@ cli2sgl(const char * inp, int * arr_elemsp, bool b_vb)
             }
             ll = sg_get_llnum(lcp);
             if (ll >= 0) {
+                full_pair = true;
                 if (ll > max_nbs) {
                     sge_p->num = (uint32_t)max_nbs;
                     prev_lba = sge_p->lba;
@@ -1762,6 +1874,13 @@ check_for_next:
             if (c2p && (c2p < cp))
                 cp = c2p;
             lcp = cp + 1;
+        }       /* end of for loop over items in option */
+        /* other than first pair, expect even number of items */
+        if ((k > 0) && (! full_pair)) {
+            if (b_vb)
+                pr2serr("%s:  expected even number of items: LBA,NUM "
+                        "pairs\n", __func__);
+            goto err_out;
         }
         *arr_elemsp = k + 1;
         if (k == n) {
@@ -1918,7 +2037,8 @@ file2sgl_helper(FILE * fp, const char * fnp, bool def_hex, bool real_scan,
         }       /* for loop, multiple numbers on 1 line */
         off += (k + 1);
     }   /* end of for loop, one iteration per line */
-    if (0x1 & off) {
+    /* allow one items, but not higher odd number of items */
+    if ((off > 1) && (0x1 & off)) {
         *errp = SG_LIB_SYNTAX_ERROR;
         if (b_vb)
             pr2serr("%s: %s: expect LBA,NUM pairs but decoded odd number\n",
@@ -1928,7 +2048,7 @@ file2sgl_helper(FILE * fp, const char * fnp, bool def_hex, bool real_scan,
     clearerr(fp);    /* even EOF on first pass needs this before rescan */
     if (! real_scan)
         rewind(fp);
-    return off >> 1;
+    return (1 == off) ? 1 : (off >> 1);
 err_out:
     clearerr(fp);
     if (! real_scan)
@@ -2069,207 +2189,231 @@ num_either_ch_in_str(const char * s, int slen, int ch1, int ch2)
 }
 
 static int
-sgl_iter_forward_blks(const struct scat_gath_elem * start_p, int sgl_elems,
-                      struct sgl_iter_t * ip, uint32_t add_blks,
-                      struct dev_info_t * dip, uint8_t * bp,
-                      ddpt_rw_f fp, struct opts_t * op)
+sgl_iter_forward_blks(struct dev_info_t * dip, int ddpt_arg,
+                      struct sgl_iter_t * itp, uint32_t n_blks,
+                      struct cp_state_t * csp, ddpt_rw_f fp,
+                      struct opts_t * op)
 {
     bool more;
+    bool in_side = (DDPT_ARG_IN == ddpt_arg);
     int b_off = 0;
     int res = 0;
     int vb = op->verbose;
     uint32_t rem_blks, num;
     uint64_t off, lba;
-    int64_t ablocks = add_blks;
-    const struct scat_gath_elem * sgl_p = start_p + ip->elem_ind;
+    int64_t ablocks = n_blks;
+    const struct scat_gath_elem * sgl_p = itp->sglp + itp->elem_ind;
 
     while (ablocks > 0) {
-        off = ip->blk_off + ablocks;
+        off = itp->blk_off + ablocks;
         lba = sgl_p->lba;
         num = sgl_p->num;
         more = (off >= num);
         if (vb > 2)
-            pr2serr("%s: %s, off=%" PRId64 ", ablocks=%" PRId64 "\n",
-                    __func__,  (more ? "more" : "last"), off, ablocks);
-        if (ip->elem_ind >= sgl_elems) {
-            if ((ip->elem_ind > 0) || (off > 0)) {
+            pr2serr("%s: %s, off=%" PRId64 ", ablocks=%" PRId64 "  <<%s>>\n",
+                    __func__, dip->dir_n, off, ablocks,
+                    (more ? "more" : "last"));
+        if (itp->elem_ind >= itp->elems) {
+            if ((itp->elem_ind > itp->elems) || (off > 0)) {
                 if (vb)
                     pr2serr("%s: incrementing iterator (%d,%u) past end\n",
-                            __func__, ip->elem_ind, ip->blk_off);
+                            __func__, itp->elem_ind, itp->blk_off);
                 return -9999;
             }
         }
         if (more) {             /* more elements after this */
-            rem_blks = num - ip->blk_off;    /* rhs must be >= 0 */
-            if (rem_blks > 0) {
-                if (fp) {
-                    pr2serr("  ... LBA=0x%" PRIx64 ", num_blks=%u, b_off=%d"
-                            "\n", lba + ip->blk_off, rem_blks, b_off);
-                    if ((res = fp(dip, lba + ip->blk_off, rem_blks,
-                                  bp + b_off, op)))
-                        return res;
-                    b_off += rem_blks * dip->bs_pi;
+            rem_blks = num - itp->blk_off;    /* rhs must be >= 0 */
+            if ((rem_blks > 0) && fp) {
+                if (vb > 2)
+                    pr2serr("  ... %s LBA=0x%" PRIx64 ", num_blks=%u, "
+                            "b_off=%d\n", (csp->reading ? "<<<" : ">>>"),
+                            lba + itp->blk_off, rem_blks, b_off);
+                if (in_side) {
+                    csp->cur_in_lba = lba + itp->blk_off;
+                    csp->cur_in_num = rem_blks;
+                } else {
+                    csp->cur_out_lba = lba + itp->blk_off;
+                    csp->cur_out_num = rem_blks;
+                }
+                csp->cur_bp = csp->base_bp + b_off;
+                /* function pointer call to workers */
+                if ((res = fp(dip, ddpt_arg, csp, op)))
+                    return res;
+                if (csp->blks_xfer < (int)rem_blks) {
+                    if (vb)
+                        pr2serr("%s(more): shorted, got %d blocks (%d "
+                                "bytes), leave_reason=%d\n", __func__,
+                                csp->blks_xfer, csp->bytes_xfer,
+                                csp->leave_reason);
+                    b_off += ((csp->bytes_xfer >= 0) ? csp->bytes_xfer :
+                                     (csp->blks_xfer * dip->bs_pi));
+                    csp->rem_seg_bytes = b_off;
+                    if (csp->cur_countp)
+                        *csp->cur_countp += csp->blks_xfer;
+                    /* forget about iterator, won't use again ... */
+                    return DDPT_CAT_SEE_LEAVE_REASON;
                 }
             }
+            if (rem_blks > 0) {
+                /* itp->filepos = lba + itp->blk_off + rem_blks; */
+                b_off += rem_blks * dip->bs_pi;
+                if (csp->cur_countp)
+                    *csp->cur_countp += rem_blks;
+            }
             ablocks -= (int64_t)rem_blks;
-            ++ip->elem_ind;
-            ip->blk_off = 0;
+            ++itp->elem_ind;    /* step to next element */
+            itp->blk_off = 0;
             ++sgl_p;
-        } else {        /* move iter (and call *fp) within current sgl elem */
+        } else {  /* last: move iter (and call *fp) within current sgl elem */
             rem_blks = (uint32_t)ablocks;
             if (fp) {
                 if (vb > 2)
-                    pr2serr("  ... LBA=0x%" PRIx64 ", num_blks=%u, b_off=%d"
-                            "\n", lba + ip->blk_off, rem_blks, b_off);
-                if ((res = fp(dip, lba + ip->blk_off, rem_blks,
-                              bp + b_off, op)))
+                    pr2serr("  ... %s LBA=0x%" PRIx64 ", num_blks=%u, "
+                            "b_off=%d\n", (csp->reading ? "<<<" : ">>>"),
+                            lba + itp->blk_off, rem_blks, b_off);
+                if (in_side) {
+                    csp->cur_in_lba = lba + itp->blk_off;
+                    csp->cur_in_num = rem_blks;
+                } else {
+                    csp->cur_out_lba = lba + itp->blk_off;
+                    csp->cur_out_num = rem_blks;
+                }
+                csp->cur_bp = csp->base_bp + b_off;
+                if ((res = fp(dip, ddpt_arg, csp, op)))
                     return res;
+                if (csp->blks_xfer < (int)rem_blks) {
+                    if (vb)
+                        pr2serr("%s(last): shorted, got %d blocks (%d "
+                                "bytes), leave_reason=%d\n", __func__,
+                                csp->blks_xfer, csp->bytes_xfer,
+                                csp->leave_reason);
+                    b_off += ((csp->bytes_xfer >= 0) ? csp->bytes_xfer :
+                                     (csp->blks_xfer * dip->bs_pi));
+                    csp->rem_seg_bytes = b_off;
+                    if (csp->cur_countp)
+                        *csp->cur_countp += csp->blks_xfer;
+                    /* forget about iterator, won't use again ... */
+                    return DDPT_CAT_SEE_LEAVE_REASON;
+                }
+                /* itp->filepos = lba + itp->blk_off + rem_blks; */
                 b_off += rem_blks * dip->bs_pi;
             }
-            ablocks -= (int64_t)(rem_blks);
-            ip->blk_off = (uint32_t)off;
+            if (csp->cur_countp)
+                *csp->cur_countp += rem_blks;
+            ablocks -= (int64_t)rem_blks;
+            itp->blk_off = (uint32_t)off;
             break;
         }
     }
     return 0;
 }
 
-static int
-sgl_iter_backward_blks(const struct scat_gath_elem * start_p,
-                       struct sgl_iter_t * ip, uint32_t sub_blks,
-                       struct dev_info_t * dip, uint8_t * bp, int b_len,
-                       ddpt_rw_f fp, struct opts_t * op)
-{
-    bool more;
-    int b_off = b_len;
-    int res = 0;
-    int vb = op->verbose;
-    uint32_t rem_blks;
-    uint64_t lba;
-    int64_t off;
-    int64_t sblocks = sub_blks;
-    const struct scat_gath_elem * sgl_p;
-
-    sgl_p = start_p + ip->elem_ind;
-    while (sblocks > 0) {
-        off = (int64_t)ip->blk_off - sblocks;
-        lba = sgl_p->lba;
-        more = (off < 0);
-        if (vb > 2)
-            pr2serr("%s: %s, off=%" PRId64 ", sblocks=%" PRId64 "\n",
-                    __func__,  (more ? "more" : "last"), off, sblocks);
-        if (more) {                  /* backward: more than one element */
-            if (vb > 2)
-                pr2serr("%s: more than 1 element, off=%" PRId64 ", sblocks=%"
-                        PRId64 "\n", __func__, off, sblocks);
-            if (fp) {
-                b_off -= ip->blk_off * dip->bs_pi;
-                if (vb > 2)
-                    pr2serr("  ... LBA=0x%" PRIx64 ", num_blks=%u, "
-                            "b_off=%d\n", lba, ip->blk_off, b_off);
-                if ((res = fp(dip, lba, ip->blk_off, bp + b_off, op)))
-                    return res;
-            }
-            sblocks -= (int64_t)ip->blk_off;
-            if (0 == ip->elem_ind) {
-                if (vb)
-                    pr2serr("%s: decrementing iterator (%d,%u) negative\n",
-                            __func__, ip->elem_ind, ip->blk_off);
-                return -9999;
-            }
-            --ip->elem_ind;
-            --sgl_p;
-            ip->blk_off = sgl_p->num;
-        } else {        /* move iter (and call *fp) within current sgl elem */
-            if (vb > 2)
-                pr2serr("%s: last, off=%" PRId64 ", sblocks=%" PRId64 "\n",
-                        __func__, off, sblocks);
-            rem_blks = (uint32_t)sblocks;
-            if (fp) {
-                b_off -= rem_blks * dip->bs_pi;
-                if (vb > 2)
-                    pr2serr("  ... LBA=0x%" PRIx64 ", num_blks=%u, "
-                            "b_off=%d\n", lba + off, rem_blks, b_off);
-                if ((res = fp(dip, lba + off , rem_blks, bp + b_off, op)))
-                    return res;
-            }
-            sblocks -= (int64_t)rem_blks;
-            ip->blk_off = (uint32_t)off;
-            break;
-        }
-    }
-    return 0;
-}
-
-/* Takes an iterator (iter_p) to a scatter gather list (sgl) array starting
- * at start_p. The iterator is then moved forward (toward the end of the sgl)
- * when add_blks is positive or moved backward when add_blks is negative. If
- * fp is non-NULL then *fp (a function) is called for each sg element
- * traversed by the iter_p. Returns 0 for okay else an error number. -9999
- * is returned for an unexpected error with the iterator. */
+/* Copies abs(add_blks) blocks for current position of file/device (referred
+ * to by dip) to or from a segment of the computer's ram. The copy is into
+ * ram when ddpt_arg is 0 (i.e. a "read"), otherwise it is from ram (i.e. a
+ * "write"). IO is performed by the fp (callback function) and the iterator
+ * (or file pointer) is moved forward (i.e. toward the end) when add_blks > 0.
+ * When add_blks < 0, the iterator is moved backward (i.e. toward the
+ * beginning). Returns 0 for okay else an error number. -9999 is returned
+ * for an unexpected error with the iterator. */
 int
-sgl_iter_add_blks(const struct scat_gath_elem * start_p, int sgl_elems,
-                  struct sgl_iter_t * iter_p, int add_blks,
-                  struct dev_info_t * dip, uint8_t * bp, int b_len,
-                  ddpt_rw_f fp, struct opts_t * op)
+cp_via_sgl_iter(struct dev_info_t * dip, int ddpt_arg,
+                  struct cp_state_t * csp, int add_blks, ddpt_rw_f fp,
+                  struct opts_t * op)
 {
-    bool backwards = (add_blks < 0);
-    int e_ind = iter_p->elem_ind;
-    uint32_t n_blks = (uint32_t)(backwards ? -add_blks : add_blks);
+    struct sgl_iter_t * itp;
+    int e_ind, elems;
+    uint32_t n_blks;
 
-    if (op->verbose > 3)
-        pr2serr("%s: start, sgl_elems=%d, add_blks=%d, b_len=%d\n", __func__,
-                sgl_elems, add_blks, b_len);
-    if ((0 == add_blks) || (sgl_elems < 1) || (fp && (b_len < 1)))
-        return 0;       /* nothing to do */
-    if (backwards) {
-        if ((e_ind < 0) || ((e_ind == 0) && (n_blks > iter_p->blk_off))) {
-            if (op->verbose)
-                pr2serr("%s: iterator: %d,%u goes negative\n", __func__,
-                        e_ind, iter_p->blk_off);
-            return -9999;
-        }
-        return sgl_iter_backward_blks(start_p, iter_p, n_blks, dip, bp,
-                                      b_len, fp, op);
-    } else {    /* forward movement */
-        if ((e_ind >= sgl_elems) || ((e_ind == (sgl_elems - 1)) &&
-              (n_blks + iter_p->blk_off > (start_p + sgl_elems - 1)->num))) {
-            if (op->verbose)
-                pr2serr("%s: iterator: %d,%u exceeds range\n", __func__,
-                        e_ind, iter_p->blk_off);
-            return -9999;
-        }
-        return sgl_iter_forward_blks(start_p, sgl_elems, iter_p, n_blks,
-                                     dip, bp, fp, op);
+    if (add_blks < 0) {
+        pr2serr("%s: don't support backward iteration\n", __func__);
+        return SG_LIB_SYNTAX_ERROR;
     }
+    n_blks = (uint32_t)add_blks;
+
+    switch (ddpt_arg) {
+    case DDPT_ARG_IN:
+        itp = &csp->in_iter;
+        break;
+    case DDPT_ARG_OUT:
+        itp = &csp->out_iter;
+        break;
+    case DDPT_ARG_OUT2: /* don't use iterator on OFILE2 */
+        if (0 == add_blks)
+            return 0;
+        if (fp) {               /* call worker directly */
+            csp->cur_out_num = n_blks;
+            return (*fp)(dip, ddpt_arg, csp, op);
+        }
+        return 0;
+    default:
+        pr2serr("%s: bad ddpt_arg: %d\n", __func__, ddpt_arg);
+        return SG_LIB_SYNTAX_ERROR;
+    }
+    if (op->verbose > 3)
+        pr2serr("%s: %s, sadd_blks=%d, prior lba=0x%" PRIx64 "\n",
+                 __func__, ddpt_arg_str(ddpt_arg), add_blks,
+                itp ? sgl_iter_lba(itp) : 0);
+    e_ind = itp->elem_ind;
+    elems = itp->elems;
+    if (elems < 1)
+        return 0;       /* nothing to do */
+    if ((e_ind >= elems) || ((e_ind == (elems - 1)) &&
+          (n_blks + itp->blk_off > (itp->sglp + e_ind)->num))) {
+        if (op->verbose)
+            pr2serr("%s: iterator: %d,%u exceeds range\n", __func__,
+                    e_ind, itp->blk_off);
+        return -9999;
+    }
+    return sgl_iter_forward_blks(dip, ddpt_arg, itp, n_blks, csp, fp, op);
 }
 
 /* Assumes sgli_p->elems and sgli_p->slp are setup and the other fields
  * in struct sgl_info_t are zeroed. This function will populate the other
  * fields in that structure. Does one pass through the scatter gather list
- * (array). Sets these fields in struct sgl_info_t: lowest_lba, monotonic,
- * overlapping, sum and sum_hard.  */
+ * (array). Sets these fields in struct sgl_info_t: fragmented, lowest_lba,
+ * high_lba_p1, monotonic, overlapping, sum and sum_hard. Degenerate
+ * elements (i.e. those with 0 blocks) are ignored apart from when one is
+ * last which makes sum_hard false and its LBA becomes high_lba_p1 if it
+ * is the highest in the list. An empty sgl is equivalent to a 1 element
+ * list with [0, 0], so sum_hard==false, monit==true, fragmented==false
+ * overlapping ==false . */
 void
-sgl_sum_scan(struct sgl_info_t * sgli_p, bool b_vb)
+sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str, bool b_vb)
 {
-    bool monot = true;
-    bool regular = true;
+    bool degen = false;
+    bool first = true;
+    bool monot = true;          /* monotonic increasing, skips degenerates */
+    bool regular = true;        /* no overlapping segments detected */
+    bool fragmented = false;
     int k;
     int elems = sgli_p->elems;
     uint32_t prev_num, t_num;
     uint64_t prev_lba, t_lba, sum, low, high, end;
-    const struct scat_gath_elem * start_p = sgli_p->sgl;
+    const char * caller = id_str ? id_str : "unknown";
+    const struct scat_gath_elem * sgep = sgli_p->sglp;
 
-    for (k = 0, sum = 0, low = 0, high = 0; k < elems; ++k) {
-        if (0 == k) {
-            prev_lba = start_p->lba;
+    for (k = 0, sum = 0, low = 0, high = 0; k < elems; ++k, ++sgep) {
+        degen = false;
+        t_num = sgep->num;
+        if (0 == t_num) {
+            degen = true;
+            if (! first)
+                continue;
+        }
+        if (first) {
+            prev_lba = sgep->lba;
             low = prev_lba;
-            prev_num = start_p->num;
-            sum = start_p->num;
+            prev_num = t_num;
+            sum = t_num;
             high = prev_lba + prev_num;
+            first = false;
         } else {
-            t_lba = (start_p + k)->lba;
-            t_num = (start_p + k)->num;
+            t_lba = sgep->lba;
+            if (! fragmented) {
+                if ((prev_lba + prev_num) != t_lba)
+                    fragmented = true;
+            }
             sum += t_num;
             end = t_lba + t_num;
             if (end > high)
@@ -2294,14 +2438,21 @@ sgl_sum_scan(struct sgl_info_t * sgli_p, bool b_vb)
             prev_num = t_num;
         }
     }
-    if (k < sgli_p->elems) {
+    if (k < sgli_p->elems) {    /* monot is now false */
         sgli_p->monotonic = false;
-        sgli_p->overlapping = false;
+        sgli_p->overlapping = false;    /* no longer valid */
+        sgli_p->fragmented = true;      /* must be fragmented */
         prev_lba = t_lba;
         ++k;
-        for ( ; k < elems; ++k) {
-            t_lba = (start_p + k)->lba;
-            t_num = (start_p + k)->num;
+        ++sgep;
+        for ( ; k < elems; ++k, ++sgep) {
+            degen = false;
+            t_lba = sgep->lba;
+            t_num = sgep->num;
+            if (0 == t_num) {
+                degen = true;
+                continue;
+            }
             sum += t_num;
             end = t_lba + t_num;
             if (end > high)
@@ -2315,59 +2466,286 @@ sgl_sum_scan(struct sgl_info_t * sgli_p, bool b_vb)
     } else {
         sgli_p->monotonic = monot;
         sgli_p->overlapping = ! regular;
+        sgli_p->fragmented = fragmented;
     }
     sgli_p->lowest_lba = low;
-    sgli_p->highest_lba = high - 1;   /* adjust so pointing to highest LBA */
+    if (degen && (elems > 0)) { /* last element always impacts high_lba_p1 */
+        t_lba = (sgep - 1)->lba;
+        sgli_p->high_lba_p1 = (t_lba > high) ? t_lba : high;
+    } else
+        sgli_p->high_lba_p1 = high;
     sgli_p->sum = sum;
-    sgli_p->sum_hard = (elems > 0) ? ((start_p + elems - 1)->num > 0) : false;
+    sgli_p->sum_hard = (elems > 0) ? ! degen : false;
     if (b_vb) {
-        pr2serr("%s: elems=%d, arr %spresent, monotonic=%s\n", __func__,
-                sgli_p->elems, (sgli_p->sgl ? "" : "not "),
+        pr2serr("%s: from: %s: elems=%d, arr %spresent, monotonic=%s\n",
+                __func__, caller, sgli_p->elems, (sgli_p->sglp ? "" : "not "),
                 (sgli_p->monotonic ? "true" : "false"));
-        pr2serr("  sum=%" PRId64 ", lowest=0x%" PRIx64 ", highest=",
+        pr2serr("  sum=%" PRId64 ", lowest=0x%" PRIx64 ", high_lba_p1=",
                 sgli_p->sum, sgli_p->lowest_lba);
-        if (DDPT_COUNT_INDEFINITE == sgli_p->highest_lba)
-            pr2serr("-1\n");
-        else
-            pr2serr("0x%" PRIX64 "\n", sgli_p->highest_lba);
-        pr2serr("  overlapping=%s, sum_hard=%s\n", (sgli_p->overlapping ?
-                "true" : "false"), (sgli_p->sum_hard ? "true" : "false"));
+        pr2serr("0x%" PRIx64 "\n", sgli_p->high_lba_p1);
+        pr2serr("  overlapping=%s, sum_hard=%s, fragmented=%s\n",
+                (sgli_p->overlapping ? "true" : "false"),
+                (sgli_p->sum_hard ? "true" : "false"),
+                (sgli_p->fragmented ? "true" : "false"));
+        pr2serr("  >> %s scatter gather list (%d elements):\n", caller,
+                sgli_p->elems);
+        if (sgli_p->sglp) {
+            for (k = 0, sgep = sgli_p->sglp; k < sgli_p->elems; ++k, ++sgep)
+                pr2serr("    lba: 0x%" PRIx64 ", number: 0x%" PRIx32
+                        " [high lba+1: 0x%" PRIx64 "]\n", sgep->lba,
+                        sgep->num, sgep->lba + sgep->num);
+        }
     }
 }
 
-/* Returns number elements in scatter gather list (array) whose pointer
- * is written to *sge_pp. On error returns negated error number and
- * NULL is written to *sge_pp . The caller is responsible for freeing
- * memory associated with *sge_pp . */
+/* Returns number of elements in scatter gather list (array) whose pointer is
+ * written to *sge_pp. The sgl is linear starting at start_lba, for blks
+ * blocks with all elements smaller than max_nbs.  On error returns negated
+ * error number and NULL is written to *sge_pp . The caller is responsible for
+ * freeing memory associated with *sge_pp . If blks or start_lba are negative,
+ * NULL is written to *sge_pp and returns 0. */
 int
-build_sgl(struct scat_gath_elem ** sge_pp, int64_t count, int64_t offs)
+build_sgl(struct scat_gath_elem ** sge_pp, int64_t blks, int64_t start_lba)
 {
     int k, n;
     const int max_nbs = (INT_MAX - 1);
-    const int64_t cnt = count;
-    struct scat_gath_elem * sge;
+    const int64_t cnt = blks;
+    struct scat_gath_elem * sgep;
 
-    for (k = 0; count > 0; ++k) {
-        if (count <= max_nbs)
-            break;
-        count -= max_nbs;
+    if ((blks < 0) || (start_lba < 0)) {
+        *sge_pp = NULL;
+        return 0;
     }
-    n = k + 1;
+    for (k = 0; blks > 0; ++k) {
+        if (blks <= max_nbs) {
+            ++k;
+            break;
+        }
+        blks -= max_nbs;
+    }
+    n = k;
     *sge_pp = (struct scat_gath_elem *)
                         calloc(n, sizeof(struct scat_gath_elem));
     if (NULL == *sge_pp) {
         pr2serr("%s: no memory available for sgl\n", __func__);
         return -sg_convert_errno(ENOMEM);
     }
-    sge = *sge_pp;
-    for (k = 0, count = 0; k < n; ++k, ++sge, count += max_nbs) {
-        sge->lba = offs + count;
-        if ((cnt - count) <= max_nbs)
-            sge->num = cnt - count;
+    sgep = *sge_pp;
+    for (k = 0, blks = 0; k < n; ++k, ++sgep, blks += max_nbs) {
+        sgep->lba = start_lba + blks;
+        if ((cnt - blks) <= max_nbs)
+            sgep->num = cnt - blks;
         else
-            sge->num = max_nbs;
+            sgep->num = max_nbs;
     }
     return n;
+}
+
+/* Builds single element sgl with (*sge_pp)->num==0 . */
+int
+build_degen_sgl(struct scat_gath_elem ** sge_pp, int64_t start_lba)
+{
+    if (start_lba < 0) {
+        *sge_pp = NULL;
+        return 0;
+    }
+    *sge_pp = (struct scat_gath_elem *)
+                        calloc(1, sizeof(struct scat_gath_elem));
+    if (NULL == *sge_pp) {
+        pr2serr("%s: no memory available for sgl\n", __func__);
+        return -sg_convert_errno(ENOMEM);
+    }
+    (*sge_pp)->lba = start_lba;         /* ->num will be 0 due to calloc */
+    return 1;
+}
+
+/* Similar to build_sgl but appends to existing sgl whose length is cur_elems.
+ * Note that *sge_pp will probably change (in which case the previous *sge_pp
+ * is freed). Returns number of elements in sgl after append or negated error
+ * number. */
+int
+append2sgl(struct scat_gath_elem ** sge_pp, int cur_elems, int64_t extra_blks,
+           int64_t start_lba)
+{
+    int k, n;
+    const int max_nbs = (INT_MAX - 1);
+    const int64_t cnt = extra_blks;
+    struct scat_gath_elem * prev_sgep;
+    struct scat_gath_elem * hold_sgep;
+    struct scat_gath_elem * sgep;
+
+    if (extra_blks <= 0)
+        return cur_elems;       /* nothing to do */
+    if (cur_elems < 1) {
+        if (*sge_pp) {
+            free(*sge_pp);
+            *sge_pp = NULL;
+        }
+        return build_sgl(sge_pp, extra_blks, start_lba);
+    }
+    prev_sgep = *sge_pp;
+    hold_sgep = prev_sgep;
+    if ((extra_blks < 0) || (start_lba < 0)) {
+        *sge_pp = NULL;
+        return 0;
+    }
+    for (k = 0; extra_blks > 0; ++k) {
+        if (extra_blks <= max_nbs) {
+            ++k;
+            break;
+        }
+        extra_blks -= max_nbs;
+    }
+    n = k + cur_elems;
+    *sge_pp = (struct scat_gath_elem *)
+                        calloc(n, sizeof(struct scat_gath_elem));
+    if (NULL == *sge_pp) {
+        pr2serr("%s: no memory available for sgl\n", __func__);
+        return -sg_convert_errno(ENOMEM);
+    }
+    sgep = *sge_pp;
+    for (k = 0; k < cur_elems; ++k, ++sgep, ++prev_sgep) {
+        sgep->lba = prev_sgep->lba;
+        sgep->num = prev_sgep->num;
+    }
+    free(hold_sgep);    /* previous sgl no longer needed */
+    for (extra_blks = 0; k < n; ++k, ++sgep, extra_blks += max_nbs) {
+        sgep->lba = start_lba + extra_blks;
+        if ((cnt - extra_blks) <= max_nbs)
+            sgep->num = cnt - extra_blks;
+        else
+            sgep->num = max_nbs;
+    }
+    return n;
+}
+
+
+/* Returns LBA referred to by iterator if valid or returns DDPT_LBA_INVALID
+ * (-1) if at end or invalid. */
+int64_t
+sgl_iter_lba(const struct sgl_iter_t * itp)
+{
+    int64_t res = DDPT_LBA_INVALID; /* for at end or invalid (-1) */
+
+    if (itp->sglp && (itp->elem_ind < itp->elems)) {
+        struct scat_gath_elem * sgep = itp->sglp + itp->elem_ind;
+
+        if (itp->blk_off < sgep->num)
+            return sgep->lba + itp->blk_off;
+    }
+    return res;
+}
+
+/* Returns true of no sgl or sgl is at the end [elems, 0], otherwise it
+ * returns false. */
+bool
+sgl_iter_at_end(const struct sgl_iter_t * itp)
+{
+    if ((NULL == itp->sglp) ||
+        ((itp->elem_ind == itp->elems) && (0 == itp->blk_off)))
+        return true;
+    else
+        return false;
+}
+
+/* Returns true if either argument is 0/NULL or a 1 element list with both
+ * lba and num 0; otherwise returns false. */
+bool
+sgl_empty(struct scat_gath_elem * sglp, int elems)
+{
+    if ((0 == elems) || (NULL == sglp))
+        return true;
+    if ((1 == elems) && (0 == sglp->lba) && (0 == sglp->num))
+        return true;
+    return false;
+}
+
+/* Dummy function for testing iterators. Matches ddpt_rw_f typedef. */
+int
+iter_sgl_dummy(struct dev_info_t * dip, int ddpt_arg,
+               struct cp_state_t * csp, struct opts_t * op)
+{
+    bool reading = (DDPT_ARG_IN == ddpt_arg);
+    uint64_t lba = reading ? csp->cur_in_lba : csp->cur_out_lba;
+    uint32_t num = reading ? csp->cur_in_num : csp->cur_out_num;
+
+    if (op->verbose) {
+        pr2serr("%s: %s: lba,num=0x%" PRIx64 ",%u d_type=%d\n", __func__,
+                ddpt_arg_str(ddpt_arg), lba, num, dip->d_type);
+    }
+    return 0;
+}
+
+/* Returns >= 0 if sgl can be simplified to a single LBA. So an empty sgl
+ * will return 0; a one element sgl will return its LBA. A multiple element
+ * sgl only returns the first element's LBA (that is not degenerate) if the
+ * sgl is monotonic and not fragmented. In the extreme case takes last
+ * element's LBA if all prior elements are degenerate. Else returns -1 .
+ * Assumes sgl_sum_scan() has been called. */
+int64_t
+get_low_lba_from_linear(const struct sgl_info_t * sglip)
+{
+    int k;
+    struct scat_gath_elem * sgep = sglip->sglp;
+
+    if ((NULL == sglip) || (sglip->elems < 1) || (NULL == sglip->sglp))
+        return 0;
+    else if (1 == sglip->elems)
+        return sglip->sglp->lba;        /* even if degenerate */
+    else {
+        if (sglip->monotonic && (! sglip->fragmented)) {
+            for (k = 0; k < (sglip->elems - 1); ++k, ++sgep) {
+                if (sgep->num > 0)
+                    return sgep->lba;
+            }
+            /* take last element's LBA if all early are degenerate */
+            return sgep->lba;
+        } else
+            return -1;
+    }
+}
+
+/* If bad arguments returns -1, otherwise returns the lowest LBA in *sglp .
+ * If no elements considered returns 0. If ignore_degen is true than
+ * ignores all elements with num_blks zero unless always_last is also
+ * true in which case the last element is always considered. */
+int64_t
+get_lowest_lba(const struct scat_gath_elem * sglp, int num_elems,
+               bool ignore_degen, bool always_last)
+{
+    bool some = (num_elems > 0);
+    int64_t res = INT64_MAX;
+
+    if ((NULL == sglp) || (num_elems < 0))
+        return -1;
+    for ( ; num_elems > 0; --num_elems, ++sglp) {
+        if ((0 == sglp->num) && ignore_degen)
+            continue;
+        if ((int64_t)sglp->lba < res)
+            res = sglp->lba;
+    }
+    if (always_last && some) {
+        if ((int64_t)((sglp - 1)->lba) < res)
+            res = (sglp - 1)->lba;
+    }
+    return (INT64_MAX == res) ? 0 : res;
+}
+
+void
+cp_state_init(struct cp_state_t * csp, struct opts_t * op)
+{
+    memset(csp, 0, sizeof(struct cp_state_t));
+    if (op->i_sgli.sglp) {
+        csp->in_iter.sglp = op->i_sgli.sglp;
+        csp->in_iter.elems = op->i_sgli.elems;
+    }
+    if (op->o_sgli.sglp) {
+        csp->out_iter.sglp = op->o_sgli.sglp;
+        csp->out_iter.elems = op->o_sgli.elems;
+    }
+    csp->stats = op->stats;
+    op->stp = &csp->stats;
+    csp->buf_name = "unknown";
 }
 
 
