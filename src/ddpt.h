@@ -200,6 +200,7 @@ extern "C" {
 #define DELAY_WRITE 1   /* prior to each write, may be muliple per segment */
 
 /* cp_state_t::leave_reason indication */
+#define REASON_UNKNOWN -1
 #define REASON_EOF_ON_READ 0
 #define REASON_TAPE_SHORT_READ 1024
 
@@ -221,6 +222,8 @@ extern "C" {
 #define DEF_XCOPY_SRC0_DST1 1
 #define ODX_RTF_LEN "ODX_RTF_LEN"     /* append 8 byte ROD size to token */
 #define DDPT_DEF_BS "DDPT_DEF_BS" /* default default block size: 512 bytes */
+
+#define DDPT_BIGGEST_CONTINUAL (1024LL * 1024 * 1024 * 64)
 
 /* ODX: length field inside ROD Token constant, implies 512 byte ROD Token */
 #define ODX_ROD_TOK_LEN_FLD 504       /* 0x1f8 */
@@ -277,7 +280,8 @@ struct sgl_iter_t {
     /* underlying (what iterator points to) and filepos, if needed */
     int elems;          /* elements in sglp array */
     struct scat_gath_elem * sglp;  /* start of scatter gather list array */
-    int64_t filepos;    /* file 'pos' is a byte offset in reg/block file */
+    int64_t filepos;    /* file 'pos' is a byte offset in reg/block file,
+                         * origin 0, next byte to read */
 };
 
 /* Holds one scatter gather list and its associated metadata */
@@ -309,9 +313,10 @@ struct block_rodtok_vpd {
 
 /* one instance per file/device: if, of and of2 */
 struct dev_info_t {
+    bool limits_xfer;   /* size of this object is xfer limit */
     int d_type;         /* one of FT_* values */
     int d_type_hold;
-    int fd;
+    int fd;		/* Unix file descriptor corresponding to fn[] */
 #ifdef SG_LIB_WIN32
     HANDLE fh;
 #endif
@@ -323,7 +328,7 @@ struct dev_info_t {
     uint32_t xc_min_bytes;
     uint32_t xc_max_bytes;
     int64_t reg_sz;     /* regular file size in bytes, -1 --> no info */
-    char fn[INOUTF_SZ];
+    char fn[INOUTF_SZ]; /* file/device name */
     struct block_rodtok_vpd * odxp;
     uint8_t * free_odxp;
     struct sg_pt_base * ptvp;
@@ -357,6 +362,7 @@ struct cp_state_t {
     bool in_soft;       /* keep going at end of in sgl */
     bool out_soft;      /* keep going at end of out sgl */
     bool reading;
+    bool last_segment;
     int icbpt;          /* input, current blocks_per_transfer */
     int ocbpt;          /* output, current blocks_per_transfer */
     int bytes_read;     /* previous IO: into the working buffer */
@@ -364,9 +370,10 @@ struct cp_state_t {
     int bytes_of2;      /* previous IO: bytes written to of2 */
     int blks_xfer;  /* prev IO: blocks transferred (e.g. bytes_read/ibs) */
     int bytes_xfer; /* prev IO: bytes transferred, -1 -> block device */
-    int leave_reason;   /* ==0 for no error (e.g. EOF) */
+    int leave_reason;   /* def: -1 (unknown); 0: EOF on read; else error */
     int rem_seg_bytes;  /* remaining valid bytes in buffer (after short) */
     int partial_write_bytes;
+    int last_seg_wbytes; /* when ofile sz is limit; 0: no reduction */
     uint32_t cur_in_num;   /* current in number of blocks */
     uint32_t cur_out_num;  /* current out number of blocks */
     uint64_t cur_in_lba;   /* current in starts at this logical block */
@@ -552,7 +559,7 @@ struct opts_t {
     struct dev_info_t * idip;
     struct flags_t * oflagp;
     struct dev_info_t * odip;
-    struct dev_info_t * o2dip;  /* of2=OFILE2  xxxx */
+    struct dev_info_t * o2dip;  /* of2=OFILE2  reg or pipe file, no sgl */
     uint8_t * wrkPos;
     uint8_t * free_wrkPos;
     uint8_t * wrkPos2;

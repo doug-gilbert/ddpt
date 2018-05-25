@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.97 20180516 [svn: r352]";
+static const char * ddpt_version_str = "0.97 20180525 [svn: r353]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -386,8 +386,8 @@ set_filepos_if_needed(struct dev_info_t * dip, int64_t wanted,
     return 0;
 }
 
-/* Helper for calc_count(). Attempts to size IFILE. Returns 0 if no error
- * detected. */
+/* Helper for calc_count_both(). Attempts to size IFILE. Returns 0 if no
+ * error detected. */
 static int
 calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
 {
@@ -484,8 +484,12 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
                 }
             }
         }
-    } else if ((op->dd_count > 0) && (! op->oflagp->resume))
+    }
+#if 0
+// don't understand why this is here
+    else if ((op->dd_count > 0) && (! op->oflagp->resume))
         return 0;
+#endif
     else if (FT_REG & id_type) {
         if (fstat(idip->fd, &st) < 0) {
             perror("fstat(idip->fd) error");
@@ -505,8 +509,8 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
     return 0;
 }
 
-/* Helper for calc_count(). Attempts to size OFILE. Returns 0 if no error
- * detected. */
+/* Helper for calc_count_both(). Attempts to size OFILE. Returns 0 if no
+ * error detected. */
 static int
 calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
 {
@@ -600,8 +604,12 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
                 }
             }
         }
-    } else if ((op->dd_count > 0) && (! op->oflagp->resume))
+    }
+#if 0
+// don't understand why this is here
+    else if ((op->dd_count > 0) && (! op->oflagp->resume))
         return 0;
+#endif
     else if (FT_REG & od_type) {
         if (fstat(odip->fd, &st) < 0) {
             perror("fstat(odip->fd) error");
@@ -627,8 +635,8 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
  * uses ibs or obs as the logical block size. Returns 0 for continue,
  * otherwise bypass copy and exit. */
 static int
-calc_count(struct opts_t * op, int64_t * in_num_blksp,
-           int64_t * out_num_blksp)
+calc_count_both(struct opts_t * op, int64_t * in_num_blksp,
+                int64_t * out_num_blksp)
 {
     int res;
 
@@ -1243,14 +1251,10 @@ cp_read_fifo(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
         if (res < 0) {
             pr2serr("%s: skip=%" PRId64 " : %s\n", __func__, csp->cur_in_lba,
                     safe_strerror(err));
-            return SG_LIB_CAT_OTHER;
+            return sg_convert_errno(err);
         } else if (0 == res) {
-            if ((k % ibs) > 0) {
-                // yyyy ++csp->icbpt;
+            if ((k % ibs) > 0)
                 ++csp->stats.in_partial;
-                --csp->stats.in_full;
-            }
-            // yyyy csp->ocbpt = k / obs;
             csp->leave_after_write = true;
             csp->leave_reason = REASON_EOF_ON_READ;
             csp->partial_write_bytes = k % obs;
@@ -1262,6 +1266,7 @@ fini:
     csp->bytes_read = k;
     csp->bytes_xfer = k;
     csp->blks_xfer = k / ibs;
+    csp->stats.in_full += csp->blks_xfer;
     return 0;
 }
 
@@ -1616,7 +1621,7 @@ ew_retry:
         if ((EIO == err) || (EREMOTEIO == err))
             return SG_LIB_CAT_MEDIUM_HARD;
         else
-            return SG_LIB_CAT_OTHER;
+            return sg_convert_errno(err);
     } else if (res < numbytes) {
         pr2serr("write(tape): wrote less than requested, exit\n");
         csp->out_iter.filepos += res;
@@ -1642,8 +1647,7 @@ ew_retry:
 #endif /* SG_LIB_LINUX */
 
 /* Main copy loop's write (output (of)) for block device, fifo or regular
- * file. Returns 0 on success, else SG_LIB_FILE_ERROR,
- * SG_LIB_CAT_MEDIUM_HARD or -1 . */
+ * file. Returns 0 on success, else sg3_utils error code. */
 static int
 cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
                    const uint8_t * bp)
@@ -1654,7 +1658,7 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
     uint32_t blks = csp->cur_out_num;
     int64_t offset;
     int64_t aseek = csp->cur_out_lba;
-    int res, off, err;
+    int res, off, err, rem;
     int obs = op->obs_pi;
     int od_type = op->odip->d_type;
     int numbytes = blks * obs;
@@ -1675,8 +1679,9 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
 #ifdef SG_LIB_WIN32
     if (FT_BLOCK & od_type) {
         if (csp->partial_write_bytes > 0) {
+            rem = csp->partial_write_bytes;
             if (op->oflagp->pad) {
-                numbytes += csp->partial_write_bytes;
+                numbytes += rem;
                 // yyyy ++csp->ocbpt;
                 ++blks;
                 res = blks * obs;
@@ -1689,7 +1694,7 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
                             "final write at seek=%" PRId64 "\n", aseek);
             } else
                 pr2serr(">>> ignore partial write of %d bytes to "
-                        "block device\n", csp->partial_write_bytes);
+                        "block device\n", rem);
         }
         res = set_filepos_if_needed(op->odip, offset, csp->out_iter.filepos,
                                     __func__, vb >= vb_thresh_filepos_change,
@@ -1713,7 +1718,7 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
                 ++csp->stats.out_partial;
                 ++csp->stats.out_full;
             }
-            return -1;
+            return sg_convert_errno(ENOSPC);
         } else {
             csp->out_iter.filepos += numbytes;
             csp->blks_xfer = blks;
@@ -1725,10 +1730,11 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
 #endif
     {
         if (csp->partial_write_bytes > 0) {
+            rem = csp->partial_write_bytes;
             if (op->oflagp->pad) {
                 uint8_t * ncbp = (uint8_t *)bp;
 
-                numbytes += csp->partial_write_bytes;
+                numbytes += rem;
                 // yyyy ++csp->ocbpt;
                 ++blks;
                 res = blks * obs;
@@ -1741,12 +1747,22 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
             } else {
                 if (FT_BLOCK & od_type)
                     pr2serr(">>> ignore partial write of %d bytes to block "
-                            "device\n", csp->partial_write_bytes);
+                            "device\n", rem);
                 else {
-                    numbytes += csp->partial_write_bytes;
+                    numbytes += rem;
                     ++csp->stats.out_partial;
                 }
             }
+        } else if (csp->last_segment && (csp->last_seg_wbytes > 0)) {
+            rem = csp->last_seg_wbytes;
+            /* assume only when OFILE is regular file */
+            if (vb > 1)
+                pr2serr("%s(reg): reducing last segment write to %d bytes\n",
+                        __func__, rem);
+            numbytes = rem;
+            /* tweak stats to reflect what is actually happening */
+            --csp->stats.out_full;
+            ++csp->stats.out_partial;
         }
         if (REASON_TAPE_SHORT_READ != csp->leave_reason) {
             res = set_filepos_if_needed(op->odip, offset,
@@ -1795,7 +1811,7 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
                 ++csp->stats.out_partial;
                 ++csp->stats.out_full;
             }
-            return -1;
+            return sg_convert_errno(ENOSPC);
         }
         /* successful write */
         csp->out_iter.filepos += numbytes;
@@ -2151,16 +2167,18 @@ count_calculate(struct opts_t * op)
     struct scat_gath_elem * sgep;
     const char * reasonp = "count= given";
 
-    if ((res = calc_count(op, &in_num_blks, &out_num_blks)))
+    if ((res = calc_count_both(op, &in_num_blks, &out_num_blks)))
         return res;
     if (vb > 1)
         pr2serr("%s: in_num_blks=%" PRId64 ", out_num_blks=%" PRId64 "\n",
                 __func__, in_num_blks, out_num_blks);
-    if ((isglip->elems > 0) && (FT_REG & id_type) &&
-        (isglip->lowest_lba > in_num_blks)) {
-        pr2serr("cannot skip to specified offset on %s\n", op->idip->fn);
-        op->dd_count = 0;
-        return -1;
+    if ((in_num_blks > 0) && (isglip->elems > 0) &&
+        (isglip->lowest_lba > 0)) {
+        if ((FT_REG & id_type) && (isglip->lowest_lba > in_num_blks)) {
+            pr2serr("cannot skip to specified offset on %s\n", op->idip->fn);
+            op->dd_count = 0;
+            return SG_LIB_SYNTAX_ERROR;
+        }
     }
     if ((! op->oflagp->resume) && (op->dd_count > 0))
         goto the_end;
@@ -2203,24 +2221,28 @@ count_calculate(struct opts_t * op)
         if ((out_num_blks < 0) && (in_num_blks > 0)) {
             reasonp = "in file/device sz";
             op->dd_count = in_num_blks;
+            op->idip->limits_xfer = true;
         } else if (op->reading_fifo && (FT_REG & od_type))
-            ;
+            reasonp = "reading fifo/pipe";
         else if (op->reading_fifo && (out_num_blks < 0))
-            ;
+            reasonp = "reading fifo/pipe";
         else if ((out_num_blks < 0) && (in_num_blks <= 0))
-            ;
+            reasonp = "? ?";
         else {  /* have both in and out file/device size */
             ibytes = (in_num_blks > 0) ? (ibs * in_num_blks) : 0;
             obytes = obs * out_num_blks;
             if (0 == ibytes) {
                 reasonp = "in zero length, take out sz";
                 op->dd_count = obytes / ibs;
+                op->odip->limits_xfer = true;
             } else if ((ibytes > obytes) && (! (FT_REG & od_type))) {
                 reasonp = "in > out(not_reg), take out sz";
                 op->dd_count = obytes / ibs;
+                op->odip->limits_xfer = true;
             } else {
                 reasonp = "otherwise take in sz";
                 op->dd_count = in_num_blks;
+                op->idip->limits_xfer = true;
                 if ((FT_REG & od_type) && (ibytes < obytes)) {
                     if (! op->quiet)
                         pr2serr(">> Warning: %s will be partially "
@@ -2243,7 +2265,7 @@ count_calculate(struct opts_t * op)
             if (ibk >= op->dd_count) {
                 pr2serr("resume finds copy complete, exiting\n");
                 op->dd_count = 0;
-                return -1;
+                return SG_LIB_FILE_ERROR;
             }
             /* align to bpt multiple */
             ibk = (ibk / op->bpt_i) * op->bpt_i;
@@ -2280,7 +2302,7 @@ the_end:
     if ((isglip->elems > 0) && (NULL == isglip->sglp)) {
         pr2serr("%s: in_sg_elems=%d but in_sgl NULL\n", __func__,
                 isglip->elems);
-        return -1;
+        return SG_LIB_LOGIC_ERROR;
     }
 
     if ((1 == osglip->elems) && ((osglip->sglp + 0)->num > 0))
@@ -2291,6 +2313,8 @@ the_end:
             lba = (osglip->sglp + 0)->lba;
         if (FT_DEV_NULL & od_type)
             n = build_degen_sgl(&sgep, lba);
+        else if (op->odip->limits_xfer)
+            n = build_sgl(&sgep, out_num_blks, lba);
         else
             n = build_sgl(&sgep, (op->dd_count * ibs) / obs, lba);
         if (n < 0)
@@ -2306,9 +2330,49 @@ the_end:
     if ((osglip->elems > 0) && (NULL == osglip->sglp)) {
         pr2serr("%s: out_sg_elems=%d but out_sgl is NULL\n", __func__,
                 osglip->elems);
-        return -1;
+        return SG_LIB_LOGIC_ERROR;
     }
     return 0;
+}
+
+static void
+last_seg_helper(struct cp_state_t * csp, uint8_t * wPos, int ibs, int obs,
+                struct opts_t * op)
+{
+    int res, rem;
+
+    csp->last_segment = true;
+    csp->icbpt = op->dd_count;
+    res = op->dd_count; /* assume remaining count fits in 31 bits */
+    csp->ocbpt = x_mult_div(res, ibs, obs); /* (res * ibs) / obs */
+    if (op->odip->limits_xfer) {
+        rem = 0;
+        if (op->odip->reg_sz < csp->out_iter.filepos)
+            pr2serr("%s: reg_sz=%" PRId64 " less than filepos=%"
+                    PRId64 "\n", __func__, op->odip->reg_sz,
+                    csp->out_iter.filepos);
+        else if ((op->odip->reg_sz - csp->out_iter.filepos) >
+                 (ibs * op->bpt_i))
+            pr2serr("%s: reg_sz=%" PRId64 " and filepos=%" PRId64
+                    "too far apart\n", __func__, op->odip->reg_sz,
+                    csp->out_iter.filepos);
+        else
+            rem = (int)(op->odip->reg_sz - csp->out_iter.filepos);
+        csp->last_seg_wbytes = rem;
+        csp->ocbpt = (rem / obs);
+        if (rem % obs)
+            ++csp->ocbpt;
+        if (op->verbose)
+            pr2serr("last segment: out limited xfer, last_seg_wbytes"
+                    "=%d, ocbpt=%d\n", csp->last_seg_wbytes,
+                    csp->ocbpt);
+    } else {
+        rem = x_mult_rem(res, ibs, obs);
+        if (rem > 0) {
+            ++csp->ocbpt;
+            memset(wPos, 0, ibs * op->bpt_i);
+        }
+    }
 }
 
 /* This is the main copy loop (unless an offloaded copy is requested).
@@ -2319,10 +2383,10 @@ do_rw_copy(struct opts_t * op)
 {
     bool sparse_skip, sparing_skip, continual_read;
     bool first_time = true;
-    bool first_time_0 = true;
-    bool first_time_ff = true;
-    int ibpt, obpt, res, n, num;
+    bool change_over = false;
+    int ibpt, obpt, res, n, num, bump, rem_blks;
     int ret = 0;
+    int vb = op->verbose;
     int id_type = op->idip->d_type;
     int od_type = op->odip->d_type;
     int ibs = op->ibs_pi;
@@ -2334,7 +2398,7 @@ do_rw_copy(struct opts_t * op)
     csp = &cp_st;
     cp_state_init(csp, op);
     continual_read = (op->reading_fifo && (op->dd_count < 0));
-    if (op->verbose > 3) {
+    if (vb > 3) {
         if (continual_read)
             pr2serr("%s: reading fifo continually\n", __func__);
         else
@@ -2345,34 +2409,28 @@ do_rw_copy(struct opts_t * op)
         goto copy_end;
     }
     ibpt = op->bpt_i;
-    obpt = x_mult_div(ibs, op->bpt_i, obs);
+    obpt = x_mult_div(ibs, ibpt, obs);
     if ((ret = cp_construct_pt_zero_buff(op, obpt)))
         goto copy_end;
     /* Both csp->in_iter.filepos and csp->out_iter.filepos are 0 */
 
     /* <<< main loop that does the copy >>> */
     while ((op->dd_count > 0) || continual_read) {
-        if (first_time)
-            first_time = false;
-        else
+        if (! first_time)
             signals_process_delay(op, DELAY_COPY_SEGMENT);
         csp->bytes_read = 0;
         csp->bytes_of = 0;
         csp->bytes_of2 = 0;
         sparing_skip = false;
         sparse_skip = false;
-        if ((op->dd_count >= ibpt) || continual_read) {
+        if (continual_read) {
             csp->icbpt = ibpt;
             csp->ocbpt = obpt;
-        } else {        /* looks like last segment */
-            csp->icbpt = op->dd_count;
-            res = op->dd_count; /* assume remaining count fits in 31 bits */
-            csp->ocbpt = x_mult_div(res, ibs, obs);
-            if (x_mult_rem(res, ibs, obs)) {
-                ++csp->ocbpt;
-                memset(wPos, 0, ibs * ibpt);
-            }
-        }
+        } else if (op->dd_count > ibpt) {
+            csp->icbpt = ibpt;
+            csp->ocbpt = obpt;
+        } else        /* last segment's write could be short */
+            last_seg_helper(csp, wPos, ibs, obs, op);
 
         /* Start of reading section */
         ret = 0;
@@ -2400,27 +2458,69 @@ do_rw_copy(struct opts_t * op)
                     break;
             }
         } else if (FT_FIFO & id_type) {
-             if ((ret = cp_read_fifo(op, csp, wPos)))
+            csp->low_bp = wPos;
+            csp->subseg_bp = wPos;
+            csp->cur_countp = &csp->stats.in_full;
+            csp->buf_name = "wPos";
+            csp->cur_in_num = num;
+            if (first_time && (op->i_sgli.lowest_lba > 0)) {
+                int64_t kk;
+
+                /* implement skip on fifo by read and ignore */
+                for (kk = 0; kk < op->i_sgli.lowest_lba; kk += bump) {
+                    bump = ((kk + num) > op->i_sgli.lowest_lba) ?
+                           (op->i_sgli.lowest_lba - kk) : num;
+                    csp->cur_in_num = bump;
+                    if ((ret = cp_read_fifo(op, csp, wPos)))
+                        break;
+                    csp->cur_in_lba += bump;
+                }
+            }
+            csp->subseg_bp = wPos;
+            csp->cur_in_num = num;
+
+            if ((ret = cp_read_fifo(op, csp, wPos)))
                 break;
+            if (csp->leave_after_write) {
+                csp->icbpt = csp->blks_xfer;
+                if (ibs == obs)
+                    csp->ocbpt = csp->blks_xfer;
+                else {
+                    csp->ocbpt = (csp->blks_xfer * ibs) / obs;
+                    csp->partial_write_bytes =
+                             (csp->blks_xfer * ibs) % obs;
+                }
+            }
+            csp->cur_in_lba += num;
         } else if (FT_TAPE & id_type) {
 #ifdef SG_LIB_LINUX
-             if ((ret = cp_read_tape(op, csp, wPos)))
+            if ((ret = cp_read_tape(op, csp, wPos)))
                 break;
+            if (csp->leave_after_write) {
+                csp->icbpt = csp->blks_xfer;
+                if (ibs == obs)
+                    csp->ocbpt = csp->blks_xfer;
+                else {
+                    csp->ocbpt = (csp->blks_xfer * ibs) / obs;
+                    csp->partial_write_bytes =
+                             (csp->blks_xfer * ibs) % obs;
+                }
+            }
 #else
             pr2serr("reading from tape not supported in this OS\n");
             ret = SG_LIB_CAT_OTHER;
             break;
 #endif
         } else if (FT_DEV_NULL & id_type) {
-            if (first_time_0) {
-                first_time_0 = false;
+            if (first_time || change_over) {
                 memset(wPos, 0x0, ibs * ibpt);
+                change_over = false;
             }
             csp->stats.in_full += csp->icbpt;
         } else if (FT_ALL_FF & id_type) {
-            if (first_time_ff) {
-                first_time_ff = false;
+            if (first_time || change_over) {
                 memset(wPos, 0xff, ibs * ibpt);
+                change_over = false;
             }
             csp->stats.in_full += num;
         } else {        /* assume regular file or block device */
@@ -2434,16 +2534,37 @@ do_rw_copy(struct opts_t * op)
                 if (DDPT_CAT_SEE_LEAVE_REASON == ret) {
                     n = csp->rem_seg_bytes;
                     if (REASON_EOF_ON_READ == csp->leave_reason) {
-                        csp->leave_after_write = true;
-                        if (n <= 0) {
-                            ret = 0;
-                            break;  /* finished, nothing in rem_seg_bytes */
+                        if (op->iflagp->zero || op->iflagp->ff) {
+                            rem_blks = num - csp->blks_xfer;
+                            csp->leave_after_write = false;
+                            if (op->iflagp->zero) {
+                                memset(wPos + n, 0x0, ibs * ibpt - n);
+                                id_type = FT_DEV_NULL;
+                                op->idip->d_type = FT_DEV_NULL;
+                            } else {
+                                memset(wPos + n, 0xff, ibs * ibpt - n);
+                                id_type = FT_ALL_FF;
+                                op->idip->d_type = FT_ALL_FF;
+                            }
+                            change_over = true;
+                            csp->stats.in_full += rem_blks;
+                            if (! op->quiet)
+                                pr2serr("Reached EOF of %s, start %s fill\n",
+                                        op->idip->fn,
+                                        (op->iflagp->zero ? "zero" : "ff"));
+                        } else {
+                            csp->leave_after_write = true;
+                            if (n <= 0) {
+                                ret = 0;
+                                break;  /* finished without error */
+                            }
+                            csp->ocbpt = n / obs;
+                            csp->icbpt = n / ibs;   /* so dd_count accurate */
+                            csp->partial_write_bytes = n % obs;
+                            /* drop through to write */
                         }
-                        csp->ocbpt = n / obs;
-                        csp->partial_write_bytes = n % obs;
-                        /* drop through to write */
                     } else if (REASON_TAPE_SHORT_READ == csp->leave_reason) {
-                        // ????
+                        ; // ????
                     } else if ((csp->leave_reason < 0) ||
                          (csp->leave_reason > 120)) {
                         ret = SG_LIB_CAT_OTHER;
@@ -2605,8 +2726,8 @@ do_rw_copy(struct opts_t * op)
                 break;
             }
         }
-
 bypass_write:
+
 #ifdef HAVE_POSIX_FADVISE
         if (op->iflagp->nocache || op->oflagp->nocache)
             do_fadvise(op, csp->bytes_read, csp->bytes_of, csp->bytes_of2);
@@ -2626,6 +2747,8 @@ bypass_write:
                 break;
             }
         }
+        if (first_time)
+            first_time = false;
     } /* end of main while loop that does the copy ... */
 
     if (op->oflagp->nowrite)
@@ -2638,7 +2761,7 @@ bypass_write:
     else if (op->oflagp->fdatasync) {
         if (fdatasync(op->odip->fd) < 0)
             perror("fdatasync() error");
-        if (op->verbose)
+        if (vb)
             pr2serr("Called fdatasync() on %s successfully\n", op->odip->fn);
     }
 #endif
@@ -2646,7 +2769,7 @@ bypass_write:
     else if (op->oflagp->fsync) {
         if (fsync(op->odip->fd) < 0)
             perror("fsync() error");
-        if (op->verbose)
+        if (vb)
             pr2serr("Called fsync() on %s successfully\n", op->odip->fn);
     }
 #endif
@@ -2966,7 +3089,7 @@ do_falloc(struct opts_t * op)
      * If fallocate() with FALLOC_FL_KEEP_SIZE returns ENOTTY, EINVAL or
      * EOPNOTSUPP, retry without that flag (since the flag is only supported
      * in recent Linux kernels). */
-    int res;
+    int res, err;
     int obs = op->obs_pi;
     int64_t oseek = op->o_sgli.lowest_lba * obs;        /* fpos */
     int64_t o_count = op->dd_count * op->ibs_pi;        /* bytes */
@@ -2981,12 +3104,12 @@ do_falloc(struct opts_t * op)
     /* fallocate() fails if the kernel does not support
      * FALLOC_FL_KEEP_SIZE, so retry without that flag. */
     if (-1 == res) {
-        if ((ENOTTY == errno) || (EINVAL == errno)
-             || (EOPNOTSUPP == errno)) {
+        err = errno;
+        if ((ENOTTY == err) || (EINVAL == err) || (EOPNOTSUPP == err)) {
             if (op->verbose)
                 pr2serr("Could not pre-allocate with "
                         "FALLOC_FL_KEEP_SIZE (%s), retrying without "
-                        "...\n", safe_strerror(errno));
+                        "...\n", safe_strerror(err));
             res = fallocate(op->odip->fd, 0 /* no flags */, oseek, o_count);
 #ifdef PREALLOC_DEBUG
             pr2serr("fallocate() without FALLOC_FL_KEEP_SIZE "
@@ -3000,8 +3123,8 @@ do_falloc(struct opts_t * op)
         op->oflagp->prealloc = false;
     }
     if (-1 == res) {
-        pr2serr("Unable to pre-allocate space: %s\n", safe_strerror(errno));
-        return SG_LIB_CAT_OTHER;
+        pr2serr("Unable to pre-allocate space: %s\n", safe_strerror(err));
+        return sg_convert_errno(err);
     }
     if (op->verbose > 1)
         pr2serr("Pre-allocated %" PRId64 " bytes at offset %" PRId64 "\n",
@@ -3010,7 +3133,7 @@ do_falloc(struct opts_t * op)
 #endif  /* HAVE_FALLOCATE */
 #else   /* other than SG_LIB_LINUX */
 #ifdef HAVE_POSIX_FALLOCATE
-    int res;
+    int res, err;
     int obs = op->obs_pi;
     int64_t oseek = op->o_sgli.lowest_lba * obs;        /* fpos */
     int64_t o_count = op->dd_count * op->ibs_pi;        /* bytes */
@@ -3019,9 +3142,9 @@ do_falloc(struct opts_t * op)
      * full length, so re-invoking ddpt with oflag=resume will do nothing.) */
     res = posix_fallocate(op->odip->fd, oseek, o_count);
     if (-1 == res) {
-            pr2serr("Unable to pre-allocate space: %s\n",
-                    safe_strerror(errno));
-            return SG_LIB_CAT_OTHER;
+        err = errno;
+        pr2serr("Unable to pre-allocate space: %s\n", safe_strerror(err));
+            return sg_convert_errno(err);
     }
     if (op->verbose > 1)
         pr2serr("Pre-allocated %" PRId64 " bytes at offset %" PRId64 "\n",
@@ -3123,6 +3246,42 @@ cleanup_resources(struct opts_t * op)
         close(op->o2dip->fd);
 }
 
+/* Files should be open, sgl setup, PI checked.
+ *                                                    */
+static int
+final_check(struct opts_t * op)
+{
+    int id_type = op->idip->d_type;
+    int od_type = op->odip->d_type;
+#if 0
+    int ibs = op->ibs_pi;
+    int obs = op->obs_pi;
+#endif
+    struct sgl_info_t * isglip = &op->i_sgli;
+    struct sgl_info_t * osglip = &op->o_sgli;
+
+    if (FT_FIFO & id_type) {
+        if (isglip->monotonic && (! isglip->fragmented))
+            ;
+        else {
+            pr2serr("Input file is FIFO, but doesn't have linear sgl\n");
+            return SG_LIB_SYNTAX_ERROR;
+        }
+    }
+    if (FT_FIFO & od_type) {
+        if (osglip->monotonic && (! osglip->fragmented) &&
+            (0 == osglip->lowest_lba))
+            ;
+        else {
+            pr2serr("Output file is FIFO, but doesn't have linear sgl "
+                    "starting at LBA 0\n");
+            return SG_LIB_SYNTAX_ERROR;
+        }
+    }
+
+    return 0;
+}
+
 
 /* The main() function: much of the its complex logic is spawned off to
  * helper functions shown directly above. */
@@ -3205,7 +3364,7 @@ main(int argc, char * argv[])
 
     if ((d_count < 0) && (! op->reading_fifo)) {
         pr2serr("Couldn't calculate count, please give one\n");
-        ret = SG_LIB_CAT_OTHER;
+        ret = SG_LIB_SYNTAX_ERROR;
         goto cleanup;
     }
 
@@ -3242,6 +3401,21 @@ main(int argc, char * argv[])
             if (*sgepp != hold_sgep)
                 sgl_sum_scan(sglip, "[out] append to sgl", vb > 1);
         }
+    } else if (op->reading_fifo && (op->dd_count < 0) &&
+               (! op->o_sgli.sum_hard)) {
+        struct sgl_info_t * sglip = &op->o_sgli;
+        struct scat_gath_elem ** sgepp = &sglip->sglp;
+        struct scat_gath_elem * hold_sgep = *sgepp;
+
+        sglip->elems = append2sgl(sgepp, sglip->elems,
+                                  DDPT_BIGGEST_CONTINUAL,
+                                  sglip->high_lba_p1);
+        if (sglip->elems < 0) {
+            ret = -sglip->elems;
+            goto cleanup;
+        }
+        if (*sgepp != hold_sgep)
+            sgl_sum_scan(sglip, "[out] append 'biggest' to sgl", vb > 1);
     }
 
     cdb_size_prealloc(op);
@@ -3251,6 +3425,10 @@ main(int argc, char * argv[])
 
     if (vb)
         details_pre_copy_print(op);
+
+    ret = final_check(op);
+    if (ret)
+        goto cleanup;
 
     op->read1_or_transfer = !! (FT_DEV_NULL & op->odip->d_type);
     op->stats.dd_count_start = op->dd_count;
@@ -3279,6 +3457,8 @@ main(int argc, char * argv[])
         pr2serr("dry_run=%d goes deep: lines start with 'ddr:'\n   then "
                 "'<<<' indicates in from %s\n   and '>>>' indicates out "
                 "to %s\n", op->dry_run, op->idip->fn, op->odip->fn);
+
+/* Copy done here vvvvvvvvvvvvvvvvvvv */
     if (1 == op->dry_run) {     /* let op->dry_run > 1 go deeper */
         if (! op->quiet)
             pr2serr("Bypass copy due to --dry-run\n");
@@ -3286,6 +3466,7 @@ main(int argc, char * argv[])
         ret = do_xcopy_lid1(op);
     else
         ret = do_rw_copy(op);
+/* Copy done here ^^^^^^^^^^^^^^^^^^^ */
 
     if (op->progress > 0)
         pr2serr("\nCompleted:\n");

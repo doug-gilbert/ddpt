@@ -2278,7 +2278,7 @@ sgl_iter_forward_blks(struct dev_info_t * dip, struct sgl_iter_t * itp,
                     csp->cur_out_num = rem_blks;
                 }
                 csp->cur_bp = csp->subseg_bp + b_off;
-                /* function pointer call to workers */
+                /*   vvvvvvvvvvvvvvvvvvvvvv  indirect call to workers */
                 if ((res = fp(dip, csp, op)))
                     return res;
                 if (csp->blks_xfer < (int)rem_blks) {
@@ -2287,7 +2287,7 @@ sgl_iter_forward_blks(struct dev_info_t * dip, struct sgl_iter_t * itp,
                                 __func__, dip->dir_n, csp->blks_xfer);
                         if (csp->bytes_xfer > 0)
                             pr2serr(" (%d bytes)", csp->bytes_xfer);
-                        if (csp->leave_reason)
+                        if (csp->leave_reason >= 0)
                             pr2serr(", leave_reason=%d\n", csp->leave_reason);
                         else
                             pr2serr("\n");
@@ -2327,6 +2327,7 @@ sgl_iter_forward_blks(struct dev_info_t * dip, struct sgl_iter_t * itp,
                     csp->cur_out_num = rem_blks;
                 }
                 csp->cur_bp = csp->subseg_bp + b_off;
+                /*   vvvvvvvvvvvvvvvvvvvvvv  indirect call to workers */
                 if ((res = fp(dip, csp, op)))
                     return res;
                 if (csp->blks_xfer < (int)rem_blks) {
@@ -2335,7 +2336,7 @@ sgl_iter_forward_blks(struct dev_info_t * dip, struct sgl_iter_t * itp,
                                 __func__, dip->dir_n, csp->blks_xfer);
                         if (csp->bytes_xfer > 0)
                             pr2serr(" (%d bytes)", csp->bytes_xfer);
-                        if (csp->leave_reason)
+                        if (csp->leave_reason >= 0)
                             pr2serr(", leave_reason=%d\n", csp->leave_reason);
                         else
                             pr2serr("\n");
@@ -2698,6 +2699,15 @@ sgl_iter_lba(const struct sgl_iter_t * itp)
 
         if ((uint32_t)itp->it_bk_off < sgep->num)
             return sgep->lba + itp->it_bk_off;
+        else if (((uint32_t)itp->it_bk_off == sgep->num) &&
+                 ((itp->it_e_ind + 1) < itp->elems)) {
+            struct sgl_iter_t iter = *itp;
+
+            ++iter.it_e_ind;
+            iter.it_bk_off = 0;
+            /* worst case recursion will stop at end of sgl */
+            return sgl_iter_lba(&iter);
+        }
     }
     return res;
 }
@@ -2826,6 +2836,7 @@ cp_state_init(struct cp_state_t * csp, struct opts_t * op)
     csp->stats = op->stats;
     op->stp = &csp->stats;
     csp->buf_name = "unknown";
+    csp->leave_reason = REASON_UNKNOWN;		/* -1 */
 }
 
 

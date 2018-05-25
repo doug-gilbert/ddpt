@@ -627,6 +627,7 @@ cl_sanity_defaults(struct opts_t * op)
 {
     int def_bs = DEF_BLOCK_SIZE;
     int vb = op->verbose;
+    int ret;
     const char * cp;
     char * csp;
     char * cdp;
@@ -681,19 +682,19 @@ cl_sanity_defaults(struct opts_t * op)
         (0 != ((op->ibs_lb * op->bpt_i) % op->obs_lb))) {
         pr2serr("when 'ibs' and 'obs' differ, ((ibs*bpt)/obs) must have "
                 "no remainder (bpt=%d)\n", op->bpt_i);
-        return SG_LIB_SYNTAX_ERROR;
+        return SG_LIB_CONTRADICT;
     }
     if ((ofp->append > 0) && (op->o_sgli.elems > 0)) {
         /* seek= has possible sgl, want lowest LBA ... */
         sgl_sum_scan(&op->o_sgli, "oflag=append", vb > 1);
         if (op->o_sgli.lowest_lba > 0) {
             pr2serr("Can't use both append and seek switches\n");
-            return SG_LIB_SYNTAX_ERROR;
+            return SG_LIB_CONTRADICT;
         }
     }
     if (op->bpt_i < 1) {
         pr2serr("internal BPT value 0, cannot continue\n");
-        return SG_LIB_SYNTAX_ERROR;
+        return SG_LIB_LOGIC_ERROR;
     }
     if (ifp->append)
         pr2serr("append flag ignored on input\n");
@@ -718,7 +719,7 @@ cl_sanity_defaults(struct opts_t * op)
             pr2serr("trunc ignored due to append flag\n");
         } else if (ofp->sparing) {
             pr2serr("trunc flag conflicts with sparing\n");
-            return SG_LIB_SYNTAX_ERROR;
+            return SG_LIB_CONTRADICT;
         }
     }
     if (ifp->self || ofp->self) {  /* self trim: move relevant stuff to out */
@@ -733,7 +734,7 @@ cl_sanity_defaults(struct opts_t * op)
         if ((op->ibs_lb > 0) && (op->obs_lb > 0) &&
             (op->ibs_lb != op->obs_lb)) {
             pr2serr("self flag doesn't support unequal ibs= and obs=\n");
-            return SG_LIB_SYNTAX_ERROR;
+            return SG_LIB_CONTRADICT;
         } else if (op->ibs_lb > 0) {    /* force ibs_lb==obs */
             op->obs_lb = op->ibs_lb;
             op->obs_pi = op->ibs_pi;
@@ -826,7 +827,7 @@ cl_sanity_defaults(struct opts_t * op)
         if (op->has_xcopy) {
             pr2serr("Can either request xcopy(LID1) or ODX but not "
                     "both\n");
-            return SG_LIB_SYNTAX_ERROR;
+            return SG_LIB_CONTRADICT;
         }
         cp = "";
         if (op->idip->fn[0] && op->odip->fn[0]) {
@@ -908,6 +909,16 @@ cl_sanity_defaults(struct opts_t * op)
         pr2serr("Expect to have 'ddpt' string in job files (as sanity "
                 "check)\n");
         return SG_LIB_SYNTAX_ERROR;
+    }
+    if (0 == op->i_sgli.elems) {
+        ret = do_skip(op, "def_skip", "0");
+        if (ret)
+            return ret;
+    }
+    if (0 == op->o_sgli.elems) {
+        ret = do_seek(op, "def_seek", "0");
+        if (ret)
+            return ret;
     }
     return 0;
 }
@@ -1077,7 +1088,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
         if (0 == strcmp(key, "bpt")) {
             if (op->bpt_given) {
                 pr2serr("Only one bpt= argument please\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             }
             cp = strchr(buf, ',');
             if (cp)
@@ -1106,13 +1117,13 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
             }
             if (op->bs_given) {
                 pr2serr("second 'bs=' operand given, dangerous\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             } else
                 op->bs_given = true;
             if ((op->ibs_given) || (op->obs_given)) {
                 pr2serr("'bs=' operand cannot be combined with "
                         "'ibs=' or 'obs='\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             }
             op->ibs_lb = n;
             op->ibs_pi = n;
@@ -1143,7 +1154,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
             if (op->count_given) {
                 pr2serr("second 'count=' argument detected, only one "
                         "please\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             }
             if (0 != strcmp("-1", buf)) {
                 op->dd_count = sg_get_llnum(buf);
@@ -1166,7 +1177,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
                         pr2serr("ddpt's revision number [%d] less than "
                                 "command line's: %d\n", my_rev, cl_rev);
                         pr2serr(">>> Exiting\n");
-                        return SG_LIB_SYNTAX_ERROR;
+                        return SG_LIB_CONTRADICT;
                     } else
                         ++op->ddpt_strs;
                 } else if (2 == sscanf(buf, "%d.%d", &cl_maj, & cl_min)) {
@@ -1176,7 +1187,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
                                 "command line's: %d.%d\n", my_maj, my_min,
                                 cl_maj, cl_min);
                         pr2serr(">>> Exiting\n");
-                        return SG_LIB_SYNTAX_ERROR;
+                        return SG_LIB_CONTRADICT;
                     } else
                         ++op->ddpt_strs;
                 } else {
@@ -1184,7 +1195,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
                             "(e.g. '0.97')\n");
                     pr2serr("or the lowest acceptable subversion revision "
                             "number.\nBoth can be seen with 'ddpt -V'\n");
-                    return SG_LIB_SYNTAX_ERROR;
+                    return SG_LIB_CONTRADICT;
                 }
             } else
                 pr2serr("%s: logic error: can't decode own version string: "
@@ -1216,7 +1227,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
             if (op->bs_given) {
                 pr2serr("'ibs=' operand cannot be combined with "
                         "'bs='; try 'obs=' instead\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             }
             op->ibs_given = true;
             op->ibs_lb = n;
@@ -1243,10 +1254,10 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
         } else if (strcmp(key, "if") == 0) {
             if ('\0' != op->idip->fn[0]) {
                 pr2serr("Second IFILE argument??\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             } else if (0 == strlen(buf)) {
                 pr2serr("expected if=IFILE but no IFILE argument\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             } else
                 strncpy(op->idip->fn, buf, INOUTF_SZ - 1);
         } else if (0 == strcmp(key, "iflag")) {
@@ -1259,7 +1270,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
         else if (0 == strcmp(key, "iseek")) {
             if (skip_seen) {
                 pr2serr("Only one skip= (or iseek=) argument please\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             }
             res = do_skip(op, key, buf);
             if (res)
@@ -1294,7 +1305,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
             if (op->bs_given) {
                 pr2serr("'obs=' operand cannot be combined with "
                         "'bs='; try 'ibs=' instead\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             }
             op->obs_given = true;
             op->obs_lb = n;
@@ -1302,17 +1313,17 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
         } else if (strcmp(key, "of") == 0) {
             if ('\0' != op->odip->fn[0]) {
                 pr2serr("Second OFILE argument??\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             } else if (0 == strlen(buf)) {
                 pr2serr("expected of=OFILE but no OFILE argument\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             }
             strncpy(op->odip->fn, buf, INOUTF_SZ - 1);
             op->outf_given = true;
         } else if (strcmp(key, "of2") == 0) {
             if ('\0' != op->o2dip->fn[0]) {
                 pr2serr("Second OFILE2 argument??\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             } else
                 strncpy(op->o2dip->fn, buf, INOUTF_SZ - 1);
         } else if (0 == strcmp(key, "oflag")) {
@@ -1323,7 +1334,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
         } else if (0 == strcmp(key, "oseek")) {
             if (seek_seen) {
                 pr2serr("Only one seek= (or oseek=) argument please\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             }
             res = do_seek(op, key, buf);
             if (res)
@@ -1364,11 +1375,11 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
         } else if (0 == strcmp(key, "rtf")) {
             if (op->rtf[0]) {
                 pr2serr("Can only use rtf=RTF once for ROD Token filename\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             }
             if ((NULL == buf) || (strlen(buf) < 1)) {
                 pr2serr("rtf=RTF requires an non-empty filename for RTF\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             }
             strncpy(op->rtf, buf, INOUTF_SZ - 1);
         } else if (0 == strcmp(key, "rtype")) {
@@ -1404,7 +1415,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
         } else if (0 == strcmp(key, "seek")) {
             if (seek_seen) {
                 pr2serr("Only one seek= (or oseek=) argument please\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             }
             res = do_seek(op, key, buf);
             if (res)
@@ -1413,7 +1424,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
         } else if (0 == strcmp(key, "skip")) {
             if (skip_seen) {
                 pr2serr("Only one skip= (or iseek=) argument please\n");
-                return SG_LIB_SYNTAX_ERROR;
+                return SG_LIB_CONTRADICT;
             }
             res = do_skip(op, key, buf);
             if (res)
@@ -1435,7 +1446,8 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
                         ++op->progress;
                 }
             } else {
-                pr2serr("'status=' expects 'none', 'noxfer' or 'null'\n");
+                pr2serr("'status=' expects 'none', 'noxfer', 'progress' or "
+                        "'null'\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strcmp(key, "to")) {

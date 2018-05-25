@@ -691,6 +691,7 @@ do_xcopy_lid1(struct opts_t * op)
 {
     int res, ibpt, obpt, bs_same, max_bpt, blocks, oblocks;
     int src_desc_len, dst_desc_len, seg_desc_type;
+    int vb = op->verbose;
     uint8_t src_desc[256];
     uint8_t dst_desc[256];
     const struct flags_t * ifp = op->iflagp;
@@ -732,7 +733,7 @@ do_xcopy_lid1(struct opts_t * op)
     } else if (res == 0)
         return SG_LIB_CAT_INVALID_OP;
     if (res & TD_VPD) {
-        if (op->verbose)
+        if (vb)
             pr2serr("  >> using VPD identification for source %s\n",
                     op->idip->fn);
         src_desc_len = desc_from_vpd_id(op, src_desc, sizeof(src_desc),
@@ -767,7 +768,7 @@ do_xcopy_lid1(struct opts_t * op)
     } else if (res == 0)
         return SG_LIB_CAT_INVALID_OP;
     if (res & TD_VPD) {
-        if (op->verbose)
+        if (vb)
             pr2serr("  >> using VPD identification for destination %s\n",
                     odip->fn);
         dst_desc_len = desc_from_vpd_id(op, dst_desc, sizeof(dst_desc),
@@ -813,7 +814,7 @@ do_xcopy_lid1(struct opts_t * op)
             obpt = bs_same ? ibpt : ((op->ibs_lb * ibpt) / op->obs_lb);
         }
     }
-    if (op->verbose > 1)
+    if (vb > 1)
         pr2serr("%s: xcopy->%s will use ibpt=%d, obpt=%d\n", __func__,
                 (ifp->xcopy ? idip->fn : odip->fn),  ibpt, obpt);
     seg_desc_type = seg_desc_from_d_type(simplified_dt(op->idip), 0,
@@ -824,10 +825,17 @@ do_xcopy_lid1(struct opts_t * op)
         blocks = (op->dd_count > ibpt) ? ibpt : op->dd_count;
         oblocks = bs_same ? blocks : ((op->ibs_lb * blocks) / op->obs_lb);
 
+        if (op->dry_run) {
+            if (vb)
+                pr2serr("%s: bypass a_xcopy_lid1_cmd() due to --dry-run\n",
+                        __func__);
+            res = 0;
+            goto bypass;
+        }
         res = a_xcopy_lid1_cmd(op, src_desc, src_desc_len, dst_desc,
                                dst_desc_len, seg_desc_type, blocks);
         if (res != 0) {
-            if ((op->verbose > 0) && (op->verbose < 3)) {
+            if ((vb > 0) && (vb < 3)) {
                 pr2serr("a_xcopy_lid1_cmd: ");
                 switch (res) {
                 case SG_LIB_CAT_INVALID_OP:
@@ -854,6 +862,7 @@ do_xcopy_lid1(struct opts_t * op)
             }
             break;
         }
+bypass:
         op->stats.in_full += blocks;
         op->stats.out_full += oblocks;
         if (! sgl_iter_add(&csp->in_iter, blocks, true /* relative */))
@@ -1305,7 +1314,7 @@ fetch_3pc_vpd(int fd, const char * fn, uint8_t * fixed_b, int fixed_blen,
         rp = (uint8_t *)malloc(len);
         if (NULL == rp) {
             pr2serr("Not enough user memory for %s\n", __func__);
-            return SG_LIB_CAT_OTHER;
+            return sg_convert_errno(ENOMEM);
         }
         if (alloc_bp)
             *alloc_bp = rp;
@@ -1760,7 +1769,7 @@ process_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a)
                 err = errno;
                 pr2serr("%s: unable to write to file: %s [%s]\n", __func__,
                         op->rtf, safe_strerror(err));
-                return SG_LIB_FILE_ERROR;
+                return sg_convert_errno(err);
             }
             if (res < len) {
                 pr2serr("%s: short write to file: %s, wanted %d, got %d\n",
