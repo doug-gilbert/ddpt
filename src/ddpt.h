@@ -136,6 +136,7 @@ extern "C" {
 /* status=progress or status=progress,progress */
 #define PROGRESS_TRIGGER_MS 120000      /* milliseconds: 2 minutes */
 #define PROGRESS2_TRIGGER_MS 60000      /* milliseconds: 1 minute */
+#define PROGRESS3_TRIGGER_MS 30000      /* milliseconds: 30 seconds */
 
 #ifdef SG_LIB_LINUX
 #ifndef RAW_MAJOR
@@ -321,6 +322,7 @@ struct dev_info_t {
     int prot_type;      /* from RCAP(16) or 0 */
     int p_i_exp;        /* protection intervals (PIs) exponent */
     int bs_pi;          /* block size plus PI, if any */
+    int ddpt_arg;	/* 1 of DDPT_ARG_IN, DDPT_ARG_OUT or DDPT_ARG_OUT2 */
     uint32_t xc_min_bytes;
     uint32_t xc_max_bytes;
     int64_t reg_sz;     /* regular file size in bytes, -1 --> no info */
@@ -336,7 +338,7 @@ struct cp_statistics_t {
     int64_t in_full;    /* full blocks read from IFILE so far */
     int64_t out_full;   /* full blocks written to OFILE so far */
     int64_t dd_count_start;     /* dd_count prior to start of copy/read */
-    int64_t out_sparse; /* used for sparse, sparing + trim */
+    int64_t out_sparse; /* counter for sparse, sparing + trim */
     int in_partial;
     int out_partial;
     int out_sparse_partial;
@@ -478,7 +480,7 @@ struct flags_t {
 struct opts_t {
     bool bpt_given;     /* true when bpt= given, BPT --> bpt_i */
     bool bs_given;      /* bs=BS given, check if ibs= or obs= also given */
-    bool bs_same;       /* true when ibs[_pi] and obs[_pi] the same */
+    bool bs_same;       /* true when ibs[_lb|_pi] and obs[_lb|_pi] the same */
     bool cdbsz_given;
     bool count_given;   /* count=COUNT value placed in dd_count variable */
     bool do_time;       /* default true, set false by --status=none */
@@ -507,11 +509,11 @@ struct opts_t {
     int delay;          /* intra copy segment delay in milliseconds */
     int wdelay;         /* delay prior to each write in copy segment */
     int dry_run;        /* do preparation, bypass copy; >1 go deeper */
-    int ibs;
-    int ibs_pi;    /* if (protect) ibs_pi = ibs+pi_len else ibs_pi=ibs */
+    int ibs_lb;		/* ibs= value, stress its logical block size */
+    int ibs_pi;    /* if (PI) ibs_pi = ibs_lb+pi_len else ibs_pi=ibs_lb */
     int ibs_hold;       /* not sure why we need this hold */
-    int obs;
-    int obs_pi;    /* if (protect) obs_pi = obs+pi_len else obs_pi=obs */
+    int obs_lb;		/* obs= value, stress its logical block size */
+    int obs_pi;    /* if (PI) obs_pi = obs_lb+pi_len else obs_pi=obs_lb */
     int bpt_i;          /* Blocks Per Transfer, input sized blocks */
     int obpch;          /* output blocks per check, granularity of sparse,
                          * sparing and trim checks for zeros (def: 0) */
@@ -585,8 +587,8 @@ struct opts_t {
 
 struct sg_simple_inquiry_resp;
 
-typedef int (*ddpt_rw_f)(struct dev_info_t * dip, int ddpt_arg,
-                         struct cp_state_t * csp, struct opts_t * op);
+typedef int (*ddpt_rw_f)(struct dev_info_t * dip, struct cp_state_t * csp,
+			 struct opts_t * op);
 
 extern const char * ddpt_arg_strs[];
 
@@ -615,7 +617,8 @@ void sleep_ms(int millisecs);
 void state_init(struct opts_t * op, struct flags_t * ifp,
                 struct flags_t * ofp, struct dev_info_t * idip,
                 struct dev_info_t * odip, struct dev_info_t * o2dip);
-void print_stats(const char * str, struct opts_t * op, int who);
+void print_stats(const char * str, struct opts_t * op, int who,
+                 bool estimate);
 int dd_filetype(const char * filename, int verbose);
 char * dd_filetype_str(int ft, char * buff, int max_bufflen,
                        const char * fname);
@@ -704,9 +707,8 @@ int num_either_ch_in_str(const char * s, int slen, int ch1, int ch2);
  * When add_blks < 0, the iterator is moved backward (i.e. toward the
  * beginning). Returns 0 for okay else an error number. -9999 is returned
  * for an unexpected error with the iterator. */
-int cp_via_sgl_iter(struct dev_info_t * dip, int ddpt_arg,
-                    struct cp_state_t * csp, int add_blks, ddpt_rw_f fp,
-                    struct opts_t * op);
+int cp_via_sgl_iter(struct dev_info_t * dip, struct cp_state_t * csp,
+		    int add_blks, ddpt_rw_f fp, struct opts_t * op);
 /* Returns number elements in scatter gather list (array) whose pointer
  * is written to *sge_pp. On error returns negated error number and
  * NULL is written to *sge_pp . The caller is responsible for freeing
@@ -808,8 +810,7 @@ int win32_get_blkdev_capacity(struct opts_t * optsp, int which_arg,
 void win32_adjust_fns_pt(struct opts_t * optsp);
 int win32_open_if(struct opts_t * optsp, int flags, int verbose);
 int win32_open_of(struct opts_t * optsp, int flags, int verbose);
-int win32_set_file_pos(struct opts_t * optsp, int if0_of1, int64_t pos,
-                       int verbose);
+int win32_set_file_pos(struct dev_info_t * dip, int64_t pos, int verbose);
 int win32_block_read(struct opts_t * optsp, uint8_t * bp, int num_bytes,
                      int verbose);
 int win32_block_read_from_of(struct opts_t * optsp, uint8_t * bp,
