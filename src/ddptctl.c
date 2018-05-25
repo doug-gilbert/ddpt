@@ -64,7 +64,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.96 20180516 [svn: r352]";
+const char * ddptctl_version_str = "0.96 20180524 [svn: r353]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -909,9 +909,10 @@ main(int argc, char * argv[])
         flags = O_RDONLY;
         fd = open(op->idip->fn, flags);
         if (fd < 0) {
+            err = errno;
             pr2serr("could not open %s for reading: %s\n", op->idip->fn,
-                    safe_strerror(errno));
-            ret = SG_LIB_FILE_ERROR;
+                    safe_strerror(err));
+            ret = sg_convert_errno(err);
             goto clean_up;
         }
         op->idip->fd = fd;
