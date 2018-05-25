@@ -1,7 +1,7 @@
 bin_PROGRAMS = ddpt ddptctl
 
 # for C++/clang testing
-CC = gcc-8
+## CC = gcc-8
 ## CC = g++
 ## CC = clang
 ## CC = clang++
@@ -10,8 +10,8 @@ CC = gcc-8
 
 # -std=<s> can be c99, c11, c14, gnu11, etc. Default is gnu89 (gnu90 is the same)
 AM_CPPFLAGS = -iquote ${top_srcdir}/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
-##AM_CFLAGS = -Wall -W
-AM_CFLAGS = -Wall -W -Wextra -Wmisleading-indentation -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wnull-dereference -Wshadow -Wjump-misses-init
+AM_CFLAGS = -Wall -W
+# AM_CFLAGS = -Wall -W -Wextra -Wmisleading-indentation -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wnull-dereference -Wshadow -Wjump-misses-init
 # AM_CFLAGS = -Wall -W -Werror=misleading-indentation
 # AM_CFLAGS = -Wall -W -pedantic -std=c11 --analyze
 # AM_CFLAGS = -Wall -W -pedantic -std=c++14
