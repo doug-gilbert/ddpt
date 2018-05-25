@@ -122,6 +122,13 @@
 static const char * errblk_file = "errblk.txt";
 
 
+#ifdef __GNUC__
+static int my_snprintf(char * cp, int cp_max_len, const char * fmt, ...)
+        __attribute__ ((format (printf, 3, 4)));
+#else
+static int my_snprintf(char * cp, int cp_max_len, const char * fmt, ...);
+#endif
+
 /* Want safe, 'n += snprintf(b + n, blen - n, ...)' style sequence of
  * functions. Returns number number of chars placed in cp excluding the
  * trailing null char. So for cp_max_len > 0 the return value is always
@@ -166,7 +173,7 @@ state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
            struct dev_info_t * o2dip)
 {
     memset(op, 0, sizeof(struct opts_t));       /* sets bools to false */
-    op->dd_count = DDPT_COUNT_INDEFINITE;
+    op->dd_count = DDPT_COUNT_INDEFINITE;       /* -1 */
     op->highest_unrecovered = -1;
     op->do_time = true;    /* default was false (0) in sg_dd */
     op->id_usage = -1;
@@ -306,7 +313,7 @@ find_bsg_major(int verbose)
     if (NULL == (fp = fopen(proc_devices, "r"))) {
         if (verbose)
             pr2serr("fopen %s failed: %s\n", proc_devices,
-                    strerror(errno));
+                    safe_strerror(errno));
         return;
     }
     while ((cp = fgets(b, sizeof(b), fp))) {
@@ -1602,40 +1609,115 @@ print_exit_status_msg(const char * prefix, int exit_stat, bool to_stderr)
     }
 }
 
-/* Read numbers (up to 64 bits in size) from command line (comma (or
- * (single) space) separated list). Assumed decimal unless prefixed
- * by '0x', '0X' or contains trailing 'h' or 'H' (which indicate hex).
- * Returns 0 if ok, or 1 if error. */
-int
-cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr, int * arr_len,
-          int max_arr_len)
+/* Return minimum(num_blks, <blocks_from_sgl-post-blk_off>). First it
+ * starts skipping blk_off blocks and if elems is exceeded then it
+ * returns 0. Then it sums up the number of blocks from each subsequent
+ * sg element checking that elems and max_descriptors are not exceeded. It
+ * also stops counting if that sum exceeds num_blks. If max_descriptors is
+ * 0 then it is not constraining. Note that elems and blk_off are relative
+ * to the start of the sgl; while num_blks and max_descriptors are relative
+ * to the sgl+blk_off . */
+uint64_t
+count_sgl_blocks_from(const struct scat_gath_elem * sglp, int elems,
+                      uint64_t blk_off, uint32_t num_blks,
+                      uint32_t max_descriptors)
 {
-    int in_len, k;
-    int64_t ll;
+    int k, j, md;
+    uint64_t res;
+
+    if ((0 == max_descriptors) || (max_descriptors > INT_MAX))
+        md = INT_MAX;
+    else
+        md = (int)max_descriptors;
+    for (k = 0; k < elems; ++k, ++sglp) {
+        if ((uint64_t)sglp->num > blk_off)
+            break;
+        blk_off -= sglp->num;
+    }
+    if (k >= elems)
+        return 0;
+    for (j = 0, res = 0;
+         (k < elems) && (j < md) && (res < (uint64_t)num_blks);
+         ++k, ++j, ++sglp) {
+        if (0 == j)
+            res = (uint64_t)sglp->num - blk_off;  /* will be positive */
+        else
+            res += (uint64_t)sglp->num;
+    }
+    return (res < (uint64_t)num_blks) ? res : (uint64_t)num_blks;
+}
+
+uint32_t
+last_sgl_elem_num(const struct scat_gath_elem * sglp, int elems)
+{
+    return (sglp && (elems > 0)) ? (sglp + elems - 1)->num : 0;
+}
+
+/* Read numbers (up to 64 bits in size) from command line (comma (or
+ * (single) space **) separated list). Assumed decimal unless prefixed
+ * by '0x', '0X' or contains trailing 'h' or 'H' (which indicate hex).
+ * Returns 0 if ok, or 1 if error. Assumed to be LBA (64 bit) and
+ * number_of_block (32 bit) pairs. ** Space on command line needs to
+ * be escaped, otherwise it is an option separator. */
+struct scat_gath_elem *
+cli2sgl(const char * inp, int * arr_elemsp, bool b_vb)
+{
+    bool split;
+    int in_len, k, j, n;
+    const int max_nbs = INT32_MAX - 1;  /* 2**31 - 2; leaving headroom */
+    int64_t ll, large_num;
+    uint64_t prev_lba;
     char * cp;
     char * c2p;
     const char * lcp;
+    struct scat_gath_elem * res_p = NULL;
+    struct scat_gath_elem * sge_p;
 
-    if ((NULL == inp) || (NULL == sgl_arr) ||
-        (NULL == arr_len))
-        return 1;
+    if ((NULL == inp) || (NULL == arr_elemsp)) {
+        if (b_vb)
+            pr2serr("%s: bad arguments\n", __func__);
+        return NULL;
+    }
+    n = MAX_FIXED_SGL_ELEMS;
+    res_p = (struct scat_gath_elem *)calloc(n, sizeof(struct scat_gath_elem));
     lcp = inp;
     in_len = strlen(inp);
     if (0 == in_len)
-        *arr_len = 0;
+        *arr_elemsp = 0;
     if ('-' == inp[0]) {        /* read from stdin */
-        pr2serr("'--lba' cannot be read from stdin\n");
-        return 1;
+        pr2serr("%s: logic error: no stdin here\n", __func__);
+        goto err_out;
     } else {        /* list of numbers (default decimal) on command line */
         k = strspn(inp, "0123456789aAbBcCdDeEfFhHxXiIkKmMgGtTpP, ");
         if (in_len != k) {
-            pr2serr("%s: error at pos %d\n", __func__, k + 1);
-            return 1;
+            if (b_vb)
+                pr2serr("%s: error at pos %d\n", __func__, k + 1);
+            goto err_out;
         }
-        for (k = 0; k < max_arr_len; ++k) {
+        j = 0;
+        for (k = 0, sge_p = res_p, split = false; k < n; ++k, ++sge_p) {
+            if (split) {
+                /* splitting given elem with large number_of_blocks into
+                 * multiple elems within array being built */
+                ++j;
+                sge_p->lba = prev_lba + (uint64_t)max_nbs;
+                if (large_num > max_nbs) {
+                    sge_p->num = (uint32_t)max_nbs;
+                    prev_lba = sge_p->lba;
+                    large_num -= max_nbs;
+                } else {
+                    sge_p->num = (uint32_t)large_num;
+                    split = false;
+                    if (b_vb)
+                        pr2serr("%s: split large sg elem into %d elements\n",
+                                __func__, j);
+                    goto check_for_next;
+                }
+                continue;
+            }
             ll = sg_get_llnum(lcp);
             if (-1 != ll) {
-                sgl_arr[k].lba = (uint64_t)ll;
+                sge_p->lba = (uint64_t)ll;
                 cp = (char *)strchr(lcp, ',');
                 c2p = (char *)strchr(lcp, ' ');
                 if (NULL == cp) {
@@ -1647,72 +1729,71 @@ cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr, int * arr_len,
                     cp = c2p;
                 lcp = cp + 1;
             } else {
-                pr2serr("%s: error at pos %d\n", __func__,
-                        (int)(lcp - inp + 1));
-                return 1;
+                if (b_vb)
+                    pr2serr("%s: error at pos %d\n", __func__,
+                            (int)(lcp - inp + 1));
+                goto err_out;
             }
             ll = sg_get_llnum(lcp);
-            if (-1 != ll) {
-                if (ll > UINT32_MAX) {
-                    pr2serr("%s: number exceeds 32 bits at pos %d\n",
-                            __func__, (int)(lcp - inp + 1));
-                    return 1;
+            if (ll >= 0) {
+                if (ll > max_nbs) {
+                    sge_p->num = (uint32_t)max_nbs;
+                    prev_lba = sge_p->lba;
+                    large_num = ll - max_nbs;
+                    split = true;
+                    j = 1;
+                    continue;
                 }
-                sgl_arr[k].num = (uint32_t)ll;
-                cp = (char *)strchr(lcp, ',');
-                c2p = (char *)strchr(lcp, ' ');
-                if (NULL == cp) {
-                    cp = c2p;
-                    if (NULL == cp)
-                        break;
-                }
-                if (c2p && (c2p < cp))
-                    cp = c2p;
-                lcp = cp + 1;
-            } else {
-                pr2serr("%s: error at pos %d\n", __func__,
-                        (int)(lcp - inp + 1));
-                return 1;
+                sge_p->num = (uint32_t)ll;
+            } else {    /* bad or negative number as number_of_blocks */
+                if (b_vb)
+                    pr2serr("%s: bad number at pos %d\n", __func__,
+                            (int)(lcp - inp + 1));
+                goto err_out;
             }
+check_for_next:
+            cp = (char *)strchr(lcp, ',');
+            c2p = (char *)strchr(lcp, ' ');
+            if (NULL == cp) {
+                cp = c2p;
+                if (NULL == cp)
+                    break;
+            }
+            if (c2p && (c2p < cp))
+                cp = c2p;
+            lcp = cp + 1;
         }
-        *arr_len = k + 1;
-        if (k == max_arr_len) {
-            pr2serr("%s: array length exceeded\n", __func__);
-            return 1;
+        *arr_elemsp = k + 1;
+        if (k == n) {
+            if (b_vb)
+                pr2serr("%s: array length exceeded\n", __func__);
+            goto err_out;
         }
     }
-    return 0;
+    return res_p;
+err_out:
+    if (res_p)
+        free(res_p);
+    return NULL;
 }
 
-/* Read numbers from filename (or stdin) line by line (comma (or
- * (single) space) separated list). Assumed decimal unless prefixed
- * by '0x', '0X' or contains trailing 'h' or 'H' (which indicate hex).
- * Returns 0 if ok, or 1 if error. */
-int
-file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
-            int * arr_len, int max_arr_len)
+static int
+file2sgl_helper(FILE * fp, const char * fnp, bool def_hex, bool real_scan,
+                int max_elems, struct scat_gath_elem * res_p, int * errp,
+                bool b_vb)
 {
-    bool have_stdin, bit0;
-    int in_len, k, j, m, ind, res;
+    bool bit0;
+    bool pre_addr1 = true;
+    int in_len, k, j, m, ind;
+    const int max_nbs = INT32_MAX - 1;  /* 2**31 - 2; leaving headroom */
     int off = 0;
     int64_t ll;
-    FILE * fp;
+    uint64_t ull, prev_lba;
     char * lcp;
+    struct scat_gath_elem * sge_p;
     char line[1024];
 
-    have_stdin = ((1 == strlen(file_name)) && ('-' == file_name[0]));
-    if (have_stdin)
-        fp = stdin;
-    else {
-        fp = fopen(file_name, "r");
-        if (NULL == fp) {
-            pr2serr("%s: unable to open %s\n", __func__, file_name);
-            return 1;
-        }
-    }
-
-    res = 1;
-    for (j = 0; j < 512; ++j) {
+    for (j = 0, sge_p = res_p; ; ++j) {
         if (NULL == fgets(line, sizeof(line), fp))
             break;
         // could improve with carry_over logic if sizeof(line) too small
@@ -1723,9 +1804,11 @@ file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
                 line[in_len] = '\0';
             }
             else {
-                pr2serr("%s: line too long, max %d bytes\n", __func__,
-                        (int)(sizeof(line) - 1));
-                goto the_end;
+                *errp = SG_LIB_SYNTAX_ERROR;
+                if (b_vb)
+                    pr2serr("%s: %s: line too long, max %d bytes\n",
+                            __func__, fnp, (int)(sizeof(line) - 1));
+                goto err_out;
             }
         }
         if (in_len < 1)
@@ -1738,61 +1821,553 @@ file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
         in_len -= m;
         if ('#' == *lcp)
             continue;
+        if (pre_addr1) {
+            if (('H' == toupper(lcp[0])) && ('E' == toupper(lcp[1])) &&
+                ('X' == toupper(lcp[2]))) {
+                if (def_hex)
+                    continue; /* bypass 'HEX' marker line if expecting hex */
+                else {
+                    pr2serr("%s: %s: 'hex' string detected on line %d, "
+                            "expecting decimal\n", __func__, fnp, j + 1);
+                    *errp = SG_LIB_SYNTAX_ERROR;
+                    goto err_out;
+                }
+            }
+        }
         k = strspn(lcp, "0123456789aAbBcCdDeEfFhHxXbBdDiIkKmMgGtTpP, \t");
         if ((k < in_len) && ('#' != lcp[k])) {
-            pr2serr("%s: syntax error at line %d, pos %d\n", __func__, j + 1,
-                    m + k + 1);
-            goto the_end;
+            *errp = SG_LIB_SYNTAX_ERROR;
+            if (b_vb)
+                pr2serr("%s: %s: syntax error at line %d, pos %d\n",
+                        __func__, fnp, j + 1, m + k + 1);
+            goto err_out;
         }
-        for (k = 0; k < 1024; ++k) {
-            ll = sg_get_llnum(lcp);
+        for (k = 0; k < 256; ++k) {
+            if (def_hex) {
+                if (1 == sscanf(lcp, "%" SCNx64, &ull))
+                    ll = (int64_t)ull;
+                else
+                    ll = -1;
+            } else
+                ll = sg_get_llnum(lcp);
             if (-1 != ll) {
                 ind = ((off + k) >> 1);
                 bit0 = !! (0x1 & (off + k));
-                if (ind >= max_arr_len) {
-                    pr2serr("%s: array length exceeded\n", __func__);
-                    goto the_end;
+                if ((max_elems > 0) && (ind >= max_elems)) {
+                    *errp = SG_LIB_SYNTAX_ERROR;
+                    if (b_vb)
+                        pr2serr("%s: %s: array length exceeded\n", __func__,
+                                fnp);
+                    goto err_out;
                 }
                 if (bit0) {
-                    if (ll > UINT32_MAX) {
-                        pr2serr("%s: number exceeds 32 bits in line %d, at "
-                                "pos %d\n", __func__, j + 1,
-                                (int)(lcp - line + 1));
-                        goto the_end;
+                    if (ll < 0) {
+                        *errp = SG_LIB_SYNTAX_ERROR;
+                        if (b_vb)
+                            pr2serr("%s: %s: bad number in line %d, at pos "
+                                    "%d\n", __func__, fnp, j + 1,
+                                    (int)(lcp - line + 1));
+                        goto err_out;
                     }
-                    sgl_arr[ind].num = (uint32_t)ll;
-                } else
-                    sgl_arr[ind].lba = (uint64_t)ll;
-                lcp = strpbrk(lcp, " ,\t#");
-                if ((NULL == lcp) || ('#' == *lcp))
-                    break;
-                lcp += strspn(lcp, " ,\t");
-                if ('\0' == *lcp)
-                    break;
+                    if (ll > max_nbs) {
+                        int h = 1;
+
+                        /* split up this elem into multiple, smaller elems */
+                        do {
+                            if (real_scan) {
+                                sge_p->num = (uint32_t)max_nbs;
+                                prev_lba = sge_p->lba;
+                                ++sge_p;
+                                sge_p->lba = prev_lba + (uint64_t)max_nbs;
+                                ++h;
+                            }
+                            off += 2;
+                            ll -= max_nbs;
+                        } while (ll > max_nbs);
+                        if (b_vb && real_scan)
+                            pr2serr("%s: split large sg elem into %d "
+                                    "elements\n", __func__, h);
+                    }
+                    if (real_scan) {
+                        sge_p->num = (uint32_t)ll;
+                        ++sge_p;
+                    }
+                } else {
+                    if (pre_addr1)
+                        pre_addr1 = false;
+                    if (real_scan)
+                        sge_p->lba = (uint64_t)ll;
+                }
             } else {
                 if ('#' == *lcp) {
                     --k;
                     break;
                 }
-                pr2serr("%s: error in line %d, at pos %d\n", __func__,
-                        j + 1, (int)(lcp - line + 1));
-                goto the_end;
+                *errp = SG_LIB_SYNTAX_ERROR;
+                if (b_vb)
+                    pr2serr("%s: %s: error in line %d, at pos %d\n",
+                            __func__, fnp, j + 1, (int)(lcp - line + 1));
+                goto err_out;
             }
-        }
+            lcp = strpbrk(lcp, " ,\t#");
+            if ((NULL == lcp) || ('#' == *lcp))
+                break;
+            lcp += strspn(lcp, " ,\t");
+            if ('\0' == *lcp)
+                break;
+        }       /* for loop, multiple numbers on 1 line */
         off += (k + 1);
-    }
+    }   /* end of for loop, one iteration per line */
     if (0x1 & off) {
-        pr2serr("%s: expect LBA,NUM pairs but decoded odd number\n  from "
-                "%s\n", __func__, have_stdin ? "stdin" : file_name);
-        goto the_end;
+        *errp = SG_LIB_SYNTAX_ERROR;
+        if (b_vb)
+            pr2serr("%s: %s: expect LBA,NUM pairs but decoded odd number\n",
+                    __func__, fnp);
+        goto err_out;
     }
-    *arr_len = off >> 1;
-    res = 0;
+    clearerr(fp);    /* even EOF on first pass needs this before rescan */
+    if (! real_scan)
+        rewind(fp);
+    return off >> 1;
+err_out:
+    clearerr(fp);
+    if (! real_scan)
+        rewind(fp);
+    return -1;
+}
 
-the_end:
+/* Read numbers from filename (or stdin), line by line (comma (or (single)
+ * space) separated list); places starting_LBA,number_of_block pairs in an
+ * array of scat_gath_elem elements pointed to by the returned value. If
+ * this fails NULL is returned and an error number is written to errp (if it
+ * is non-NULL). Assumed decimal (and may have suffix multipliers) when
+ * def_hex==false; if a number is prefixed by '0x', '0X' or contains trailing
+ * 'h' or 'H' that denotes a hex number. When def_hex==true all numbers are
+ * assumed to be hex (ignored '0x' prefixes and 'h' suffixes) and multiplers
+ * are not permitted. Heap allocates an array just big enough to hold all
+ * elements if the file is countable. Pipes and stdin are not considered
+ * countable. In the non-countable case an array of MAX_FIXED_SGL_ELEMS
+ * elements is pre-allocated; if it is exceeded sg_convert_errno(EDOM) is
+ * placed in *errp (if it is non-NULL). One of the first actions is to write
+ * 0 to *errp (if it is non-NULL) so the caller does not need to zero it
+ * before calling. */
+struct scat_gath_elem *
+file2sgl(const char * file_name, bool def_hex, int * arr_elemsp, int * errp,
+         bool b_vb)
+{
+    bool have_stdin;
+    bool countable = true;
+    int m, n, err, err_dummy;
+    FILE * fp;
+    const char * fnp;
+    struct stat a_stat;
+    struct scat_gath_elem * res_p = NULL;
+    struct scat_gath_elem sge_dummy;
+
+    if (errp)
+        *errp = 0;
+    else
+        errp = &err_dummy;
+    if (arr_elemsp)
+        *arr_elemsp = 0;
+    have_stdin = ((1 == strlen(file_name)) && ('-' == file_name[0]));
+    if (have_stdin) {
+        fp = stdin;
+        fnp = "<stdin>";
+    } else {
+        fnp = file_name;
+        if (stat(fnp, &a_stat) < 0) {
+            err = errno;
+            *errp = sg_convert_errno(err);
+            if (b_vb)
+                pr2serr("%s: %s: %s\n", __func__, fnp, safe_strerror(err));
+            return NULL;
+        }
+        if (S_ISDIR(a_stat.st_mode) || S_ISCHR(a_stat.st_mode) ||
+            S_ISSOCK(a_stat.st_mode)) {
+            if (b_vb)
+                pr2serr("%s: %s unsuitable (directory ?)\n", __func__, fnp);
+            *errp = sg_convert_errno(EBADF);
+            return NULL;
+        } else if (S_ISFIFO(a_stat.st_mode) || S_ISSOCK(a_stat.st_mode))
+            countable = false;
+        fp = fopen(fnp, "r");
+        if (NULL == fp) {
+            err = errno;
+            *errp = sg_convert_errno(err);
+            if (b_vb)
+                pr2serr("%s: opening %s: %s\n", __func__, fnp,
+                        safe_strerror(err));
+            return NULL;
+        }
+    }
+    if (countable) {
+        n = file2sgl_helper(fp, fnp, def_hex, false, 0, &sge_dummy, errp,
+                            b_vb);
+        if (n <= 0)
+            goto err_out;
+    } else
+        n = MAX_FIXED_SGL_ELEMS;
+    m = n;
+
+    res_p = (struct scat_gath_elem *)calloc(n, sizeof(struct scat_gath_elem));
+    if (NULL == res_p) {
+        *errp = sg_convert_errno(ENOMEM);
+        if (b_vb)
+            pr2serr("%s: calloc: %s\n", __func__, safe_strerror(ENOMEM));
+        return NULL;
+    }
+    n = file2sgl_helper(fp, fnp, def_hex, true, m, res_p, errp, b_vb);
+    if (countable) {
+        if (m != n) {
+            pr2serr("%s: first pass found %d pairs, second one found %d "
+                    "pairs?\n", __func__, m, n);
+            goto err_out;
+        }
+    }
+    if (arr_elemsp)
+        *arr_elemsp = n;
     if (! have_stdin)
         fclose(fp);
+    return res_p;
+
+err_out:
+    free(res_p);
+    if (! have_stdin)
+        fclose(fp);
+    return NULL;
+}
+
+/* Returns the number of times 'ch' is found in string 's' given the
+ * string's length. */
+int
+num_chs_in_str(const char * s, int slen, int ch)
+{
+    int res = 0;
+
+    while (--slen >= 0) {
+        if (ch == s[slen])
+            ++res;
+    }
     return res;
+}
+
+/* Returns the number of times either 'ch1' or 'ch2' is found in
+ * string 's' given the string's length. */
+int
+num_either_ch_in_str(const char * s, int slen, int ch1, int ch2)
+{
+    int k;
+    int res = 0;
+
+    while (--slen >= 0) {
+        k = s[slen];
+        if ((ch1 == k) || (ch2 == k))
+            ++res;
+    }
+    return res;
+}
+
+static int
+sgl_iter_forward_blks(const struct scat_gath_elem * start_p, int sgl_elems,
+                      struct sgl_iter_t * ip, uint32_t add_blks,
+                      struct dev_info_t * dip, uint8_t * bp,
+                      ddpt_rw_f fp, struct opts_t * op)
+{
+    bool more;
+    int b_off = 0;
+    int res = 0;
+    int vb = op->verbose;
+    uint32_t rem_blks, num;
+    uint64_t off, lba;
+    int64_t ablocks = add_blks;
+    const struct scat_gath_elem * sgl_p = start_p + ip->elem_ind;
+
+    while (ablocks > 0) {
+        off = ip->blk_off + ablocks;
+        lba = sgl_p->lba;
+        num = sgl_p->num;
+        more = (off >= num);
+        if (vb > 2)
+            pr2serr("%s: %s, off=%" PRId64 ", ablocks=%" PRId64 "\n",
+                    __func__,  (more ? "more" : "last"), off, ablocks);
+        if (ip->elem_ind >= sgl_elems) {
+            if ((ip->elem_ind > 0) || (off > 0)) {
+                if (vb)
+                    pr2serr("%s: incrementing iterator (%d,%u) past end\n",
+                            __func__, ip->elem_ind, ip->blk_off);
+                return -9999;
+            }
+        }
+        if (more) {             /* more elements after this */
+            rem_blks = num - ip->blk_off;    /* rhs must be >= 0 */
+            if (rem_blks > 0) {
+                if (fp) {
+                    pr2serr("  ... LBA=0x%" PRIx64 ", num_blks=%u, b_off=%d"
+                            "\n", lba + ip->blk_off, rem_blks, b_off);
+                    if ((res = fp(dip, lba + ip->blk_off, rem_blks,
+                                  bp + b_off, op)))
+                        return res;
+                    b_off += rem_blks * dip->bs_pi;
+                }
+            }
+            ablocks -= (int64_t)rem_blks;
+            ++ip->elem_ind;
+            ip->blk_off = 0;
+            ++sgl_p;
+        } else {        /* move iter (and call *fp) within current sgl elem */
+            rem_blks = (uint32_t)ablocks;
+            if (fp) {
+                if (vb > 2)
+                    pr2serr("  ... LBA=0x%" PRIx64 ", num_blks=%u, b_off=%d"
+                            "\n", lba + ip->blk_off, rem_blks, b_off);
+                if ((res = fp(dip, lba + ip->blk_off, rem_blks,
+                              bp + b_off, op)))
+                    return res;
+                b_off += rem_blks * dip->bs_pi;
+            }
+            ablocks -= (int64_t)(rem_blks);
+            ip->blk_off = (uint32_t)off;
+            break;
+        }
+    }
+    return 0;
+}
+
+static int
+sgl_iter_backward_blks(const struct scat_gath_elem * start_p,
+                       struct sgl_iter_t * ip, uint32_t sub_blks,
+                       struct dev_info_t * dip, uint8_t * bp, int b_len,
+                       ddpt_rw_f fp, struct opts_t * op)
+{
+    bool more;
+    int b_off = b_len;
+    int res = 0;
+    int vb = op->verbose;
+    uint32_t rem_blks;
+    uint64_t lba;
+    int64_t off;
+    int64_t sblocks = sub_blks;
+    const struct scat_gath_elem * sgl_p;
+
+    sgl_p = start_p + ip->elem_ind;
+    while (sblocks > 0) {
+        off = (int64_t)ip->blk_off - sblocks;
+        lba = sgl_p->lba;
+        more = (off < 0);
+        if (vb > 2)
+            pr2serr("%s: %s, off=%" PRId64 ", sblocks=%" PRId64 "\n",
+                    __func__,  (more ? "more" : "last"), off, sblocks);
+        if (more) {                  /* backward: more than one element */
+            if (vb > 2)
+                pr2serr("%s: more than 1 element, off=%" PRId64 ", sblocks=%"
+                        PRId64 "\n", __func__, off, sblocks);
+            if (fp) {
+                b_off -= ip->blk_off * dip->bs_pi;
+                if (vb > 2)
+                    pr2serr("  ... LBA=0x%" PRIx64 ", num_blks=%u, "
+                            "b_off=%d\n", lba, ip->blk_off, b_off);
+                if ((res = fp(dip, lba, ip->blk_off, bp + b_off, op)))
+                    return res;
+            }
+            sblocks -= (int64_t)ip->blk_off;
+            if (0 == ip->elem_ind) {
+                if (vb)
+                    pr2serr("%s: decrementing iterator (%d,%u) negative\n",
+                            __func__, ip->elem_ind, ip->blk_off);
+                return -9999;
+            }
+            --ip->elem_ind;
+            --sgl_p;
+            ip->blk_off = sgl_p->num;
+        } else {        /* move iter (and call *fp) within current sgl elem */
+            if (vb > 2)
+                pr2serr("%s: last, off=%" PRId64 ", sblocks=%" PRId64 "\n",
+                        __func__, off, sblocks);
+            rem_blks = (uint32_t)sblocks;
+            if (fp) {
+                b_off -= rem_blks * dip->bs_pi;
+                if (vb > 2)
+                    pr2serr("  ... LBA=0x%" PRIx64 ", num_blks=%u, "
+                            "b_off=%d\n", lba + off, rem_blks, b_off);
+                if ((res = fp(dip, lba + off , rem_blks, bp + b_off, op)))
+                    return res;
+            }
+            sblocks -= (int64_t)rem_blks;
+            ip->blk_off = (uint32_t)off;
+            break;
+        }
+    }
+    return 0;
+}
+
+/* Takes an iterator (iter_p) to a scatter gather list (sgl) array starting
+ * at start_p. The iterator is then moved forward (toward the end of the sgl)
+ * when add_blks is positive or moved backward when add_blks is negative. If
+ * fp is non-NULL then *fp (a function) is called for each sg element
+ * traversed by the iter_p. Returns 0 for okay else an error number. -9999
+ * is returned for an unexpected error with the iterator. */
+int
+sgl_iter_add_blks(const struct scat_gath_elem * start_p, int sgl_elems,
+                  struct sgl_iter_t * iter_p, int add_blks,
+                  struct dev_info_t * dip, uint8_t * bp, int b_len,
+                  ddpt_rw_f fp, struct opts_t * op)
+{
+    bool backwards = (add_blks < 0);
+    int e_ind = iter_p->elem_ind;
+    uint32_t n_blks = (uint32_t)(backwards ? -add_blks : add_blks);
+
+    if (op->verbose > 3)
+        pr2serr("%s: start, sgl_elems=%d, add_blks=%d, b_len=%d\n", __func__,
+                sgl_elems, add_blks, b_len);
+    if ((0 == add_blks) || (sgl_elems < 1) || (fp && (b_len < 1)))
+        return 0;       /* nothing to do */
+    if (backwards) {
+        if ((e_ind < 0) || ((e_ind == 0) && (n_blks > iter_p->blk_off))) {
+            if (op->verbose)
+                pr2serr("%s: iterator: %d,%u goes negative\n", __func__,
+                        e_ind, iter_p->blk_off);
+            return -9999;
+        }
+        return sgl_iter_backward_blks(start_p, iter_p, n_blks, dip, bp,
+                                      b_len, fp, op);
+    } else {    /* forward movement */
+        if ((e_ind >= sgl_elems) || ((e_ind == (sgl_elems - 1)) &&
+              (n_blks + iter_p->blk_off > (start_p + sgl_elems - 1)->num))) {
+            if (op->verbose)
+                pr2serr("%s: iterator: %d,%u exceeds range\n", __func__,
+                        e_ind, iter_p->blk_off);
+            return -9999;
+        }
+        return sgl_iter_forward_blks(start_p, sgl_elems, iter_p, n_blks,
+                                     dip, bp, fp, op);
+    }
+}
+
+/* Assumes sgli_p->elems and sgli_p->slp are setup and the other fields
+ * in struct sgl_info_t are zeroed. This function will populate the other
+ * fields in that structure. Does one pass through the scatter gather list
+ * (array). Sets these fields in struct sgl_info_t: lowest_lba, monotonic,
+ * overlapping, sum and sum_hard.  */
+void
+sgl_sum_scan(struct sgl_info_t * sgli_p, bool b_vb)
+{
+    bool monot = true;
+    bool regular = true;
+    int k;
+    int elems = sgli_p->elems;
+    uint32_t prev_num, t_num;
+    uint64_t prev_lba, t_lba, sum, low, high, end;
+    const struct scat_gath_elem * start_p = sgli_p->sgl;
+
+    for (k = 0, sum = 0, low = 0, high = 0; k < elems; ++k) {
+        if (0 == k) {
+            prev_lba = start_p->lba;
+            low = prev_lba;
+            prev_num = start_p->num;
+            sum = start_p->num;
+            high = prev_lba + prev_num;
+        } else {
+            t_lba = (start_p + k)->lba;
+            t_num = (start_p + k)->num;
+            sum += t_num;
+            end = t_lba + t_num;
+            if (end > high)
+                high = end;     /* high is one plus highest LBA */
+            if (prev_lba < t_lba)
+                ;
+            else if (prev_lba == t_lba) {
+                if (prev_num > 0) {
+                    monot = false;
+                    break;
+                }
+            } else {
+                low = t_lba;
+                monot = false;
+                break;
+            }
+            if (regular) {
+                if ((prev_lba + prev_num) > t_lba)
+                    regular = false;
+            }
+            prev_lba = t_lba;
+            prev_num = t_num;
+        }
+    }
+    if (k < sgli_p->elems) {
+        sgli_p->monotonic = false;
+        sgli_p->overlapping = false;
+        prev_lba = t_lba;
+        ++k;
+        for ( ; k < elems; ++k) {
+            t_lba = (start_p + k)->lba;
+            t_num = (start_p + k)->num;
+            sum += t_num;
+            end = t_lba + t_num;
+            if (end > high)
+                high = end;
+            if (prev_lba > t_lba) {
+                if (t_lba < low)
+                    low = t_lba;
+            }
+            prev_lba = t_lba;
+        }
+    } else {
+        sgli_p->monotonic = monot;
+        sgli_p->overlapping = ! regular;
+    }
+    sgli_p->lowest_lba = low;
+    sgli_p->highest_lba = high - 1;   /* adjust so pointing to highest LBA */
+    sgli_p->sum = sum;
+    sgli_p->sum_hard = (elems > 0) ? ((start_p + elems - 1)->num > 0) : false;
+    if (b_vb) {
+        pr2serr("%s: elems=%d, arr %spresent, monotonic=%s\n", __func__,
+                sgli_p->elems, (sgli_p->sgl ? "" : "not "),
+                (sgli_p->monotonic ? "true" : "false"));
+        pr2serr("  sum=%" PRId64 ", lowest=0x%" PRIx64 ", highest=",
+                sgli_p->sum, sgli_p->lowest_lba);
+        if (DDPT_COUNT_INDEFINITE == sgli_p->highest_lba)
+            pr2serr("-1\n");
+        else
+            pr2serr("0x%" PRIX64 "\n", sgli_p->highest_lba);
+        pr2serr("  overlapping=%s, sum_hard=%s\n", (sgli_p->overlapping ?
+                "true" : "false"), (sgli_p->sum_hard ? "true" : "false"));
+    }
+}
+
+/* Returns number elements in scatter gather list (array) whose pointer
+ * is written to *sge_pp. On error returns negated error number and
+ * NULL is written to *sge_pp . The caller is responsible for freeing
+ * memory associated with *sge_pp . */
+int
+build_sgl(struct scat_gath_elem ** sge_pp, int64_t count, int64_t offs)
+{
+    int k, n;
+    const int max_nbs = (INT_MAX - 1);
+    const int64_t cnt = count;
+    struct scat_gath_elem * sge;
+
+    for (k = 0; count > 0; ++k) {
+        if (count <= max_nbs)
+            break;
+        count -= max_nbs;
+    }
+    n = k + 1;
+    *sge_pp = (struct scat_gath_elem *)
+                        calloc(n, sizeof(struct scat_gath_elem));
+    if (NULL == *sge_pp) {
+        pr2serr("%s: no memory available for sgl\n", __func__);
+        return -sg_convert_errno(ENOMEM);
+    }
+    sge = *sge_pp;
+    for (k = 0, count = 0; k < n; ++k, ++sge, count += max_nbs) {
+        sge->lba = offs + count;
+        if ((cnt - count) <= max_nbs)
+            sge->num = cnt - count;
+        else
+            sge->num = max_nbs;
+    }
+    return n;
 }
 
 

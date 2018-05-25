@@ -102,6 +102,7 @@ extern "C" {
 #define EBUFF_SZ 512
 
 #define DEF_BLOCK_SIZE 512
+#define DEF_BPT_LT4 16384    /* BPT when IBS < 4 */
 #define DEF_BPT_LT8 8192     /* BPT when IBS < 8 */
 #define DEF_BPT_LT64 1024    /* BPT when IBS < 64 */
 #define DEF_BPT_LT1024 128   /* BPT when IBS < 1024 */
@@ -246,7 +247,25 @@ extern "C" {
 
 struct scat_gath_elem {
     uint64_t lba;       /* of first block */
-    uint32_t num;       /* of blocks */
+    uint32_t num;       /* number of blocks */
+};
+
+/* Type of iterators into scatter gather lists (which are arrays) */
+struct sgl_iter_t {
+    int elem_ind;       /* current index into above array */
+    uint32_t blk_off;   /* 0 <= blk_off < array[elem_ind].num */
+};
+
+struct sgl_info_t {
+    bool monotonic;     /* LBAs grow larger in [0..elems). Allow LBAn ==
+                         * LBAn+1 only if NUMn is zero */
+    bool overlapping;   /* only valid if 'monotonic' is true. xxxxxzzzzzz */
+    bool sum_hard;      /* 'num' in last element of 'sgl' is > 0 */
+    int elems;          /* number of elements; when 0 'sgl' must be NULL */
+    int64_t highest_lba;/* initialized to -1 */
+    int64_t lowest_lba;
+    int64_t sum;        /* of all 'num' elements in 'sgl' */
+    struct scat_gath_elem * sgl;  /* its an array on heap [0..elems) */
 };
 
 struct block_rodtok_vpd {
@@ -338,7 +357,8 @@ struct dev_info_t {
 #endif
     int pdt;
     int prot_type;      /* from RCAP(16) or 0 */
-    int p_i_exp;        /* protection intervals exponent */
+    int p_i_exp;        /* protection intervals (PIs) exponent */
+    int bs_pi;          /* block size plus PI, if any */
     uint32_t xc_min_bytes;
     uint32_t xc_max_bytes;
     char fn[INOUTF_SZ];
@@ -347,14 +367,16 @@ struct dev_info_t {
     struct sg_pt_base * ptvp;
 };
 
-/* command line options plus most other state variables */
-/* The _given fields indicate whether option was given or is a default */
+/* Command line options plus some other state variables.
+ * The _given fields indicate whether option was given or if true, the
+ * corresponding value takes its default value when false. */
 struct opts_t {
-    bool bpt_given;     /* true implies bpt= option given on command line */
-    bool bs_given;
+    bool bpt_given;     /* true when bpt= given, BPT --> bpt_i */
+    bool bs_given;      /* bs=BS given, check if ibs= or obs= also given */
     bool cdbsz_given;
-    bool count_given;
+    bool count_given;   /* count=COUNT value placed in dd_count variable */
     bool do_time;       /* default true, set false by --status=none */
+    bool dry_run;       /* do preparation, bypass copy (read or write) */
     bool has_odx;       /* --odx: equivalent to iflag=odx or oflag=odx */
     bool has_xcopy;     /* --xcopy (LID1): iflag=xcopy or oflag=xcopy */
     bool ibs_given;
@@ -367,7 +389,7 @@ struct opts_t {
     bool out_trim_active;
     bool outf_given;
     bool quiet;         /* set true when verbose=-1 (or any negative int) */
-    bool reading_fifo;
+    bool reading_fifo;  /* true when if=- (read stdin) or if=PIPE */
     bool read1_or_transfer;     /* true when of=/dev/null or similar */
     bool rod_type_given;
     bool rtf_append;            /* if rtf is regular file: open(O_APPEND) */
@@ -383,7 +405,7 @@ struct opts_t {
     int ibs_pi;    /* if (protect) ibs_pi = ibs+pi_len else ibs_pi=ibs */
     int obs;
     int obs_pi;    /* if (protect) obs_pi = obs+pi_len else obs_pi=obs */
-    int bpt_i;          /* blocks (of input) per transfer */
+    int bpt_i;          /* Blocks Per Transfer, input sized blocks */
     int obpch;          /* output blocks per check, granularity of sparse,
                          * sparing and trim checks for zeros */
     int id_usage;       /* xcopy(LID1) List identifier usage, init to -1 */
@@ -397,18 +419,18 @@ struct opts_t {
     int do_help;
     int odx_request;    /* ODX_REQ_NONE==0 for no ODX */
     int timeout_xcopy;          /* xcopy(LID1) and ODX */
-    int in_sgl_elems;           /* xcopy, odx */
-    int out_sgl_elems;          /* xcopy, odx */
     int rtf_fd;                 /* ODX: rtf's file descriptor (init: -1) */
     uint32_t inactivity_to;     /* ODX: timeout in seconds */
     uint32_t list_id;           /* xcopy(LID1) and odx related */
     uint32_t rod_type;          /* ODX: ROD type */
     int64_t offset_in_rod;      /* ODX: units are obs bytes */
-    int64_t skip;
-    int64_t seek;
+    /* iseek= is a synonym for skip= ; oseek= is a synonym for seek= */
+    int64_t skip;       /* unit: ibs except when in_sgl is nz, then byte */
+    int64_t seek;       /* unit: obs except when out_sgl is nz, then byte */
     /* working variables and statistics */
     int64_t dd_count;   /* -1 for not specified, 0 for no blocks to copy */
                         /* after copy/read starts, decrements to 0 */
+                        /* unit is ibs (input block size) */
     int64_t dd_count_start;     /* dd_count prior to start of copy/read */
     int64_t in_full;    /* full blocks read from IFILE so far */
     int64_t out_full;   /* full blocks written to OFILE so far */
@@ -436,10 +458,6 @@ struct opts_t {
     int err_to_report;
     int ibs_hold;
     FILE * errblk_fp;
-    struct scat_gath_elem * in_sgl;     /* xcopy, odx: alternative to skip=
-                                         * and count= */
-    struct scat_gath_elem * out_sgl;    /* xcopy, odx: alternative to seek=
-                                         * and count= */
     struct flags_t * iflagp;
     struct dev_info_t * idip;
     struct flags_t * oflagp;
@@ -451,6 +469,8 @@ struct opts_t {
     uint8_t * free_wrkPos2;
     uint8_t * zeros_buff;
     uint8_t * free_zeros_buff;
+    struct sgl_info_t i_sgli; /* in scatter gather list info including list */
+    struct sgl_info_t o_sgli; /* out scatter gather list info */
     char rtf[INOUTF_SZ];        /* ODX: ROD token filename */
 #ifdef SG_LIB_WIN32
     int wscan;          /* only used on Windows, for scanning devices */
@@ -475,16 +495,18 @@ struct opts_t {
 /* state of working variables within do_copy() */
 /* permits do_copy() to be broken up into lots of helpers */
 struct cp_state_t {
-    bool leave_after_write;
-    int icbpt;
-    int ocbpt;
-    int bytes_read;
-    int bytes_of;
-    int bytes_of2;
+    bool leave_after_write;     /* partial read then EOF or error */
+    int icbpt;          /* input, current blocks_per_transfer */
+    int ocbpt;          /* output, current blocks_per_transfer */
+    int bytes_read;     /* into the working buffer */
+    int bytes_of;       /* bytes written to of */
+    int bytes_of2;      /* bytes written to of2 */
     int leave_reason;   /* ==0 for no error (e.g. EOF) */
     int partial_write_bytes;
     int64_t if_filepos;
     int64_t of_filepos;
+    struct sgl_iter_t in_iter;
+    struct sgl_iter_t out_iter;
 };
 
 struct val_str_t {
@@ -501,12 +523,16 @@ struct rrti_resp_t {
     uint8_t sense_len;  /* (parameter data, actual) sense data length */
     uint32_t esu_del;   /* estimated status update delay (ms) */
     uint64_t tc;        /* transfer count (blocks) */
-    /* Prior to this point response is in common with the RCS command */
+    /* Prior to this point response * is in common with the RCS command */
     uint32_t rt_len;    /* might differ from 512, 0 if no ROD token */
     uint8_t rod_tok[512]; /* (perhaps truncate to) ODX ROD Token */
 };
 
 struct sg_simple_inquiry_resp;
+
+typedef int (*ddpt_rw_f)(struct dev_info_t * dip, uint64_t lba,
+                         uint32_t num_blks, uint8_t * bp,
+                         struct opts_t * op);
 
 
 /* Functions declared below are shared by different compilation units */
@@ -550,10 +576,53 @@ char * rt_cm_id_str(const uint8_t * rtp, int rt_len, char * b,
                     int b_mlen);
 void print_exit_status_msg(const char * prefix, int exit_stat,
                            bool to_stderr);
-int cl_to_sgl(const char * inp, struct scat_gath_elem * sgl_arr,
-              int * arr_len, int max_arr_len);
-int file_to_sgl(const char * file_name, struct scat_gath_elem * sgl_arr,
-                int * arr_len, int max_arr_len);
+struct scat_gath_elem * cli2sgl(const char * inp, int * arr_elems, bool b_vb);
+struct scat_gath_elem * file2sgl(const char * file_name, bool def_hex,
+                                 int * arr_elems, int * errp, bool b_vb);
+/* Assumes sgli_p->elems and sgli_p->slp are setup and the other fields
+ * in struct sgl_info_t are zeroed. This function will populate the other
+ * fields in that structure. Does one pass through the scatter gather list
+ * (array). Sets these fields in struct sgl_info_t: lowest_lba, monotonic,
+ * overlapping, sum and sum_hard.  */
+void sgl_sum_scan(struct sgl_info_t * sgli_p, bool b_verbose);
+/* Return minimum(num_blks, <blocks_from_sgl-post-blk_off>). First it
+ * starts skipping blk_off blocks and if elems is exceeded then it
+ * returns 0. Then it sums up the number of blocks from each subsequent
+ * sg element checking that elems and max_descriptors are not exceeded. It
+ * also stops counting if that sum exceeds num_blks. If max_descriptors is
+ * 0 then it is not constraining. Note that elems and blk_off are relative
+ * to the start of the sgl; while num_blks and max_descriptors are relative
+ * to the sgl+blk_off . */
+uint64_t count_sgl_blocks_from(const struct scat_gath_elem * sglp, int elems,
+                               uint64_t blk_off, uint32_t num_blks,
+                               uint32_t max_descriptors);
+/* A trailing zero length (num==0) element is interpreted as from there
+ * to end of the copy, assumed to be known some other way (e.g. a count=COUNT
+ * argument) */
+uint32_t last_sgl_elem_num(const struct scat_gath_elem * sglp, int elems);
+
+/* Returns the number of times 'ch' is found in string 's' given the
+ * string's length. */
+int num_chs_in_str(const char * s, int slen, int ch);
+/* Returns the number of times either 'ch1' or 'ch2' is found in
+ * string 's' given the string's length. */
+int num_either_ch_in_str(const char * s, int slen, int ch1, int ch2);
+/* Takes an iterator (iter_p) to a scatter gather list (sgl) array starting
+ * at start_p. The iterator is then moved forward (toward the end of the sgl)
+ * when add_blks is positive or moved backward when add_blks is negative. If
+ * fp is non-NULL then *fp (a function) is called for each sg element
+ * traversed by the iter_p. Returns 0 for okay else an error number. -9999
+ * is returned for an unexpected error with the iterator. */
+int sgl_iter_add_blks(const struct scat_gath_elem * start_p, int sgl_elems,
+                      struct sgl_iter_t * iter_p, int add_blks,
+                      struct dev_info_t * dip, uint8_t * bp, int b_len,
+                      ddpt_rw_f fp, struct opts_t * op);
+/* Returns number elements in scatter gather list (array) whose pointer
+ * is written to *sge_pp. On error returns negated error number and
+ * NULL is written to *sge_pp . The caller is responsible for freeing
+ * memory associated with *sge_pp . */
+int build_sgl(struct scat_gath_elem ** sge_pp, int64_t count, int64_t offs);
+
 
 /* defined in ddpt_pt.c */
 void * pt_construct_obj(void);
@@ -580,7 +649,6 @@ int pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
 /* defined in ddpt_xcopy.c */
 int open_rtf(struct opts_t * op);
 const char * cpy_op_status_str(int cos, char * b, int blen);
-uint64_t count_sgl_blocks(const struct scat_gath_elem * sglp, int elems);
 int print_3pc_vpd(struct opts_t * op, bool to_stderr);
 int do_xcopy_lid1(struct opts_t * op);
 int do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,

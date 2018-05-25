@@ -1,4 +1,4 @@
-.TH DDPT "8" "March 2018" "ddpt\-0.96" DDPT
+.TH DDPT "8" "April 2018" "ddpt\-0.96" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -12,9 +12,9 @@ devices that understand the SCSI command set.
 [\fIoflag=FLAGS\fR] [\fIoseek=SEEK\fR] [\fIprio=PRIO\fR]
 [\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR] [\fIrtf=RTF\fR]
 [\fIrtype=RTYPE\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR]
-[\fIto=TO\fR] [\fIverbose=VERB\fR] [\fI\-\-help\fR] [\fI\-\-job=JF\fR]
-[\fI\-\-odx\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR]
-[\fI\-\-xcopy\fR] [\fIJF\fR]
+[\fIto=TO\fR] [\fIverbose=VERB\fR] [\fI\-\-dry\-run\fR] [\fI\-\-help\fR]
+[\fI\-\-job=JF\fR] [\fI\-\-odx\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR]
+[\fI\-\-wscan\fR] [\fI\-\-xcopy\fR] [\fIJF\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
 .PP
@@ -22,7 +22,7 @@ For comparison here is the synopsis for GNU's dd command:
 [\fIbs=BS\fR] [\fIcbs=CBS\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
 [\fIibs=IBS\fR] [\fIif=IFILE\fR] [\fIiflag=FLAGS\fR] [\fIobs=OBS\fR]
 [\fIof=OFILE\fR] [\fIoflag=FLAGS\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR]
-[\fIstatus=STAT\fR] [\fI\-\-help\fR] [\fI\-\-version\fR]
+[\fIstatus=STAT\fR] [\fI\-\-dry\-run\fR] [\fI\-\-help\fR] [\fI\-\-version\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
@@ -153,15 +153,16 @@ infrequent, randomly distributed errors.
 see the CONVERSIONS section below.
 .TP
 \fBcount\fR=\fICOUNT\fR
-copy \fICOUNT\fR input blocks from \fIIFILE\fR to \fIOFILE\fR. If this
-option is not given (or \fICOUNT\fR is '\-1') then the \fICOUNT\fR may be
-deduced from either \fIIFILE\fR or \fIOFILE\fR. See the COUNT section below.
+copy \fICOUNT\fR input blocks from \fIIFILE\fR to \fIOFILE\fR. If this option
+is not given (or \fICOUNT\fR is '\-1') then the \fICOUNT\fR may be deduced
+from either \fIIFILE\fR or \fIOFILE\fR. See the COUNT section below.
 .br
-odx: if a gather list is given to \fIskip=SKIP\fR or a scatter list is
-given to \fIseek=SEEK\fR then typically \fIcount=COUNT\fR should not be
-supplied. This is because a scatter gather list implies a transfer count.
-If both are given then ddpt will exit if they are unequal, the force option
-can be used to override this action.
+If a 'hard' gather list is given to \fIskip=SKIP\fR or a 'hard' scatter list
+is given to \fIseek=SEEK\fR then typically \fIcount=COUNT\fR should not be
+supplied. This is because a 'hard' scatter gather list implies a transfer
+count. If both are given then ddpt will exit if they are unequal, the force
+flas can be used to override this action. See the SCATTER GATHER LISTS
+section below for a discussion of 'hard' and 'soft' scatter gather lists.
 .TP
 \fBdelay\fR=\fIMS[,W_MS]\fR
 after each segment is copied (typically every (\fIIBS\fR * \fIBPT\fR) bytes)
@@ -211,9 +212,10 @@ up (e.g. SCSI READ and WRITE commands) the default is the safer option. Even
 if IO operations do lock up it is best to let the kernel take care of that.
 .TP
 \fBiseek\fR=\fISKIP\fR
-start reading \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of
-\fIIFILE\fR. Default is block 0 (i.e. start of file). This option is a
-synonym for \fIskip=SKIP\fR, see its description.
+in its simplest form, \fISKIP\fR is a single number: start reading after
+\fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of \fIIFILE\fR.
+Default is block 0 (i.e. start of file). This option is a synonym for
+\fIskip=SKIP\fR, see its description.
 .TP
 \fBito\fR=\fIITO\fR
 odx: \fIITO\fR is the inactivity timeout whose units are seconds. The default
@@ -319,28 +321,16 @@ start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
 \fIOFILE\fR. Default is block 0 (i.e. start of file). The \fISEEK\fR value
 may exceed the number of \fIOBS\fR\-sized blocks in \fIOFILE\fR.
 .br
-odx: \fISEEK\fR can be a scatter list: comma separated, in the form
-seek=A1,N1[,A2,N2...] . The scatter list may alternatively be read from
-a file using this form: seek=@<filename> or read from stdin using this form:
-seek=\- (or seek=@\-) . A<n> and N<n> are decimal (optionally with a suffix
-multiplier) unless a hex indication is given. Hex values are indicated by
-either a leading "0x" or a trailing "h". The address (i.e. A<n>) is a 64 bit
-unsigned integer while the number of blocks (i.e. N<n>) is a 32 bit integer.
-Thus for a block size of 512 bytes, a single scatter gather list element
-cannot exceed 4 TB ((2**32 \- 1) * 512). Note that \fICOUNT\fR is a 64 bit
-unsigned integer and thus does not have this restriction. There can be
-no more than 128 scatter list elements.
+\fISEEK\fR can be a scatter (gather) list: see the  SCATTER GATHER LISTS
+section below.
 .TP
 \fBskip\fR=\fISKIP\fR
 start reading \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of
 \fIIFILE\fR. Default is block 0 (i.e. start of file). The \fISKIP\fR value
 must be less than the number of \fIIBS\fR\-sized blocks in \fIIFILE\fR.
 .br
-odx: \fISKIP\fR can be a gather list: comma separated, in the form
-skip=A1,N1[,A2,N2...] . The gather list may alternatively be read from
-a file using this form: skip=@<filename> or read from stdin using this form:
-skip=\- . See the odx section of the \fIseek=SEEK\fR option for further
-details.
+\fISKIP\fR can be a (scatter) gather list: see the SCATTER GATHER LISTS
+section below.
 .TP
 \fBstatus\fR=\fISTAT\fR
 the \fISTAT\fR value of 'noxfer' suppresses the throughput speed and the
@@ -379,6 +369,12 @@ repetitive. Values of 3 and 4 yield reporting for all SCSI commands, plus
 Unix read() and write() calls, so there can be a lot of output.
 If \fIVERB\fR is "\-1" then reporting that would have been sent to stderr
 is redirected to /dev/null essentially throwing it away.
+.TP
+\fB\-d\fR, \fB\-\-dry\-run\fR
+does all the argument and option processing, opens given file and devices but
+bypasses the copy stage. For complex command line invocations or for testing
+invocations to be placed in script files, this option may be useful to check
+for syntax and related errors.
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 reports usage message then exits.
@@ -460,6 +456,107 @@ system full).
 .PP
 If \fICOUNT\fR is not given and cannot be deduced then an error message
 is issued and no copy takes place.
+.SH SCATTER GATHER LISTS
+The \fIskip=SKIP\fR and \fIseek=SEEK\fR options (and their aliases) can
+take scatter gather lists. These can be explicit on the command line,
+fed in through stdin or in a file whose name is prefixed by "@" or "H@"
+on the command line. For large scatter gather lists, placing them in a
+file is the most practical as command lines are limited in length.
+Scatter gather list is a collective term for either a scatter list or
+a gather list. The actual implementation of each list is an array.
+Syntactically a scatter list and a gather list are the same.
+.PP
+Conceptually these scatter gather lists refer to what happens at the "far
+end" (e.g. on a hard disk), not what happens in the computer's memory.
+So a gather list is associated with the read part of a copy (i.e. the
+first half) where a list of Logical Blocks (identified by their addresses,
+hence LBAs) and a number of consecutive, following blocks are "gathered"
+from the medium (e.g.  a SSD). They are formed into a linear sequence of
+bytes that is transferred into a segment in the computer's RAM. The second
+half of the copy, the write part, may use a scatter list. A scatter list
+starts with a linear sequence of bytes, taken from the segment, that is
+then "scattered" on the medium as indicated by the list of LBA and
+number_of_block pairs.
+.PP
+In the simplest form a scatter gather list is given on the command line
+and has the form: A1,N1[,A2,N2[,A3,N3...]]. There must be an even number
+of items (i.e. for every An there should be a following Nn) with one
+exception: when A1 alone is given, in which case the value 0 is assumed
+for N1. Comma is the simplest separator for the command line, but
+whitespace may also be used (but needs to be escaped because the shell
+usually interprets whitespace as an option separator). In a file (or
+read from stdin or file redirection) more flexibility is permitted in
+the format. The LBA, number_of_blocks pairs could all appear on one
+line in a file but the line length is limited to 1024 characters. So
+for longer scatter gather lists one pair per line is recommended in file
+format. Also in file format everything from and including '#' is ignored
+as are lines that are empty or only contain whitespace(s).
+.PP
+By default all numbers given for LBA and number_of_blocks items are in
+decimal with optional suffix multipliers. Hex numbers use either a "0x"
+prefix or a 'h' suffix (hex notation and suffix multipliers cannot be
+mixed). In the case of a 'H@' lead\-in to the filename on the command line,
+all numbers are interpreted as hex with no suffix multipliers permitted.
+Further, with the 'H@' lead\-in the file make contain the string 'HEX'
+before any numbers are given. The 'HEX' is ignored. The point of this is
+to catch when a scatter gather list file with default hexadecimal numbers
+is given without the 'H@' lead\-in; in this case this utility will exit
+saying that file is in the wrong format.
+.PP
+Permitting scatter gather lists brings lots of flexibility (including the
+possibility to use the SCSI WRITE SCATTERED command) but with that comes
+complexity. Each scatter gather list is scanned to determine if it is
+monotonic and whether it has overlapping elements. The term monotonic is
+used to indicate whether each LBA is in ascending order, with each LBA
+greater than the previous element's LBA. Overlapping refers to the
+situation when any element's LBA range intersects with any other element's
+range. Overlapping elements are not good (but not necessarily fatal). The
+above mentioned WRITE SCATTERED command allows the medium's logic to write
+elements in any order it prefers. That means if elements overlap, then the
+user doesn't know which one gets written last (overwriting the one written
+to the same LBA earlier). Determining whether a element ranges overlap
+is difficult in the general case (so this utility doesn't do it) but easy
+in the case of a monotonic scatter gather list (so this utility does do
+it). Warnings are issued in dangerous situations, with the force flag
+allowing the warning to be overridden.
+.PP
+Another special case is "degenerate" scatter gather list elements. Any
+element that has zero in its number_of_blocks field is considered
+degenerate. The definition of the SCSI WRITE SCATTERED command clearly
+states that degenerate elements are valid, thus do not cause an error,
+but cause no associated action. This utility uses the concept of
+a 'hard' and 'soft' scatter gather list: a 'soft' list is one in which
+the last element's number_of_blocks is zero (i.e. it's degenerate). A
+list with a non\-zero number_of_blocks in its last element is
+considered 'hard'. Notice that the special case when only A1 is given on
+the command line (and N1 is set to zero) forms a 1 element degenerate
+scatter gather list. The difference between a hard and soft list is the
+way the sum of number_of_blocks of all elements is used by this utility.
+For 'hard' lists that sum is used for \fICOUNT\fR when the \fIcount=COUNT\fR
+option is not given; and if \fIcount=COUNT\fR is given and the counts differ
+then those two values are output and this utility exits with a syntax error.
+For a 'soft' list the degenerate last element is interpreted as "from there
+to the end of the copy" where the \fICOUNT\fR is determined some other way.
+.PP
+Some implementation details: Logical Block Addresses (LBAs) are stored in
+64 bit integers which is more than sufficient to span even the largest
+disk array behind a logical device, even if the block size is one byte
+which is unlikely. The number_of_blocks field is a 32 bit integer and this
+is more problematic. The reason is that SCSI WRITE commands (and their
+variants) only allocate at most a 32 bit integer for this value. Further,
+modern operating systems do not allow any driver to get that amount
+of system RAM, even if the machine has it available. A 32 bit integer
+for number_of_blocks with each block at 512 bytes is around 2 TB of
+storage. Unix system calls (in Linux) also limit each read(2) and write(2)
+system call to 32 bits of single bytes which is 4 GB. The problem for
+this utility is that the number_of_blocks can easily exceed 32 bits
+when a single scatter gather list element refers to the whole device.
+The action taken by this utility is to allow larger than 32 bit
+number_of_blocks values to be given on the command line (or in a scatter
+gather list file). However such a large element will be split into multiple
+elements internally. This will be visible to the user when the
+\fIverbose=VERB\fR option (or one of its variants) is used with an elevated
+value.
 .SH CONVERSIONS
 One or more conversions can be given to the "conv=" option. If more than
 one is given, they should be comma separated. ddpt does not perform the
@@ -1393,10 +1490,15 @@ the device reports an aborted command. In some cases aborted commands can
 be retried immediately (e.g. if the transport aborted the command due to
 congestion).
 .TP
+.B 14
+the \fIDEVICE\fR reports a miscompare sense key. VERIFY and COMPARE AND
+WRITE commands may report this.
+.TP
 .B 15
-the utility is unable to open, close or use the given \fIIFILE\fR or
-\fIOFILE\fR. The given file name could be incorrect or there may be
-permission problems. Adding the \fI\-v\fR option may give more information.
+the utility is unable to open, close or use the given \fIIFILE\fR,
+\fIOFILE\fR or other file. The given file name could be incorrect or there
+may be permission problems. Adding the \fI\-v\fR option may give more
+information.
 .TP
 .B 20
 the device reports it has a check condition but "no sense".
@@ -1447,29 +1549,22 @@ problems with protection information (PI or DIF). For example this error
 may occur when reading a block on a drive that has never been written (or
 is unmapped) if that drive was formatted with type 1, 2 or 3 protection.
 .TP
-.B 51
-a command received 'illegal field in parameter list'. This may occur with an
-odx copy if some combination of parameters is illegal or not supported (e.g.
-iflag=immed)
+.B 48
+this is an internal message indicating a NVMe status field (SF) is other
+than zero after a command has been executed (i.e. something went wrong).
+Work in this area is currently experimental.
 .TP
-.B 55
-a command received 'operation in progress'. This may occur with an odx copy
-when the given \fILID\fR is already being used by another process (e.g. also
-using odx) on the same machine. Choose another \fILID\fR.
+.B 49
+low level driver reports a response's residual count (i.e. number of bytes
+actually received by HBA is 'requested_bytes \- residual_count') that is
+too high. So no useful processing can be done with that response.
 .TP
-.B 70
-a command received 'invalid token operation, cause not reportable'. This may
-occur with an odx operation when the given ROD Token is invalid. One reason
-for that may be the inactivity timeout has been reached and the copy manager
-has cancelled the ROD Token.
-.TP
-.B 71-89
-these status values provide more information than exit status 70. See SPC\-4
-ASC and ASCQ assignments (currently in Annex F.2), specifically the entries
-for asc=23h . For example exit status 72 corresponds to asc=23h, ascq=2h
-which implies the odx copy manager does not support copies between LUs in
-different targets. That is optional; an odx copy manager is required to
-support copies between LUs (that are block devices) in the same target.
+.B 50 + <os_error_number>
+OS system calls that fail often return a small integer number to help
+indicate what the error is. For example in Unix the inability of a system
+call to allocate memory returns (in 'errno') ENOMEM which often is
+associated with the integer 12. So 62 (i.e. '50 + 12') may be returned
+by a utility in this case.
 .TP
 .B 90
 the flock flag has been given on a device and some other process holds the
@@ -1486,6 +1581,52 @@ any of the above categories.
 any errors that can't be categorized into values 1 to 98 may yield
 this value. This includes transport and operating system errors
 after the command has been sent to the device.
+.TP
+.B 100
+a command received a 'parameter list length error'.
+.TP
+.B 101
+a command received 'illegal field in parameter list'. This may occur with an
+odx copy if some combination of parameters is illegal or not supported (e.g.
+iflag=immed).
+.TP
+.B 105
+a command received 'operation in progress'. This may occur with an odx copy
+when the given \fILID\fR is already being used by another process (e.g. also
+using odx) on the same machine. Choose another \fILID\fR.
+.TP
+.B 110
+a command received 'invalid token operation, cause not reportable'. This may
+occur with an odx operation when the given ROD Token is invalid. One reason
+for that may be the inactivity timeout has been reached and the copy manager
+has cancelled the ROD Token.
+.TP
+.B 110 + <asc_23h_ascq_code>
+these status values provide more information than exit status 110. See SPC\-5
+ASC and ASCQ assignments (currently in Annex F.2), specifically the entries
+for asc=23h . For example exit status 112 corresponds to asc=23h, ascq=2h
+which implies the odx copy manager does not support copies between LUs in
+different targets. That is optional; an odx copy manager is required to
+support copies between LUs (that are block devices) in the same target.
+.TP
+.B 126
+the utility was found but could not be executed. That might occur if the
+executable does not have execute permissions.
+.TP
+.B 127
+This is the exit status for utility not found. That might occur when a
+script calls a utility in this package but the PATH environment variable
+has not been properly set up, so the script cannot find the executable.
+.TP
+.B 128 + <signum>
+If a signal kills a utility then the exit status is 128 plus the signal
+number. For example if a segmentation fault occurs then a utility is
+typically killed by SIGSEGV which according to 'man 7 signal' has an
+associated signal number of 11; so the exit status will be 139 .
+.TP
+.B 255
+the utility tried to yield an exit status of 255 or larger. That should
+not happen; given here for completeness.
 .SH EXAMPLES
 The examples in this page use Linux device names. For suitable device
 names in other supported Operating Systems see this web page:
