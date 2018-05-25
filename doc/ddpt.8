@@ -6,15 +6,16 @@ devices that understand the SCSI command set.
 .B ddpt
 [\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fR{6|10|12|16|32}]
 [\fIcoe=\fR{0|1}] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
-[\fIdelay=MS[,W_MS]\fR] [\fIibs=IBS\fR] [\fIid_usage=LIU\fR] \fIif=IFILE\fR
-[\fIiflag=FLAGS\fR] [\fIintio=\fR{0|1}] [\fIiseek=SKIP\fR] [\fIito=ITO\fR]
-[\fIlist_id=LID\fR] [\fIobs=OBS\fR] [\fIof=OFILE\fR] [\fIof2=OFILE2\fR]
-[\fIoflag=FLAGS\fR] [\fIoseek=SEEK\fR] [\fIprio=PRIO\fR]
-[\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR] [\fIrtf=RTF\fR]
-[\fIrtype=RTYPE\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR] [\fIstatus=STAT\fR]
-[\fIto=TO\fR] [\fIverbose=VERB\fR] [\fI\-\-dry\-run\fR] [\fI\-\-help\fR]
-[\fI\-\-job=JF\fR] [\fI\-\-odx\fR] [\fI\-\-quiet\fR] [\fI\-\-verbose\fR]
-[\fI\-\-version\fR] [\fI\-\-wscan\fR] [\fI\-\-xcopy\fR] [\fIJF\fR]
+[\fIddpt=VERS\fR] [\fIdelay=MS[,W_MS]\fR] [\fIibs=IBS\fR]
+[\fIid_usage=LIU\fR] \fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIintio=\fR{0|1}]
+[\fIiseek=SKIP\fR] [\fIito=ITO\fR] [\fIlist_id=LID\fR] [\fIobs=OBS\fR]
+[\fIof=OFILE\fR] [\fIof2=OFILE2\fR] [\fIoflag=FLAGS\fR] [\fIoseek=SEEK\fR]
+[\fIprio=PRIO\fR] [\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR]
+[\fIrtf=RTF\fR] [\fIrtype=RTYPE\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR]
+[\fIstatus=STAT\fR] [\fIto=TO\fR] [\fIverbose=VERB\fR] [\fI\-\-dry\-run\fR]
+[\fI\-\-help\fR] [\fI\-\-job=JF\fR] [\fI\-\-odx\fR] [\fI\-\-quiet\fR]
+[\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR] [\fI\-\-xcopy\fR]
+[\fIddpt\fR] [\fIJF\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
 .PP
@@ -36,11 +37,11 @@ command.
 .PP
 For comparison, the SYNOPSIS section above shows both the
 .B ddpt
-command line options followed by GNU's
+command line operands and options followed by GNU's
 .B dd(1)
-command line options. Broadly speaking ddpt can be considered a super\-set
-of dd. See the section on DD DIFFERENCES for significant differences
-between ddpt and dd.
+command line operands and options. Broadly speaking ddpt can be considered
+a super\-set of dd. See the section on DD DIFFERENCES for significant
+differences between ddpt and dd.
 .PP
 This utility either does direct copies, based on read\-write sequences,
 or offloaded copies. In an offloaded copy the data being copied does not
@@ -50,7 +51,7 @@ operation; this can save a significant amount of time and lessen CPU usage.
 When doing a direct copy, this utility breaks the copy into segments since
 computer RAM is typically a scarce resource. First it reads in \fIBPT*IBS\fR
 bytes from \fIIFILE\fR (or less if near the end of the copy) into a copy
-buffer. In the absence of the various options and conditions that bypass
+buffer. In the absence of the various operand and flags that bypass
 the write operation, the copy buffer is then written out to \fIOFILE\fR.
 The copy process continues working its way along \fIIFILE\fR and \fIOFILE\fR
 until either \fICOUNT\fR is exhausted, an end of file is detected, or an
@@ -77,16 +78,27 @@ force flag is also given (i.e. 'iflag=pt,force').
 This utility supports two types of offloaded copies. Both are based on the
 EXTENDED COPY (XCOPY or xcopy) family of SCSI commands. The first uses the
 XCOPY(LID1) command to do a disk to disk copy. LID1 stands for List
-Identifier length of 1 byte and the command is described in the SPC\-4 drafts
-and the earlier SPC\-3 and SPC\-2 standards. Recent SPC\-4 drafts have added
-the XCOPY(LID4) sub\-family of copy offloaded commands. There is a subset of
+IDentifier length of 1 byte and the commands are described in the SPC\-4 and
+earlier SPC\-3 and SPC\-2 standards. The SPC\-4 standard (ANSI INCITS
+513-2015) added the XCOPY(LID4) sub\-family of copy offloaded commands. Now
+SPC\-5 drafts have dropped the LID1 variants and removed the LID4 suffix on
+the remaining XCOPY family of commands. To differentiate, this man page will
+continue to use the LID1 and LID4 suffixes. There is a subset of
 XCOPY(LID4), specialized for offloaded disk to disk copies, that is known by
 the market name: ODX. In the descriptions below "xcopy" refers to copies
 based on XCOPY(LID1) while "odx" refers to either full or partial ODX copies.
 See the XCOPY and ODX sections below for more information.
-.SH OPTIONS
-The dd\-like options with the name=value syntax are listed first, sorted by
-name. Following that, options starting with "\-" are listed.
+.PP
+The syntax of the dd command is somewhat unique in Unix and ddpt follows in
+a similar fashion. Operands (i.e. those with the <name>=<something>
+structure) are shown in OPERANDS section. The more familiar Unix
+options (i.e. those starting with one or two hyphens) are shown in the
+OPTIONS section. Then there are a few arguments which are command line
+entities that are neither operands nor options, see the ARGUMENTS section.
+.SH OPERANDS
+The operands are listed alphabetically (by <name>) below. The <name> is
+the part that is to the left of the equal sign. All <names> start with
+a lower case alphabetical character.
 .TP
 \fBbpt\fR=\fIBPT[,OBPC]\fR
 where \fIBPT\fR is Blocks Per Transfer. A direct copy is made up of multiple
@@ -100,7 +112,7 @@ when \fIIBS\fR < 1024, \fIBPT\fR is 128; when \fIIBS\fR < 8192, \fIBPT\fR
 is 16; when \fIIBS\fR < 32768, \fIBPT\fR is 4; else \fIBPT\fR defaults
 to 1. If \fIBPT\fR is given as 0 it is treated as the default value.
 For "bs=512", \fIBPT\fR defaults to 128 so that 64 KiB (or less) is read
-from \fIIFILE\fR into the copy buffer. This option is treated differently
+from \fIIFILE\fR into the copy buffer. This operand is treated differently
 in ODX and is typically only needed for testing; see ODX section.
 .br
 The optional \fIOBPC\fR (Output Blocks Per Check) argument controls the
@@ -120,7 +132,7 @@ value (EINVAL) is returned.
 .TP
 \fBbs\fR=\fIBS\fR
 where \fIBS\fR is the \fIIFILE\fR and \fIOFILE\fR block size in bytes.
-Conflicts with either the "ibs=" or "obs=" options. The value of \fIBS\fR
+Conflicts with either the "ibs=" or "obs=" operands. The value of \fIBS\fR
 is placed in \fIIBS\fR and \fIOBS\fR.
 If \fIIFILE\fR or \fIOFILE\fR is a "pt" device then \fIBS\fR
 .B must
@@ -145,17 +157,17 @@ the 'coe' flag for more information.
 \fBcoe_limit\fR=\fICL\fR
 where \fICL\fR is the maximum number of consecutive bad blocks stepped over
 due to "coe=1" on reads before the copy terminates. The default is 0 which is
-implies no limit. This option is meant to stop the copy soon after unrecorded
-media is detected while still offering "continue on error" capability for
-infrequent, randomly distributed errors.
+implies no limit. This operand is meant to stop the copy soon after
+unrecorded media is detected while still offering "continue on error"
+capability for infrequent, randomly distributed errors.
 .TP
 \fBconv\fR=\fICONVS\fR
 see the CONVERSIONS section below.
 .TP
 \fBcount\fR=\fICOUNT\fR
-copy \fICOUNT\fR input blocks from \fIIFILE\fR to \fIOFILE\fR. If this option
-is not given (or \fICOUNT\fR is '\-1') then the \fICOUNT\fR may be deduced
-from either \fIIFILE\fR or \fIOFILE\fR. See the COUNT section below.
+copy \fICOUNT\fR input blocks from \fIIFILE\fR to \fIOFILE\fR. If this
+operand is not given (or \fICOUNT\fR is '\-1') then the \fICOUNT\fR may be
+deduced from either \fIIFILE\fR or \fIOFILE\fR. See the COUNT section below.
 .br
 If a 'hard' gather list is given to \fIskip=SKIP\fR or a 'hard' scatter list
 is given to \fIseek=SEEK\fR then typically \fIcount=COUNT\fR should not be
@@ -163,6 +175,16 @@ supplied. This is because a 'hard' scatter gather list implies a transfer
 count. If both are given then ddpt will exit if they are unequal, the force
 flag can be used to override this action. See the SCATTER GATHER LISTS
 section below for a discussion of 'hard' and 'soft' scatter gather lists.
+.TP
+\fBddpt\fR=\fIVERS\fR
+causes a syntax error while parsing the command line if the current version
+of the ddpt utility is less than \fIVERS\fR. \fIVERS\fR can take one of two
+forms: starting with a digit in which case is should have the
+form "<major_vn>.<minor_vn>" or starting with the letter "r" followed
+by "<svn.rev>". The latter case is the subversion revision number. Both
+numbers can be found in the output of the \fI\-\-version\fR option. The
+purpose of this operand is to be placed in job files so that they are not
+run on older versions of this utility
 .TP
 \fBdelay\fR=\fIMS[,W_MS]\fR
 after each segment is copied (typically every (\fIIBS\fR * \fIBPT\fR) bytes)
@@ -181,7 +203,7 @@ occurs before each WUT command, apart from the first.
 .TP
 \fBibs\fR=\fIIBS\fR
 where \fIIBS\fR is the \fIIFILE\fR block size in bytes. The default value
-is \fIBS\fR or its default (512). Conflicts the "bs=" option (i.e. giving
+is \fIBS\fR or its default (512). Conflicts the "bs=" operand (i.e. giving
 both "bs=512 ibs=512" is considered a syntax error).
 .TP
 \fBid_usage\fR=\fILIU\fR
@@ -191,11 +213,11 @@ xcopy: SCSI EXTENDED COPY parameter list LIST ID USAGE field is set to
 0, 'discard' for 2 or 'disable' for 3.
 .TP
 \fBif\fR=\fIIFILE\fR
-read from \fIIFILE\fR. This option must be given (apart from one odx case).
-If \fIIFILE\fR is '\-' then stdin is read. Starts reading at the beginning
-of \fIIFILE\fR unless \fISKIP\fR is given.
+read from \fIIFILE\fR. This operand must be given (apart from one odx case
+and when \fIiflag=00\fR). If \fIIFILE\fR is '\-' then stdin is read. Starts
+reading at the beginning of \fIIFILE\fR unless \fISKIP\fR is given.
 .br
-odx: the \fIrtf=RTF\fR option may replace the \fIif=IFILE\fR option as
+odx: the \fIrtf=RTF\fR operand may replace the \fIif=IFILE\fR operand as
 input. See the ODX section.
 .TP
 \fBiflag\fR=\fIFLAGS\fR
@@ -214,7 +236,7 @@ if IO operations do lock up it is best to let the kernel take care of that.
 \fBiseek\fR=\fISKIP\fR
 in its simplest form, \fISKIP\fR is a single number: start reading after
 \fISKIP\fR blocks (each of \fIIBS\fR bytes) from the start of \fIIFILE\fR.
-Default is block 0 (i.e. start of file). This option is a synonym for
+Default is block 0 (i.e. start of file). This operand is a synonym for
 \fIskip=SKIP\fR, see its description.
 .TP
 \fBito\fR=\fIITO\fR
@@ -241,7 +263,7 @@ value is tried (stopping after 10 attempts).
 .TP
 \fBobs\fR=\fIOBS\fR
 where \fIOBS\fR is the \fIOFILE\fR block size in bytes. The default value
-is \fIBS\fR or its default (512). Conflicts the "bs=" option (e.g. giving
+is \fIBS\fR or its default (512). Conflicts the "bs=" operand (e.g. giving
 both "bs=512 obs=512" is considered a syntax error).
 If \fIOBS\fR is given then it has the following restriction: the integer
 expression (((\fIIBS\fR * \fIBPT\fR) % \fIOBS\fR) == 0) must be true.
@@ -256,13 +278,13 @@ performed. If \fIOFILE\fR is '.' (period) then it is treated the same way as
 /dev/null . If \fIOFILE\fR exists then it is _not_ truncated
 unless "oflag=trunc" is given. See section on DD DIFFERENCES.
 .br
-odx: if this option (\fIof=OFILE\fR) is not given and the \fIrtf=RTF\fR option
-is given then the \fIRTF\fR file may be thought of as receiving the output
-in the form of one or more ROD Tokens. See the ODX section.
+odx: if this operand (\fIof=OFILE\fR) is not given and the \fIrtf=RTF\fR
+operand is given then the \fIRTF\fR file may be thought of as receiving the
+output in the form of one or more ROD Tokens. See the ODX section.
 .TP
 \fBof2\fR=\fIOFILE2\fR
 write output to \fIOFILE2\fR. The default action is not to do this additional
-write (i.e. when this option is not given). \fIOFILE2\fR is assumed to be
+write (i.e. when this operand is not given). \fIOFILE2\fR is assumed to be
 a regular file or a fifo (i.e. a named pipe). \fIOFILE2\fR is opened for
 writing and is created if necessary. If \fIOFILE2\fR is a fifo (named pipe)
 then some other command should be consuming that data (e.g. 'md5sum OFILE2'),
@@ -272,7 +294,7 @@ logic. So everything read is written to \fIOFILE2\fR.
 .br
 \fIOFILE2\fR is not truncated before writing. Assuming that the \fIOFILE2\fR
 length is shorter than what is written (or it is created) then its contents
-should be the concaternation of all segments (each of ibs*bpt bytes long,
+should be the concatenation of all segments (each of ibs*bpt bytes long,
 with the last segment being possibly shorter). The gather list given to
 \fIskip=SKIP\fR effects what is read into each segment so it indirectly
 effects what is written to \fIOFILE2\fR. However the scatter list given to
@@ -285,7 +307,7 @@ ignored when \fIOFILE\fR is /dev/null, '.' (period), or stdout.
 .TP
 \fBoseek\fR=\fISEEK\fR
 start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
-\fIOFILE\fR. Default is block 0 (i.e. start of file). This option is a
+\fIOFILE\fR. Default is block 0 (i.e. start of file). This operand is a
 synonym for \fIseek=SEEK\fR, see its description.
 .TP
 \fBprio\fR=\fIPRIO\fR
@@ -311,7 +333,7 @@ Only applies to errors on pt devices.
 odx: where \fIRTF\fR is a filename. One or more ROD tokens are written to
 \fIRTF\fR during a read to tokens variant or a full copy variant. One or
 more ROD tokens are read from \fIRTF\fR during a write from token variant.
-This option is not required on a full copy variant. ROD Tokens are 512
+This operand is not required on a full copy variant. ROD Tokens are 512
 bytes long and an extra 8 byte (big\-endian) integer containing the 'number
 of bytes represented' is placed after each ROD Token if rtf_len is given.
 .TP
@@ -352,7 +374,7 @@ value 'null' is accepted for \fISTAT\fR and does nothing.
 .br
 A \fISTAT\fR value of 'progress' prints a progress report (to stderr) every
 two minutes. If 'progress' is used twice, either by repeating
-the 'status=progress' argument or by entering 'status=progress,progress',
+the 'status=progress' operand or by entering 'status=progress,progress',
 then a progress report is printed every minute. If it is used thrice, the
 a progress report is printed every 30 seconds. Note that care is taken not
 to flood the OS with calls to check the time which would slow down the copy
@@ -380,9 +402,11 @@ Unix read() and write() calls, so there can be a lot of output.
 If \fIVERB\fR is "\-1" then reporting that would have been sent to stderr
 is redirected to /dev/null essentially throwing it away. It has the same
 action as the \fI\-\-quiet\fR option.
+.SH OPTIONS
+Options are listed in alphabetical order, sorted by their long name.
 .TP
 \fB\-d\fR, \fB\-\-dry\-run\fR
-does all the argument and option processing, opens given file and devices but
+does all the operand and option processing, opens given file and devices but
 bypasses the copy stage. For complex command line invocations or for testing
 invocations to be placed in script files, this option may be useful to check
 for syntax and related errors.
@@ -396,14 +420,8 @@ for each IO this option combination may be useful: '\-ddvv'.
 reports usage message then exits.
 .TP
 \fB\-\-job\fR=\fIJF\fR
-where \fIJF\fR is a file name. That file can contain options listed in
-this section. The options within the file are processed in the order
-they are found (i.e. parsing left to right, top (of file) to bottom) and
-options may override earlier ones or accumulate. For example '\-v' on the
-command line followed by a job file containing '\-vv' will result in a
-verbosity level of '\-vvv' during the copy phase. Job files can
-recurse (i.e. call another or the same job file) up to a depth of 5. Empty
-lines and anything from and including a '#' in a job file line is ignored.
+where \fIJF\fR is a file name. That file can contain operands and options
+listed in this and the previous sections. See the JOB FILES section below.
 .TP
 \fB\-o\fR, \fB\-\-odx\fR
 indicates to this utility that one of the four odx variants is requested.
@@ -412,7 +430,7 @@ See ODX section.
 \fB\-q\fR, \fB\-\-quiet\fR
 redirects the messages (sent to stderr) to /dev/null which is essentially
 throwing them away. That redirect takes place after the command line
-arguments are parsed and associated sanity checks performed.
+operands and options are parsed and associated sanity checks performed.
 .TP
 \fB\-v\fR, \fB\-\-verbose\fR
 equivalent of \fIverbose=1\fR. If \fI\-\-verbose\fR appears twice then
@@ -435,14 +453,19 @@ this option will attempt to call the SCSI EXTENDED COPY(LID1) command. In
 the absence of another indication the xcopy command will be sent to the
 destination (i.e. \fIOFILE\fR). See the section on ENVIRONMENT VARIABLES
 below.
+.SH ARGUMENTS
+Arguments do not start with hyphen nor contain a "=".
+.TP
+\fBddpt\fR
+this string is just a marker. It must not appear in the command line and
+it must appear in the contents of a job file that isn't part of a
+comment (i.e. following a "#" on a line). A syntax error is generated (and
+no copy occurs) if these rules are violated.
 .TP
 \fBJF\fR
-a command line element that does not contain a '=' (i.e. a dd style option)
-and does not start with '\-' is treated as a job file (i.e. \fIJF\fR). See
-the entry on \fI\-\-job=JF\fR above. For sanity \fIJF\fR is checked to make
-sure it is "regular" (i.e. not a device file like /dev/sdc) and for non
-ASCII characters lest it be a binary file by accident. Failing those checks
-may be overridden by 'iflag=force' or 'oflag=force'.
+a command line element that does not contain a '=' (i.e. a ddpt operand)
+and does not start with '\-', apart from the string "ddpt" is treated as a
+job file (i.e. \fIJF\fR). See the JOB FILES section below.
 .SH CONVERSIONS
 One or more conversions can be given to the "conv=" option. If more than
 one is given, they should be comma separated. ddpt does not perform the
@@ -514,7 +537,7 @@ and "tape".
 00 [i]
 This replaces \fIIFILE\fR with a source of 0x0 bytes. Can only be used
 on input and an error is generated if the \fIif=IFILE\fR option is also
-given. Equivalent to using "if=/dev/zero" or an equivalent.
+given. Equivalent to using the "if=/dev/zero" option (in Unix).
 .TP
 append [o] [reg], [io] [odx]
 causes the O_APPEND flag to be added to the open of \fIOFILE\fR. For regular
@@ -879,6 +902,32 @@ system full).
 .PP
 If \fICOUNT\fR is not given and cannot be deduced then an error message
 is issued and no copy takes place.
+.SH JOB FILES
+Some operands can have long arguments (e.g. \fIskip=SKIP\fR and
+\fIiflag=FLAGS\fR) so that the command line can become quite long. Also
+scatter gather lists can be arbitrarily long and may be generated by a
+program; then it would be tiresome and error\-prone to re\-type them
+on the command line. So the job file was introduced to hold this utility's
+operands and options.
+.PP
+A job file is invoked by either the \fI\-\-job=JF\fR option or by placing
+the job filename (\fIJF\fR) unadorned on the command line. The job filename
+cannot contain a "=", start with a hyphen nor be called "ddpt". It is parsed
+when it is detected, in a left to right scan of the command line. The
+\fIJF\fR file must contain the string "ddpt" and may invoke other job
+files (to a maximum depth of 4). A job file should not invoke itself. Also
+the first line of the job file should not contain any characters (bytes)
+with their top bit set; in other words it should be restricted to 7 bit
+ASCII (otherwise sanity checks might think it is a binary file and reject it).
+.PP
+The operands and options within a job file are processed in the order
+they are found (i.e. parsing lines left to right, top (of file) to bottom).
+The operands and options may contradict (and cause a syntax error), override
+or accumulate with earlier ones, the same as if they appeared on the command
+line. For example '\-v' on the command line followed by a job file
+containing '\-vv' will result in a verbosity level of '\-vvv' during the
+copy phase. Empty lines, lines only containing whitespace(s) and anything
+from and including a '#' in a job file line are ignored.
 .SH SCATTER GATHER LISTS
 The \fIskip=SKIP\fR and \fIseek=SEEK\fR options (and their aliases) can take
 scatter gather lists. These can be explicit on the command line, fed in
@@ -963,12 +1012,12 @@ plus the LBA of the last element (regardless of whether it is degenerate
 or not).
 .PP
 The rules in the above paragraph make a one item skip or seek argument (e.g.
-kip=0x123) in this utility first become a one element sgl (e.g. containing
+skip=0x123) in this utility first become a one element sgl (e.g. containing
 the pair [0x123, 0x0]). Since this is the last element, it is a soft sgl
-and the transfer will start from the given argument (i.e. 0x123) and
-continues for the number of blocks indicated by some other mechanism (e.g.
-an option such as \fIcount=COUNT\fR or the length of \fIIFILE\fR). This
-mirrors what the classic
+and the transfer will start from the given lba (i.e. 0x123) and continues
+for the number of blocks indicated by some other mechanism (e.g.  an option
+such as \fIcount=COUNT\fR or the length of \fIIFILE\fR). This mirrors what
+the classic
 .B dd
 command does with its skip= and seek= options.
 .PP
@@ -995,8 +1044,8 @@ value.
 With powerful data tools, the ability to accidentally overwrite and hence
 lose important data is ever present. So a significant portion of the code
 is dedicated to checking the input arguments for duplications and
-contradictions. But nothing beats re\-reading the command line (which can
-be quite long) before hitting the enter key.
+contradictions. Still nothing is better than re\-reading the command
+line (which can be quite long) before hitting the enter key.
 .PP
 Other useful possibilities are to use job files (see the \fIJF\fR argument
 and the \fI\-\-job=JF\fR option) and the \fI\-\-dry\-run\fR option.
@@ -1006,33 +1055,32 @@ the command line arguments then opens \fIIFILE\fR, \fIOFILE\fR and
 \fIOFILE2\fR as directed by the command line and does any meta\-data
 operations that it would typically do (e.g. check a pass\-though or
 block device's logical block size and object if it differs from
-\fIBS\fR, \fIIBS\fR or \fIOBS\fR (whichever applies). Then just at the point
-where the code would commence the actually copy (or read) it does a
+\fIBS\fR, \fIIBS\fR or \fIOBS\fR (whichever applies)). Then just at the
+point where the code would commence the actual copy (or read) it does a
 premature exit. If the \fI\-\-dry\-run\fR option is given twice, the code
 continues into the copy logic and bypasses the low level read and write
 calls (and file repositioning). That inner level of "dry run" is useful
 for debugging and can be used with multiple \fIverbose=VERB\fR options.
 .PP
-The \fIverbose=VERB\fR option sends diagnostic messages to stderr. The more
-times the \fIverbose=VERB\fR option is used, the greater the volume of
-diagnostic messages. When use three or more times then diagnostic messages
-are generated for each read to, and write from, the working copy buffer;
-so the volume of messages is proportional to the number of reads and writes
-that are done. This can easily be in the megabyte range. If used less than
-three times, the reads and writes associated with the copy do not generate
-diagnostic messages (unless they cause abnormal situations). Do the
-diagnostic messages are mainly associated with command line parsing and
-fetching meta\-data about the given files, plus messages from the cleanup
-at the end of the copy.
+The \fIverbose=VERB\fR option sends diagnostic messages to stderr. The higher
+value of \fIVERB\fR (in \fIverbose=VERB\fR) or the more times that \fI\-v\fR
+is used, the greater the volume of diagnostic messages. When use three or
+more times then diagnostic messages are generated for each read to, and write
+from, the working copy buffer; so the volume of messages is proportional to
+the number of reads and writes that are done; this can easily be in the
+megabyte range. If used less than three times, the reads and writes
+associated with the copy do not generate diagnostic messages (unless abnormal
+situations are encountered). These diagnostic messages are mainly associated
+with command line parsing and fetching meta\-data about the given files, plus
+messages from the cleanup at the end of the copy.
 .PP
 The following command line arguments are checked that they don't appear
 more than once: \fIbpt=BPT[,OBPC]\fR, \fIbs=BS\fR, \fIcount=COUNT\fR,
 \fIibs=IBS\fR, \fIif=IFILE\fR, \fIiseek=SKIP\fR, \fIobs=OBS\fR,
 \fIof=OFILE\fR, \fIof2=OFILE2\fR, \fIoseek=SEEK\fR, \fIseek=SEEK\fR and
-\fIskip=SKIP\fR. On the other hand some arguments are additive, for example
+\fIskip=SKIP\fR. On the other hand, some arguments are additive, for example
 \fIiflag=FLAGS\fR, \fIoflag=FLAGS\fR, \fIstatus=STAT\fR and
-\fI\-\-verbose\fR
-zzzzzz
+\fI\-\-verbose\fR and may appear as many times as required.
 .SH XCOPY
 This section describes XCOPY(LID1) support with this utility. For ODX
 support (XCOPY(LID4) subset) see the ODX section.
@@ -1256,20 +1304,22 @@ but interprets it as "0 * 123" (i.e. zero). ddpt will also interpret "x"
 as multiplies unless the left operand is zero (e.g. "0x123"). So both
 dd and ddpt will interpret "skip=2x123" as "skip=246".
 .PP
-Terabyte size disks make it impractical to copy all the data into a buffer
-before writing it out. Therefore both dd and ddpt read a relatively small
-amount of data into a copy (or transfer) buffer then write it out to the
-destination, repeating this process until the \fICOUNT\fR is exhausted.
+Terabyte size disks make it impractical to copy all the data into a single
+buffer of 512 bytes length before writing it out. Therefore both dd and ddpt
+read a relatively small amount of data into a copy (or transfer) buffer then
+write it out to the destination, repeating this process until the
+\fICOUNT\fR is exhausted.
 .PP
-A major difference in ddpt is the addition of \fIBPT\fR to control the
-size of the copy buffer. With dd, \fIIBS\fR is the size of the copy buffer
-and the unit of \fISKIP\fR and \fICOUNT\fR. With ddpt, \fIIBS\fR * \fIBPT\fR
-is the size of the copy buffer and \fIIBS\fR is the unit of \fISKIP\fR
-and \fICOUNT\fR. This allows ddpt to have its \fIIBS\fR set to the logical
-block size of \fIIFILE\fR without unduly restricting the size of the copy
-buffer. And setting \fIIBS\fR (and \fIOBS\fR for \fIOFILE\fR) accurately
-is required when the pass\-through interface is used since with the SCSI
-READ and WRITE commands the logical block size is implicit.
+A major difference in ddpt is the addition of \fIBPT\fR (Blocks Per Transfer)
+to control the size of the copy buffer. With dd, \fIIBS\fR is the size of the
+copy buffer and the unit of \fISKIP\fR and \fICOUNT\fR. With ddpt,
+\fIIBS\fR * \fIBPT\fR is the size of the copy buffer and \fIIBS\fR is the
+unit of \fISKIP\fR and \fICOUNT\fR. This allows ddpt to have its \fIIBS\fR
+set to the logical block size of \fIIFILE\fR without unduly restricting the
+size of the copy buffer. And setting \fIIBS\fR (and \fIOBS\fR for
+\fIOFILE\fR) accurately is required when the pass\-through interface is used
+since with the SCSI READ and WRITE commands the logical block size is
+implicit.
 .PP
 The way dd handles its copy buffer (outlined in SUSv4 description of dd)
 is relatively complex, especially when \fIIBS\fR and \fIOBS\fR are different

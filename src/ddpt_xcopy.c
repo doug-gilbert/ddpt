@@ -870,16 +870,17 @@ do_xcopy_lid1(struct opts_t * op)
 
 /* vvvvvvvvv  ODX [SBC-3's POPULATE TOKEN + WRITE USING TOKEN] vvvvvvv */
 
+/* Returns 0 on success. Otherwise returns sg3_utils type error (positive) */
 int
 open_rtf(struct opts_t * op)
 {
     bool r_w1, must_exist;
-    int res, fd, flags;
+    int res, fd, flags, err;
     struct stat a_st;
 
     if (op->rtf_fd >= 0) {
         pr2serr("%s: rtf already open\n", __func__ );
-        return -1;
+        return sg_convert_errno(EADDRINUSE);
     }
     must_exist = false;
     switch (op->odx_request) {
@@ -903,22 +904,23 @@ open_rtf(struct opts_t * op)
         break;
     }
     if (! op->rtf[0])
-        return must_exist ? -1 : 0;
+        return must_exist ? sg_convert_errno(ENOENT) : 0;
     res = stat(op->rtf, &a_st);
     if (res < 0) {
-        if (ENOENT == errno) {
+        err = errno;
+        if (ENOENT == err) {
             if (must_exist) {
                 pr2serr("%s not found but rtf required\n", op->rtf);
-                return -1;
+                return sg_convert_errno(err);
             }
         } else {
             perror("rtf");
-            return -1;
+            return sg_convert_errno(err);
         }
         fd = creat(op->rtf, 0644);
         if (fd < 0) {
             perror(op->rtf);
-            return -1;
+            return sg_convert_errno(err);
         }
         op->rtf_fd = fd;
         return 0;
@@ -926,20 +928,21 @@ open_rtf(struct opts_t * op)
     if (S_ISDIR(a_st.st_mode)) {
         pr2serr("%s: %s is a directory, expected a file\n", __func__,
                 op->rtf);
-        return -1;
+        return sg_convert_errno(EINVAL);
     }
     if (S_ISBLK(a_st.st_mode) || S_ISCHR(a_st.st_mode)) {
         pr2serr("%s: %s is a block or char device, unexpected\n", __func__,
                 op->rtf);
-        return -1;
+        return sg_convert_errno(EINVAL);
     }
     flags = (r_w1 ? O_WRONLY : O_RDONLY);
     if (S_ISREG(a_st.st_mode) && r_w1)
         flags |= (op->rtf_append ? O_APPEND : O_TRUNC);
     fd = open(op->rtf, flags);
     if (fd < 0) {
+        err = errno;
         perror(op->rtf);
-        return -1;
+        return sg_convert_errno(err);
     }
     op->rtf_fd = fd;
     return 0;
@@ -2615,7 +2618,8 @@ odx_full_copy(struct opts_t * op)
     return 0;
 }
 
-/* *whop<=0 for both in+out, *whop==1 for in, *whop==2 for out */
+/* *whop<=0 for both in+out, *whop==1 for in, *whop==2 for out. Return 0
+ * if okay; else sg3_utils style error code. */
 static int
 odx_setup_and_run(struct opts_t * op, int * whop)
 {
@@ -2632,10 +2636,8 @@ odx_setup_and_run(struct opts_t * op, int * whop)
     if ((ODX_READ_INTO_RODS == req) ||
         ((ODX_COPY == req) && (RODT_BLK_ZERO != op->rod_type))) {
         fd = pt_open_if(op, NULL);
-        if (-1 == fd)
-            return SG_LIB_FILE_ERROR;
-        else if (fd < -1)
-            return SG_LIB_CAT_OTHER;
+        if (fd < 0)
+            return -fd;
         dip = op->idip;
         dip->fd = fd;
         dip->odxp = (struct block_rodtok_vpd *)
@@ -2652,10 +2654,8 @@ odx_setup_and_run(struct opts_t * op, int * whop)
     }
     if ((ODX_WRITE_FROM_RODS == req) || (ODX_COPY == req)) {
         fd = pt_open_of(op, NULL);
-        if (-1 == fd)
-            return SG_LIB_FILE_ERROR;
-        else if (fd < -1)
-            return SG_LIB_CAT_OTHER;
+        if (fd < 0)
+            return -fd;
         dip = op->odip;
         dip->fd = fd;
         dip->odxp = (struct block_rodtok_vpd *)
@@ -2709,10 +2709,8 @@ do_odx(struct opts_t * op)
         op->rtf_len_add = true;
     if (op->rtf[0]) {
         ret = open_rtf(op);
-        if (ret) {
-            ret = SG_LIB_FILE_ERROR;
+        if (ret)
             goto the_end;
-        }
     }
     if (op->do_time)
         calc_duration_init(op);

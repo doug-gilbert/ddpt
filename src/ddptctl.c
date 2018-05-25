@@ -64,7 +64,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.96 20180511 [svn: r351]";
+const char * ddptctl_version_str = "0.96 20180516 [svn: r352]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -380,11 +380,12 @@ odx_rt_info(const struct opts_t * op)
         err = errno;
         pr2serr("could not open '%s' for reading: %s\n", op->rtf,
                 safe_strerror(err));
-        return SG_LIB_FILE_ERROR;
+        return sg_convert_errno(err);
     }
     if (fstat(fd, &st) < 0) {
+        err = errno;
         perror("fstat() on rtf");
-        return SG_LIB_FILE_ERROR;
+        return sg_convert_errno(err);
     }
     res = st.st_size % 512;
     if (res > 0) {
@@ -406,7 +407,7 @@ odx_rt_info(const struct opts_t * op)
             err = errno;
             pr2serr("could not read '%s': %s\n", op->rtf, safe_strerror(err));
             close(fd);
-            return SG_LIB_FILE_ERROR;
+            return sg_convert_errno(err);
         }
         if (res < bp_chunk) {
             pr2serr("unable to read %d bytes from '%s', only got %d bytes\n",
@@ -522,7 +523,7 @@ write_to_rtf(struct opts_t * op, const struct rrti_resp_t * rp)
                 "to %s\n", cp);
         res = open_rtf(op);
         if (res)
-            return SG_LIB_FILE_ERROR;
+            return res;
     } else
         cp = op->rtf;
     len = (rp->rt_len > 512) ? 512 : rp->rt_len;
@@ -531,7 +532,7 @@ write_to_rtf(struct opts_t * op, const struct rrti_resp_t * rp)
         err = errno;
         pr2serr("%s: unable to write to file: %s [%s]\n", __func__,
                 cp, safe_strerror(err));
-        return SG_LIB_FILE_ERROR;
+        return sg_convert_errno(err);
     }
     if (res < len) {
         pr2serr("%s: short write to file: %s, wanted %d, got %d\n",
@@ -631,7 +632,7 @@ main(int argc, char * argv[])
     bool req_all_toks = false;
     bool req_pop = false;
     bool req_wut = false;
-    int c, k, n, fd, flags, blk_sz, err;
+    int c, k, n, fd, flags, blk_sz, vb, err;
     int do_hex = 0;
     int ret = 0;
     uint32_t delay;
@@ -652,6 +653,7 @@ main(int argc, char * argv[])
 
     state_init(&ops, &iflag, &oflag, &ids, &ods, &o2ds);
     op = &ops;
+    op->primary_ddpt = false;
     memset(&sir, 0, sizeof(sir));
     memset(&rrti_rsp, 0, sizeof(rrti_rsp));
 
@@ -832,6 +834,7 @@ main(int argc, char * argv[])
         }
     }
 
+    vb = op->verbose;
     op->odx_request = ODX_REQ_NONE;
     k = 0;
     if (req_abort)
@@ -896,11 +899,8 @@ main(int argc, char * argv[])
     op->idip->d_type = do_block ? FT_BLOCK : FT_PT;
     if (op->idip->d_type & FT_PT) {
         fd = pt_open_if(op, &sir);
-        if (-1 == fd) {
-            ret = SG_LIB_FILE_ERROR;
-            goto clean_up;
-        } else if (fd < -1) {
-            ret = SG_LIB_CAT_OTHER;
+        if (fd < 0) {
+            ret = -fd;
             goto clean_up;
         }
         op->idip->fd = fd;
@@ -932,7 +932,6 @@ main(int argc, char * argv[])
         }
         ret = open_rtf(op);
         if (ret) {
-            ret = SG_LIB_FILE_ERROR;
             goto clean_up;
         }
     }
@@ -940,33 +939,41 @@ main(int argc, char * argv[])
     if (req_abort) {
         if (op->dry_run) {
             pr2serr("bypass copy abort\n");
-            goto clean_up;
+            goto fini;
         }
         ret = do_copy_abort(op);
         if (ret)
             goto clean_up;
     } else if (req_all_toks) {
+        if (op->dry_run) {
+            pr2serr("bypass report all tokens\n");
+            goto fini;
+        }
         ret = report_all_toks(op, op->idip, do_hex);
         if (ret)
             goto clean_up;
     } else if (do_poll) {
+        if (op->dry_run) {
+            pr2serr("bypass poll\n");
+            goto fini;
+        }
         do {
             if (prefer_rcs)
-                ret = do_rcs(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
+                ret = do_rcs(op, DDPT_ARG_IN, &rrti_rsp, vb);
             else
-                ret = do_rrti(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
+                ret = do_rrti(op, DDPT_ARG_IN, &rrti_rsp, vb);
             if (ret)
                 goto clean_up;
             cont = ((rrti_rsp.cstat >= 0x10) && (rrti_rsp.cstat <= 0x12));
             if (cont) {
                 delay = rrti_rsp.esu_del;
                 if ((delay < 0xfffffffe) && (delay > 0)) {
-                    if (op->verbose > 1)
+                    if (vb > 1)
                         pr2serr("using copy manager recommended delay of %"
                                 PRIu32 " milliseconds\n", delay);
                 } else {
                     delay = DEF_ODX_POLL_DELAY_MS;
-                    if (op->verbose > 1)
+                    if (vb > 1)
                         pr2serr("using default for poll delay\n");
                 }
                 if (delay)
@@ -986,18 +993,18 @@ main(int argc, char * argv[])
         }
     } else if (req_pop) {
         op->odx_request = ODX_READ_INTO_RODS;
-        sgl_sum_scan(&op->i_sgli, "req_pop", op->verbose > 1);
+        sgl_sum_scan(&op->i_sgli, "req_pop", vb > 1);
         num_blks = op->i_sgli.sum;
         if (op->dry_run) {
             pr2serr("bypass populate token\n");
-            goto clean_up;
+            goto fini;
         }
         if ((ret = do_pop_tok(op, 0 /* blk_off */, num_blks,
-                              false /* walk_list_id */, op->verbose)))
+                              false /* walk_list_id */, vb)))
             goto clean_up;
         else if (op->iflagp->immed)
             goto clean_up;
-        if ((ret = process_after_poptok(op, &tc, op->verbose)))
+        if ((ret = process_after_poptok(op, &tc, vb)))
             goto clean_up;
         printf("PT completes with a transfer count of %" PRIu64 " [0x%"
                PRIx64 "]\n", tc, tc);
@@ -1011,10 +1018,14 @@ main(int argc, char * argv[])
         }
         goto clean_up;
     } else if (do_receive) {
+        if (op->dry_run) {
+            pr2serr("bypass receive\n");
+            goto fini;
+        }
         if (prefer_rcs)
-            ret = do_rcs(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
+            ret = do_rcs(op, DDPT_ARG_IN, &rrti_rsp, vb);
         else
-            ret = do_rrti(op, DDPT_ARG_IN, &rrti_rsp, op->verbose);
+            ret = do_rrti(op, DDPT_ARG_IN, &rrti_rsp, vb);
         if (ret)
             goto clean_up;
         sg_get_opcode_sa_name(THIRD_PARTY_COPY_OUT_CMD, rrti_rsp.for_sa, 0,
@@ -1032,7 +1043,7 @@ main(int argc, char * argv[])
         op->odx_request = ODX_WRITE_FROM_RODS;
         memset(rt, 0, sizeof(rt));
         if (RODT_BLK_ZERO == op->rod_type) {
-            if (op->verbose > 1)
+            if (vb > 1)
                 pr2serr("  configure for block device zero ROD Token\n");
             sg_put_unaligned_be32(RODT_BLK_ZERO, rt + 0);
             sg_put_unaligned_be16(ODX_ROD_TOK_LEN_FLD, rt + 6);
@@ -1048,19 +1059,19 @@ main(int argc, char * argv[])
                 pr2serr("unable to read %d bytes from '%s', only got %d "
                         "bytes\n", (int)sizeof(rt), op->rtf, ret);
         }
-        sgl_sum_scan(&op->o_sgli, "req_wut", op->verbose > 1);
+        sgl_sum_scan(&op->o_sgli, "req_wut", vb > 1);
         num_blks = op->o_sgli.sum;
         if (op->dry_run) {
             pr2serr("bypass write using token\n");
-            goto clean_up;
+            goto fini;
         }
         if ((ret = do_wut(op, rt, 0, num_blks, op->offset_in_rod,
                           true /* assume more left */,
-                          false /* walk_list_id */, op->verbose)))
+                          false /* walk_list_id */, vb)))
             goto clean_up;
         else if (op->oflagp->immed)
             goto clean_up;
-        if ((ret = process_after_wut(op, &tc, op->verbose)))
+        if ((ret = process_after_wut(op, &tc, vb)))
             goto clean_up;
         printf("WUT completes with a transfer count of %" PRIu64 " [0x%"
                PRIx64 "]\n", tc, tc);
@@ -1069,7 +1080,7 @@ main(int argc, char * argv[])
             ret = pt_read_capacity(op, DDPT_ARG_IN, &num_blks, &blk_sz);
             if (ret) {
                 if (SG_LIB_CAT_UNIT_ATTENTION == ret) {
-                    if (op->verbose)
+                    if (vb)
                         pr2serr("Unit attention (readcap), continuing\n");
                     ret = pt_read_capacity(op, DDPT_ARG_IN,
                                            &num_blks, &blk_sz);
@@ -1117,6 +1128,7 @@ clean_up:
                 "--receive or\n--poll for completion\n",
                 (req_pop ? "Populate Token" : "Write Using Token"),
                 op->list_id);
+fini:
     if (op->idip->fd >= 0) {
         if (op->idip->d_type & FT_PT)
             pt_close(op->idip->fd);
@@ -1126,11 +1138,12 @@ clean_up:
     if (op->rtf_fd >= 0)
         close(op->rtf_fd);
     if (ret) {
-        if (ret > 0)
-            print_exit_status_msg("Exit status", ret, false /* to_stderr */);
-        else if (ret < 0) {
+        if (ret > 0) {
+            if (0 == vb)
+                print_exit_status_msg("Exit status", ret, false);
+        } else if (ret < 0) {
             pr2serr("Some error occurred\n");
-            ret = 1;
+            ret = SG_LIB_CAT_OTHER;
         }
     }
     return ret;

@@ -122,7 +122,7 @@ extern "C" {
 #define VPD_DEVICE_ID 0x83
 #define VPD_3PARTY_COPY 0x8f
 
-#define SENSE_BUFF_LEN 32       /* Arbitrary, could be larger */
+#define SENSE_BUFF_LEN 64       /* Arbitrary, could be larger */
 #define READ_CAP_REPLY_LEN 8
 #define RCAP16_REPLY_LEN 32
 
@@ -139,14 +139,11 @@ extern "C" {
 #define PROGRESS3_TRIGGER_MS 30000      /* milliseconds: 30 seconds */
 
 #ifdef SG_LIB_LINUX
-#ifndef RAW_MAJOR
-#define RAW_MAJOR 255   /*unlikey value */
-#endif
 #define DEV_NULL_MINOR_NUM 3
 #define DEV_ZERO_MINOR_NUM 5
 #endif
 
-#define SG_LIB_FLOCK_ERR 90
+#define SG_LIB_FLOCK_ERR 47
 
 /* File/device type groups, (N.B. powers of 2), so file can be multiple */
 #define FT_OTHER 1              /* unknown (unable to identify), default */
@@ -322,7 +319,7 @@ struct dev_info_t {
     int prot_type;      /* from RCAP(16) or 0 */
     int p_i_exp;        /* protection intervals (PIs) exponent */
     int bs_pi;          /* block size plus PI, if any */
-    int ddpt_arg;	/* 1 of DDPT_ARG_IN, DDPT_ARG_OUT or DDPT_ARG_OUT2 */
+    int ddpt_arg;       /* 1 of DDPT_ARG_IN, DDPT_ARG_OUT or DDPT_ARG_OUT2 */
     uint32_t xc_min_bytes;
     uint32_t xc_max_bytes;
     int64_t reg_sz;     /* regular file size in bytes, -1 --> no info */
@@ -488,6 +485,7 @@ struct opts_t {
     bool has_xcopy;     /* --xcopy (LID1): iflag=xcopy or oflag=xcopy */
     bool ibs_given;
     bool interrupt_io;  /* [intio=0|1] if false, mask SIGINFO++ during IO */
+    bool jf_given;      /* at least 1 level of job file given */
     bool list_id_given;
     bool obs_given;
     bool o_readonly;
@@ -495,24 +493,26 @@ struct opts_t {
     bool out_sparse_active;
     bool out_trim_active;
     bool outf_given;
+    bool primary_ddpt;  /* true if ddpt, false if helper utility */
     bool quiet;         /* set true when verbose=-1 (or any negative int) */
     bool reading_fifo;  /* true when if=- (read stdin) or if=PIPE */
     bool read1_or_transfer;     /* true when of=/dev/null or similar */
     bool rod_type_given;
-    bool rtf_append;            /* if rtf is regular file: open(O_APPEND) */
-    bool rtf_len_add;           /* append 64 bit ROD byte size to token */
-    bool status_none;           /* status=none given */
+    bool rtf_append;    /* if rtf is regular file: open(O_APPEND) */
+    bool rtf_len_add;   /* append 64 bit ROD byte size to token */
+    bool status_none;   /* status=none given */
     bool subsequent_wdelay;     /* so no delay before first write */
     bool xc_cat;
     bool xc_dc;
     /* command line related variables */
+    int ddpt_strs;      /* number of times 'ddpt' appears in job_file(s) */
     int delay;          /* intra copy segment delay in milliseconds */
     int wdelay;         /* delay prior to each write in copy segment */
     int dry_run;        /* do preparation, bypass copy; >1 go deeper */
-    int ibs_lb;		/* ibs= value, stress its logical block size */
+    int ibs_lb;         /* ibs= value, stress its logical block size */
     int ibs_pi;    /* if (PI) ibs_pi = ibs_lb+pi_len else ibs_pi=ibs_lb */
     int ibs_hold;       /* not sure why we need this hold */
-    int obs_lb;		/* obs= value, stress its logical block size */
+    int obs_lb;         /* obs= value, stress its logical block size */
     int obs_pi;    /* if (PI) obs_pi = obs_lb+pi_len else obs_pi=obs_lb */
     int bpt_i;          /* Blocks Per Transfer, input sized blocks */
     int obpch;          /* output blocks per check, granularity of sparse,
@@ -588,7 +588,7 @@ struct opts_t {
 struct sg_simple_inquiry_resp;
 
 typedef int (*ddpt_rw_f)(struct dev_info_t * dip, struct cp_state_t * csp,
-			 struct opts_t * op);
+                         struct opts_t * op);
 
 extern const char * ddpt_arg_strs[];
 
@@ -708,7 +708,7 @@ int num_either_ch_in_str(const char * s, int slen, int ch1, int ch2);
  * beginning). Returns 0 for okay else an error number. -9999 is returned
  * for an unexpected error with the iterator. */
 int cp_via_sgl_iter(struct dev_info_t * dip, struct cp_state_t * csp,
-		    int add_blks, ddpt_rw_f fp, struct opts_t * op);
+                    int add_blks, ddpt_rw_f fp, struct opts_t * op);
 /* Returns number elements in scatter gather list (array) whose pointer
  * is written to *sge_pp. On error returns negated error number and
  * NULL is written to *sge_pp . The caller is responsible for freeing
@@ -797,8 +797,8 @@ int process_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a);
 int do_odx(struct opts_t * op);
 
 /* defined in ddpt_cl.c */
-int cl_process(struct opts_t * op, int argc, char * argv[],
-               const char * version_str, int jf_depth);
+int cl_parse(struct opts_t * op, int argc, char * argv[],
+             const char * version_str, int jf_depth);
 void ddpt_usage(int help);
 
 

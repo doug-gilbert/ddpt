@@ -1808,7 +1808,7 @@ sgl_iter_sub(struct sgl_iter_t * iter_p, uint64_t blk_count)
  * by '0x', '0X' or contains trailing 'h' or 'H' (which indicate hex).
  * Returns 0 if ok, or 1 if error. Assumed to be LBA (64 bit) and
  * number_of_block (32 bit) pairs. ** Space on command line needs to
- * be escaped, otherwise it is an option separator. */
+ * be escaped, otherwise it is an operand/option separator. */
 struct scat_gath_elem *
 cli2sgl(const char * inp, int * arr_elemsp, bool b_vb)
 {
@@ -1915,7 +1915,7 @@ check_for_next:
             if (c2p && (c2p < cp))
                 cp = c2p;
             lcp = cp + 1;
-        }       /* end of for loop over items in option */
+        }       /* end of for loop over items in operand */
         /* other than first pair, expect even number of items */
         if ((k > 0) && (! full_pair)) {
             if (b_vb)
