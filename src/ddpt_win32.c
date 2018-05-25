@@ -256,10 +256,12 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
                     uint8_t * bp, int * ifull_extrap, int verbose)
 {
     int k, res, res2;
-    int ibs = op->ibs;
-    int numbytes = csp->icbpt * ibs;
-    int64_t offset = op->skip * ibs;
-    int64_t my_skip;
+    int ibs = op->ibs_pi;
+    int obs = op->obs_pi;
+    int numbytes = csp->cur_in_num * ibs;
+    int64_t lba = csp->cur_in_lba;
+    int64_t offset = lba * ibs;
+    int64_t my_lba;
 
     if (ifull_extrap)
         *ifull_extrap = 0;
@@ -277,15 +279,15 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
             if (1 == csp->icbpt) {
                 // Don't read again, this must be bad block
                 memset(bp, 0, ibs);
-                if ((res2 = coe_process_eio(op, op->skip)))
+                if ((res2 = coe_process_eio(op, lba)))
                     return res2;
                 ++*ifull_extrap;
                 csp->bytes_read += ibs;
                 return 0;
             } else {
-                my_skip = op->skip;
+                my_lba = lba;
                 for (k = 0; k < csp->icbpt;
-                     ++k, ++my_skip, bp += ibs, offset += ibs) {
+                     ++k, ++my_lba, bp += ibs, offset += ibs) {
                     if (offset != csp->in_iter.filepos) {
                         if (verbose > 2)
                             pr2serr("moving if filepos: new_pos=%" PRId64
@@ -301,18 +303,18 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
                         zero_coe_limit_count(op);
                         csp->in_iter.filepos += ibs;
                         if (verbose > 2)
-                            pr2serr("reading 1 block, skip=%" PRId64 " : "
-                                    "okay\n", my_skip);
+                            pr2serr("reading 1 block, lba=%" PRId64 " : "
+                                    "okay\n", my_lba);
                     } else if (-SG_LIB_CAT_MEDIUM_HARD == res) {
-                        if ((res2 = coe_process_eio(op, my_skip)))
+                        if ((res2 = coe_process_eio(op, my_lba)))
                             return res2;
                     } else {
-                        pr2serr("reading 1 block, skip=%" PRId64 " failed\n",
-                                my_skip);
+                        pr2serr("reading 1 block, lba=%" PRId64 " failed\n",
+                                my_lba);
                         csp->leave_reason = SG_LIB_CAT_OTHER;
                         csp->icbpt = k;
-                        csp->ocbpt = (k * ibs) / op->obs;
-                        if (((k * ibs) % op->obs) > 0)
+                        csp->ocbpt = (k * ibs) / obs;
+                        if (((k * ibs) % obs) > 0)
                             ++csp->ocbpt;
                         return 0;
                     }
@@ -322,8 +324,8 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
                 return 0;
             }
         } else {
-            pr2serr("read(win32_block), skip=%" PRId64 " error occurred\n",
-                    op->skip);
+            pr2serr("read(win32_block), lba=%" PRId64 " error occurred\n",
+                    lba);
             return (-SG_LIB_CAT_MEDIUM_HARD == res) ? -res : -1;
         }
     } else {
@@ -332,7 +334,7 @@ win32_cp_read_block(struct opts_t * op, struct cp_state_t * csp,
             csp->icbpt = res / ibs;
             csp->leave_after_write = true;
             csp->leave_reason = 0; /* assume at end rather than error */
-            csp->ocbpt = res / op->obs;
+            csp->ocbpt = res / obs;
             if (verbose > 1)
                 pr2serr("short read, requested %d blocks, got %d blocks\n",
                         numbytes / ibs, csp->icbpt);
@@ -389,6 +391,7 @@ int
 win32_open_of(struct opts_t * op, int flags, int verbose)
 {
     int blen;
+    int obs = op->obs_pi;
     DWORD count, share_mode, err;
     DISK_GEOMETRY g;
     char b[80];
@@ -416,9 +419,9 @@ win32_open_of(struct opts_t * op, int flags, int verbose)
                 win32_errmsg(err, b, blen));
         return 1;
     }
-    if ((int)g.BytesPerSector != op->obs) {
+    if ((int)g.BytesPerSector != obs) {
         pr2serr("Specified out block size (%d) doesn't match device geometry "
-                "block size: %d\n", op->obs,
+                "block size: %d\n", obs,
                 (int)g.BytesPerSector);
         return 1;
     }
