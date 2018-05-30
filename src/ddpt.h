@@ -461,6 +461,8 @@ struct flags_t {
     bool verify;        /* oflag with pt, turns WRITE into WRITE AND VERIFY */
     bool wsame16;       /* given trim or unmap then wsame16 is set. Trim/unmap
                          * done on pt using SCSI WRITE SAME(16) command */
+    bool wstream;       /* oflag with pt, send WRITE STREAM(16) with list_id
+		         * as Stream ID (valid range: 0x1 to 0xffff) */
     bool xcopy;         /* xcopy(LID1) requested */
     bool zero;          /* iflag=00 makes input all 0x0 bytes */
 
@@ -537,7 +539,7 @@ struct opts_t {
     int timeout_xcopy;          /* xcopy(LID1) and ODX */
     int rtf_fd;                 /* ODX: rtf's file descriptor (init: -1) */
     uint32_t inactivity_to;     /* ODX: timeout in seconds */
-    uint32_t list_id;           /* xcopy(LID1) and odx related */
+    uint32_t list_id;           /* xcopy(LID1), odx + wstream related */
     uint32_t rod_type;          /* ODX: ROD type */
     int64_t offset_in_rod;      /* ODX: units are obs bytes */
     /* working variables and statistics */

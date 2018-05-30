@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.97 20180525 [svn: r353]";
+static const char * ddpt_version_str = "0.96 20180530 [svn: r354]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -2232,7 +2232,7 @@ count_calculate(struct opts_t * op)
             ibytes = (in_num_blks > 0) ? (ibs * in_num_blks) : 0;
             obytes = obs * out_num_blks;
             if (0 == ibytes) {
-                reasonp = "in zero length, take out sz";
+                reasonp = "in-side zero length, take out sz";
                 op->dd_count = obytes / ibs;
                 op->odip->limits_xfer = true;
             } else if ((ibytes > obytes) && (! (FT_REG & od_type))) {
@@ -2240,7 +2240,8 @@ count_calculate(struct opts_t * op)
                 op->dd_count = obytes / ibs;
                 op->odip->limits_xfer = true;
             } else {
-                reasonp = "otherwise take in sz";
+                reasonp = (ibytes > obytes) ? "take in; in > out(reg) but "
+                                "reg can grow" : "take in; in <= out";
                 op->dd_count = in_num_blks;
                 op->idip->limits_xfer = true;
                 if ((FT_REG & od_type) && (ibytes < obytes)) {
@@ -2340,24 +2341,25 @@ last_seg_helper(struct cp_state_t * csp, uint8_t * wPos, int ibs, int obs,
                 struct opts_t * op)
 {
     int res, rem;
+    const struct dev_info_t * odip = op->odip;
 
     csp->last_segment = true;
     csp->icbpt = op->dd_count;
     res = op->dd_count; /* assume remaining count fits in 31 bits */
     csp->ocbpt = x_mult_div(res, ibs, obs); /* (res * ibs) / obs */
-    if (op->odip->limits_xfer) {
+    if (odip->limits_xfer && (odip->reg_sz >= 0)) {
         rem = 0;
-        if (op->odip->reg_sz < csp->out_iter.filepos)
+        if (odip->reg_sz < csp->out_iter.filepos)
             pr2serr("%s: reg_sz=%" PRId64 " less than filepos=%"
-                    PRId64 "\n", __func__, op->odip->reg_sz,
+                    PRId64 "\n", __func__, odip->reg_sz,
                     csp->out_iter.filepos);
-        else if ((op->odip->reg_sz - csp->out_iter.filepos) >
+        else if ((odip->reg_sz - csp->out_iter.filepos) >
                  (ibs * op->bpt_i))
             pr2serr("%s: reg_sz=%" PRId64 " and filepos=%" PRId64
-                    "too far apart\n", __func__, op->odip->reg_sz,
+                    "too far apart\n", __func__, odip->reg_sz,
                     csp->out_iter.filepos);
         else
-            rem = (int)(op->odip->reg_sz - csp->out_iter.filepos);
+            rem = (int)(odip->reg_sz - csp->out_iter.filepos);
         csp->last_seg_wbytes = rem;
         csp->ocbpt = (rem / obs);
         if (rem % obs)
@@ -3416,6 +3418,19 @@ main(int argc, char * argv[])
         }
         if (*sgepp != hold_sgep)
             sgl_sum_scan(sglip, "[out] append 'biggest' to sgl", vb > 1);
+    }
+
+    /* Check dd_count doesn't overflow out block/sg device */
+    if (op->ibs_pi != op->obs_pi) {
+        nn = op->ibs_pi * op->dd_count;
+        if (nn % op->obs_pi) {
+            int64_t orig_dd_count = op->dd_count;
+
+            /* Definitely needed for block/sg devs but what about regs? */
+            op->dd_count = ((nn / op->obs_pi) * op->obs_pi) / op->ibs_pi;
+            pr2serr("Reducing dd_count from %" PRId64 " to %" PRId64 " to "
+                    "fit last out block\n", orig_dd_count, op->dd_count);
+        }
     }
 
     cdb_size_prealloc(op);

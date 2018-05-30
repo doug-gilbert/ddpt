@@ -249,10 +249,11 @@ inactivity timeout value in the same descriptor (unless the force flag is
 given).
 .TP
 \fBlist_id\fR=\fILID\fR
-\fILID\fR is the xcopy LIST IDENTIFIER field. It is used to associate an
-originating xcopy command with follow\-up commands such as RECEIVE ROD TOKEN
-INFORMATION. If given, the \fILID\fR should not clash with any other xcopy
-\fILID\fR currently in use on this I_T nexus.
+\fILID\fR is the xcopy LIST IDENTIFIER field or the STR_ID field for the
+WRITE STREAM command. Fo xcopy it is used to associate an originating xcopy
+command with follow\-up commands such as RECEIVE ROD TOKEN INFORMATION. If
+given, the \fILID\fR should not clash with any other xcopy \fILID\fR
+currently in use on this I_T nexus.
 .br
 xcopy: \fILID\fR is a 1 byte (8 bit) value whose default value is 1 or,
 if id_usage=disable, 0 . \fILID\fR must not exceed 255.
@@ -261,6 +262,11 @@ odx: \fILID\fR is a 4 byte (32 bit) value whose default value is 257 (i.e.
 0x101) and, if a second default is needed, 258 (0x102) is used. If a
 clash is detected on the default list identifier value then the next higher
 value is tried (stopping after 10 attempts).
+.br
+oflag=wstream: \fILID\fR is a 2 byte (16 bit) value whose default value is
+0. It is the Stream Identifier (STR_ID field) for the WRITE STREAM(16)
+command. Valid Stream identifiers are 0x1 to 0xffff (65535) inclusive, so
+the default value of 0 is invalid.
 .TP
 \fBobs\fR=\fIOBS\fR
 where \fIOBS\fR is the \fIOFILE\fR block size in bytes. The default value
@@ -865,6 +871,15 @@ this causes SCSI WRITE AND VERIFY commands to be sent to \fIOFILE\fR (instead
 of SCSI WRITE (or WRITE ATOMIC) commands). Note that the fua flag is ignored
 when this flag is given. The BYTCHK field in the SCSI WRITE AND VERIFY
 commands is set to zero unless the bytchk flag is also given.
+.TP
+wstream [o] [pt]
+this causes SCSI WRITE STREAM(16) command to be sent to \fIOFILE\fR (instead
+of SCSI WRITE. The Stream Identify (valid range: 1 to 0xffff (65535)) should
+be given via the \fIlist_id=LID\fR operand (note that it defaults to 0 which
+is invalid). The stream can be created (closed (for write) or its status
+checked) with the sg_stream_ctl utility. It is the user's responsibility
+to open a stream before calling "ddpt ... oflag=wstream list_id=<strm_id>"
+and close it after, if required.
 .TP
 xcopy [io] [pt]
 invoke SCSI XCOPY(LID1) logic and send the XCOPY command to the either

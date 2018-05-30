@@ -192,6 +192,7 @@ secondary_help:
            );
     pr2serr("    list_id     xcopy: list_id (def: 1 or 0) [1 byte]\n"
             "                odx: list_id (def: 257 or 258) [4 bytes]\n"
+            "                oflag=wstream: stream identifer [2 bytes]\n"
             "    of2         additional output file (def: /dev/null), "
             "OFILE2 should be\n"
             "                regular file or pipe\n"
@@ -337,7 +338,8 @@ argcargv(char * cmd_line, char ** argv, int max_args)
  * NULL is written to *sgl_pp) . */
 static int
 skip_seek(struct opts_t * op, const char * key, const char * buf,
-          struct scat_gath_elem ** sgl_pp, int * num_elems_p)
+          struct scat_gath_elem ** sgl_pp, int * num_elems_p,
+          bool ignore_verbose)
 {
     bool def_hex = false;
     int len, err;
@@ -345,6 +347,8 @@ skip_seek(struct opts_t * op, const char * key, const char * buf,
     int64_t ll;
     const char * cp;
 
+    if (ignore_verbose)
+        vb = 0;
     len = (int)strlen(buf);
     if ((('-' == buf[0]) && (1 == len)) || ((len > 1) && ('@' == buf[0])) ||
         ((len > 2) && ('H' == toupper(buf[0])) && ('@' == buf[1]))) {
@@ -391,24 +395,30 @@ skip_seek(struct opts_t * op, const char * key, const char * buf,
 }
 
 static int
-do_skip(struct opts_t * op, const char * key, const char * buf)
+do_skip(struct opts_t * op, const char * key, const char * buf,
+        bool ignore_verbose)
 {
     int ret;
 
-    ret = skip_seek(op, key, buf, &op->i_sgli.sglp, &op->i_sgli.elems);
+    ret = skip_seek(op, key, buf, &op->i_sgli.sglp, &op->i_sgli.elems,
+                    ignore_verbose);
     if (0 == ret)
-        sgl_sum_scan(&op->i_sgli, key, (op->verbose > 1));
+        sgl_sum_scan(&op->i_sgli, key,
+                     (! ignore_verbose) && (op->verbose > 1));
     return ret;
 }
 
 static int
-do_seek(struct opts_t * op, const char * key, const char * buf)
+do_seek(struct opts_t * op, const char * key, const char * buf,
+        bool ignore_verbose)
 {
     int ret;
 
-    ret = skip_seek(op, key, buf, &op->o_sgli.sglp, &op->o_sgli.elems);
+    ret = skip_seek(op, key, buf, &op->o_sgli.sglp, &op->o_sgli.elems,
+                    ignore_verbose);
     if (0 == ret)
-        sgl_sum_scan(&op->o_sgli, key, (op->verbose > 1));
+        sgl_sum_scan(&op->o_sgli, key,
+                     (! ignore_verbose) && (op->verbose > 1));
     return ret;
 }
 
@@ -584,6 +594,8 @@ flags_process(const char * arg, struct flags_t * fp)
             fp->trunc = true;
         else if (0 == strcmp(cp, "verify"))
             fp->verify = true;
+        else if (0 == strcmp(cp, "wstream"))
+            fp->wstream = true;
         else if (0 == strcmp(cp, "xcopy"))
             fp->xcopy = true;
         else if (0 == strcmp(cp, "00"))
@@ -627,7 +639,7 @@ cl_sanity_defaults(struct opts_t * op)
 {
     int def_bs = DEF_BLOCK_SIZE;
     int vb = op->verbose;
-    int ret;
+    int ret, n;
     const char * cp;
     char * csp;
     char * cdp;
@@ -758,6 +770,14 @@ cl_sanity_defaults(struct opts_t * op)
         ofp->sparse += 2;
     if (ofp->strunc && (0 == ofp->sparse))
         ++ofp->sparse;
+
+    n = (int)ofp->wsame16 + (int)ofp->wstream + (int)ofp->verify +
+        (int)ofp->atomic;
+    if (n > 1) {
+        pr2serr("Cannot have more than one of "
+                "oflag=trim,unmap,wstream,verify,atomic\n");
+        return SG_LIB_SYNTAX_ERROR;
+    }
 
     if (ifp->xcopy || ofp->xcopy)
         op->has_xcopy = true;
@@ -893,8 +913,8 @@ cl_sanity_defaults(struct opts_t * op)
                     "on this platform\n");
 #endif
     }
-    if (ofp->atomic)
-        ofp->cdbsz = 16;        /* only WRITE ATOMIC(16) supported for now */
+    if (ofp->atomic || ofp->wstream)
+        ofp->cdbsz = 16;        /* only WRITE ATOMIC+STREAM(16) supported */
     if (ofp->ff) {
         pr2serr("oflag=ff disallowed, can only be used for input\n");
         return SG_LIB_SYNTAX_ERROR;
@@ -911,12 +931,12 @@ cl_sanity_defaults(struct opts_t * op)
         return SG_LIB_SYNTAX_ERROR;
     }
     if (0 == op->i_sgli.elems) {
-        ret = do_skip(op, "def_skip", "0");
+        ret = do_skip(op, "def_skip", "0", true);
         if (ret)
             return ret;
     }
     if (0 == op->o_sgli.elems) {
-        ret = do_seek(op, "def_seek", "0");
+        ret = do_seek(op, "def_seek", "0", true);
         if (ret)
             return ret;
     }
@@ -1272,7 +1292,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
                 pr2serr("Only one skip= (or iseek=) argument please\n");
                 return SG_LIB_CONTRADICT;
             }
-            res = do_skip(op, key, buf);
+            res = do_skip(op, key, buf, false);
             if (res)
                 return res;
             skip_seen = true;
@@ -1336,7 +1356,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
                 pr2serr("Only one seek= (or oseek=) argument please\n");
                 return SG_LIB_CONTRADICT;
             }
-            res = do_seek(op, key, buf);
+            res = do_seek(op, key, buf, false);
             if (res)
                 return res;
             seek_seen = true;
@@ -1417,7 +1437,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
                 pr2serr("Only one seek= (or oseek=) argument please\n");
                 return SG_LIB_CONTRADICT;
             }
-            res = do_seek(op, key, buf);
+            res = do_seek(op, key, buf, false);
             if (res)
                 return res;
             seek_seen = true;
@@ -1426,7 +1446,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
                 pr2serr("Only one skip= (or iseek=) argument please\n");
                 return SG_LIB_CONTRADICT;
             }
-            res = do_skip(op, key, buf);
+            res = do_skip(op, key, buf, false);
             if (res)
                 return res;
             skip_seen = true;
