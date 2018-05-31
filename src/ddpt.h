@@ -200,9 +200,9 @@ extern "C" {
 #define DELAY_WRITE 1   /* prior to each write, may be muliple per segment */
 
 /* cp_state_t::leave_reason indication */
-#define REASON_UNKNOWN -1
-#define REASON_EOF_ON_READ 0
-#define REASON_TAPE_SHORT_READ 1024
+#define DDPT_REASON_UNKNOWN -1
+#define DDPT_REASON_EOF_ON_READ 0
+#define DDPT_REASON_TAPE_SHORT_READ 1024
 
 
 #define DDPT_CAT_PARAM_LST_LEN_ERR 100

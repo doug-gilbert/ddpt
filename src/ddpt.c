@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.96 20180530 [svn: r354]";
+static const char * ddpt_version_str = "0.96 20180530 [svn: r355]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -873,7 +873,7 @@ coe_cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
         csp->bytes_of = 0;
         /* yyyy csp->ocbpt = 0; */
         csp->leave_after_write = true;
-        csp->leave_reason = REASON_EOF_ON_READ;
+        csp->leave_reason = DDPT_REASON_EOF_ON_READ;
         return 0;       /* EOF */
     } else if (err) {
         if ((EIO == err) || (EREMOTEIO == err)) {
@@ -914,7 +914,7 @@ coe_cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
                (EINTR == errno))
             ++csp->stats.interrupted_retries;
         if (0 == res) {
-            csp->leave_reason = REASON_EOF_ON_READ;
+            csp->leave_reason = DDPT_REASON_EOF_ON_READ;
             goto short_read;
         } else if (res < 0) {
             err = errno;
@@ -931,7 +931,7 @@ coe_cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
             if (vb)
                 pr2serr("short read at skip=%" PRId64 " , wanted=%d, "
                         "got=%d bytes\n", my_skip, ibs, res);
-            csp->leave_reason = REASON_EOF_ON_READ;  /* assume EOF */
+            csp->leave_reason = DDPT_REASON_EOF_ON_READ;  /* assume EOF */
             goto short_read;
         } else { /* if (res == ibs) */
             zero_coe_limit_count(op);
@@ -958,7 +958,7 @@ short_read:
     }
     // yyyy csp->ocbpt = total_read / obs;
     csp->leave_after_write = true;
-    if (REASON_EOF_ON_READ == csp->leave_reason) {
+    if (DDPT_REASON_EOF_ON_READ == csp->leave_reason) {
         csp->partial_write_bytes = total_read % obs;
     } else {
         /* if short read (not EOF) implies partial writes, bump obpt */
@@ -1040,7 +1040,7 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
             return sg_convert_errno(err);
     } else if (res < numbytes) {        /* short read */
         csp->leave_after_write = true;
-        csp->leave_reason = REASON_EOF_ON_READ;  /* assume EOF */
+        csp->leave_reason = DDPT_REASON_EOF_ON_READ;  /* assume EOF */
         if ((res % ibs) > 0)
             ++csp->stats.in_partial;
         if (vb > 1) {
@@ -1077,7 +1077,7 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
             }
         }
         /* allow for partial write */
-        if (REASON_EOF_ON_READ == csp->leave_reason)
+        if (DDPT_REASON_EOF_ON_READ == csp->leave_reason)
             csp->partial_write_bytes = (res + res2) % obs;
         else if ((res % obs) > 0) { /* else if extra bytes bump obpt */
             ;  /* yyyy ++oocbpt;     // do this at higher level */
@@ -1191,7 +1191,7 @@ cp_read_tape(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
             }
             // yyyy csp->ocbpt = res / obs;
             csp->leave_after_write = true;
-            csp->leave_reason = REASON_TAPE_SHORT_READ;
+            csp->leave_reason = DDPT_REASON_TAPE_SHORT_READ;
             csp->partial_write_bytes = res % obs;
             if ((vb == 2) && (op->consec_same_len_reads == 1))
                 pr2serr("short read: requested %d bytes, got %d\n",
@@ -1256,7 +1256,7 @@ cp_read_fifo(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
             if ((k % ibs) > 0)
                 ++csp->stats.in_partial;
             csp->leave_after_write = true;
-            csp->leave_reason = REASON_EOF_ON_READ;
+            csp->leave_reason = DDPT_REASON_EOF_ON_READ;
             csp->partial_write_bytes = k % obs;
             break;
         }
@@ -1764,7 +1764,7 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
             --csp->stats.out_full;
             ++csp->stats.out_partial;
         }
-        if (REASON_TAPE_SHORT_READ != csp->leave_reason) {
+        if (DDPT_REASON_TAPE_SHORT_READ != csp->leave_reason) {
             res = set_filepos_if_needed(op->odip, offset,
                                         csp->out_iter.filepos, __func__,
                                         vb >= vb_thresh_filepos_change, vb);
@@ -2535,7 +2535,7 @@ do_rw_copy(struct opts_t * op)
             if (ret) {
                 if (DDPT_CAT_SEE_LEAVE_REASON == ret) {
                     n = csp->rem_seg_bytes;
-                    if (REASON_EOF_ON_READ == csp->leave_reason) {
+                    if (DDPT_REASON_EOF_ON_READ == csp->leave_reason) {
                         if (op->iflagp->zero || op->iflagp->ff) {
                             rem_blks = num - csp->blks_xfer;
                             csp->leave_after_write = false;
@@ -2565,7 +2565,8 @@ do_rw_copy(struct opts_t * op)
                             csp->partial_write_bytes = n % obs;
                             /* drop through to write */
                         }
-                    } else if (REASON_TAPE_SHORT_READ == csp->leave_reason) {
+                    } else if (DDPT_REASON_TAPE_SHORT_READ ==
+                               csp->leave_reason) {
                         ; // ????
                     } else if ((csp->leave_reason < 0) ||
                          (csp->leave_reason > 120)) {
@@ -2709,7 +2710,7 @@ do_rw_copy(struct opts_t * op)
             if (ret) {
                 if (DDPT_CAT_SEE_LEAVE_REASON == ret) {
                     ret = csp->leave_reason;
-                    if (REASON_EOF_ON_READ == ret) {
+                    if (DDPT_REASON_EOF_ON_READ == ret) {
                         pr2serr("%s: don't expect REASON_EOF_ON_READ on "
                                 "write\n", __func__);
                         ret = SG_LIB_FILE_ERROR;
@@ -2739,7 +2740,7 @@ bypass_write:
         csp->prev_in_lba = csp->cur_in_lba + csp->cur_in_num;
         csp->prev_out_lba = csp->cur_out_lba + csp->cur_out_num;
         if (csp->leave_after_write) {
-            if (REASON_TAPE_SHORT_READ == csp->leave_reason) {
+            if (DDPT_REASON_TAPE_SHORT_READ == csp->leave_reason) {
                 /* allow multiple partial writes for tape */
                 csp->partial_write_bytes = 0;
                 csp->leave_after_write = false;
