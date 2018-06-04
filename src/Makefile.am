@@ -1,4 +1,4 @@
-bin_PROGRAMS = ddpt ddptctl
+bin_PROGRAMS = ddpt ddptctl ddpt_sgl
 
 # for C++/clang testing
 ## CC = gcc-8
@@ -31,6 +31,10 @@ ddptctl_SOURCES =	ddptctl.c \
 			ddpt_pt.c \
 			ddpt_xcopy.c
 
+ddpt_sgl_SOURCES =	ddpt_sgl.cpp \
+			ddpt.h	\
+			ddpt_com.c \
+			ddpt_pt.c
 
 sglib_SOURCES =         ../lib/sg_lib.c \
                         ../include/sg_lib.h     \
@@ -51,6 +55,9 @@ ddpt_SOURCES +=         ddpt_win32.c \
 
 ddptctl_SOURCES +=	ddpt_win32.c \
 			ddpt_wscan.c
+
+ddpt_sgl_SOURCES +=	ddpt_win32.c \
+			ddpt_wscan.c
 endif
 
 if OS_WIN32_CYGWIN
@@ -58,6 +65,9 @@ ddpt_SOURCES +=         ddpt_win32.c \
 			ddpt_wscan.c
 
 ddptctl_SOURCES +=	ddpt_win32.c \
+			ddpt_wscan.c
+
+ddpt_sgl_SOURCES +=	ddpt_win32.c \
 			ddpt_wscan.c
 endif
 
@@ -93,6 +103,25 @@ ddptctl_DEPENDENCIES = @os_deps@
 endif
 
 EXTRA_ddptctl_SOURCES =	../lib/sg_pt_linux.c	\
+			../include/sg_linux_inc.h	\
+			../lib/sg_pt_freebsd.c	\
+			../lib/sg_pt_osf1.c	\
+			../lib/sg_pt_solaris.c	\
+			../lib/sg_pt_win32.c	\
+			../include/sg_pt_win32.h
+
+
+if HAVE_SGUTILS
+INCLUDES = -I/scsi
+ddpt_sgl_LDADD = @SGUTILS_LIBS@
+else
+INCLUDES = -I$(top_srcdir)/include
+ddpt_sgl_SOURCES += $(sglib_SOURCES)
+ddpt_sgl_LDADD = @os_deps@ @SGUTILS_LIBS@
+ddpt_sgl_DEPENDENCIES = @os_deps@
+endif
+
+EXTRA_ddpt_sgl_SOURCES = ../lib/sg_pt_linux.c	\
 			../include/sg_linux_inc.h	\
 			../lib/sg_pt_freebsd.c	\
 			../lib/sg_pt_osf1.c	\

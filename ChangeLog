@@ -2,7 +2,7 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.96 [20180530] [svn: r355]
+Changelog for ddpt-0.96 [20180603] [svn: r356]
   - allow scatter gather lists for skip= and seek=
     where they can reasonably be implemented
   - add status=progress option, report every 2 minutes
@@ -17,6 +17,7 @@ Changelog for ddpt-0.96 [20180530] [svn: r355]
   - add prefer_rcs flag and conversion for xcopy(odx)
   - add support for locally assigned UUIDs in VPD page
     0x83 (spc5r08)
+  - add testing directory and scripts
   - improve device designator descriptor handling
   - resubmit IOs if EAGAIN, report count if > 0
   - fix SCSI recovered errors stopping copy
@@ -24,7 +25,7 @@ Changelog for ddpt-0.96 [20180530] [svn: r355]
   - fix reading fifo (stdin) and writing to regular file
   - rework pr2serr() handling
   - improve xcopy(odx) error reporting
-  - point svn:externals to rev 775 of sg3_utils
+  - point svn:externals to rev 777 of sg3_utils
   - convert many two valued 'int's to bool
   - upgrade automake to version 1.15 (U16.04)
     - cleanup configure.ac + Makefile.am
