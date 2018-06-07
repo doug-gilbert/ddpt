@@ -409,6 +409,12 @@ Unix read() and write() calls, so there can be a lot of output.
 If \fIVERB\fR is "\-1" then reporting that would have been sent to stderr
 is redirected to /dev/null essentially throwing it away. It has the same
 action as the \fI\-\-quiet\fR option.
+.br
+In some cases the position of \fIverbose=VERB\fR (or \fI\-\-verbose\fR)
+on the command line is significant. For example to debug (or at least
+list out) a scatter gather list given to \fIskip=SKIP\fR or
+\fIseek=SEEK\fR the \fIverbose=VERB\fR operand (or \fI\-\-verbose\fR)
+should appear before skip and/or seek.
 .SH OPTIONS
 Options are listed in alphabetical order, sorted by their long name.
 .TP
@@ -1573,7 +1579,7 @@ the XCOPY command is sent to \fIOFILE\fR.
 The ODX write from tokens variant is very complex to implement if the amount
 of data held in each ROD is not known. The value should be found in
 the "number of bytes represented" field in the ROD Token but that is not well
-supported yet by vendors. So for such case that number can be appended as a
+supported yet by vendors. So for such cases, that number can be appended as a
 big endian 8 byte integer following each ROD Token in the \fIRTF\fR file. The
 \fIconv=rtf_len\fR will cause that length to be appended. Specifying that
 option on each read to tokens and write from tokens invocation can be a

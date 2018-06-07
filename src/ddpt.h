@@ -221,7 +221,7 @@ extern "C" {
 #define XCOPY_TO_DST "XCOPY_TO_DST"
 #define DEF_XCOPY_SRC0_DST1 1
 #define ODX_RTF_LEN "ODX_RTF_LEN"     /* append 8 byte ROD size to token */
-#define DDPT_DEF_BS "DDPT_DEF_BS" /* default default block size: 512 bytes */
+#define DDPT_DEF_BS "DDPT_DEF_BS"     /* default block size: 512 bytes */
 
 #define DDPT_BIGGEST_CONTINUAL (1024LL * 1024 * 1024 * 64)
 
@@ -316,7 +316,7 @@ struct dev_info_t {
     bool limits_xfer;   /* size of this object is xfer limit */
     int d_type;         /* one of FT_* values */
     int d_type_hold;
-    int fd;		/* Unix file descriptor corresponding to fn[] */
+    int fd;             /* Unix file descriptor corresponding to fn[] */
 #ifdef SG_LIB_WIN32
     HANDLE fh;
 #endif
@@ -462,7 +462,7 @@ struct flags_t {
     bool wsame16;       /* given trim or unmap then wsame16 is set. Trim/unmap
                          * done on pt using SCSI WRITE SAME(16) command */
     bool wstream;       /* oflag with pt, send WRITE STREAM(16) with list_id
-		         * as Stream ID (valid range: 0x1 to 0xffff) */
+                         * as Stream ID (valid range: 0x1 to 0xffff) */
     bool xcopy;         /* xcopy(LID1) requested */
     bool zero;          /* iflag=00 makes input all 0x0 bytes */
 
@@ -673,6 +673,10 @@ struct scat_gath_elem * file2sgl(const char * file_name, bool def_hex,
  * overlapping ==false . */
 void sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str,
                   bool b_verbose);
+
+/* Prints to stderr. */
+void sgl_print(struct sgl_info_t * sgli_p, const char * id_str);
+
 /* Return minimum(num_blks, <blocks_from_sgl-post-blk_off>). First it
  * starts skipping blk_off blocks and if elems is exceeded then it
  * returns 0. Then it sums up the number of blocks from each subsequent
