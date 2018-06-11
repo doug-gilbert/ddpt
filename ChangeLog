@@ -2,7 +2,7 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.96 [20180606] [svn: r357]
+Changelog for ddpt-0.96 [20180611] [svn: r358]
   - allow scatter gather lists for skip= and seek=
     where they can reasonably be implemented
   - add status=progress option, report every 2 minutes

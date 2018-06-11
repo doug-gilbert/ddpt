@@ -453,10 +453,10 @@ dd_filetype(const char * filename, int vb)
 #endif
 
     if (vb > 2) {
-	const char * cp = filename ? filename : "<null>";
+        const char * cp = filename ? filename : "<null>";
 
-	if (0 == memcmp(cp, ".", 2))
-	    cp = "<none>";
+        if (0 == memcmp(cp, ".", 2))
+            cp = "<none>";
         dd_filetype_str(ret, b, sizeof(b), filename);
         pr2serr("%s: guess %s filetype is: %s\n", __func__, cp, b);
     }
@@ -1738,7 +1738,7 @@ sgl_iter_sub(struct sgl_iter_t * iter_p, uint64_t blk_count)
  * number_of_block (32 bit) pairs. ** Space on command line needs to
  * be escaped, otherwise it is an operand/option separator. */
 struct scat_gath_elem *
-cli2sgl(const char * inp, int * arr_elemsp, bool b_vb)
+cl2sgl(const char * inp, int * arr_elemsp, bool b_vb)
 {
     bool split, full_pair;
     int in_len, k, j, n;
@@ -1847,8 +1847,8 @@ check_for_next:
         /* other than first pair, expect even number of items */
         if ((k > 0) && (! full_pair)) {
             if (b_vb)
-                pr2serr("%s:  expected even number of items: LBA,NUM "
-                        "pairs\n", __func__);
+                pr2serr("%s:  expected even number of items: "
+                        "LBA0,NUM0,LBA1,NUM1...\n", __func__);
             goto err_out;
         }
         *arr_elemsp = k + 1;
@@ -2010,8 +2010,8 @@ file2sgl_helper(FILE * fp, const char * fnp, bool def_hex, bool real_scan,
     if ((off > 1) && (0x1 & off)) {
         *errp = SG_LIB_SYNTAX_ERROR;
         if (b_vb)
-            pr2serr("%s: %s: expect LBA,NUM pairs but decoded odd number\n",
-                    __func__, fnp);
+            pr2serr("%s: %s: expect even number of items: "
+                    "LBA0,NUM0,LBA1,NUM1...\n", __func__, fnp);
         goto err_out;
     }
     clearerr(fp);    /* even EOF on first pass needs this before rescan */
@@ -2371,35 +2371,38 @@ cp_via_sgl_iter(struct dev_info_t * dip, struct cp_state_t * csp,
 }
 
 void
-sgl_print(struct sgl_info_t * sgli_p, const char * id_str)
+sgl_print(struct sgl_info_t * sgli_p, bool skip_meta, const char * id_str,
+          bool to_stdout)
 {
     int k;
     const char * caller = id_str ? id_str : "unknown";
     const struct scat_gath_elem * sgep = sgli_p->sglp;
+    FILE * fp = to_stdout ? stdout : stderr;
 
-    pr2serr("%s: from: %s: elems=%d, sgl %spresent, monotonic=%s\n",
-            __func__, caller, sgli_p->elems, (sgli_p->sglp ? "" : "not "),
-            (sgli_p->monotonic ? "true" : "false"));
-    pr2serr("  sum=%" PRId64 ", lowest=0x%" PRIx64 ", high_lba_p1=",
-            sgli_p->sum, sgli_p->lowest_lba);
-    pr2serr("0x%" PRIx64 "\n", sgli_p->high_lba_p1);
-    pr2serr("  overlapping=%s, sum_hard=%s, fragmented=%s\n",
-            (sgli_p->overlapping ? "true" : "false"),
-            (sgli_p->sum_hard ? "true" : "false"),
-            (sgli_p->fragmented ? "true" : "false"));
-    pr2serr("  >> %s scatter gather list (%d elements):\n", caller,
+    if (! skip_meta) {
+        fprintf(fp, "%s: from: %s: elems=%d, sgl %spresent, monotonic=%s\n",
+                __func__, caller, sgli_p->elems, (sgli_p->sglp ? "" : "not "),
+                (sgli_p->monotonic ? "true" : "false"));
+        fprintf(fp, "  sum=%" PRId64 ", lowest=0x%" PRIx64 ", high_lba_p1=",
+                sgli_p->sum, sgli_p->lowest_lba);
+        fprintf(fp, "0x%" PRIx64 "\n", sgli_p->high_lba_p1);
+        fprintf(fp, "  overlapping=%s, sum_hard=%s, fragmented=%s\n",
+                (sgli_p->overlapping ? "true" : "false"),
+                (sgli_p->sum_hard ? "true" : "false"),
+                (sgli_p->fragmented ? "true" : "false"));
+    }
+    fprintf(fp, "  >> %s scatter gather list (%d elements):\n", caller,
             sgli_p->elems);
     if (sgli_p->sglp) {
         for (k = 0, sgep = sgli_p->sglp; k < sgli_p->elems; ++k, ++sgep) {
-            pr2serr("    lba: 0x%" PRIx64 ", number: 0x%" PRIx32,
+            fprintf(fp, "    lba: 0x%" PRIx64 ", number: 0x%" PRIx32,
                     sgep->lba, sgep->num);
             if (sgep->lba > 0)
-                pr2serr(" [next lba: 0x%" PRIx64 "]",
+                fprintf(fp, " [next lba: 0x%" PRIx64 "]",
                         sgep->lba + sgep->num);
-            pr2serr("\n");
+            fprintf(fp, "\n");
         }
     }
-
 }
 
 /* Assumes sgli_p->elems and sgli_p->slp are setup and the other fields
@@ -2510,7 +2513,7 @@ sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str, bool b_vb)
     sgli_p->sum = sum;
     sgli_p->sum_hard = (elems > 0) ? ! degen : false;
     if (b_vb)
-        sgl_print(sgli_p, id_str);
+        sgl_print(sgli_p, false, id_str, false);
 }
 
 /* Returns number of elements in scatter gather list (array) whose pointer is
