@@ -65,7 +65,7 @@
 #endif
 
 
-static const char * ddpt_sgl_version_str = "0.96 20180611 [svn: r358]";
+static const char * ddpt_sgl_version_str = "0.96 20180614 [svn: r359]";
 
 #include "ddpt.h"
 #include "sg_lib.h"
@@ -78,6 +78,7 @@ using namespace std::chrono;
 # define ACT_DEF 0
 # define ACT_NONE 1
 # define ACT_APPEND_B2A 2
+# define ACT_TO_CHS 3
 # define ACT_ENUMERATE 99
 
 
@@ -102,10 +103,11 @@ struct cl_sgl_stats {
     struct sgl_stats b_sgl;
 };
 
+/* Assume 28 bit format as used by early ATA standards (EIDE+ATA-2) */
 struct chs_t {
-    uint16_t cyls;      /* EIDE+ATA-2 CHS: (28 bits overall): 16 bits */
-    uint16_t heads;     /* EIDE+ATA-2 CHS: (28 bits overall): 4 bits */
-    uint16_t sects;     /* EIDE+ATA-2 CHS: (28 bits overall): 8 bits */
+    uint16_t cyls;     /* 0 based; 16 bits, all bits used */
+    uint8_t heads;     /* 0 based; 4 bits used, to 4 bits zero */
+    uint8_t sects;     /* 1 based; all 8 bits used except 0 */
 };
 
 struct my_opts_t {
@@ -159,6 +161,8 @@ struct val_name_t act_array[] = {
     {ACT_NONE, "no_action"},
     {ACT_NONE, "none"},
     {ACT_APPEND_B2A, "append"},    /* just giving 'append' is sufficient */
+    {ACT_TO_CHS, "to-chs"},
+    {ACT_TO_CHS, "to_chs"},
     /* more to go here */
     {ACT_ENUMERATE, "xxx"},
     {ACT_ENUMERATE, "enum"},
@@ -225,6 +229,8 @@ action_enum(void)
     pr2serr("Actions available with --action=ACT are:\n"
             "   append-b2a    append b-sgl to end of a-sgl\n"
             "   none          take no action, placeholder\n"
+            "   to-chs        assume a-sgl is flat sgl, convert to CHS in "
+            "O_SGL\n"
             "   xxxx          more to follow ...\n"
            );
 }
@@ -247,6 +253,26 @@ pr_statistics(const sgl_stats & sst)
     printf("last degenerate: %s\n", sst.last_degen ? "yes" : "no");
     printf("  lowest,highest LBA: 0x%" PRIx64 ",0x%" PRIx64 "  block "
            "sum: %" PRId64 "\n", sst.lowest_lba, sst.highest_lba, sst.sum);
+}
+
+static void
+pr_sgl(const struct scat_gath_elem * first_elemp, int num_elems, bool in_hex)
+{
+    const struct scat_gath_elem * sgep = first_elemp;
+    char lba_str[20];
+    char num_str[20];
+
+    printf("Scatter gather list, number of elements: %d\n", num_elems);
+    printf("    Logical Block Address   Number of blocks\n");
+    for (int k = 0; k < num_elems; ++k, ++sgep) {
+        if (in_hex) {
+            snprintf(lba_str, sizeof(lba_str), "0x%" PRIx64, sgep->lba);
+            snprintf(num_str, sizeof(num_str), "0x%x", sgep->num);
+            printf("    %-14s          %-12s\n", lba_str, num_str);
+        } else
+            printf("    %-14" PRIu64 "          %-12u\n", sgep->lba,
+                   sgep->num);
+    }
 }
 
 /* definition for function object to do indirect comparson via index_arr */
@@ -482,13 +508,77 @@ fini:
     return ret;
 }
 
+/* hold limiting values of CHS or the mapping a a flat LBA */
+struct work_chs_t {
+    uint32_t cyl;
+    uint32_t head;
+    uint32_t sect;
+};
+
+static inline struct work_chs_t
+calc_chs(uint64_t flat_lba, const struct work_chs_t & max_w_chs)
+{
+    struct work_chs_t res_chs;
+
+    res_chs.cyl = (uint32_t)(flat_lba / (max_w_chs.sect * max_w_chs.head));
+    res_chs.head = (uint32_t)((flat_lba / max_w_chs.sect) % max_w_chs.head);
+    res_chs.sect = (uint32_t)(flat_lba % max_w_chs.sect);
+    return res_chs;
+}
+
+static int
+convert2chs(const sgl_vect & in_sgl, sgl_vect & out_sgl, int max_bpt,
+            struct my_opts_t * op)
+{
+    int k;
+    uint32_t num_blks, total_sectors, n;
+    uint64_t lba;
+    struct work_chs_t max_chs, a_chs;
+    struct scat_gath_elem a_sge;
+
+    max_chs.cyl = (uint32_t)op->chs.cyls + 1;
+    max_chs.head = (uint32_t)op->chs.heads + 1;
+    max_chs.sect = (uint32_t)op->chs.sects;
+    total_sectors = max_chs.cyl * max_chs.head * max_chs.sect;
+
+    for (k = 0; k < (int)in_sgl.size(); ++k) {
+        const struct scat_gath_elem & sge = in_sgl[k];
+
+        lba = sge.lba;
+        num_blks = sge.num;
+        if (0 == num_blks)
+            continue;
+        if ((lba + num_blks) > (uint64_t)total_sectors) {
+            pr2serr("%s: total chs sectors (%u) exceeded in in_sgl element "
+                    "%d\n", __func__, total_sectors, k + 1);
+            return SG_LIB_LBA_OUT_OF_RANGE;
+        }
+        for (n = 0; num_blks > 0; num_blks -= n, lba += n) {
+            a_chs = calc_chs(lba, max_chs);
+            a_sge.lba = (a_chs.sect + 1) | ((0xffff & a_chs.cyl) << 8) |
+                        (a_chs.head << 24);
+            if ((num_blks + a_chs.sect) <= max_chs.sect)
+                n = num_blks;
+            else
+                n = max_chs.sect - a_chs.sect;
+            if (n > max_bpt)
+                n = max_bpt;
+            if (0 == n)
+                break;
+            a_sge.num = n;
+            out_sgl.push_back(a_sge);
+        }
+    }
+    return 0;
+}
 
 int
 main(int argc, char * argv[])
 {
+    bool use_res_sgl = false;
     int k, n, c, res, err;
-    int a_num_elems = 0;
-    int b_num_elems = 0;
+    int a_num_elems = 0;        /* elements in a_sge_p */
+    int b_num_elems = 0;        /* elements in b_sge_p */
     int force = 0;
     int ret = 0;
     int64_t ll;
@@ -507,6 +597,7 @@ main(int argc, char * argv[])
     struct sgl_info_t sgli;
     sgl_vect a_sgl;     /* depending on degen_mask may have < a_num_elems */
     sgl_vect b_sgl;     /* depending on degen_mask may have < b_num_elems */
+    sgl_vect res_sgl;
 
     op = &opts;
     memset(op, 0, sizeof(opts));
@@ -545,20 +636,22 @@ main(int argc, char * argv[])
             break;
         case 'C':
             n = sg_get_num(optarg);
-            if ((n < 1) || (n > 0xffff)) {
-                pr2serr("--chs= expects <cyls> from 1 to 16383 inclusive\n");
+            if ((n < 1) || (n > 0x10000)) {
+                pr2serr("--chs= expects <cyls> from 1 to 65536 inclusive\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-            op->chs.cyls = n;
+            /* store in cyls 0-based (so maximum (65536) fits in 16 bits) */
+            op->chs.cyls = n - 1;
             cp = strchr(optarg, ',');
             if (NULL == cp)
                 goto missing_comma;
             n = sg_get_num(cp + 1);
-            if ((n < 1) || (n > 0xffff)) {
-                pr2serr("--chs= expects <heads> from 1 to 16383 inclusive\n");
+            if ((n < 1) || (n > 16)) {
+                pr2serr("--chs= expects <heads> from 1 to 16 inclusive\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-            op->chs.heads = n;
+            /* store in heads 0-based */
+            op->chs.heads = n - 1;
             cp = strchr(cp + 1, ',');
             if (NULL == cp) {
 missing_comma:
@@ -567,10 +660,12 @@ missing_comma:
                 return SG_LIB_SYNTAX_ERROR;
             }
             n = sg_get_num(cp + 1);
-            if ((n < 1) || (n > 0xffff)) {
-                pr2serr("--chs= expects <sects> from 1 to 16383 inclusive\n");
+            if ((n < 1) || (n > 255)) {
+                pr2serr("--chs= expects <sects> per track from 1 to 255 "
+                        "inclusive\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
+            /* sectors per track, leave 1-based */
             op->chs.sects = n;
             break;
         case 'd':
@@ -708,13 +803,33 @@ missing_comma:
         if (a_sgl_arg)
             sort_chk_overlap(a_sgl, "a_append_b");
         break;
+    case ACT_TO_CHS:
+        if (! (a_sge_p && op->out_fn)) {
+            pr2serr("--action=to-chs needs --a_sgl= and --out= options\n");
+            ret = SG_LIB_SYNTAX_ERROR;
+            goto fini;
+        }
+        ret = convert2chs(a_sgl, res_sgl, 255, op);
+        if (ret)
+            goto fini;
+        use_res_sgl = true;
+        if (NULL == op->out_fn)
+            pr2serr("Warning convert2chs but no --out=O_SGL given, so throw "
+                    "away\n");
+        if (op->verbose)
+            pr_sgl(res_sgl.data(), res_sgl.size(), op->do_hex > 0);
+        break;
     default:
         pr2serr("Unknown action (value=%d) selected\n", op->act_val);
         break;
     }
 
     if (op->out_fn && op->out_fn[0]) {
+        sgl_vect & o_sgl = use_res_sgl ? res_sgl : a_sgl;
+        time_t t = time(NULL);
         FILE * fp;
+        struct tm *tm = localtime(&t);
+        char s[64];
 
         if (op->out2stdout)
             fp = stdout;
@@ -726,34 +841,29 @@ missing_comma:
                         strerror(err));
                 ret = sg_convert_errno(err);
                 goto fini;
-            } else {
-                time_t t = time(NULL);
-                struct tm *tm = localtime(&t);
-                char s[64];
-
-                strftime(s, sizeof(s), "%c", tm);
-                fprintf(fp, "# Scatter gather list generated by "
-                        "ddpt_sgl  %s\n\n", s);
             }
-            if (op->do_hex > 1)
-                fprintf(fp, "HEX\n\n");
-
-            n = a_sgl.size();
-            fprintf(fp, "# %d sgl element%s, one element (LBA,NUM) per line\n",
-                    n, (1 == n ? "" : "s"));
-            for (k = 0; k < n; ++k) {
-                const struct scat_gath_elem & sge_r = a_sgl[k];
-                if (0 == op->do_hex)
-                    fprintf(fp, "%" PRIu64 ",%u\n", sge_r.lba, sge_r.num);
-                else if (1 == op->do_hex)
-                    fprintf(fp, "0x%" PRIx64 ",0x%u\n", sge_r.lba, sge_r.num);
-                else if (op->do_hex > 1)
-                    fprintf(fp, "%" PRIx64 ",%u\n", sge_r.lba, sge_r.num);
-            }
-
-            if (stdout != fp)
-                fclose(fp);
         }
+        strftime(s, sizeof(s), "%c", tm);
+        fprintf(fp, "# Scatter gather list generated by ddpt_sgl  %s\n\n", s);
+        if (op->do_hex > 1)
+            fprintf(fp, "HEX\n\n");
+
+        n = o_sgl.size();
+        fprintf(fp, "# %d sgl element%s, one element (LBA,NUM) per line\n",
+                n, (1 == n ? "" : "s"));
+        for (k = 0; k < n; ++k) {
+            const struct scat_gath_elem & sge_r = o_sgl[k];
+
+            if (0 == op->do_hex)
+                fprintf(fp, "%" PRIu64 ",%u\n", sge_r.lba, sge_r.num);
+            else if (1 == op->do_hex)
+                fprintf(fp, "0x%" PRIx64 ",0x%x\n", sge_r.lba, sge_r.num);
+            else if (op->do_hex > 1)
+                fprintf(fp, "%" PRIx64 ",%x\n", sge_r.lba, sge_r.num);
+        }
+
+        if (stdout != fp)
+            fclose(fp);
     }
 
     ret = 0;

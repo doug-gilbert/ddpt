@@ -26,9 +26,10 @@
 #    ODX_RTF_LEN        add 8 bytes to ROD length (512) that contain file
 #                       size in bytes (see ddpt manpage)
 #
-# dpg 20180605
+# dpg 20180613
 
 VERBOSE="0"
+VERSION="1.01 20180613 [r359]"
 VB_ARG=""
 DDPT_OPTS=""
 
@@ -37,6 +38,7 @@ echoerr_n() { printf "%s" "$*" >&2; }
 pr_exit_stat() {
     echoerr "${1} failed; exit status: ${2}"
     # --verbose causes output --> stderr
+    # needs sg3_utils-1.43 rev 777 or later
     sg_decode_sense --verbose --err="${2}"
 }
 
@@ -49,8 +51,8 @@ fi
 # Command line parser from:
 #   stackoverflow.com/questions/192249/how-do-i-parse-command-line-arguments-in-bash
 
-OPTIONS=a:dhqrv
-LONGOPTIONS=arg:,dry-run,help,quiet,run,verbose
+OPTIONS=a:dfhqrvV
+LONGOPTIONS=arg:,dry-run,force,help,quiet,run,verbose,version
 
 # -temporarily store output to be able to check for errors
 # -e.g. use “--options” parameter by name to activate quoting/enhanced mode
@@ -76,6 +78,10 @@ while true; do
             DDPT_OPTS="${DDPT_OPTS} --dry-run"
             shift
             ;;
+        -f|--force)
+            FORCE=y
+            shift
+            ;;
         -h|--help)
             HELP=y
             shift
@@ -98,6 +104,11 @@ while true; do
             VERBOSE=$((VERBOSE + 1))
             shift
             ;;
+        -V|--version)
+	    echo "${VERSION}"
+	    exit
+	    shift
+	    ;;
         --)
             shift
             break
@@ -110,12 +121,13 @@ while true; do
 done
 
 if [ ${HELP} ] ; then
-    echo -n "prepare.sh  [--arg=DA] [--dry-run] [--help] [--output=OF] "
-    echo "[--quiet]"
-    echo "               [--run] [--verbose]"
+    echo -n "prepare.sh  [--arg=DA] [--dry-run] [--force] [--help] "
+    echo "[--output=OF]"
+    echo "               [--quiet] [--run] [--verbose]"
     echo "where:"
     echo "  --arg=DA|-a DA    DA arbitrary argument passed to ddpt calls"
     echo "  --dry-run|-d    bypasses copy (or read) with ddpt"
+    echo "  --force|-f      override some checks"
     echo "  --help|-h       outputs this usage message then exits"
     echo "  --output=OF|-o OF    not implemented yet, placeholder"
     echo "  --quiet|-q      suppress output from ddpt calls"
@@ -234,14 +246,25 @@ if [ ${#SG_BLK_DEV[@]} -lt 2 ] ; then
     exit 1
 fi
 
+if df | grep "ram[01]"
+then
+    echoerr "Looks like /dev/ram0 or 1 in use (according to df)"
+    echoerr "this script want to write to them, so exit unless --force given"
+    if [ ${FORCE} ] ; then
+	echoerr "continuing ..."
+    else
+        exit 1
+    fi
+fi
+
 if [ -b /dev/ram0 -a -b /dev/ram1 ] ; then
     if [ $VERBOSE -gt 0 ] ; then
         echoerr "Detected /dev/ram0 and /dev/ram1 block devices"
     fi
 else
-    echoerr "Need 2 scratch block devices: /dev/ram0 and /dev/ram1 but not found"
-    echoerr "As root try 'mknod -m 660 /dev/ram b 1 1' or if that doesn't "
-    echoerr "create them try:"
+    echoerr "Need 2 scratch block devices: /dev/ram0 and /dev/ram1 but not"
+    echoerr "found. As root try 'mknod -m 660 /dev/ram b 1 1' or if that "
+    echoerr "doesn't create them try:"
     echoerr "    mknod -m 660 /dev/ram0 b 1 0 ; mknod -m 660 /dev/ram1 b 1 1"
     exit 1
 fi
@@ -415,6 +438,28 @@ if [ ${RES} -ne 0 ] ; then
     exit ${RES}
 fi
 echoerr ""
+
+# generate ascending pattern, 512 bytes long, wraps every 256 bytes
+rm ${PREP2_BIN}
+echoerr "${DDPT} ${DDPT_OPTS} iflag=00,ff of=${PREP2_BIN} bs=512 count=1 ${DDPT_ARG}"
+${DDPT} ${DDPT_OPTS} iflag=00,ff of=${PREP2_BIN} bs=512 count=1 ${DDPT_ARG}
+RES=$?
+if [ ${RES} -ne 0 ] ; then
+    pr_exit_stat ${DDPT} ${RES}
+    exit ${RES}
+fi
+echoerr ""
+
+rm ${PREP_BIN}
+echoerr "${DDPT} ${DDPT_OPTS} if=${PREP2_BIN} of=- bs=1 bpt=7 seek=64 ${DDPT_ARG} > ${PREP_BIN}"
+${DDPT} ${DDPT_OPTS} if=${PREP2_BIN} of=- bs=1 seek=64 ${DDPT_ARG} > ${PREP_BIN}
+RES=$?
+if [ ${RES} -ne 0 ] ; then
+    pr_exit_stat ${DDPT} ${RES}
+    exit ${RES}
+fi
+echoerr ""
+
 
 #
 # throw away stdout and stderr: > /dev/null 2>&1
