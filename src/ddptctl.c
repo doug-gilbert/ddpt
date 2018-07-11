@@ -64,7 +64,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.96 20180614 [svn: r359]";
+const char * ddptctl_version_str = "0.96 20180710 [svn: r360]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -632,6 +632,8 @@ main(int argc, char * argv[])
     bool req_all_toks = false;
     bool req_pop = false;
     bool req_wut = false;
+    bool verbose_given = false;
+    bool version_given = false;
     int c, k, n, fd, flags, blk_sz, vb, err;
     int do_hex = 0;
     int ret = 0;
@@ -791,11 +793,12 @@ main(int argc, char * argv[])
             }
             break;
         case 'v':
+            verbose_given = true;
             ++op->verbose;
             break;
         case 'V':
-            pr2serr("version: %s\n", ddptctl_version_str);
-            return 0;
+            version_given = true;
+            break;
         case 'w':       /* takes scatter list as argument */
             if (req_wut) {
                 pr2serr("Using two --wut=SL options is contradictory\n");
@@ -826,6 +829,27 @@ main(int argc, char * argv[])
             return SG_LIB_SYNTAX_ERROR;
         }
     }
+
+#ifdef DEBUG
+    pr2serr("In DEBUG mode, ");
+    if (verbose_given && version_given) {
+        pr2serr("but override: '-vV' given, zero verbose and continue\n");
+        verbose_given = false;
+        version_given = false;
+        op->verbose = 0;
+    } else if (! verbose_given) {
+        pr2serr("set '-vv'\n");
+        op->verbose = 2;
+    } else
+        pr2serr("keep verbose=%d\n", op->verbose);
+#else
+    if (verbose_given && version_given)
+        pr2serr("Not in DEBUG mode, so '-vV' has no special action\n");
+#endif
+    if (version_given) {
+        pr2serr("version: %s\n", ddptctl_version_str);
+    }
+
     if ('\0' == op->idip->fn[0]) {
         if (! op->rtf[0]) {
             pr2serr("missing device name!\n\n");

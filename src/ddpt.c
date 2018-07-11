@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.96 20180614 [svn: r359]";
+static const char * ddpt_version_str = "0.96 20180710 [svn: r360]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -3376,7 +3376,30 @@ main(int argc, char * argv[])
     if (op->do_help > 0) {
         ddpt_usage(op->do_help);
         return 0;
-    } else if (ret)
+    }
+
+#ifdef DEBUG
+    pr2serr("In DEBUG mode, ");
+    if (op->verbose_given && op->version_given) {
+        pr2serr("but override: '-vV' given, zero verbose and continue\n");
+        op->verbose_given = false;
+        op->version_given = false;
+        op->verbose = 0;
+    } else if (! op->verbose_given) {
+        pr2serr("set '-vv'\n");
+        op->verbose = 2;
+    } else
+        pr2serr("keep verbose=%d\n", op->verbose);
+#else
+    if (op->verbose_given && op->version_given)
+        pr2serr("Not in DEBUG mode, so '-vV' has no special action\n");
+#endif
+    if (op->version_given) {
+        pr2serr("version: %s\n", ddpt_version_str);
+        return 0;
+    }
+
+    if (ret)
         return (ret < 0) ? 0 : ret;
     vb = op->verbose;
 
