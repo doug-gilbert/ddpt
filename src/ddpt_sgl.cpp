@@ -30,8 +30,9 @@
 
 #include <iostream>
 #include <vector>
-#include <map>
-#include <list>
+#include <iterator>
+// #include <map>
+// #include <list>
 #include <algorithm>
 #include <system_error>
 // #include <thread>
@@ -65,7 +66,7 @@
 #endif
 
 
-static const char * ddpt_sgl_version_str = "0.96 20180710 [svn: r360]";
+static const char * ddpt_sgl_version_str = "0.96 20180719 [svn: r361]";
 
 #include "ddpt.h"
 #include "sg_lib.h"
@@ -86,6 +87,8 @@ using namespace std;
 # define ACT_PART_SAME 9
 # define ACT_SAME 8     /* sort both lists then check for equality */
 # define ACT_TSPLIT_N 10 /* act in parallel on a-sgl and b-sgl */
+# define ACT_DIVISIBLE_N 11 /* on a-sgl, boolean result */
+# define ACT_SCALE_N 12 /* on a-sgl --> O_SGL; N>0 multiply, n<0 divide */
 # define ACT_ENUMERATE 99
 
 
@@ -128,22 +131,25 @@ struct val_name_t act_array[] = {
     {ACT_NONE, "no_action"},
     {ACT_NONE, "none"},
     {ACT_APPEND_B2A, "append"},    /* just giving 'append' is sufficient */
+    {ACT_DIVISIBLE_N, "divisible_*"},   /* longer match string first ... */
+    {ACT_DIVISIBLE_N, "divisible*"},
+    {ACT_ENUMERATE, "xxx"},
+    {ACT_ENUMERATE, "enum"},
     {ACT_EQUAL, "equal"},
     {ACT_PART_EQUAL, "part-equal"},
     {ACT_PART_EQUAL, "part_equal"},
     {ACT_PART_SAME, "part-same"},
     {ACT_PART_EQUAL, "part_same"},
     {ACT_SAME, "same"},
+    {ACT_SCALE_N, "scale_*"},
+    {ACT_SCALE_N, "scale*"},
     {ACT_SORT, "sort"},
-    {ACT_SPLIT_N, "split*"},
     {ACT_SPLIT_N, "split_*"},
+    {ACT_SPLIT_N, "split*"},
     {ACT_TO_CHS, "to-chs"},
     {ACT_TO_CHS, "to_chs"},
-    {ACT_TSPLIT_N, "tsplit*"},
     {ACT_TSPLIT_N, "tsplit_*"},
-    /* more to go here */
-    {ACT_ENUMERATE, "xxx"},
-    {ACT_ENUMERATE, "enum"},
+    {ACT_TSPLIT_N, "tsplit*"},
     {0, NULL},                     /* trailing array sentinel */
 };
 
@@ -222,7 +228,13 @@ static void
 action_enum(void)
 {
     pr2serr("Actions available with --action=ACT are:\n"
-            "   append-b2a    append b-sgl to end of a-sgl\n"
+            "   append-b2a    append b-sgl to end of a-sgl, output to O_SGL\n"
+            "   divisible<n>[,L|N]    returns true if all starting LBAs "
+            "and/or NUMs\n"
+            "                         in a-sgl are divisible by <n>; "
+            "otherwise\n"
+            "                         returns false. If ',L' appended only "
+            "checks LBAs\n"
             "   enum          print this list...\n"
             "   equal         compare a-sgl to b-sgl; require same order "
             "and length\n"
@@ -231,8 +243,14 @@ action_enum(void)
             "   part-same     compare a-sgl to b-sgl\n"
             "   same          compare a-sgl to b-sgl, ignoring order\n"
             "   sort          sort a-sgl and output to O_SGL\n"
+            "   scale<n>      multiply all starting LBAs in a_sgl by <n> "
+            "(if > 0)\n"
+            "                 and divide all NUMs by <n>, result --> "
+            "O_SGL;\n"
+            "                 if <n> < 0 then divide all ...\n"
             "   split<n>      divide a-sgl into 'n' O_SGLs\n"
             "   to-chs        assume a-sgl is flat sgl, convert to CHS in "
+            "O_SGL\n"
             "   tsplit<n>     twin split: divide a-sgl and b-sgl into two "
             "series\n"
             "   xxx           print this list...\n"
@@ -332,12 +350,12 @@ non_overlap_check(const sgl_vect & sgl, const char * id_str, bool quiet)
     if (k >= sz) {
         if (! quiet)
             pr2serr("%s: elements do not overlap\n", id_str);
-        return false;
+        return true;
     } else {
         if (! quiet)
             pr2serr("%s: elements DO overlap, elements %d and %d clash\n",
                     id_str, prev_ind, ind);
-        return true;
+        return false;
     }
 }
 
@@ -603,7 +621,7 @@ convert2chs(const sgl_vect & in_sgl, sgl_vect & out_sgl, int max_bpt,
                 n = num_blks;
             else
                 n = max_chs.sect - a_chs.sect;
-            if (n > max_bpt)
+            if (n > (uint32_t)max_bpt)
                 n = max_bpt;
             if (0 == n)
                 break;
@@ -676,7 +694,7 @@ do_split(const sgl_vect & in_sgl, const struct scat_gath_elem * in_sgep,
                 pr2serr("--round=%d ignored when average blocks per segment "
                         "less than 10\n", op->round_blks);
             op->round_blks = 0;
-        } else if (op->round_blks > (nblks / 3)) {
+        } else if ((uint32_t)op->round_blks > (nblks / 3)) {
             if (! op->quiet)
                 pr2serr("--round=%d ignored when > one third of average "
                         "blocks per segment\n", op->round_blks);
@@ -693,7 +711,7 @@ do_split(const sgl_vect & in_sgl, const struct scat_gath_elem * in_sgep,
             nblks += rem;
         if (op->round_blks > 0) {
             hold_iter = iter;   /* rounding can cause nblks to be modified */
-            rblks = (op->round_blks < (nblks / 2)) ? op->round_blks : 0;
+            rblks = (op->round_blks < ((int)nblks / 2)) ? op->round_blks : 0;
         } else
             rblks = 0;
         res = iter_add_process(&iter, nblks, output_sge, fp, op->do_hex,
@@ -819,7 +837,7 @@ do_tsplit(const sgl_vect & a_sgl, const struct scat_gath_elem * a_sgep,
                 pr2serr("--round=%d ignored when average blocks per segment "
                         "less than 10\n", op->round_blks);
             op->round_blks = 0;
-        } else if (op->round_blks > (nblks / 3)) {
+        } else if ((uint32_t)op->round_blks > (nblks / 3)) {
             if (! op->quiet)
                 pr2serr("--round=%d ignored when > one third of average "
                         "blocks per segment\n", op->round_blks);
@@ -836,7 +854,7 @@ do_tsplit(const sgl_vect & a_sgl, const struct scat_gath_elem * a_sgep,
             nblks += rem;
         if (op->round_blks > 0) {
             hold_iter = iter;   /* rounding can cause nblks to be modified */
-            rblks = (op->round_blks < (nblks / 2)) ? op->round_blks : 0;
+            rblks = (op->round_blks < ((int)nblks / 2)) ? op->round_blks : 0;
         } else
             rblks = 0;
         res = iter_add_process(&iter, nblks, output_sge, fp, op->do_hex,
@@ -877,22 +895,123 @@ do_tsplit(const sgl_vect & a_sgl, const struct scat_gath_elem * a_sgep,
     return res;
 }
 
+static int
+parse_action(const char * optarg, struct sgl_opts_t * op)
+{
+    bool ok;
+    int len, n, off;
+    const char * cp;
+    const char * commap;
+    const char * comma2p;
+    struct val_name_t * vnp;
+
+    for (vnp = act_array, ok = false; vnp->name; ++vnp) {
+        len = strlen(vnp->name);
+        commap = strchr(optarg, ',');
+        if ((cp = strchr(vnp->name, '*'))) {  /* action with numeric suffix */
+            if (cp == vnp->name)
+                break;  /* don't accept '*' in 1st position */
+            off = cp - vnp->name;       /* offset corresponding to '*' */
+            if (0 == memcmp(optarg, vnp->name, off)) {
+                if ((op->act_val > 0) && (op->act_val == vnp->val))
+                    return 0;   /* already processed this action */
+                op->act_val = vnp->val;
+                if ('-' == optarg[off]) {
+                    if (0 == strcmp("-1", optarg + off))
+                        n = -1;
+                    else {      /* decode starting after '-' */
+                        n = sg_get_num(optarg + off + 1);
+                        if (-1 == n) {
+                            pr2serr("'--action=%s' unable to decode "
+                                    "negative number\n", optarg);
+                            return SG_LIB_SYNTAX_ERROR;
+                        }
+                        n = -n;         /* now turn negative */
+                    }
+                } else {
+                    n = sg_get_num(optarg + off);
+                    if (-1 == n) {
+                        pr2serr("'--action=%s' unable to decode number\n",
+                                optarg);
+                        return SG_LIB_SYNTAX_ERROR;
+                    }
+                }
+                if (0 == n) {
+                    pr2serr("'--action=%s' value of 0 not permitted\n",
+                            optarg);
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+                switch (vnp->val) {
+                case ACT_DIVISIBLE_N:
+                    if (n < 0) {
+                        pr2serr("'--action=%s' negative value not "
+                                "permitted\n", optarg);
+                        return SG_LIB_SYNTAX_ERROR;
+                    }
+                    op->div_scale_n = n;
+                    if (commap) { /* <n>,L,n taken as both */
+                        if ('L' == toupper(*(commap + 1))) {
+                            comma2p = strchr(commap + 1, ',');
+                            if (comma2p) {
+                                if ('N' != toupper(*(comma2p + 1)))
+                                    op->div_lba_only = true;
+                            } else
+                                op->div_lba_only = true;
+                        } else if ('N' == toupper(*(commap + 1))) {
+                            comma2p = strchr(commap + 1, ',');
+                            if (comma2p) {
+                                if ('L' != toupper(*(comma2p + 1)))
+                                    op->div_num_only = true;
+                            } else
+                                op->div_num_only = true;
+                        }
+                    }
+                    break;
+                case ACT_SCALE_N:
+                    op->div_scale_n = n;
+                    break;
+                case ACT_SPLIT_N:
+                case ACT_TSPLIT_N:
+                    if (n <= 0) {
+                        pr2serr("'--action=%s' zero or negative value not "
+                                "permitted\n", optarg);
+                        return SG_LIB_SYNTAX_ERROR;
+                    }
+                    op->split_n = n;
+                    break;
+                default:
+                    pr2serr("'--action=%s' unexpected\n", optarg);
+                    return SG_LIB_LOGIC_ERROR;
+                }
+            }
+        } else if (0 == memcmp(optarg, vnp->name, len)) {
+            ok = true;
+            op->act_val = vnp->val;
+            break;
+        }
+    }
+    if (! ok) {
+        pr2serr("'--action=%s' not found or ill-formed, try "
+                "'--action=xxx' to list available\n", optarg);
+        return SG_LIB_SYNTAX_ERROR;
+    }
+    return 0;
+}
+
 
 int
 main(int argc, char * argv[])
 {
-    bool ok;
+    bool lba_side;
     bool ret_bool = true;
     bool use_res_sgl = false;
     bool verbose_given = false;
     bool version_given = false;
     bool write2o_sgl = false;
-    int k, j, n, c, res, err, len, vb;
+    int a, k, j, n, c, res, err, vb;
     int a_num_elems = 0;        /* elements in a_sge_p */
     int b_num_elems = 0;        /* elements in b_sge_p */
-    int force = 0;
     int ret = 0;
-    int64_t ll;
     char b[256];
     static const int blen = sizeof(b);
     struct sgl_opts_t opts;
@@ -900,14 +1019,13 @@ main(int argc, char * argv[])
     const char * a_sgl_arg = NULL;
     const char * b_sgl_arg = NULL;
     const char * cp;
-    const char * dev_name;
     FILE * fp;
+    sgl_vect::iterator sgvi;
     struct scat_gath_elem * a_sge_p = NULL;  /* has a_num_elems elements */
     struct scat_gath_elem * b_sge_p = NULL;
+    struct scat_gath_elem * sgep;
     struct cl_sgl_stats * ssp;
-    struct val_name_t * vnp;
     string cmd_line;
-    struct scat_gath_elem sge;
     struct sgl_info_t sgli;
     sgl_vect a_sgl;     /* depending on degen_mask may have < a_num_elems */
     sgl_vect b_sgl;     /* depending on degen_mask may have < b_num_elems */
@@ -920,7 +1038,7 @@ main(int argc, char * argv[])
         cmd_line += argv[k];
     }
     op = &opts;
-    memset(op, 0, sizeof(opts));
+    memset((void *)op, 0, sizeof(opts));  // sizeof(struct sgl_opts_t));
     ssp = &op->ab_sgl_stats;
     ssp->a_stats.lowest_lba = INT64_MAX;
     ssp->b_stats.lowest_lba = INT64_MAX;
@@ -935,31 +1053,9 @@ main(int argc, char * argv[])
 
         switch (c) {
         case 'a':
-            for (vnp = act_array, ok = false; vnp->name; ++vnp) {
-                len = strlen(vnp->name);
-                if ((cp = strchr(vnp->name, '*'))) {
-                    if (cp == vnp->name)
-                        break;  /* don't accept '*' in 1st position */
-                    if (0 == memcmp(optarg, vnp->name, cp - vnp->name)) {
-                        op->act_val = vnp->val;
-                        if ((1 == sscanf(optarg + (cp - vnp->name), "%d",
-                                         &n)) && (n > 0)) {
-                            ok = true;
-                            op->split_n = n;
-                            break;
-                        }
-                    }
-                } else if (0 == memcmp(optarg, vnp->name, len)) {
-                    ok = true;
-                    op->act_val = vnp->val;
-                    break;
-                }
-            }
-            if (! ok) {
-                pr2serr("action: %s not found or ill-formed, try "
-                        "'--action=xxx' to list available\n", optarg);
-                return SG_LIB_SYNTAX_ERROR;
-            }
+            res = parse_action(optarg, op);
+            if (res)
+                return res;
             break;
         case 'A':
             a_sgl_arg = optarg;
@@ -1144,13 +1240,11 @@ missing_comma:
     switch (op->act_val) {
     case ACT_DEF:
     case ACT_NONE:
-        ok = true;
         if (op->non_overlap_chk) {
             if (ret_bool && a_sgl_arg)
                 ret_bool = non_overlap_check(a_sgl, "a_sgl", op->quiet);
             if (ret_bool && b_sgl_arg)
                 ret_bool = non_overlap_check(b_sgl, "b_sgl", op->quiet);
-
         } else if ((ACT_DEF == op->act_val) && (NULL == a_sgl_arg) &&
                    (NULL == b_sgl_arg))
             pr2serr("No scatter gather lists or actions given, nothing to "
@@ -1165,6 +1259,12 @@ missing_comma:
             if (ACT_NONE == op->act_val) {
                 if ((NULL == a_sgl_arg) && (NULL == b_sgl_arg))
                     pr2serr("--action=none given, but nothing to to\n");
+                if (! op->quiet) {
+                    if (a_sgl_arg)
+                        printf("a_sgl_elems=%d\n", (int)a_sgl.size());
+                    if (b_sgl_arg)
+                        printf("b_sgl_elems=%d\n", (int)b_sgl.size());
+                }
             }
             write2o_sgl = false;
         }
@@ -1194,6 +1294,44 @@ missing_comma:
             ret_bool = non_overlap_check(a_sgl, "a_append_b", op->quiet);
         use_res_sgl = false;    /* so write out a_sgl */
         write2o_sgl = true;
+        break;
+    case ACT_DIVISIBLE_N:
+        if (! a_sge_p) {
+            pr2serr("to do divisble<n>, need --a-sgl=SGL to be given\n");
+            ret = SG_LIB_SYNTAX_ERROR;
+            goto fini;
+        }
+        n = op->div_scale_n;
+        write2o_sgl = false;
+        lba_side = false;
+        for (k = 0, sgep = a_sge_p; k < a_num_elems; ++k, ++sgep) {
+            if (! op->div_num_only) {
+                if (sgep->lba % n) {
+                    ret_bool = false;
+                    lba_side = true;
+                    break;
+                }
+            }
+            if (! op->div_lba_only) {
+                if (sgep->num % n) {
+                    ret_bool = false;
+                    break;
+                }
+            }
+        }
+        if (! op->quiet) {
+            if (op->div_lba_only)
+                cp = "LBAs";
+            else if (op->div_num_only)
+                cp = "NUMs";
+            else
+                cp = "LBAs and NUMs";
+            pr2serr("--a-sgl=SGL, all %s are %sdivisible by %d\n",
+                    cp, (ret_bool ? "" : "_not_ "), n);
+            if (vb && (false == ret_bool))
+                pr2serr("  first false: sgl elem=%d (origin 0) %s\n",
+                        k, (lba_side ? "LBA" : "NUM"));
+        }
         break;
     case ACT_EQUAL:
         if (! (a_sge_p && b_sge_p)) {
@@ -1235,8 +1373,9 @@ missing_comma:
         ret_bool = sgl_eq(res_sgl.data(), res_sgl.size(), 0,
                           res_b_sgl.data(), res_b_sgl.size(), 0, true);
         if (! op->quiet)
-            pr2serr("--a-sgl=SGL and --b-sgl=SGL are %spart same\n",
-                    ret_bool ? "" : "_not_ ");
+            pr2serr("--a-sgl=SGL and --b-sgl=SGL are %spart same%s\n",
+                    (ret_bool ? "" : "_not_ "),
+                    (vb ? " (part equal after sorting both)" : ""));
         write2o_sgl = false;
         break;
     case ACT_SAME:
@@ -1251,9 +1390,38 @@ missing_comma:
         ret_bool = sgl_eq(res_sgl.data(), res_sgl.size(), 0,
                           res_b_sgl.data(), res_b_sgl.size(), 0, false);
         if (! op->quiet)
-            pr2serr("--a-sgl=SGL and --b-sgl=SGL are %ssame\n",
-                    ret_bool ? "" : "_not_ ");
+            pr2serr("--a-sgl=SGL and --b-sgl=SGL are %sthe same%s\n",
+                    (ret_bool ? "" : "_not_ "),
+                    (vb ? " (equal after sorting both)" : ""));
         write2o_sgl = false;
+        break;
+    case ACT_SCALE_N:
+        n = op->div_scale_n;
+        if (! (a_sge_p && op->out_fn)) {
+            pr2serr("--action=scale_%d needs --a_sgl= and --out= options\n",
+                    n);
+            ret = SG_LIB_SYNTAX_ERROR;
+            goto fini;
+        }
+        n = op->div_scale_n;
+        if (0 == n) {
+            pr2serr("somehow div_scale_n is 0\n");
+            ret = SG_LIB_LOGIC_ERROR;
+            goto fini;
+        }
+        a = (n >= 0) ? n : -n;
+        sgvi = a_sgl.begin();
+        for (k = 0; k < (int)a_sgl.size(); ++k, ++sgvi) {
+            if (n > 0) {
+                sgvi->lba *= a;
+                sgvi->num /= a;
+            } else {
+                sgvi->lba /= a;
+                sgvi->num *= a;
+            }
+        }
+        use_res_sgl = false;
+        write2o_sgl = true;
         break;
     case ACT_SORT:
         if (! (a_sge_p && op->out_fn)) {
@@ -1295,6 +1463,8 @@ missing_comma:
                 fprintf(fp, "# %s\n", cmd_line.c_str());
                 fprintf(fp, "#\n");
             }
+            if (op->do_hex > 1)
+                 fprintf(fp, "HEX\n\n");
             op->split_out_fns.push_back(split_fn_fp(b, fp));
             if (vb > 1)
                 pr2serr("split out filename: %s\n", b);
@@ -1306,7 +1476,7 @@ missing_comma:
 
         ret = do_split(a_sgl, a_sge_p, op->ab_sgl_stats.a_stats, op);
 
-        for (k = 0; k < op->split_out_fns.size(); ++k) {
+        for (k = 0; k < (int)op->split_out_fns.size(); ++k) {
             fp = op->split_out_fns[k].fp;
             if (stdout != fp)
                 fclose(fp);
@@ -1366,6 +1536,8 @@ missing_comma:
                 fprintf(fp, "# %s\n", cmd_line.c_str());
                 fprintf(fp, "#\n");
             }
+            if (op->do_hex > 1)
+                 fprintf(fp, "HEX\n\n");
             if (j % 2)
                 op->b_split_out_fns.push_back(split_fn_fp(b, fp));
             else
@@ -1382,12 +1554,12 @@ missing_comma:
 
         ret = do_tsplit(a_sgl, a_sge_p, b_sgl, b_sge_p, op);
 
-        for (k = 0; k < op->split_out_fns.size(); ++k) {
+        for (k = 0; k < (int)op->split_out_fns.size(); ++k) {
             fp = op->split_out_fns[k].fp;
             if (stdout != fp)
                 fclose(fp);
         }
-        for (k = 0; k < op->b_split_out_fns.size(); ++k) {
+        for (k = 0; k < (int)op->b_split_out_fns.size(); ++k) {
             fp = op->b_split_out_fns[k].fp;
             if (stdout != fp)
                 fclose(fp);

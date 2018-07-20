@@ -1475,7 +1475,9 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
                     if (0 == strncmp(buf, "progress,progress,progress", 25))
                         ++op->progress;
                 }
-            } else {
+            } else if (0 == strncmp(buf, "ppp", 3))
+                op->progress += 3;
+            else {
                 pr2serr("'status=' expects 'none', 'noxfer', 'progress' or "
                         "'null'\n");
                 return SG_LIB_SYNTAX_ERROR;

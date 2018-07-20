@@ -9,7 +9,7 @@
 # may need to be cleaned up by the user. It uses lsscsi (version 0.30
 # revision 149 or later) to identify the scratch scsi_debug generic and block
 # devices (lest it accidentally overwritesthe users real disks or SSDs). Use:
-#   ./prepare.sh --help      or     ./prespare.sh -h
+#   ./prepare.sh --help      or     ./prepare.sh -h
 # to see the command run options. By default (i.e. without the --run) option
 # it will do the preparation only. It is recommended that the user do
 #   ./prepare.sh --verbose    or    ./prepare.sh -vv
@@ -26,10 +26,10 @@
 #    ODX_RTF_LEN        add 8 bytes to ROD length (512) that contain file
 #                       size in bytes (see ddpt manpage)
 #
-# dpg 20180613
+# dpg 20180714
 
 VERBOSE="0"
-VERSION="1.01 20180613 [r359]"
+VERSION="1.02 20180714 [r361]"
 VB_ARG=""
 DDPT_OPTS=""
 
@@ -122,19 +122,19 @@ done
 
 if [ ${HELP} ] ; then
     echo -n "prepare.sh  [--arg=DA] [--dry-run] [--force] [--help] "
-    echo "[--output=OF]"
-    echo "               [--quiet] [--run] [--verbose]"
+    echo "[--quiet]"
+    echo "               [--run] [--verbose] [--version]"
     echo "where:"
     echo "  --arg=DA|-a DA    DA arbitrary argument passed to ddpt calls"
     echo "  --dry-run|-d    bypasses copy (or read) with ddpt"
     echo "  --force|-f      override some checks"
     echo "  --help|-h       outputs this usage message then exits"
-    echo "  --output=OF|-o OF    not implemented yet, placeholder"
     echo "  --quiet|-q      suppress output from ddpt calls"
     echo -n "  --run|-r        run ddpt calls (default: prepare but don't "
     echo "run)"
     echo -n "  --verbose|-v    increase verbosity in this scripts and ddpt "
     echo "calls"
+    echo "  --version|-V    print out version number then exit"
     echo ""
     echo "Script for collecting 'safe' block and SCSI generic devices and"
     echo "then optionally run various ddpt calls using those devices. Also"
