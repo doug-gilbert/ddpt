@@ -66,7 +66,7 @@
 #endif
 
 
-static const char * ddpt_sgl_version_str = "0.96 20180719 [svn: r361]";
+static const char * ddpt_sgl_version_str = "0.96 20180725 [svn: r362]";
 
 #include "ddpt.h"
 #include "sg_lib.h"
@@ -87,8 +87,9 @@ using namespace std;
 # define ACT_PART_SAME 9
 # define ACT_SAME 8     /* sort both lists then check for equality */
 # define ACT_TSPLIT_N 10 /* act in parallel on a-sgl and b-sgl */
+# define ACT_TSORT 13    /* sort a-sgl, move b-sgl in unison */
 # define ACT_DIVISIBLE_N 11 /* on a-sgl, boolean result */
-# define ACT_SCALE_N 12 /* on a-sgl --> O_SGL; N>0 multiply, n<0 divide */
+# define ACT_SCALE_N 12 /* on a-sgl; N>0 multiply LBA, n<0 divide LBA */
 # define ACT_ENUMERATE 99
 
 
@@ -106,7 +107,9 @@ static struct option long_options[] = {
     {"c_h_s", required_argument, 0, 'C'},
     {"degen", required_argument, 0, 'D'},
     {"document", no_argument, 0, 'd'},
+    {"elem", required_argument, 0, 'E'},
     {"extension", required_argument, 0, 'e'},
+    {"flexible", no_argument, 0, 'f'},
     {"help", no_argument, 0, 'h'},
     {"hex", no_argument, 0, 'H'},
     {"interleave", required_argument, 0, 'i'},
@@ -126,16 +129,17 @@ struct val_name_t {
     const char * name;
 };
 
-/* '*' in a name is expected to be a number */
+/* '*' in a name expects a number in that position */
 struct val_name_t act_array[] = {
-    {ACT_NONE, "no_action"},
-    {ACT_NONE, "none"},
     {ACT_APPEND_B2A, "append"},    /* just giving 'append' is sufficient */
     {ACT_DIVISIBLE_N, "divisible_*"},   /* longer match string first ... */
     {ACT_DIVISIBLE_N, "divisible*"},
     {ACT_ENUMERATE, "xxx"},
     {ACT_ENUMERATE, "enum"},
     {ACT_EQUAL, "equal"},
+    {ACT_NONE, "no-action"},
+    {ACT_NONE, "no_action"},
+    {ACT_NONE, "none"},
     {ACT_PART_EQUAL, "part-equal"},
     {ACT_PART_EQUAL, "part_equal"},
     {ACT_PART_SAME, "part-same"},
@@ -148,6 +152,7 @@ struct val_name_t act_array[] = {
     {ACT_SPLIT_N, "split*"},
     {ACT_TO_CHS, "to-chs"},
     {ACT_TO_CHS, "to_chs"},
+    {ACT_TSORT, "tsort"},
     {ACT_TSPLIT_N, "tsplit_*"},
     {ACT_TSPLIT_N, "tsplit*"},
     {0, NULL},                     /* trailing array sentinel */
@@ -160,30 +165,39 @@ usage()
     pr2serr("Usage: "
             "ddpt_sgl [--action=ACT] [--a-sgl=SGL] [--b-sgl=SGL] "
             "[--chs=CHS]\n"
-            "                [--degen=DV] [--document] [--extension=FNE] "
-            "[--help]\n"
-            "                [--hex] [--interleave=IL] [--non-overlap] "
-            "[--out=O_SGL]\n"
-            "                [--quiet] [--round=RB] [--stats] [--verbose] "
-            "[--version]\n"
+            "                [--degen=DV] [--document] [--elem=SE[,LE]] "
+            "[--extension=FNE]\n"
+            "                [--help] [--hex] [--interleave=IL] "
+            "[--non-overlap]\n"
+            "                [--out=O_SGL] [--quiet] [--round=RB] [--stats] "
+            "[--verbose]\n"
+            "                [--version]\n"
             "  where:\n"
             "    --action=ACT|-a ACT    ACT is action to take, use 'xxx' "
             "to list\n"
             "                           what is available\n"
-            "    --a_sgl=SGL|-A SGL    input the 'A' scatter gather list "
+            "    --a-sgl=SGL|-A SGL    input the 'A' scatter gather list "
             "(sgl)\n"
-            "    --b_sgl=SGL|-B SGL    input the 'B' scatter gather list\n"
-            "    --chs=CHS|-C CHS      CHS is '<cyls>,<heads>,<sects>'\n"
+            "    --b-sgl=SGL|-B SGL    input the 'B' scatter gather list\n"
+            "    --chs=CHS|-C CHS      CHS is '<cyls>,<heads>,<sects>' (e.g. "
+            "768,16,255)\n"
             "    --degen=DV|-D DV      DV indicates degenerate element "
             "treatment\n"
-            "                          0: ignore all but last degen "
+            "                            0: ignore all but last degen "
             "element (def)\n"
-            "                          1: take in account for highest and "
+            "                            1: take in account for highest and "
             "lowest\n"
-            "                          2: take in account for monotonic\n"
+            "                            2: take in account for monotonic\n"
             "    --document|-d         place copy of command line as "
             "comment in\n"
-            "                          start of O_SGL(s)\n"
+            "                          start of O_SGL(s); >1: add command "
+            "line\n"
+            "    --elem=SE[,LE]|-E SE[,LE]    write sgl element SE (origin "
+            "0) to O_SGL\n"
+            "                                 if LE given then write out "
+            "SE...LE\n"
+            "                                 elements inclusive; LE,0 is "
+            "LE to end\n"
             "    --extension=FNE|-e FNE    filename extension (i.e. used "
             "after '.')\n"
             "    --help|-h             print out usage message then exit\n"
@@ -251,6 +265,8 @@ action_enum(void)
             "   split<n>      divide a-sgl into 'n' O_SGLs\n"
             "   to-chs        assume a-sgl is flat sgl, convert to CHS in "
             "O_SGL\n"
+            "   tsort         sort a-sgl to O_SGL, move b-sgl in unison to "
+            "O_SGL_b\n"
             "   tsplit<n>     twin split: divide a-sgl and b-sgl into two "
             "series\n"
             "   xxx           print this list...\n"
@@ -259,44 +275,80 @@ action_enum(void)
 
 /* Print statistics (to stdout) */
 static void
-pr_statistics(const sgl_stats & sst)
+pr_statistics(const sgl_stats & sst, FILE * fp)
 {
-    printf("Number of elements: %d, number of degenerates: %d\n", sst.elems,
-           sst.num_degen);
+    fprintf(fp, "Number of elements: %d, number of degenerates: %d\n",
+            sst.elems, sst.num_degen);
     if (sst.not_mono_desc && sst.not_mono_asc)
-        printf("  not monotonic, ");
+        fprintf(fp, "  not monotonic, ");
     else if ((! sst.not_mono_desc) && (! sst.not_mono_asc))
-        printf("  monotonic (both), ");
+        fprintf(fp, "  monotonic (both), ");
     else if (sst.not_mono_desc)
-        printf("  monotonic ascending, %s, ",
-               sst.fragmented ? "fragmented" : "linear");
+        fprintf(fp, "  monotonic ascending, %s, ",
+                sst.fragmented ? "fragmented" : "linear");
     else
-        printf("  monotonic descending, %s, ",
-               sst.fragmented ? "fragmented" : "linear");
-    printf("last degenerate: %s\n", sst.last_degen ? "yes" : "no");
-    printf("  lowest,highest LBA: 0x%" PRIx64 ",0x%" PRIx64 "  block "
-           "sum: %" PRId64 "\n", sst.lowest_lba, sst.highest_lba, sst.sum);
+        fprintf(fp, "  monotonic descending, %s, ",
+                sst.fragmented ? "fragmented" : "linear");
+    fprintf(fp, "last degenerate: %s\n", sst.last_degen ? "yes" : "no");
+    fprintf(fp, "  lowest,highest LBA: 0x%" PRIx64 ",0x%" PRIx64 "  block "
+            "sum: %" PRId64 "\n", sst.lowest_lba, sst.highest_lba, sst.sum);
 }
 
-/* Print scatter gather list (to stdout) */
+/* Print scatter gather list (to stdout if fp is NULL) */
 static void
-pr_sgl(const struct scat_gath_elem * first_elemp, int num_elems, bool in_hex)
+pr_sgl(const struct scat_gath_elem * first_elemp, int num_elems, bool in_hex,
+       FILE * fp)
 {
     const struct scat_gath_elem * sgep = first_elemp;
     char lba_str[20];
     char num_str[20];
 
-    printf("Scatter gather list, number of elements: %d\n", num_elems);
-    printf("    Logical Block Address   Number of blocks\n");
+    if (NULL == fp)
+        fp = stdout;
+    fprintf(fp, "Scatter gather list, number of elements: %d\n", num_elems);
+    fprintf(fp, "    Logical Block Address   Number of blocks\n");
     for (int k = 0; k < num_elems; ++k, ++sgep) {
         if (in_hex) {
             snprintf(lba_str, sizeof(lba_str), "0x%" PRIx64, sgep->lba);
             snprintf(num_str, sizeof(num_str), "0x%x", sgep->num);
-            printf("    %-14s          %-12s\n", lba_str, num_str);
+            fprintf(fp, "    %-14s          %-12s\n", lba_str, num_str);
         } else
-            printf("    %-14" PRIu64 "          %-12u\n", sgep->lba,
-                   sgep->num);
+            fprintf(fp, "    %-14" PRIu64 "          %-12u\n", sgep->lba,
+                    sgep->num);
     }
+}
+
+static int
+start_last_elem(int * modded_szp, const struct sgl_opts_t * op)
+{
+    int k = 0;
+    int n = *modded_szp;
+
+
+    if (op->start_elem < 0)
+        return k;
+    k = op->start_elem;
+    if (op->start_elem >= n) {
+        k = n;
+        if (! op->quiet)
+            pr2serr("start_elem (%d) exceeds sgl size (%d), "
+                    "ignore --elem=\n", op->start_elem, n);
+    } else if (op->last_elem >= 0) {
+        if (0 == op->last_elem)
+            ;   /* [start_elem ... (n-1)] */
+        else if (op->last_elem < op->start_elem) {
+            *modded_szp = k;      /* causes for to do nothing */
+            if (! op->quiet)
+                pr2serr("last_elem (%d) less than stat_elem (%d)\n",
+                        op->last_elem, op->start_elem);
+        } else if (op->last_elem >= n) {
+            if (! op->quiet)
+                pr2serr("last_elem (%d) exceeds sgl size (%d), "
+                        "ignore excess\n", op->last_elem, n);
+        } else
+            *modded_szp = op->last_elem + 1;
+    }
+    return k;
 }
 
 /* definition for function object to do indirect comparson via index_arr */
@@ -359,32 +411,134 @@ non_overlap_check(const sgl_vect & sgl, const char * id_str, bool quiet)
     }
 }
 
+/* When just sort of a-sgl, then twin_sglsize() should be 0 and a dummy can
+ * given for out_t_sgl (and nothing should be written to it). For twin sort
+ * b-sgl's sum should be >= a-sgl's sum (or b-sgl is "soft": its last
+ * segment has a NUM of 0). */
 static void
-sort2o_sgl(const sgl_vect & sgl, sgl_vect & out_sgl)
+sort2o_sgl(const sgl_vect & sort_sgl, const sgl_vect & twin_sgl,
+           sgl_vect & out_sgl, sgl_vect & out_t_sgl, struct sgl_opts_t * op)
 {
-    int k, ind;
-    int sz = sgl.size();
-    struct scat_gath_elem a_sge;
-    vector<int> index_arr(sz);
+    bool twin;
+    int k, j, indx;
+    int sort_sz = sort_sgl.size();
+    int twin_sz = twin_sgl.size();
+    int vb = op->verbose;
+    uint32_t num, i_num, t_num, i_elem_ind;
+    uint64_t lba;
+    const struct scat_gath_elem * t_sgep = NULL;
+    struct scat_gath_elem a_sge, ind_sge;
+    vector<int> index_arr(sort_sz);
+    sgl_vect indir_t_sgl;
 
-    iota(index_arr.begin(), index_arr.end(), 0);        /* origin 0 */
-    if (sz > 1) {
-        indir_comp_t compare_obj(sgl);
+    twin = (twin_sz > 0);
+    if (twin) {
+        /* Build indirect sgl that points into twin_sgl based on breaks in
+         * the sort_sgl. indir_t_sgl will have one more element than
+         * sort_sgl. Range in twin_sgl corresponding to sort_sgl[n] is
+         *     [indir_t_sgl[n] ... indir_t_sgl[n+1])
+         * That is a half open interval. */
+        struct sgl_iter_t iter;
+
+        t_sgep = twin_sgl.data();
+        sgl_iter_init(&iter, (struct scat_gath_elem *)t_sgep, twin_sz);
+        a_sge.lba = 0;
+        a_sge.num = 0;
+        indir_t_sgl.push_back(a_sge);
+        for (k = 0; k < sort_sz; ++k) {
+            num = sort_sgl[k].num;
+            if (! sgl_iter_add(&iter, num, true)) {
+                pr2serr("%s: iterator explodes at k=%d, num=%u\n", __func__,
+                        k, num);
+                pr2serr(" ... ignore twin, just sort a-sgl\n");
+                twin = false;
+                break;
+            }
+            if (vb > 3)
+                sgl_iter_print(&iter, "twin setup iterator", false, false,
+                               stderr);
+            ind_sge.lba = iter.it_e_ind;
+            ind_sge.num = iter.it_bk_off;
+            indir_t_sgl.push_back(ind_sge);
+        }
+        if (vb > 1) {
+            pr2serr("%s: indir_t_sgl.size=%d, iter.extend_last=%d\n",
+                    __func__, (int)indir_t_sgl.size(), !!iter.extend_last);
+            if (vb > 2)
+                pr_sgl(indir_t_sgl.data(), indir_t_sgl.size(),
+                       op->do_hex > 0, stderr);
+        }
+    }
+    iota(index_arr.begin(), index_arr.end(), 0);   /* 0, 1, 2, ... n-1 */
+    if (sort_sz > 1) {
+        indir_comp_t compare_obj(sort_sgl);
+        /* STL stable_sort() used */
         stable_sort(index_arr.begin(), index_arr.end(), compare_obj);
+        if (vb > 3) {
+            pr2serr("%s: iota array (size=%d) transformed by stable sort "
+                    "to:\n   ", __func__, sort_sz);
+            for (k = 0; k < sort_sz; ++k) {
+                pr2serr("%d ", index_arr[k]);
+                if ((k > 0) && (0 == (k % 16)))
+                    pr2serr("\n   ");
+            }
+            pr2serr("\n");
+        }
     }
-    for (k = 0; k < sz; ++k) {
-        ind = index_arr[k];
-        a_sge.lba = sgl[ind].lba;
-        a_sge.num = sgl[ind].num;
+    for (k = 0; k < sort_sz; ++k) {
+        indx = index_arr[k];
+        a_sge.lba = sort_sgl[indx].lba;
+        num = sort_sgl[indx].num;
+        a_sge.num = num;
         out_sgl.push_back(a_sge);
-    }
+        if (twin) {
+            ind_sge = indir_t_sgl[indx];
+            i_elem_ind = ind_sge.lba;
+            i_num = ind_sge.num;
+            lba = (t_sgep + i_elem_ind)->lba;
+            t_num = (t_sgep + i_elem_ind)->num;
+            if ((0 == t_num) && ((int)i_elem_ind == (twin_sz - 1)))
+                t_num = i_num + num;
+            a_sge.lba = lba + i_num;
+            if (0 == num) {
+                a_sge.num = 0;
+                out_t_sgl.push_back(a_sge);
+                continue;
+            }
+            while (num > 0) {
+                j = t_num - i_num;
+                if (j >= 0) {
+                    if (j <= (int)num) {
+                        if (j > 0) {
+                            a_sge.num = j;
+                            out_t_sgl.push_back(a_sge);
+                        }
+                        ++i_elem_ind;
+                        lba = (t_sgep + i_elem_ind)->lba;
+                        t_num = (t_sgep + i_elem_ind)->num;
+                        i_num = 0;
+                        a_sge.lba = lba;
+                        num -= j;
+                    } else {    /* j > num, so finishing */
+                        a_sge.num = num;
+                        out_t_sgl.push_back(a_sge);
+                        num = 0;
+                    }
+                } else {
+                    pr2serr("%s: logic error, t_num=%d, i_num=%d, num=%d\n",
+                            __func__, t_num, i_num, num);
+                    break;
+                }
+            }   /* while can make out_t_sgl.size() > input sgl sizes */
+        }   /* end of if (twin) */
+    }   /* end of for loop that builds out_sgl (+ out_t_sgl if twin) */
 }
 
 static int
 cl_sgl_parse(const char * key, const char * buf, int degen_mask,
              sgl_vect & sgl, struct scat_gath_elem * & sge_p,
              int & num_elems, struct sgl_stats & stats,
-             int append_xlen, int vb)
+             int append_xlen, bool flexible, int vb)
 {
     bool def_hex = false;
     bool prev_lba_valid = false;
@@ -428,7 +582,7 @@ cl_sgl_parse(const char * key, const char * buf, int degen_mask,
             cp = buf;
         else
             cp = buf + 1;
-        sge_p = file2sgl(cp, def_hex, &num_elems, &err, true);
+        sge_p = file2sgl(cp, def_hex, flexible, &num_elems, &err, true);
         if (NULL == sge_p) {
             pr2serr("%s: bad argument, err=%d\n", key, err);
             ret = err ? err : SG_LIB_SYNTAX_ERROR;
@@ -453,8 +607,9 @@ cl_sgl_parse(const char * key, const char * buf, int degen_mask,
         ll = sg_get_llnum(buf);
         if (-1LL == ll) {
             pr2serr("%s: unable to decode number\n", key);
-            pr2serr("If '%s' is a filename containing a sgl then prefix it "
-                    "with a '@'\n", buf);
+            if (strlen(buf) > 0)
+                pr2serr("If '%s' is a filename containing a sgl then prefix "
+                        "it with a '@'\n", buf);
             ret = SG_LIB_SYNTAX_ERROR;
             goto fini;
         }
@@ -724,8 +879,9 @@ do_split(const sgl_vect & in_sgl, const struct scat_gath_elem * in_sgep,
         }
         if (op->round_blks > 0) {
             if (vb > 5) {
-                sgl_iter_print(&iter, "current iter (lhs)", true);
-                sgl_iter_print(&hold_iter, "prior iter", true);
+                sgl_iter_print(&iter, "current iter (lhs)", true, false,
+                               NULL);
+                sgl_iter_print(&hold_iter, "prior iter", true, false, NULL);
             }
             d = sgl_iter_diff(&iter, &hold_iter);
             if (nblks != (uint32_t)d) {
@@ -867,8 +1023,9 @@ do_tsplit(const sgl_vect & a_sgl, const struct scat_gath_elem * a_sgep,
         }
         if (op->round_blks > 0) {
             if (vb > 5) {
-                sgl_iter_print(&iter, "current iter (lhs)", true);
-                sgl_iter_print(&hold_iter, "prior iter", true);
+                sgl_iter_print(&iter, "current iter (lhs)", true, false,
+                               NULL);
+                sgl_iter_print(&hold_iter, "prior iter", true, false, NULL);
             }
             d = sgl_iter_diff(&iter, &hold_iter);
             if (nblks != (uint32_t)d) {
@@ -893,6 +1050,68 @@ do_tsplit(const sgl_vect & a_sgl, const struct scat_gath_elem * a_sgep,
         }
     }
     return res;
+}
+
+static int
+do_write2o_sgl(const char * bname, const char * extra, sgl_vect & o_sgl,
+               const char * cmd_line_p, struct sgl_opts_t * op)
+{
+    int k, n, err;
+    FILE * fp;
+    char s[64];
+
+    if (op->out2stdout)
+        fp = stdout;
+    else {
+        char bb[256];
+        int bblen = sizeof(bb);
+
+        if (op->fne)
+            snprintf(bb, bblen, "%s%s.%s", bname, (extra ? extra : ""),
+                     op->fne);
+        else
+            snprintf(bb, bblen, "%s%s", bname, (extra ? extra : ""));
+        fp = fopen(bb, (op->append2out_f ? "a" : "w"));
+        if (NULL == fp) {
+            err = errno;
+            pr2serr("Unable to open %s, error: %s\n", bb, strerror(err));
+            return sg_convert_errno(err);
+        }
+    }
+    if (op->document) {
+        time_t t = time(NULL);
+        struct tm *tm = localtime(&t);
+
+        strftime(s, sizeof(s), "%c", tm);
+        fprintf(fp, "# Scatter gather list generated by ddpt_sgl  %s\n", s);
+        if (op->document > 1) {
+            fprintf(fp, "# with this command line:\n");
+            fprintf(fp, "#   %s\n", cmd_line_p);
+        }
+        fprintf(fp, "#\n");
+    }
+    if (op->do_hex > 1)
+        fprintf(fp, "HEX\n\n");
+
+    k = 0;
+    n = o_sgl.size();
+    if (op->start_elem >= 0)
+        k = start_last_elem(&n, op);
+    if (op->document) {
+        fprintf(fp, "# %d sgl element%s, one element (LBA,NUM) per line\n",
+                n, (1 == n ? "" : "s"));
+        if (op->start_elem >= 0)
+            fprintf(fp, "# due to --elems= option taken from element index "
+                    "%d to %d\n", op->start_elem, ((op->last_elem > 0) ?
+                         ((op->last_elem >= n) ? (n - 1) : op->last_elem)
+                                                   : op->start_elem));
+    }
+    for (/* k and n calculated above */; k < n; ++k)
+        output_sge(fp, &o_sgl[k], op->do_hex, op->verbose);
+
+    if (stdout != fp)
+        fclose(fp);
+    return 0;
 }
 
 static int
@@ -1008,16 +1227,16 @@ main(int argc, char * argv[])
     bool verbose_given = false;
     bool version_given = false;
     bool write2o_sgl = false;
+    bool write2o_b_sgl = false;
     int a, k, j, n, c, res, err, vb;
     int a_num_elems = 0;        /* elements in a_sge_p */
     int b_num_elems = 0;        /* elements in b_sge_p */
     int ret = 0;
-    char b[256];
-    static const int blen = sizeof(b);
     struct sgl_opts_t opts;
     struct sgl_opts_t * op;
     const char * a_sgl_arg = NULL;
     const char * b_sgl_arg = NULL;
+    const char * cmd_line_p;
     const char * cp;
     FILE * fp;
     sgl_vect::iterator sgvi;
@@ -1025,28 +1244,40 @@ main(int argc, char * argv[])
     struct scat_gath_elem * b_sge_p = NULL;
     struct scat_gath_elem * sgep;
     struct cl_sgl_stats * ssp;
+    struct sgl_stats * a_statsp;
+    struct sgl_stats * b_statsp;
+    char b[256];
+    char s[64];
+    static const int blen = sizeof(b);
     string cmd_line;
     struct sgl_info_t sgli;
     sgl_vect a_sgl;     /* depending on degen_mask may have < a_num_elems */
     sgl_vect b_sgl;     /* depending on degen_mask may have < b_num_elems */
     sgl_vect res_sgl;
     sgl_vect res_b_sgl;
+    const sgl_vect empty_sgl;
+    sgl_vect ignore_sgl;  /* ignore if written to (should not be) */
 
     for (k = 0; k < argc; ++k) {
         if (k)
             cmd_line.push_back(' ');
         cmd_line += argv[k];
     }
+    cmd_line_p = cmd_line.c_str();
     op = &opts;
     memset((void *)op, 0, sizeof(opts));  // sizeof(struct sgl_opts_t));
     ssp = &op->ab_sgl_stats;
-    ssp->a_stats.lowest_lba = INT64_MAX;
-    ssp->b_stats.lowest_lba = INT64_MAX;
+    a_statsp = &ssp->a_stats;
+    b_statsp = &ssp->b_stats;
+    a_statsp->lowest_lba = INT64_MAX;
+    b_statsp->lowest_lba = INT64_MAX;
+    op->start_elem = -1;
+    op->last_elem = -1;
 
     while (1) {
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "a:A:B:C:dD:e:hHi:No:qr:svV",
+        c = getopt_long(argc, argv, "a:A:B:C:dD:e:E:fhHi:No:qr:svV",
                         long_options, &option_index);
         if (c == -1)
             break;
@@ -1100,7 +1331,7 @@ missing_comma:
             op->chs_given = true;
             break;
         case 'd':
-            op->document = true;
+            ++op->document;
             break;
         case 'D':
             n = sg_get_num(optarg);
@@ -1112,6 +1343,25 @@ missing_comma:
             break;
         case 'e':
             op->fne = optarg;   /* FNE: filename extension */
+            break;
+        case 'E':
+            op->start_elem = sg_get_num(optarg);
+            if (op->start_elem < 0) {
+                pr2serr("unable to decode --elem=SE , want >= 0\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            cp = strchr(optarg, ',');
+            if (cp) {
+                op->last_elem = sg_get_num(cp + 1);
+                if (op->last_elem < 0) {
+                    pr2serr("unable to decode LE in --elem=SE,LE , want "
+                            ">= 0\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+            }
+            break;
+        case 'f':
+            op->flexible = true;
             break;
         case 'h':
         case '?':
@@ -1208,7 +1458,8 @@ missing_comma:
     }
     if (a_sgl_arg) {
         res = cl_sgl_parse("a-sgl", a_sgl_arg, op->degen_mask, a_sgl,
-                           a_sge_p, a_num_elems, ssp->a_stats, 0, vb);
+                           a_sge_p, a_num_elems, *a_statsp, 0, op->flexible,
+                           vb);
         if (res) {
             ret = res;
             goto fini;
@@ -1217,13 +1468,14 @@ missing_comma:
             memset(&sgli, 0, sizeof(sgli));
             sgli.elems = a_num_elems;
             sgli.sglp = a_sge_p;
-            pr_statistics(ssp->a_stats);
+            pr_statistics(*b_statsp, stdout);
             sgl_print(&sgli, true, "a_sgl", true);
         }
     }
     if (b_sgl_arg) {
         res = cl_sgl_parse("b-sgl", b_sgl_arg, op->degen_mask, b_sgl,
-                           b_sge_p, b_num_elems, ssp->b_stats, 0, vb);
+                           b_sge_p, b_num_elems, *b_statsp, 0, op->flexible,
+                           vb);
         if (res) {
             ret = res;
             goto fini;
@@ -1232,7 +1484,7 @@ missing_comma:
             memset(&sgli, 0, sizeof(sgli));
             sgli.elems = b_num_elems;
             sgli.sglp = b_sge_p;
-            pr_statistics(ssp->b_stats);
+            pr_statistics(*b_statsp, stdout);
             sgl_print(&sgli, true, "b_sgl", true);
         }
     }
@@ -1251,7 +1503,7 @@ missing_comma:
                     "do, use '-h' for help\n");
 
         if (a_sgl_arg && (NULL == b_sgl_arg) && op->out_fn) {
-            if (! op->quiet)
+            if (! op->quiet && (op->start_elem < 0))
                 pr2serr("As a convenience copying --a-sgl=SGL to "
                         "--out=O_SGL\n");
             write2o_sgl = true;
@@ -1277,8 +1529,8 @@ missing_comma:
             goto fini;
         }
         res = cl_sgl_parse("append_b2a", op->b_sgl_arg, op->degen_mask,
-                           a_sgl, a_sge_p, a_num_elems, ssp->a_stats,
-                           b_num_elems, vb);
+                           a_sgl, a_sge_p, a_num_elems, *a_statsp,
+                           b_num_elems, op->flexible, vb);
         if (res) {
             ret = res;
             goto fini;
@@ -1287,7 +1539,7 @@ missing_comma:
             memset(&sgli, 0, sizeof(sgli));
             sgli.elems = a_num_elems;
             sgli.sglp = a_sge_p;
-            pr_statistics(ssp->a_stats);
+            pr_statistics(*a_statsp, stdout);
             sgl_print(&sgli, true, "append_b2a", true);
         }
         if (op->non_overlap_chk && a_sgl_arg && ret_bool)
@@ -1368,8 +1620,8 @@ missing_comma:
             ret = SG_LIB_SYNTAX_ERROR;
             goto fini;
         }
-        sort2o_sgl(a_sgl, res_sgl);
-        sort2o_sgl(b_sgl, res_b_sgl);
+        sort2o_sgl(a_sgl, empty_sgl, res_sgl, ignore_sgl, op);
+        sort2o_sgl(b_sgl, empty_sgl, res_b_sgl, ignore_sgl, op);
         ret_bool = sgl_eq(res_sgl.data(), res_sgl.size(), 0,
                           res_b_sgl.data(), res_b_sgl.size(), 0, true);
         if (! op->quiet)
@@ -1385,8 +1637,8 @@ missing_comma:
             ret = SG_LIB_SYNTAX_ERROR;
             goto fini;
         }
-        sort2o_sgl(a_sgl, res_sgl);
-        sort2o_sgl(b_sgl, res_b_sgl);
+        sort2o_sgl(a_sgl, empty_sgl, res_sgl, ignore_sgl, op);
+        sort2o_sgl(b_sgl, empty_sgl, res_b_sgl, ignore_sgl, op);
         ret_bool = sgl_eq(res_sgl.data(), res_sgl.size(), 0,
                           res_b_sgl.data(), res_b_sgl.size(), 0, false);
         if (! op->quiet)
@@ -1429,7 +1681,7 @@ missing_comma:
             ret = SG_LIB_SYNTAX_ERROR;
             goto fini;
         }
-        sort2o_sgl(a_sgl, res_sgl);
+        sort2o_sgl(a_sgl, empty_sgl, res_sgl, ignore_sgl, op);
         use_res_sgl = true;
         write2o_sgl = true;
         break;
@@ -1459,8 +1711,16 @@ missing_comma:
                 }
             }
             if (op->document) {
-                fprintf(fp, "# k=%d\n", k + 1); /* origin 1 like filename */
-                fprintf(fp, "# %s\n", cmd_line.c_str());
+                time_t t = time(NULL);
+                struct tm *tm = localtime(&t);
+
+                strftime(s, sizeof(s), "%c", tm);
+                fprintf(fp, "# Scatter gather list generated by ddpt_sgl: "
+                        "k=%d    %s\n", k + 1, s);
+                if (op->document > 1) {
+                    fprintf(fp, "# with this command line:\n");
+                    fprintf(fp, "#   %s\n", cmd_line_p);
+                }
                 fprintf(fp, "#\n");
             }
             if (op->do_hex > 1)
@@ -1471,10 +1731,10 @@ missing_comma:
         }
         if (vb > 4) {
             pr2serr("sgl 'A' statistics:\n");
-            pr_statistics(ssp->a_stats);
+            pr_statistics(*a_statsp, stderr);
         }
 
-        ret = do_split(a_sgl, a_sge_p, op->ab_sgl_stats.a_stats, op);
+        ret = do_split(a_sgl, a_sge_p, *a_statsp, op);
 
         for (k = 0; k < (int)op->split_out_fns.size(); ++k) {
             fp = op->split_out_fns[k].fp;
@@ -1487,8 +1747,17 @@ missing_comma:
         break;
     case ACT_TO_CHS:
         if (! (a_sge_p && op->chs_given && op->out_fn)) {
-            pr2serr("--action=to-chs needs --a_sgl=, --chs= and --out= "
-                    "options\n");
+            if (! op->chs_given)
+                pr2serr("--action=to-chs needs --chs= option\n");
+            else
+                pr2serr("--action=to-chs needs --a_sgl= and --out= "
+                        "options\n");
+            ret = SG_LIB_SYNTAX_ERROR;
+            goto fini;
+        }
+        if (a_statsp->last_degen) {
+            pr2serr("a-sgl needs to be a 'hard' sgl but last element is "
+                    "degenerate\n");
             ret = SG_LIB_SYNTAX_ERROR;
             goto fini;
         }
@@ -1499,9 +1768,49 @@ missing_comma:
             pr2serr("Warning convert2chs but no --out=O_SGL given, so throw "
                     "away\n");
         if (vb)
-            pr_sgl(res_sgl.data(), res_sgl.size(), op->do_hex > 0);
+            pr_sgl(res_sgl.data(), res_sgl.size(), op->do_hex > 0, NULL);
         use_res_sgl = true;
         write2o_sgl = true;
+        break;
+    case ACT_TSORT:
+        if (! (a_sge_p && b_sge_p && op->out_fn)) {
+            pr2serr("--action=tsort needs --a_sgl=, --b-sgl= and --out= "
+                    "options\n");
+            ret = SG_LIB_SYNTAX_ERROR;
+            goto fini;
+        }
+        if (vb > 2)
+            pr2serr("%s: a-sgl sum=%" PRId64 " last_degen=%d; b-sgl sum=%"
+                    PRId64 " last_degen=%d\n", __func__, a_statsp->sum,
+                    a_statsp->last_degen, b_statsp->sum,
+                    b_statsp->last_degen);
+        if ((a_statsp->elems < 1) || (b_statsp->elems < 1)) {
+            pr2serr("--action=tsort, either a-sgl or b-sgl has no "
+                    "elements??\n");
+            ret = SG_LIB_SYNTAX_ERROR;
+            goto fini;
+        }
+        if (a_statsp->last_degen) {
+            pr2serr("--action=tsort, need 'hard' a-sgl (i.e. need NUM>0 in "
+                    "last element\n");
+            ret = SG_LIB_SYNTAX_ERROR;
+            goto fini;
+        }
+        if (a_statsp->sum < b_statsp->sum) {
+            if (! op->quiet)
+                pr2serr("Only first %" PRId64 " blocks (a-sgl.sum) will be "
+                        "used from b-sgl\n", a_statsp->sum);
+        } else if ((a_statsp->sum > b_statsp->sum) &&
+                   (! b_statsp->last_degen)) {
+            pr2serr("--action=tsort, have 'hard' b-sgl but it doesn't have "
+                    "enough blocks\n");
+            ret = SG_LIB_SYNTAX_ERROR;
+            goto fini;
+        }
+        sort2o_sgl(a_sgl, b_sgl, res_sgl, res_b_sgl, op);
+        use_res_sgl = true;
+        write2o_sgl = true;
+        write2o_b_sgl = true;
         break;
     case ACT_TSPLIT_N:
         if (! (a_sge_p && b_sge_p && op->out_fn)) {
@@ -1532,8 +1841,17 @@ missing_comma:
                 }
             }
             if (op->document) {
-                fprintf(fp, "# k=%d %s\n", k + 1, out_ind); /* also origin 1 */
-                fprintf(fp, "# %s\n", cmd_line.c_str());
+                time_t t = time(NULL);
+                struct tm *tm = localtime(&t);
+
+                strftime(s, sizeof(s), "%c", tm);
+                fprintf(fp, "# Scatter gather list generated by ddpt_sgl: "
+                        "k=%d %s    %s\n", k + 1, out_ind, s);
+                        /* index shown origin 1 */
+                if (op->document > 1) {
+                    fprintf(fp, "# with this command line:\n");
+                    fprintf(fp, "#   %s\n", cmd_line_p);
+                }
                 fprintf(fp, "#\n");
             }
             if (op->do_hex > 1)
@@ -1547,9 +1865,9 @@ missing_comma:
         }
         if (vb > 4) {
             pr2serr("sgl 'A' statistics:\n");
-            pr_statistics(ssp->a_stats);
+            pr_statistics(*a_statsp, stderr);
             pr2serr("sgl 'B' statistics:\n");
-            pr_statistics(ssp->b_stats);
+            pr_statistics(*b_statsp, stderr);
         }
 
         ret = do_tsplit(a_sgl, a_sge_p, b_sgl, b_sge_p, op);
@@ -1575,49 +1893,16 @@ missing_comma:
     }
 
     if (write2o_sgl && op->out_fn && op->out_fn[0]) {
-        sgl_vect & o_sgl = use_res_sgl ? res_sgl : a_sgl;
-        time_t t = time(NULL);
-        FILE * fp;
-        struct tm *tm = localtime(&t);
-        char s[64];
-
-        if (op->out2stdout)
-            fp = stdout;
-        else {
-            char bb[256];
-            int bblen = sizeof(bb);
-
-            if (op->fne)
-                snprintf(bb, bblen, "%s.%s", op->out_fn, op->fne);
-            else
-                snprintf(bb, bblen, "%s", op->out_fn);
-            fp = fopen(bb, (op->append2out_f ? "a" : "w"));
-            if (NULL == fp) {
-                err = errno;
-                pr2serr("Unable to open %s, error: %s\n", bb, strerror(err));
-                ret = sg_convert_errno(err);
-                goto fini;
-            }
-        }
-        if (op->document) {
-            strftime(s, sizeof(s), "%c", tm);
-            fprintf(fp, "# Scatter gather list generated by ddpt_sgl  %s\n\n",
-                    s);
-        }
-        if (op->do_hex > 1)
-            fprintf(fp, "HEX\n\n");
-
-        n = o_sgl.size();
-        if (op->document)
-            fprintf(fp, "# %d sgl element%s, one element (LBA,NUM) per "
-                    "line\n", n, (1 == n ? "" : "s"));
-        for (k = 0; k < n; ++k)
-            output_sge(fp, &o_sgl[k], op->do_hex, vb);
-
-        if (stdout != fp)
-            fclose(fp);
+        ret = do_write2o_sgl(op->out_fn, "", (use_res_sgl ? res_sgl : a_sgl),
+                             cmd_line_p, op);
+        if (ret)
+            goto fini;
     }
-
+    if (write2o_b_sgl && op->out_fn && op->out_fn[0]) {
+        ret = do_write2o_sgl(op->out_fn, "_b", res_b_sgl, cmd_line_p, op);
+        if (ret)
+            goto fini;
+    }
     ret = 0;
 
 fini:

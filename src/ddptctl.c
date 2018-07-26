@@ -64,7 +64,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.96 20180719 [svn: r361]";
+const char * ddptctl_version_str = "0.96 20180725 [svn: r362]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -130,6 +130,7 @@ static struct option long_options[] = {
         {"del_tkn", no_argument, 0, 'D'},
         {"dry-run", no_argument, 0, 'd'},
         {"dry_run", no_argument, 0, 'd'},
+        {"flexible", no_argument, 0, 'f'},
         {"help", no_argument, 0, 'h'},
         {"hex", no_argument, 0, 'H'},
         {"info", no_argument, 0, 'i'},
@@ -161,13 +162,14 @@ usage()
     pr2serr("Usage: "
             "ddptctl [--abort] [--all_toks] [--block] [--del_tkn] "
             "[--dry-run]\n"
-            "               [--help] [--hex] [--immed] [--info] "
-            "[--list_id=LID]\n"
-            "               [--oir=OIR] [--poll] [--pt=GL] [--readonly] "
-            "[--receive]\n"
-            "               [--rtf=RTF] [rtype=RTYPE] [--size] "
-            "[--timeout=ITO[,CMD]]\n"
-            "               [--verbose] [--version] [--wut=SL] [DEVICE]\n"
+            "               [--flexible] [--help] [--hex] [--immed] "
+            "[--info]\n"
+            "               [--list_id=LID] [--oir=OIR] [--poll] [--pt=GL] "
+            "[--readonly]\n"
+            "               [--receive] [--rtf=RTF] [rtype=RTYPE] [--size]\n"
+            "               [--timeout=ITO[,CMD]] [--verbose] [--version] "
+            "[--wut=SL]\n"
+            "               [DEVICE]\n"
             "  where:\n"
             "    --abort|-A            call COPY OPERATION ABORT command\n"
             "    --all_toks|-a         call REPORT ALL ROD TOKENS command\n"
@@ -176,6 +178,8 @@ usage()
             "    --del_tkn|-D          set DEL_TKN bit in WUT command\n"
             "    --dry-run|-d          do preparation, bypass modifying "
             "operations\n"
+            "    --flexible|-f         relax parsing rules when 'HEX' in GL "
+            "or SL file\n"
             "    --help|-h             print out usage message\n"
             "    --hex|-H              print response in ASCII hexadecimal\n"
             "    --immed|-I            set IMMED bit in PT or WUT, exit "
@@ -562,7 +566,8 @@ sgl_helper(struct opts_t * op, const char * opt, const char * buf,
             cp = buf;
         else
             cp = buf + 1;
-        *sgl_pp = file2sgl(cp, def_hex, num_elems_p, &err, true);
+        *sgl_pp = file2sgl(cp, def_hex, op->flexible, num_elems_p, &err,
+                           true);
         if (NULL == *sgl_pp) {
             pr2serr("bad argument to '%s=' [err=%d]\n", opt, err);
             return err;
@@ -662,7 +667,7 @@ main(int argc, char * argv[])
     while (1) {
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "AaBdDhHiIl:O:pP:qr:Rst:T:vVw:y",
+        c = getopt_long(argc, argv, "AaBdDfhHiIl:O:pP:qr:Rst:T:vVw:y",
                         long_options, &option_index);
         if (c == -1)
             break;
@@ -682,6 +687,9 @@ main(int argc, char * argv[])
             break;
         case 'D':
             op->oflagp->del_tkn = true;
+            break;
+        case 'f':
+            op->flexible = true;
             break;
         case 'h':
         case '?':

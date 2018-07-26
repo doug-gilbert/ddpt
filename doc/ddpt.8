@@ -13,9 +13,9 @@ devices that understand the SCSI command set.
 [\fIprio=PRIO\fR] [\fIprotect=RDP[,WRP]\fR] [\fIretries=RETR\fR]
 [\fIrtf=RTF\fR] [\fIrtype=RTYPE\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR]
 [\fIstatus=STAT\fR] [\fIto=TO\fR] [\fIverbose=VERB\fR] [\fI\-\-dry\-run\fR]
-[\fI\-\-help\fR] [\fI\-\-job=JF\fR] [\fI\-\-odx\fR] [\fI\-\-quiet\fR]
-[\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR] [\fI\-\-xcopy\fR]
-[\fIddpt\fR] [\fIJF\fR]
+[\fI\-\-flexible\fR] [\fI\-\-help\fR] [\fI\-\-job=JF\fR] [\fI\-\-odx\fR]
+[\fI\-\-quiet\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR]
+[\fI\-\-xcopy\fR] [\fIddpt\fR] [\fIJF\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
 .PP
@@ -433,6 +433,15 @@ When used once the logic bypasses the copy just before it would normally
 start copying. When used twice (or more) it goes deeper into the copy to the
 IO call level before bypassing the calls. To see (on stderr) information
 for each IO this option combination may be useful: '\-ddvv'.
+.TP
+\fB\-f\fR, \fB\-\-flexible\fR
+this option currently only effects the parsing of sgl_s in files that are in
+hexadecimal plus they have a leading line with 'HEX' in them. Without this
+option any such line must be invoked with 'H@' before the filename; in other
+words the 'H' in the invocation needs to match the HEX in the file. With
+this option a sgl in a file can be invoked with '@' and if a line with HEX
+is parsed before any LBA,NUM pairs then it switches to hexadecimal mode; so
+all the parsed LBA,NUM pairs are assumed to be in hexadecimal.
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 reports usage message then exits.
@@ -966,6 +975,10 @@ containing '\-vv' will result in a verbosity level of '\-vvv' during the
 copy phase. Empty lines, lines only containing whitespace(s) and anything
 from and including a '#' in a job file line are ignored.
 .SH SCATTER GATHER LISTS
+Each element of a scatter gather list (sgl, plural: sgl_s) is made up of a
+starting logical block address (LBA, plural: LBAs), and a number of
+blocks (NUM) to be accessed from that starting LBA.
+.PP
 The \fIskip=SKIP\fR and \fIseek=SEEK\fR options (and their aliases) can take
 scatter gather lists. These can be explicit on the command line, fed in
 through stdin or in a file whose name is prefixed by "@" or "H@" on the
@@ -976,40 +989,43 @@ The actual implementation of each sgl is an array. Syntactically a scatter
 list and a gather list are the same.
 .PP
 Conceptually these sgl_s refer to what happens at the "far end" (e.g. within
-a hard disk), not what happens in the computer's memory. So a gather list is
-associated with the read part of a copy (i.e. the first half) where a list
-of Logical Blocks (LBs, identified by their addresses, hence LBAs) and a
-number of consecutive, following blocks are "gathered" from the medium (e.g.
-a SSD). They are formed into a linear sequence of bytes that is transferred
-into a segment in the computer's RAM. The second half of the copy, the write
-part, may use a scatter list. A scatter list starts with a linear sequence of
-bytes, taken from the segment, that is transferred to the device and
-then "scattered" on the medium as indicated by the list of LBA and
-number_of_block pairs.
+a hard disk or SSD), not what happens in the computer's memory. So a gather
+list is associated with the read part of a copy (i.e. the first half) where
+a list of Logical Blocks (LBs, identified by their addresses, hence LBAs) and
+a number of consecutive, following blocks are "gathered" from the
+medium (e.g. a SSD). They are formed into a linear sequence of bytes that is
+transferred into a segment in the computer's RAM. The second half of the
+copy, the write part, may use a scatter list. A scatter list starts with a
+linear sequence of bytes, taken from the segment, that is transferred to the
+device and then "scattered" on the medium as indicated by the list of
+LBA,NUM pairs.
 .PP
-In the simplest form a sgl is given on the command line and has the form:
-A1,N1[,A2,N2[,A3,N3...]]. There must be an even number of items (i.e. for
-every An there should be a following Nn) with one exception: when A1 alone
-is given, in which case the value 0 is assumed for N1. Comma is the simplest
-separator for the command line, but whitespace may also be used (but needs
-to be escaped because the shell usually interprets whitespace as an option
-separator). In a file (or read from stdin or file redirection) more
-flexibility is permitted in the format. The LBA, number_of_blocks pairs
-could all appear on one line in a file but the line length is limited to
-1024 characters. So for longer sgl_s one pair per line is recommended in
-file format. Also in file format everything from and including '#' is
-ignored as are lines that are empty or only contain whitespace(s).
+In the simplest case a sgl is given on the command line and has the form:
+LBA1,NUM1[,LBA2,NUM2[,LBA3,NUM3...]]. There must be an even number of
+items (i.e. for every LBAn there should be a following NUMn) with one
+exception: when LBA1 alone is given, in which case the value 0 is assumed
+for NUM1. Comma is the simplest separator for the command line, but
+whitespace may also be used (but needs to be escaped because the shell
+usually interprets whitespace as an option separator). In a file (or read
+from stdin or file redirection) more flexibility is permitted in the format.
+The LBA,NUM pairs could all appear on one line in a file but the line
+length is limited to 1024 characters (with a maximum of 256 parseable items
+on it). So for longer sgl_s one pair per line is recommended in file format.
+Also in file format everything from and including '#' to the end of that
+line is ignored as are lines that are empty or only contain whitespace(s).
 .PP
 Each pair becomes one element (or more, see below) of the sgl. By default
-all numbers given for LBA and number_of_blocks items are in decimal with
-optional suffix multipliers. Hex numbers use either a "0x" prefix or a 'h'
-suffix (hex notation and suffix multipliers cannot be mixed). In the case
-of a 'H@' lead\-in to the filename on the command line, all numbers are
-interpreted as hex with no suffix multipliers permitted. Further, with
-the 'H@' lead\-in the file may contain the string 'HEX' before any numbers
-are given. The 'HEX' is ignored. The point of this is to catch when a sgl
+all numbers given for LBA and NUM items are in decimal with optional suffix
+multipliers. Hex numbers use either a "0x" prefix or a 'h' suffix (hex
+notation and suffix multipliers cannot be mixed). In the case of a 'H@'
+lead\-in to the filename on the command line, all numbers are interpreted
+as hex with no suffix multipliers permitted. Further, with the 'H@'
+lead\-in the file may contain the string 'HEX' before any numbers are
+given. The 'HEX' is ignored. The point of this is to catch when a sgl
 file with default hexadecimal numbers is given without the 'H@' lead\-in;
 in this case this utility will exit saying that file is in the wrong format.
+This "wrong format" action can be bypassed with the \fI\-\-flexible\fR
+option.
 .PP
 Allowing sgl_s brings lots of flexibility (including the possibility to use
 the SCSI WRITE SCATTERED command) but with that comes complexity. Every sgl
@@ -1029,24 +1045,27 @@ case (so this utility doesn't do it) but easy in the case of a monotonic
 sgl (so this utility does do it). Warnings are issued in dangerous
 situations, with the force flag allowing the warning to be overridden.
 .PP
-A degenerate sgl element is one that has zero in its number_of_blocks field.
+A degenerate sgl element is one that has zero in its NUM field.
 Normally degenerate elements are ignored with some exceptions. The
 definition of the SCSI WRITE SCATTERED command clearly states that degenerate
 elements are valid, thus do not cause an error, but cause no associated
 action. This utility uses the concept of a 'hard' and 'soft' sgl: a 'soft'
-sgl is one in which the last element's number_of_blocks is zero (i.e. its
-last element is degenerate). A sgl with a non\-zero number_of_blocks in its
-last element is considered 'hard'. The difference between a hard and soft
-sgl is the way the sum of number_of_blocks of all elements is used by this
-utility.  For a 'hard' sgl that sum is used for \fICOUNT\fR when the
-\fIcount=COUNT\fR option is not given; and if \fIcount=COUNT\fR is given
-and the counts differ then those two values are output and this utility
-exits with a syntax error. For a 'soft' sgl the degenerate last element
-is interpreted as "from the highest LBA in the list to the end of the
-copy" where the \fICOUNT\fR is determined some other way. The "highest
-LBA" is calculated from all elements that have a non\-zero number of blocks
-plus the LBA of the last element (regardless of whether it is degenerate
-or not).
+sgl is one in which the last element's NUM is zero (i.e.
+its last element is degenerate). A sgl with a non\-zero NUM in
+its last element is considered 'hard'. In a 'soft' sgl the LBA of the last
+element should be greater than or equal to any LBA+NUM of earlier elements.
+Because this is hard to check it is not enforced, so the decision is made
+on whether a sgl is hard or soft simply by checking the NUM of that last
+element. The difference between a hard and soft sgl is the way the sum of
+NUM of all elements is used by this utility.  For a 'hard' sgl
+that sum is used for \fICOUNT\fR when the \fIcount=COUNT\fR option is not
+given; and if \fIcount=COUNT\fR is given and the counts differ then those
+two values are output and this utility exits with a syntax error. For
+a 'soft' sgl the degenerate last element is interpreted as "from the
+highest LBA in the list to the end of the copy" where the \fICOUNT\fR is
+determined some other way. The "highest LBA" is calculated from all
+elements that have a non\-zero number of blocks plus the LBA of the last
+element (regardless of whether it is degenerate or not).
 .PP
 The rules in the above paragraph make a one item skip or seek argument (e.g.
 skip=0x123) in this utility first become a one element sgl (e.g. containing
@@ -1058,25 +1077,23 @@ the classic
 .B dd
 command does with its skip= and seek= options.
 .PP
-Some sgl implementation details: Logical Block Addresses (LBAs) are stored
-in 64 bit integers which is more than sufficient to span even the largest
-disk array behind a logical device, even if the block size is one byte
-which is unlikely. The number_of_blocks field is a 32 bit integer and this
-is more problematic. The reason is that SCSI WRITE commands (and their
-variants) only allocate at most a 32 bit integer for this value. Further,
-modern operating systems do not allow any driver to get large amounts
-of contiguous system RAM, even if the machine has it available. A 32 bit
-integer for number_of_blocks with each block at 512 bytes is around 2 TB of
-storage. Unix system calls (in Linux) also limit each read(2) and write(2)
-system call to 32 bits of single bytes which is 4 GB. The problem for
-this utility is that the number_of_blocks can easily exceed 32 bits
-when a single scatter gather list element refers to the whole device.
-The action taken by this utility is to allow larger than 32 bit
-number_of_blocks values to be given on the command line (or in a scatter
-gather list file). However such a large element will be split into multiple
-elements internally. This will be visible to the user when the
-\fIverbose=VERB\fR option (or one of its variants) is used with an elevated
-value.
+Some sgl implementation details: LBAs are stored in 64 bit integers which
+is more than sufficient to span even the largest disk array behind a logical
+device, even if the block size is one byte, which is unlikely. The NUM field
+is a 32 bit integer and this is more problematic. The reason is that SCSI
+WRITE commands (and their variants) only allocate at most a 32 bit integer
+for this value. Further, modern operating systems do not allow any driver
+to get large amounts of contiguous system RAM, even if the machine has it
+available. A 32 bit integer for NUM with each block at 512 bytes is around
+2 TB of storage. Unix system calls (in Linux) also limit each read(2) and
+write(2) system call to 32 bits of single bytes which is 4 GB. The problem
+for this utility is that the NUM can easily exceed 32 bits when a single
+scatter gather list element refers to the whole device. The action taken
+by this utility is to allow larger than 32 bit NUM values to be given on
+the command line (or in a scatter gather list file). However such a large
+element will be split into multiple elements internally. This will be
+visible to the user when the \fIverbose=VERB\fR option (or one of its
+variants) is used with an elevated value.
 .PP
 There is a helper utility called ddpt_sgl in this package for generating,
 manipulating and checking scatter gather lists. See its manpage.

@@ -1688,6 +1688,20 @@ count_sgl_blocks_from(const struct scat_gath_elem * sglp, int elems,
     return (res < (uint64_t)num_blks) ? res : (uint64_t)num_blks;
 }
 
+/* Points to start of sgl after init, sets extend_last bit */
+void
+sgl_iter_init(struct sgl_iter_t * iter_p, struct scat_gath_elem * sglp,
+              int elems)
+{
+    if ((NULL == iter_p) || (elems < 0))
+        return;
+    memset(iter_p, 0, sizeof(struct sgl_iter_t));
+    iter_p->sglp = sglp;
+    iter_p->elems = elems;
+    if (sglp && (elems > 0))
+        iter_p->extend_last = (0 == (sglp + (elems - 1))->num);
+}
+
 /* Given a blk_count, the iterator (*iter_p) is moved toward the EOL. If
  * relative is true the move is from the current position of the iterator. If
  * relative is false then the move is from the start of the sgl. The
@@ -1912,12 +1926,13 @@ err_out:
 }
 
 static int
-file2sgl_helper(FILE * fp, const char * fnp, bool def_hex, bool real_scan,
-                int max_elems, struct scat_gath_elem * res_p, int * errp,
-                bool b_vb)
+file2sgl_helper(FILE * fp, const char * fnp, bool def_hex, bool flexible,
+                bool real_scan, int max_elems, struct scat_gath_elem * res_p,
+                int * errp, bool b_vb)
 {
     bool bit0;
     bool pre_addr1 = true;
+    bool pre_hex_seen = false;
     int in_len, k, j, m, ind;
     const int max_nbs = INT32_MAX - 1;  /* 2**31 - 2; leaving headroom */
     int off = 0;
@@ -1955,16 +1970,25 @@ file2sgl_helper(FILE * fp, const char * fnp, bool def_hex, bool real_scan,
         in_len -= m;
         if ('#' == *lcp)
             continue;
-        if (pre_addr1) {
+        if (pre_addr1 || pre_hex_seen) {
+            /* Accept lines with leading 'HEX' and ignore as long as there
+             * is one _before_ any LBA,NUM lines in the file. This allows
+             * HEX marked sgls to be concaternated together. */
             if (('H' == toupper(lcp[0])) && ('E' == toupper(lcp[1])) &&
                 ('X' == toupper(lcp[2]))) {
+                pre_hex_seen = true;
                 if (def_hex)
                     continue; /* bypass 'HEX' marker line if expecting hex */
                 else {
-                    pr2serr("%s: %s: 'hex' string detected on line %d, "
-                            "expecting decimal\n", __func__, fnp, j + 1);
-                    *errp = SG_LIB_SYNTAX_ERROR;
-                    goto err_out;
+                    if (flexible) {
+                        def_hex = true; /* okay, switch to hex parse */
+                        continue;
+                    } else {
+                        pr2serr("%s: %s: 'hex' string detected on line %d, "
+                                "expecting decimal\n", __func__, fnp, j + 1);
+                        *errp = SG_LIB_SYNTAX_ERROR;
+                        goto err_out;
+                    }
                 }
             }
         }
@@ -1977,11 +2001,12 @@ file2sgl_helper(FILE * fp, const char * fnp, bool def_hex, bool real_scan,
             goto err_out;
         }
         for (k = 0; k < 256; ++k) {
-            if (def_hex) {
+            /* limit parseable items on one line to 256 */
+            if (def_hex) {      /* don't accept negatives or multipliers */
                 if (1 == sscanf(lcp, "%" SCNx64, &ull))
                     ll = (int64_t)ull;
                 else
-                    ll = -1;
+                    ll = -1;    /* use (2**64 - 1) as error flag */
             } else
                 ll = sg_get_llnum(lcp);
             if (-1 != ll) {
@@ -1994,7 +2019,7 @@ file2sgl_helper(FILE * fp, const char * fnp, bool def_hex, bool real_scan,
                                 fnp);
                     goto err_out;
                 }
-                if (bit0) {
+                if (bit0) {     /* bit0 set when decoding a NUM */
                     if (ll < 0) {
                         *errp = SG_LIB_SYNTAX_ERROR;
                         if (b_vb)
@@ -2026,16 +2051,16 @@ file2sgl_helper(FILE * fp, const char * fnp, bool def_hex, bool real_scan,
                         sge_p->num = (uint32_t)ll;
                         ++sge_p;
                     }
-                } else {
+                } else {        /* bit0 clear when decoding a LBA */
                     if (pre_addr1)
                         pre_addr1 = false;
                     if (real_scan)
                         sge_p->lba = (uint64_t)ll;
                 }
-            } else {
-                if ('#' == *lcp) {
+            } else {    /* failed to decode number on line */
+                if ('#' == *lcp) { /* numbers before #, rest of line comment */
                     --k;
-                    break;
+                    break;      /* goes to next line */
                 }
                 *errp = SG_LIB_SYNTAX_ERROR;
                 if (b_vb)
@@ -2049,9 +2074,9 @@ file2sgl_helper(FILE * fp, const char * fnp, bool def_hex, bool real_scan,
             lcp += strspn(lcp, " ,\t");
             if ('\0' == *lcp)
                 break;
-        }       /* for loop, multiple numbers on 1 line */
+        }       /* <<< end of for(k < 256) loop */
         off += (k + 1);
-    }   /* end of for loop, one iteration per line */
+    }   /* <<< end of for(sge_p = res_p) loop, one iteration per line */
     /* allow one items, but not higher odd number of items */
     if ((off > 1) && (0x1 & off)) {
         *errp = SG_LIB_SYNTAX_ERROR;
@@ -2087,8 +2112,8 @@ err_out:
  * 0 to *errp (if it is non-NULL) so the caller does not need to zero it
  * before calling. */
 struct scat_gath_elem *
-file2sgl(const char * file_name, bool def_hex, int * arr_elemsp, int * errp,
-         bool b_vb)
+file2sgl(const char * file_name, bool def_hex, bool flexible,
+         int * arr_elemsp, int * errp, bool b_vb)
 {
     bool have_stdin;
     bool countable = true;
@@ -2137,8 +2162,8 @@ file2sgl(const char * file_name, bool def_hex, int * arr_elemsp, int * errp,
         }
     }
     if (countable) {
-        n = file2sgl_helper(fp, fnp, def_hex, false, 0, &sge_dummy, errp,
-                            b_vb);
+        n = file2sgl_helper(fp, fnp, def_hex, flexible, false, 0, &sge_dummy,
+                            errp, b_vb);
         if (n <= 0)
             goto err_out;
     } else
@@ -2152,7 +2177,8 @@ file2sgl(const char * file_name, bool def_hex, int * arr_elemsp, int * errp,
             pr2serr("%s: calloc: %s\n", __func__, safe_strerror(ENOMEM));
         return NULL;
     }
-    n = file2sgl_helper(fp, fnp, def_hex, true, m, res_p, errp, b_vb);
+    n = file2sgl_helper(fp, fnp, def_hex, flexible, true, m, res_p, errp,
+                        b_vb);
     if (countable) {
         if (m != n) {
             pr2serr("%s: first pass found %d pairs, second one found %d "
@@ -2766,28 +2792,33 @@ sgl_empty(struct scat_gath_elem * sglp, int elems)
     return false;
 }
 
-/* EOL is end of list, one past the last valid position */
+/* print data held in struct sgl_iter_t to fp. If fp is NULL then to stderr */
 void
 sgl_iter_print(const struct sgl_iter_t * itp, const char * leadin,
-               bool index_only)
+               bool index_only, bool in_hex, FILE * fp)
 {
+    if (NULL == fp)
+        fp = stderr;
     if (NULL == leadin)
         leadin = "";
-    pr2serr("%s e_index=%d, blk_off=%d", leadin, itp->it_e_ind,
-            itp->it_bk_off);
+    if (in_hex)
+        fprintf(fp, "%s e_index=0x%x, blk_off=0x%x", leadin, itp->it_e_ind,
+                itp->it_bk_off);
+    else
+        fprintf(fp, "%s e_index=%d, blk_off=%d", leadin, itp->it_e_ind,
+                itp->it_bk_off);
     if (index_only) {
-        pr2serr("\n");
+        fprintf(fp, "\n");
         return;
     }
-    pr2serr("  end (last+1): [%d:", itp->elems);
-    if ((itp->it_e_ind >= 0) && (itp->it_e_ind < itp->elems) && itp->sglp) {
-        int num = (itp->sglp + itp->it_e_ind)->num;
-
-        pr2serr("%d[0x%x]]\n", num, num);
-    } else if ((itp->it_e_ind == itp->elems) && (0 == itp->it_bk_off))
-        pr2serr("EOL]\n");
+    if (in_hex)
+        fprintf(fp, "  elems=0x%x extend_last=%d %sfilepos%c0\n", itp->elems,
+                !! itp->extend_last, (itp->sglp ? "" : "sglp=NULL"),
+                (itp->filepos ? '>' : '='));
     else
-        pr2serr("invalid]\n");
+        fprintf(fp, "  elems=%d extend_last=%d %sfilepos%c0\n", itp->elems,
+                !! itp->extend_last, (itp->sglp ? "" : "sglp=NULL "),
+                (itp->filepos ? '>' : '='));
 }
 
 /* Returns >= 0 if sgl can be simplified to a single LBA. So an empty sgl
