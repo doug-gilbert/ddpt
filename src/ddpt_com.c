@@ -1951,8 +1951,7 @@ file2sgl_helper(FILE * fp, const char * fnp, bool def_hex, bool flexible,
             if ('\n' == line[in_len - 1]) {
                 --in_len;
                 line[in_len] = '\0';
-            }
-            else {
+            } else {
                 *errp = SG_LIB_SYNTAX_ERROR;
                 if (b_vb)
                     pr2serr("%s: %s: line too long, max %d bytes\n",
@@ -2164,12 +2163,19 @@ file2sgl(const char * file_name, bool def_hex, bool flexible,
     if (countable) {
         n = file2sgl_helper(fp, fnp, def_hex, flexible, false, 0, &sge_dummy,
                             errp, b_vb);
-        if (n <= 0)
+        if (n < 0)
             goto err_out;
     } else
         n = MAX_FIXED_SGL_ELEMS;
     m = n;
 
+    if (n <= 0) {
+        if (b_vb)
+            pr2serr("%s: unable to decode any sgl elements from %s\n",
+                    __func__, fnp);
+        *errp = SG_LIB_SYNTAX_ERROR;
+        goto err_out;
+    }
     res_p = (struct scat_gath_elem *)calloc(n, sizeof(struct scat_gath_elem));
     if (NULL == res_p) {
         *errp = sg_convert_errno(ENOMEM);
@@ -2988,8 +2994,7 @@ iter_add_process(struct sgl_iter_t * ip, uint64_t blk_count,
  * file position (typically the end) of fp, with a trailing \n character.
  * Returns 0 on success, else SG_LIB_FILE_ERROR . */
 int
-output_sge(FILE * fp, const struct scat_gath_elem * sgep,
-           int hex, int vb)
+output_sge_f(FILE * fp, const struct scat_gath_elem * sgep, int hex, int vb)
 {
     if (0 == hex)
         fprintf(fp, "%" PRIu64 ",%u\n", sgep->lba, sgep->num);
@@ -3051,9 +3056,9 @@ sgl_iter_diff(const struct sgl_iter_t * lhsp, const struct sgl_iter_t * rhsp)
  * If no inequality and one list is exhausted before the other, then returns
  * allow_partial. */
 bool
-sgl_eq(const struct scat_gath_elem * lsgep, int lelems, int l_bk_off,
-       const struct scat_gath_elem * rsgep, int relems, int r_bk_off,
-       bool allow_partial)
+sgl_eq_f(const struct scat_gath_elem * lsgep, int lelems, int l_bk_off,
+         const struct scat_gath_elem * rsgep, int relems, int r_bk_off,
+         bool allow_partial)
 {
     int l_e_ind = 0;
     int r_e_ind = 0;
@@ -3106,9 +3111,9 @@ sgl_iter_eq(const struct sgl_iter_t * lhsp, const struct sgl_iter_t * rhsp,
     }
     lsgep = lhsp->sglp + lhsp->it_e_ind;
     rsgep = rhsp->sglp + rhsp->it_e_ind;
-    return sgl_eq(lsgep, lhsp->elems - lhsp->it_e_ind, lhsp->it_bk_off,
-                  rsgep, rhsp->elems - rhsp->it_e_ind, rhsp->it_bk_off,
-                  allow_partial);
+    return sgl_eq_f(lsgep, lhsp->elems - lhsp->it_e_ind, lhsp->it_bk_off,
+                    rsgep, rhsp->elems - rhsp->it_e_ind, rhsp->it_bk_off,
+                    allow_partial);
 }
 
 

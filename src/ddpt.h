@@ -837,8 +837,8 @@ void cp_state_init(struct cp_state_t * csp, struct opts_t * op);
 /* Writes the LBA and number_of_blocks in sge_r to a line at the current
  * file position (typically the end) of fp, with a trailing \n character.
  * Returns 0 on success, else SG_LIB_FILE_ERROR . */
-int output_sge(FILE * fp, const struct scat_gath_elem * sgep, int hex,
-               int verbose);
+int output_sge_f(FILE * fp, const struct scat_gath_elem * sgep, int hex,
+                 int verbose);
 
 /* Compares from lsgep, offset by l_bk_off against rsgep, offset by r_bk_off.
  * While lbas compare equal lsgep is advanced by up to lelems, while rsgep
@@ -846,7 +846,7 @@ int output_sge(FILE * fp, const struct scat_gath_elem * sgep, int hex,
  * otherwise if both list are exhausted at the same point, then returns true.
  * If no inequality and one list is exhausted before the other, then returns
  * allow_partial. */
-bool sgl_eq(const struct scat_gath_elem * lsgep, int lelems, int l_bk_off,
+bool sgl_eq_f(const struct scat_gath_elem * lsgep, int lelems, int l_bk_off,
             const struct scat_gath_elem * rsgep, int relems, int r_bk_off,
             bool allow_partial);
 
@@ -946,11 +946,15 @@ public:
 };
 
 struct sgl_opts_t {
+    bool append2iaf;
     bool append2out_f;
     bool chs_given;
     bool div_lba_only;
     bool div_num_only;
+    bool elem_given;
     bool flexible;
+    bool iaf2stdout;
+    bool index_given;
     bool out2stdout;
     bool non_overlap_chk;
     bool pr_stats;
@@ -965,15 +969,18 @@ struct sgl_opts_t {
                          * moving to next sgl; def=0 --> no interleave */
     int last_elem;      /* init to -1 which makes start_elem a singleton */
     int round_blks;
+    int sort_cmp_val;
     int split_n;
     int start_elem;     /* init to -1 which means write out whole O_SGL */
     int verbose;
     const char * b_sgl_arg;
+    const char * iaf;   /* index array filename */
     const char * out_fn;
     const char * fne;
     struct chs_t chs;
     struct cl_sgl_stats ab_sgl_stats;
-    std::vector<const char *> dev_names;
+    std::string cmd_line;
+    std::vector<int> index_arr; /* input from --index=IA */
     std::vector<struct split_fn_fp> split_out_fns;
     std::vector<struct split_fn_fp> b_split_out_fns; /* 'b' side for tsplit */
 };
