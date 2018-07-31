@@ -1,12 +1,14 @@
-.TH DDPT_SGL "8" "June 2018" "ddpt\-0.96" DDPT
+.TH DDPT_SGL "8" "July 2018" "ddpt\-0.96" DDPT
 .SH NAME
 ddpt_sgl \- helper for ddpt utility's scatter gather lists
 .SH SYNOPSIS
 .B ddpt_sgl
 [\fI\-\-action=ACT\fR] [\fI\-\-a\-sgl=SGL\fR] [\fI\-\-b\-sgl=SGL\fR]
-[\fI\-\-chs=CHS\fR] [\fI\-\-degen=DV\fR] [\fI\-\-dry\-run\fR]
-[\fI\-\-help\fR] [\fI\-\-hex\fR] [\fI\-\-out=O_SGL\fR] [\fI\-\-overlap\fR]
-[\fI\-\-verbose\fR] [\fI\-\-version\fR]
+[\fI\-\-chs=CHS\fR] [\fI\-\-degen=DV\fR] [\fI\-\-document\fR]
+[\fI\-\-extension=FNE\fR] [\fI\-\-help\fR] [\fI\-\-hex\fR]
+[\fI\-\-interleave=IL\fR] [\fI\-\-non\-overlap\fR] [\fI\-\-out=O_SGL\fR]
+[\fI\-\-quiet\fR] [\fI\-\-round=RB\fR] [\fI\-\-stats\fR] [\fI\-\-verbose\fR]
+[\fI\-\-version\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
@@ -23,15 +25,9 @@ http://sg.danny.cz/sg/ddpt.html .
 Arguments to long options are mandatory for short options as well.
 .TP
 \fB\-a\fR, \fB\-\-action\fR=\fIACT\fR
-\fIACT\fR is some actions to perform of the given scatter gather list(s).
-To list the available actions set \fIACT\fR to 'xxx' (or 'enum'). There are
-only two significant action currently defined. One is "append\-b2a" which
-appends sgl 'B' to the end of sgl 'A' with the result placed in sgl 'A'.
-.br
-The other action is "to\-chs" which takes the 'flat' LBA SGL given to
-\fI\-\-a\-sgl=SGL\fR and converts it into CHS based SGL which is written
-out as directed by \fI\-\-out=O_SGL\fR. This action requires both the
-\fI\-\-chs=CHS\fR and \fI\-\-out=O_SGL\fR options to be given.
+\fIACT\fR is some action to perform on the given scatter gather list(s).
+To list the available actions set \fIACT\fR to 'xxx' (or 'enum'). The
+available actions are listed in the ACTIONS section below.
 .TP
 \fB\-A\fR, \fB\-\-a\-sgl\fR=\fISGL\fR
 \fISGL\fR is a scatter gather list, a sequence of comma separated unsigned
@@ -44,7 +40,7 @@ Since there are two options for inputting \fISGL\fRs, this one is termed as
 the 'A sgl'.
 .br
 See the section on SCATTER GATHER LISTS in the ddpt(8) manpage for more
-information on these list and associated terminology.
+information on sgls and their associated terminology.
 .TP
 \fB\-B\fR, \fB\-\-b\-sgl\fR=\fISGL\fR
 \fISGL\fR is a scatter gather list, a second list termed as the 'B sgl' to
@@ -53,41 +49,63 @@ differentiate it from the other sgl.
 \fB\-C\fR, \fB\-\-chs\fR=\fICHS\fR
 \fICHS\fR is a 3 element tuple, separated by commas. Currently 16 bit values
 from 1 to 0xffff are accepted (the cylinder can be one more: 0x10000 (or
-65536). The first is the number of cylinders, the second number is the
-number of heads (limited to 16), and the final number is the number
+65536)). The first value is the number of cylinders, the second value is the
+number of heads (limited to 16), and the final value is the number
 of sectors per track (limited to 255).
 .TP
 \fB\-D\fR, \fB\-\-degen\fR=\fIDV\fR
-\fIDV\fR of 0 (the default) means the all degenerate element (apart from
-the last) are ignored (and dropped from the output file). If \fIDV\fR
-is odd then its LBA is taken into account when calculating the highest
-and lowest LBA in a sgl (and is included in the output file). If \fIDV\fR
-is even (apart from 0) then its LBA it taken into account when determining
-if a sgl is monotonic increasing, descreasing or neither (and is included
-in the output file).
+\fIDV\fR of 0 (the default) means that all degenerate elements (apart from
+the last) are ignored (and dropped from the internal representation which may
+later be written to an output file). If \fIDV\fR is odd then a degenerate
+element's LBA is taken into account when calculating the highest and lowest
+LBA in a sgl (and may be included in an output file). If \fIDV\fR is even
+(apart from a \fIDV\fR of 0) then a degenerate element's LBA it taken into
+account when determining if a sgl is monotonic increasing, decreasing or
+neither (and may be included in an output file).
 .TP
-\fB\-d\fR, \fB\-\-dry\-run\fR
-this option is not currently implemented.
+\fB\-d\fR, \fB\-\-document\fR
+this option causes information about the a sgl to be written as
+comments (i.e. lines starting with '#') to the beginning of output sgl
+file(s) created by this utility.
+.TP
+\fB\-e\fR, \fB\-\-extension\fR=\fIFNE\fR
+\fIFNE\fR is the filename extension used when output filenames are
+generated. For non\-split actions the generated filenames are of the
+form: \fIO_SGL\fR.\fIFNE\fR . For the split action the generated filenames
+are of the form: \fIO_SGL\fR[1..n].\fIFNE\fR . For the tsplit action
+the 'A' sgl is named as per the previous sentence, while for the 'B' sgl
+the generated filenames are of the form: \fIO_SGL\fR[1..n]_b.\fIFNE\fR .
+.br
+If \fIO_SGL\fR is '\-' (by itself) then all output is sent to stdout and
+this option is ignored.
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 outputs the usage message summarizing command line options then exits.
 .TP
 \fB\-H\fR, \fB\-\-hex\fR
-used to define the numeric format of what is written to \fI\-\-out=O_SGL\fR.
-If not given then only decimal values are written to \fIO_SGL\fR. If this
-option is given once then hexadecimal values, prefixed with '0x', are
-written to \fIO_SGL\fR. If this option is given twice then a line with
-the string 'HEX' is written to \fIO_SGL\fR before any values, and those
-values are implicitly (i.e. no leading '0x' or 'h' suffix) hexadecimal.
+used to define the numeric format of scatter gather elements written to
+output (often a file named  \fIO_SGL\fR or stdout).  If not given then only
+decimal values are written to output. If this option is given once then
+hexadecimal values, prefixed with '0x', are written.. If this option is
+given twice then a line with the string 'HEX' is written to output, before
+any values, and those values are implicitly (i.e. no leading '0x' or 'h'
+suffix) hexadecimal.
 .TP
-\fB\-o\fR, \fB\-\-out\fR=\fIO_SGL\fR
-\fIO_SGL\fR is the name of a file to write a resultant scatter gather
-list to. If \fIO_SGL\fR is '\-' then the output is directed to stdout.
-If \fIO_SGL\fR starts with '+' then the output is appended to the file
-whose name follows the '+'.
+\fB\-i\fR, \fB\-\-interleave\fR=\fIIL\fR
+\fIIL\fR is an integer, starting from 0. When \fIIL\fR is 0 (the default)
+there is no interleave. The interleave only effects the split and tsplit
+actions and when greater than zero is the maximum number (of blocks)
+written in each segment in the output file, prior to moving to the next
+output file.
+.br
+For the case where \fIIL\fR is 1 and \fI\-\-action=split_1\fR is given
+then the output file will have every LBA (given by the 'A' sgl) as a
+separate sgl element (and thus each will have a 'num' of 1).
+.br
+For the tsplit action the interleave is only applied to the 'A' sgl.
 .TP
-\fB\-O\fR, \fB\-\-overlap\-sgl\fR
-Checks any given sgl and amy resulting sgl (from an action) to see if
+\fB\-N\fR, \fB\-\-non\-overlap\fR
+Checks any given sgl and any resulting sgl (from an action) to see if
 any portion of the sgl overlaps. This is done by first sorting each
 sgl by the LBA field, then checking every element against the previous
 one to determine if there is overlap. SCSI commands that accept sgls
@@ -95,6 +113,34 @@ process degenerate elements without error but if two elements in a
 WRITE command overlap then it is the storage device's choice which one
 to WRITE first. The last one to be written will be the one read in
 subsequent read operations.
+.br
+If no errors are detected then if (all) non\-overlapping then 0 is returned.
+If no errors are detected then if (any) overlapping then 36 is returned.
+.TP
+\fB\-o\fR, \fB\-\-out\fR=\fIO_SGL\fR
+\fIO_SGL\fR is the name of a file to write a resultant scatter gather
+list to. If \fIO_SGL\fR is '\-' then the output is directed to stdout.
+If \fIO_SGL\fR starts with '+' then the output is appended to the file
+whose name follows the '+'.
+.br
+For the split and tsplit actions, the leading '+' is interpreted as appended
+to all files that meet the template and exist, otherwise the file is
+created. If '\-' is given then all output is directed to stdout (and the
+\fI\-\-extension=FNE\fR option, if given, is ignored).
+.TP
+\fB\-r\fR, \fB\-\-round\fR=\fIRB\fR
+\fIRB\fR is the number of round blocks. Without the option the split action
+will divide the number of blocks to be split by '<n>' (or use \fIIL\fR) to
+get a nominal value. This value if the number of blocks taken from the 'A'
+sgl before moving to the next output file. The \fIRB\fR value (default 0) is
+the maximum number of blocks the nominal value may be changed by to pick
+up an existing element boundary in the 'A' sgl.
+.br
+If the number of blocks in 'A' sgl is less than 10 or \fIRB\fR is greater
+than one third of the nominal value, then \fIRB\fR is ignored (with a
+notification written to stderr).
+.br
+For the tsplit action the option only applies to the 'A' sgl.
 .TP
 \fB\-s\fR, \fB\-\-stats\fR
 print out sgl statistics on any given sgl and any resultant sgl.
@@ -104,15 +150,117 @@ increase the level of verbosity, (i.e. debug output).
 .TP
 \fB\-V\fR, \fB\-\-version\fR
 print the version string and then exit.
+.SH ACTIONS
+Actions are given on the command line as part of the \fI\-\-action=ACT\fR
+option. Currently only one action is allowed per invocation. If more are
+allowed in the future, they will be comma separated and performed in the
+order in which they appear (i.e. left to right).
+.PP
+If no action is given and the \fI\-\-a\-sgl=SGL\fR and \fI\-\-out=O_SGL\fR
+options (with no \fI\-\-b\-sgl=SGL\fR option) are given then the 'A' sgl
+is copied to \fIO_SGL\fR (or \fIO_SGL\fR.\fIFNE\fR if the
+\fI\-\-extension=FNE\fR option is given).
+.PP
+The actions are listed below in alphabetical order.
+.TP
+\fBappend\-b2a\fR
+appends the b-sgl to the end of the a\-sgl and outputs the result to
+\fIO_SGL\fR (or \fIO_SGL\fR.\fIFNE\fR if the \fI\-\-extension=FNE\fR option
+is given). Requires the \fI\-\-a\-sgl=SGL\fR, \fI\-\-b\-sgl=SGL\fR and
+\fI\-\-out=O_SGL\fR options.
+.TP
+\fBenum\fR
+prints out the list of supported actions then exits. Giving the action 'xxx'
+has the same effect.
+.TP
+\fBequal\fR
+this action compares the sgls given to \fI\-\-a\-sgl=SGL\fR and
+\fI\-\-b\-sgl=SGL\fR. If the same LBAs are in the same order with the same
+overall number of blocks (but not necessarily the same number of elements)
+then true is returned (i.e. the exit status 0); otherwise false is
+returned (i.e.  exit status 36). For example the two element
+sgl "0x10,0x5, 0x15,0x2" is 'equal' to the one element sgl "0x10, 0x7".
+.br
+The output of the string to stderr announcing equality, or lack of it, can
+be suppressed by the \fI\-\-quiet\fR option.
+.TP
+\fBnull\fR
+this action does nothing. It is a placeholder.
+.TP
+\fBpart\-equal\fR
+this action is similar to the \fBequal\fR action but relaxes the condition
+that both lists must have the same overall number of blocks. For example the
+two element sgl "0x10,0x5, 0x15,0x2" is 'part\-equal' to the one element
+sgl "0x10, 0x12".
+.TP
+\fBpart\-same\fR
+this action is similar to the \fBsame\fR action but relaxes the condition
+that both lists must have the same overall number of blocks. For example the
+two element sgl "0x15,0x2,0x10,0x5" is 'part\-same' as the one element
+sgl "0x10, 0x12".
+.TP
+\fBsame\fR
+this action is similar to the \fBequal\fR action but relaxes the condition
+that both lists must be in the same order. The implementation sorts both
+given lists before comparing them.  For example the two element
+sgl "0x15,0x2, 0x10,0x5" is the 'same' as the one element sgl "0x10, 0x7".
+.TP
+\fBsort\fR
+this action will sort the sgl given by \fI\-\-a\-sgl=SGL\fR in ascending
+order by LBA. The resulting sgl is output to \fIO_SGL\fR (or
+\fIO_SGL\fR.\fIFNE\fR if the \fI\-\-extension=FNE\fR option is given).
+.br
+The sort is "stable", so if two elements have the same starting LBA then
+they will appear in the same relative order in the output.
+.TP
+\fBsplit<n>\fR or \fBsplit_<n>\fR
+where <n> is an integer, 1 or higher. This action divides
+\fI\-\-a\-sgl=SGL\fR into <n> roughly equal length (i.e. number of blocks)
+output sgls. The output files are named "\fIO_SGL\fR<1..n>"
+or "\fIO_SGL\fR<1..n>.\fIFNE\fR". Both the \fI\-\-interleave=IL\fR and
+\fI\-\-round=RB\fR options are taken into account during the split process.
+.TP
+\fBto\-chs\fR
+this action takes the 'flat' LBA SGL given to \fI\-\-a\-sgl=SGL\fR and
+converts it into CHS (cylinder/head/sector) based SGL which is written
+out as directed to \fI\-\-out=O_SGL\fR. This action requires the
+\fI\-\-chs=CHS\fR option as well as the \fI\-\-a\-sgl=SGL\fR and
+\fI\-\-out=O_SGL\fR options.
+.TP
+\fBtsplit<n>\fR or \fBtsplit_<n>\fR
+this is a "twin split" action the splits the \fI\-\-a\-sgl=SGL\fR and
+\fI\-\-b\-sgl=SGL\fR into separate series of output files. These separate
+series maintain the LBA to LBA correspondence of the original a_sgl and
+b_sgl lists. <n> is an integer, 1 or higher. This action divides
+\fI\-\-a\-sgl=SGL\fR into <n> roughly equal length (i.e. number of blocks)
+output sgls. The "roughly equal length" is influenced by the
+\fI\-\-interleave=IL\fR and \fI\-\-round=RB\fR options. The output filenames
+are generated the same way as described for the split action. The sgl
+from \fI\-\-a\-sgl=SGL\fR is expected to be a "hard" sgl which means its
+last element should not be degenerate (i.e. have a 'num' of 0).
+.br
+The second half of the "twin split" is to split the \fI\-\-b\-sgl=SGL\fR
+sgl. The same number of output files are used as for the 'A' side but
+the filenames have a slightly different form: "\fIO_SGL\fR<1..n>_b"
+or "\fIO_SGL\fR<1..n>_b.\fIFNE\fR" (if the \fI\-\-extension=FNE\fR option
+is given). The critical point of this split is that it moves in lockstep
+with the 'A' side split in the sense that whatever block count an 'A'
+side segment uses, the following 'B' side segment split uses the same
+block count. The sgl from \fI\-\-b\-sgl=SGL\fR may be a "hard" or "soft"
+sgl. In the simplest case the 'B' side sgl can be just '0' which gets
+expanded to '0,0' (i.e. degenerate list starting at LBA 0); this will use
+the overall block count from the 'A' side.
 .SH NOTES
 There is a web page discussing ddptctl and ddpt, XCOPY and ODX at
 http://sg.danny.cz/sg/ddpt_xcopy_odx.html
 .SH EXIT STATUS
-The exit status of ddpt_sgl is 0 when it is successful. Otherwise the exit
-status for this utility is the same as that for ddpt. See the EXIT STATUS
-section in the ddpt man page.
+The exit status of ddpt_sgl is 0 when it is successful. Note that some
+options and actions that return a boolean value return 0 for true and
+36 for false. Otherwise the exit status for this utility is the same as
+that for ddpt. See the EXIT STATUS section in the ddpt man page.
 .SH EXAMPLES
-No examples yet.
+Examples are needed.
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 .SH AUTHORS
 Written by Douglas Gilbert.
 .SH "REPORTING BUGS"
@@ -123,6 +271,6 @@ Copyright \(co 2018 Douglas Gilbert
 This software is distributed under a FreeBSD license. There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 .SH "SEE ALSO"
-.B ddpt
+.B ddpt(8), ddptctl(8)
 
 

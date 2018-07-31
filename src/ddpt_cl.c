@@ -1495,7 +1495,8 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
             if (op->verbose < 0) {
                 op->quiet = true;
                 op->verbose = 0;
-            }
+            } else if (op->verbose > 0)
+                op->verbose_given = true;
         }
         else
             parsed = false;     /* so will continue at next else if */
@@ -1529,12 +1530,11 @@ skip_name_eq_value:
             op->has_odx = true;
         else if (0 == strncmp(key, "--quiet", 7))
             op->quiet = true;
-        else if (0 == strncmp(key, "--verb", 6))
+        else if (0 == strncmp(key, "--verb", 6)) {
+            op->verbose_given = true;
             ++op->verbose;
-        else if (0 == strncmp(key, "--vers", 6)) {
-            pr2serr("%s\n", version_str);
-            return -1;          /* want early exit */
-        }
+        } else if (0 == strncmp(key, "--vers", 6))
+            op->version_given = true;
 #ifdef SG_LIB_WIN32
         else if (0 == strncmp(key, "--wscan", 7))
             ++op->wscan;
@@ -1565,12 +1565,14 @@ skip_name_eq_value:
             op->quiet = (n > 0);
             res += n;
             n = num_chs_in_str(key + 1, keylen - 1, 'v');
+            if (n > 0)
+                op->verbose_given = true;
             op->verbose += n;
             res += n;
-            if (num_chs_in_str(key + 1, keylen - 1, 'V')) {
-                pr2serr("%s\n", version_str);
-                return -1;
-            }
+            n = num_chs_in_str(key + 1, keylen - 1, 'V');
+            if (n > 0)
+                op->version_given = true;
+            res += n;
 #ifdef SG_LIB_WIN32
             n = num_chs_in_str(key + 1, keylen - 1, 'w');
             op->wscan += n;

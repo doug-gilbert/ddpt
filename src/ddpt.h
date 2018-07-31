@@ -269,16 +269,46 @@ struct scat_gath_elem {
     uint32_t num;       /* number of blocks from and including start block */
 };
 
+/* Old cylinder/head/sector addressing than can be manipulated by ddpt_sgl.
+ * Assume 28 bit format as used by early ATA standards (EIDE + ATA-2) */
+struct chs_t {
+    uint16_t cyls;     /* 0 based; 16 bits, all bits used */
+    uint8_t heads;     /* 0 based; 4 bits used, to 4 bits zero */
+    uint8_t sects;     /* 1 based; all 8 bits used except 0 */
+};
+
+/* Used by ddpt_sgl */
+struct sgl_stats {
+    bool last_degen;
+    bool not_mono_asc;  /* negated so zeroed default is mono_asc */
+    bool not_mono_desc; /* LBAn+1 < (LBAn + NUMn - 1) while (NUMn > 0) */
+    bool fragmented;    /* false if monotonic and all LBAs between highest
+                         * and lowest are transferred once (i.e no holes) */
+    int num_degen;
+    int elems;  /* because of degen_mask may have < sge_p array elements */
+    int64_t sum;        /* of number_of_blocks */
+    uint64_t lowest_lba;
+    uint64_t highest_lba;
+};
+
+/* Used by ddpt_sgl */
+struct cl_sgl_stats {
+    struct sgl_stats a_stats;
+    struct sgl_stats b_stats;
+};
+
+
 /* Iterator on a scatter gather list (which are arrays). IFILE and OFILE have
  * iterators, not OFILE2. The iterator is a "post increment" type starting
  * [0,0]. If the sgl is accessed in a linear fashion, after the last IO the
  * iterator will be at [<elems>, 0]. To make that more obvious
  * sgl_iter_print() outputs that as [<elems>, EOL] */
 struct sgl_iter_t {
-    int it_e_ind;       /* iterator element index into sglp array */
-    int it_bk_off;      /* iterator: 0 <= i_blk_off < (sglp + i_e_ind)->num */
-    /* underlying (what iterator points to) and filepos, if needed */
+    bool extend_last;   /* hack for extending (sglp + elems - 1)->num */
     int elems;          /* elements in sglp array */
+    int it_e_ind;       /* iterator element index into sglp array */
+    int it_bk_off;      /* iterator: 0 <= it_blk_off < (sglp + i_e_ind)->num */
+    /* underlying (what iterator points to) and filepos, if needed */
     struct scat_gath_elem * sglp;  /* start of scatter gather list array */
     int64_t filepos;    /* file 'pos' is a byte offset in reg/block file,
                          * origin 0, next byte to read */
@@ -511,6 +541,8 @@ struct opts_t {
     bool rtf_len_add;   /* append 64 bit ROD byte size to token */
     bool status_none;   /* status=none given */
     bool subsequent_wdelay;     /* so no delay before first write */
+    bool verbose_given;
+    bool version_given;
     bool xc_cat;
     bool xc_dc;
     /* command line related variables */
@@ -599,6 +631,10 @@ struct sg_simple_inquiry_resp;
 typedef int (*ddpt_rw_f)(struct dev_info_t * dip, struct cp_state_t * csp,
                          struct opts_t * op);
 
+typedef int (*process_sge_f)(FILE * fp, const struct scat_gath_elem * sge_r,
+                             int hex, int verbose);
+
+
 extern const char * ddpt_arg_strs[];
 
 /* Some inline functions */
@@ -670,13 +706,18 @@ struct scat_gath_elem * file2sgl(const char * file_name, bool def_hex,
  * last which makes sum_hard false and its LBA becomes high_lba_p1 if it
  * is the highest in the list. An empty sgl is equivalent to a 1 element
  * list with [0, 0], so sum_hard==false, monit==true, fragmented==false
- * overlapping ==false . */
+ * overlapping ==false . id_str may be NULL, present to enhance verbose
+ * output. */
 void sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str,
                   bool b_verbose);
 
-/* Prints to stderr or stdout. */
+/* Prints sgl to stderr or stdout. */
 void sgl_print(struct sgl_info_t * sgli_p, bool skip_meta,
                const char * id_str, bool to_stdout);
+
+/* Prints a single sge (scatter gather list element) to stderr or stdout. */
+void sge_print(const struct scat_gath_elem * sgep, const char * id_str,
+               bool to_stdout);
 
 /* Return minimum(num_blks, <blocks_from_sgl-post-blk_off>). First it
  * starts skipping blk_off blocks and if elems is exceeded then it
@@ -685,8 +726,7 @@ void sgl_print(struct sgl_info_t * sgli_p, bool skip_meta,
  * also stops counting if that sum exceeds num_blks. If max_descriptors is
  * 0 then it is not constraining. Note that elems and blk_off are relative
  * to the start of the sgl; while num_blks and max_descriptors are relative
- * to the sgl+blk_off . id_str may be NULL, present to enhance verbose
- * output. */
+ * to the sgl+blk_off . */
 uint64_t count_sgl_blocks_from(const struct scat_gath_elem * sglp, int elems,
                                uint64_t blk_off, uint32_t num_blks,
                                uint32_t max_descriptors /* from blk_off */);
@@ -706,6 +746,20 @@ bool sgl_iter_add(struct sgl_iter_t * iter_p, uint64_t blk_count,
  * returned, then the iterator is invalid and may need to set it to a valid
  * value. */
 bool sgl_iter_sub(struct sgl_iter_t * iter_p, uint64_t blk_count);
+
+/* Calculates difference between iterators, logically: res <-- lhs - rhs
+ * Checks that lhsp and rhsp have same underlying sgl, if not returns
+ * INT_MIN. Assumes iterators close enough for result to lie in range
+ * from (-INT_MAX) to INT_MAX (inclusive). */
+int sgl_iter_diff(const struct sgl_iter_t * lhsp,
+                  const struct sgl_iter_t * rhsp);
+
+/* For each segment from and including iter_p, for length blk_count call
+ * *a_fp with fp and my_op as arguments. Move iter_p forward by blk_count
+ * (if valid). Returns 0 for good, else error value. */
+int iter_add_process(struct sgl_iter_t * iter_p, uint64_t blk_count,
+                     process_sge_f a_fp, FILE * fp, int hex, int rblks,
+                     int verbose);
 
 /* Returns the number of times 'ch' is found in string 's' given the
  * string's length. */
@@ -746,7 +800,8 @@ int64_t sgl_iter_lba(const struct sgl_iter_t * itp);
 /* Returns true of no sgl or sgl is at the end [<elems>, 0], otherwise it
  * returns false. */
 bool sgl_iter_at_end(const struct sgl_iter_t * itp);
-void sgl_iter_print(const struct sgl_iter_t * itp, const char * leadin);
+void sgl_iter_print(const struct sgl_iter_t * itp, const char * leadin,
+                    bool index_only);
 
 /* Returns true if either argument is NULL/0 or a 1 element list with both
  * lba and num 0; otherwise returns false. */
@@ -765,6 +820,30 @@ int64_t get_low_lba_from_linear(const struct sgl_info_t * sglip);
 int64_t get_lowest_lba(const struct scat_gath_elem * sglp, int num_elems,
                        bool ignore_degen, bool always_last);
 void cp_state_init(struct cp_state_t * csp, struct opts_t * op);
+
+/* Writes the LBA and number_of_blocks in sge_r to a line at the current
+ * file position (typically the end) of fp, with a trailing \n character.
+ * Returns 0 on success, else SG_LIB_FILE_ERROR . */
+int output_sge(FILE * fp, const struct scat_gath_elem * sgep, int hex,
+               int verbose);
+
+/* Compares from lsgep, offset by l_bk_off against rsgep, offset by r_bk_off.
+ * While lbas compare equal lsgep is advanced by up to lelems, while rsgep
+ * is advanced by up to relems. Returns false on the first inequality;
+ * otherwise if both list are exhausted at the same point, then returns true.
+ * If no inequality and one list is exhausted before the other, then returns
+ * allow_partial. */
+bool sgl_eq(const struct scat_gath_elem * lsgep, int lelems, int l_bk_off,
+            const struct scat_gath_elem * rsgep, int relems, int r_bk_off,
+            bool allow_partial);
+
+/* Compares from the current iterator positions of lhsp and rhsp until
+ * the shorter list is exhausted. Returns false on the first inequality.
+ * If no inequality and both remaining lists are same length then returns
+ * true. If no inequality but remaining lists differ in length then returns
+ * allow_partial. */
+bool sgl_iter_eq(const struct sgl_iter_t * lhsp,
+                 const struct sgl_iter_t * rhsp, bool allow_partial);
 
 
 /* defined in ddpt_pt.c */
@@ -842,8 +921,44 @@ size_t win32_pagesize(void);
 #endif          /* SG_LIB_WIN32 */
 
 #ifdef __cplusplus
-}
-#endif
+}       /* trailing brace for 'extern "C" { ' at top of this file */
+
+/* Following only compiled to C++, bypassed for C */
+struct split_fn_fp {
+    split_fn_fp(const char * fn, FILE * a_fp) : out_fn(fn), fp(a_fp) {}
+public:
+    std::string out_fn;
+    FILE * fp;
+};
+
+struct sgl_opts_t {
+    bool append2out_f;
+    bool chs_given;
+    bool document;
+    bool out2stdout;
+    bool non_overlap_chk;
+    bool pr_stats;
+    bool quiet;
+    int act_val;
+    int degen_mask;
+    int do_hex;
+    int help;
+    int interleave;   /* when splitting a sgl, max number of blocks before
+                       * moving to next sgl; def=0 --> no interleave */
+    int round_blks;
+    int split_n;
+    int verbose;
+    const char * b_sgl_arg;
+    const char * out_fn;
+    const char * fne;
+    struct chs_t chs;
+    struct cl_sgl_stats ab_sgl_stats;
+    std::vector<const char *> dev_names;
+    std::vector<struct split_fn_fp> split_out_fns;
+    std::vector<struct split_fn_fp> b_split_out_fns; /* 'b' side for tsplit */
+};
+
+#endif  /* end of __cplusplus block */
 
 #endif  /* DDPT_H guard against multiple includes */
 

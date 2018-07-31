@@ -1,4 +1,4 @@
-.TH DDPT "8" "June 2018" "ddpt\-0.96" DDPT
+.TH DDPT "8" "July 2018" "ddpt\-0.96" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -1061,8 +1061,8 @@ which is unlikely. The number_of_blocks field is a 32 bit integer and this
 is more problematic. The reason is that SCSI WRITE commands (and their
 variants) only allocate at most a 32 bit integer for this value. Further,
 modern operating systems do not allow any driver to get large amounts
-of system RAM, even if the machine has it available. A 32 bit integer
-for number_of_blocks with each block at 512 bytes is around 2 TB of
+of contiguous system RAM, even if the machine has it available. A 32 bit
+integer for number_of_blocks with each block at 512 bytes is around 2 TB of
 storage. Unix system calls (in Linux) also limit each read(2) and write(2)
 system call to 32 bits of single bytes which is 4 GB. The problem for
 this utility is that the number_of_blocks can easily exceed 32 bits
@@ -1609,7 +1609,8 @@ success (0) or failure (1 or more). Note that some of the lower values
 correspond to the SCSI sense key values. The exit status values are:
 .TP
 .B 0
-success
+success. Also conveys boolean true for actions that result in true or
+false (e.g. sgl equality tests)
 .TP
 .B 1
 syntax error. Either illegal command line options, options with bad
@@ -1714,6 +1715,10 @@ like "shouldn't/can't get here". Perhaps the author should be contacted.
 .B 33
 the command sent to device has timed out. This occurs in Linux only; in
 other ports a command timeout will appear as a transport (or OS) error.
+.TP
+.B 36
+no error has occurred. For actions that result in a boolean, this exit
+status indicates false.
 .TP
 .B 40
 the command sent to a device has received an "aborted command" sense

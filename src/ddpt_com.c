@@ -123,34 +123,6 @@ const char * ddpt_arg_strs[] = {"if", "of", "of2"};
 static const char * errblk_file = "errblk.txt";
 
 
-#ifdef __GNUC__
-static int my_snprintf(char * cp, int cp_max_len, const char * fmt, ...)
-        __attribute__ ((format (printf, 3, 4)));
-#else
-static int my_snprintf(char * cp, int cp_max_len, const char * fmt, ...);
-#endif
-
-/* Want safe, 'n += snprintf(b + n, blen - n, ...)' style sequence of
- * functions. Returns number number of chars placed in cp excluding the
- * trailing null char. So for cp_max_len > 0 the return value is always
- * < cp_max_len; for cp_max_len <= 1 the return value is 0 and no chars
- * are written to cp. Note this means that when cp_max_len = 1, this
- * function assumes that cp[0] is the null character and does nothing
- * (and returns 0).  */
-static int
-my_snprintf(char * cp, int cp_max_len, const char * fmt, ...)
-{
-    va_list args;
-    int n;
-
-    if (cp_max_len < 2)
-        return 0;
-    va_start(args, fmt);
-    n = vsnprintf(cp, cp_max_len, fmt, args);
-    va_end(args);
-    return (n < cp_max_len) ? n : (cp_max_len - 1);
-}
-
 void
 sleep_ms(int millisecs)
 {
@@ -469,26 +441,26 @@ dd_filetype_str(int ft, char * buff, int max_bufflen, const char * fname)
     int off = 0;
 
     if (FT_DEV_NULL & ft)
-        off += my_snprintf(buff + off, max_bufflen - off, "null device ");
+        off += sg_scnpr(buff + off, max_bufflen - off, "null device ");
     if (FT_PT & ft)
-        off += my_snprintf(buff + off, max_bufflen - off,
-                           "pass-through [pt] device ");
+        off += sg_scnpr(buff + off, max_bufflen - off,
+                        "pass-through [pt] device ");
     if (FT_TAPE & ft)
-        off += my_snprintf(buff + off, max_bufflen - off, "SCSI tape device ");
+        off += sg_scnpr(buff + off, max_bufflen - off, "SCSI tape device ");
     if (FT_BLOCK & ft)
-        off += my_snprintf(buff + off, max_bufflen - off, "block device ");
+        off += sg_scnpr(buff + off, max_bufflen - off, "block device ");
     if (FT_FIFO & ft)
-        off += my_snprintf(buff + off, max_bufflen - off,
-                           "fifo [stdin, stdout, named pipe] ");
+        off += sg_scnpr(buff + off, max_bufflen - off,
+                        "fifo [stdin, stdout, named pipe] ");
     if (FT_REG & ft)
-        off += my_snprintf(buff + off, max_bufflen - off, "regular file ");
+        off += sg_scnpr(buff + off, max_bufflen - off, "regular file ");
     if (FT_CHAR & ft)
-        off += my_snprintf(buff + off, max_bufflen - off, "char device ");
+        off += sg_scnpr(buff + off, max_bufflen - off, "char device ");
     if (FT_OTHER & ft)
-        off += my_snprintf(buff + off, max_bufflen - off, "other file type ");
+        off += sg_scnpr(buff + off, max_bufflen - off, "other file type ");
     if (FT_ERROR & ft)
-        /* off += */ my_snprintf(buff + off, max_bufflen - off, "unable to "
-                                 "'stat' %s ", (fname ? fname : "file"));
+        /* off += */ sg_scnpr(buff + off, max_bufflen - off, "unable to "
+                              "'stat' %s ", (fname ? fname : "file"));
     return buff;
 }
 
@@ -1560,9 +1532,9 @@ rt_cm_id_str(const uint8_t * rtp, int rt_len, char * b, int b_mlen)
     if (rt_len < 16)
         snprintf(b, b_mlen, "ROD Token too short (%d < 16)\n", rt_len);
     num = 0;
-    num += snprintf(b, b_mlen, "0x");
+    num += sg_scnpr(b, b_mlen, "0x");
     for (m = 0; ((m < 8) && (num < b_mlen)); ++m)
-        num += snprintf(b + num, b_mlen - num, "%02x",
+        num += sg_scnpr(b + num, b_mlen - num, "%02x",
                         (unsigned int)rtp[8 + m]);
     return b;
 }
@@ -2370,6 +2342,8 @@ cp_via_sgl_iter(struct dev_info_t * dip, struct cp_state_t * csp,
     return sgl_iter_forward_blks(dip, itp, n_blks, csp, fp, op);
 }
 
+/* id_str may be NULL (if so replace by "unknown"), present to enhance verbose
+ * output. */
 void
 sgl_print(struct sgl_info_t * sgli_p, bool skip_meta, const char * id_str,
           bool to_stdout)
@@ -2405,6 +2379,18 @@ sgl_print(struct sgl_info_t * sgli_p, bool skip_meta, const char * id_str,
     }
 }
 
+/* Prints a single sge (scatter gather list element) to stderr or stdout. */
+void
+sge_print(const struct scat_gath_elem * sgep, const char * id_str,
+          bool to_stdout)
+{
+    const char * caller = id_str ? id_str : "unknown";
+    FILE * fp = to_stdout ? stdout : stderr;
+
+    fprintf(fp, "%s    lba: 0x%" PRIx64 ", number: 0x%" PRIx32 "\n", caller,
+            sgep->lba, sgep->num);
+}
+
 /* Assumes sgli_p->elems and sgli_p->slp are setup and the other fields
  * in struct sgl_info_t are zeroed. This function will populate the other
  * fields in that structure. Does one pass through the scatter gather list
@@ -2414,7 +2400,8 @@ sgl_print(struct sgl_info_t * sgli_p, bool skip_meta, const char * id_str,
  * last which makes sum_hard false and its LBA becomes high_lba_p1 if it
  * is the highest in the list. An empty sgl is equivalent to a 1 element
  * list with [0, 0], so sum_hard==false, monit==true, fragmented==false
- * overlapping ==false . */
+ * overlapping ==false . id_str may be NULL, present to enhance verbose
+ * output. */
 void
 sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str, bool b_vb)
 {
@@ -2701,12 +2688,18 @@ sgl_empty(struct scat_gath_elem * sglp, int elems)
 
 /* EOL is end of list, one past the last valid position */
 void
-sgl_iter_print(const struct sgl_iter_t * itp, const char * leadin)
+sgl_iter_print(const struct sgl_iter_t * itp, const char * leadin,
+               bool index_only)
 {
     if (NULL == leadin)
         leadin = "";
-    pr2serr("%s e_index=%d, blk_off=%d  max+1 of both: [%d:", leadin,
-            itp->it_e_ind, itp->it_bk_off, itp->elems);
+    pr2serr("%s e_index=%d, blk_off=%d", leadin, itp->it_e_ind,
+            itp->it_bk_off);
+    if (index_only) {
+        pr2serr("\n");
+        return;
+    }
+    pr2serr("  end (last+1): [%d:", itp->elems);
     if ((itp->it_e_ind >= 0) && (itp->it_e_ind < itp->elems) && itp->sglp) {
         int num = (itp->sglp + itp->it_e_ind)->num;
 
@@ -2788,6 +2781,232 @@ cp_state_init(struct cp_state_t * csp, struct opts_t * op)
     op->stp = &csp->stats;
     csp->buf_name = "unknown";
     csp->leave_reason = DDPT_REASON_UNKNOWN;         /* -1 */
+}
+
+/* For each segment from and including iter_p, for length blk_count call
+ * *a_fp with fp and my_op as arguments. Move iter_p forward by blk_count
+ * (if valid). Returns 0 for good, else error value. */
+int
+iter_add_process(struct sgl_iter_t * ip, uint64_t blk_count,
+                 process_sge_f a_fp, FILE * fp, int hex, int rblks, int vb)
+{
+    bool extend_last, on_last;
+    int k, it_off;
+    int res = 0;
+    uint32_t num;
+    uint64_t lba;
+    struct scat_gath_elem * sgep;
+    struct scat_gath_elem a_sge;
+
+    a_sge.lba = 0;
+    a_sge.num = 0;
+    if ((NULL == ip) || (NULL == a_fp) || (NULL == fp)) {
+        pr2serr("%s: bad %s argument\n", __func__,
+                (ip ? (a_fp ? "FILE *" : "a_funcp") : "iter_p" ));
+        return sg_convert_errno(EINVAL);
+    }
+
+    extend_last = ip->extend_last;
+    if (vb > 4)
+        pr2serr("%s: enter, blk_count=%" PRIu64 ", rblks=%d\n", __func__,
+                blk_count, rblks);
+    on_last = (extend_last & (ip->elems < 2));
+    for (k = 0; blk_count > (uint32_t)rblks; ++k, blk_count -= num) {
+around:
+        it_off = ip->it_bk_off;
+        if (ip->it_e_ind >= ip->elems) {
+            if ((ip->it_e_ind == ip->elems) && (0 == it_off)) {
+                if (vb > 3)
+                    pr2serr("%s: at end, segment(k)=%d\n", __func__, k);
+                return 0;
+            }
+            pr2serr("%s: element index (%d) >= sgl (%d), segment=%d\n",
+                    __func__, ip->it_e_ind, ip->elems, k);
+            return SG_LIB_LOGIC_ERROR;
+        }
+        sgep = ip->sglp + ip->it_e_ind;
+        num = sgep->num;
+        if ((uint32_t)it_off >= num) {
+	    if (on_last)
+		num = INT32_MAX - 1;  /* 2**31 - 2; leaving headroom */
+	    else {
+// pr2serr("Boo, it_off=%u, num=%u\n", it_off, num);
+                ++ip->it_e_ind;
+	        if (extend_last && (ip->it_e_ind >= (ip->elems - 1)))
+		    on_last = true;
+                ip->it_bk_off = 0;
+                goto around;
+	    }
+        }
+        lba = sgep->lba + it_off;
+        num -= it_off;  /* number remaining in current element */
+        a_sge.lba = lba;
+        if (blk_count <= num) {
+            if ((rblks + blk_count) >= num) {
+                if ((vb > 3) && (blk_count != num))
+                    pr2serr("%s: ((rblks+blk_count)>= num), blk_count=%"
+                            PRIu64 ", num=%u\n", __func__, blk_count, num);
+                blk_count = num;
+            }
+            a_sge.num = (uint32_t)blk_count;
+            if (vb > 3)
+                sge_print(&a_sge, "final  ", false);
+            res = (*a_fp)(fp, &a_sge, hex, vb);
+            if (blk_count == num) {
+                ++ip->it_e_ind;
+// pr2serr("Boo2\n");
+                ip->it_bk_off = 0;
+            } else
+                ip->it_bk_off += (int)blk_count;
+            blk_count = 0;      /* for 'on exit' verbose reporting below */
+            break;
+        }
+        a_sge.num = num;
+        if (vb > 3)
+            sge_print(&a_sge, "ongoing", false);
+        res = (*a_fp)(fp, &a_sge, hex, vb);
+        if (res)
+            break;
+        ++ip->it_e_ind;
+// pr2serr("Boo3\n");
+        ip->it_bk_off = 0;
+        if (num > blk_count) {
+            pr2serr("%s: num (%u) exceeds blk_count (%" PRIu64 "), "
+                    "segment=%d\n", __func__, num, blk_count, k);
+            return SG_LIB_LOGIC_ERROR;
+        }
+    }
+    if (vb > 4)
+        pr2serr("%s: on exit blk_count=%" PRIu64 ", res=%d\n", __func__,
+                blk_count, res);
+    return res;
+}
+
+/* Writes the LBA and number_of_blocks in sge_r to a line at the current
+ * file position (typically the end) of fp, with a trailing \n character.
+ * Returns 0 on success, else SG_LIB_FILE_ERROR . */
+int
+output_sge(FILE * fp, const struct scat_gath_elem * sgep,
+           int hex, int vb)
+{
+    if (0 == hex)
+        fprintf(fp, "%" PRIu64 ",%u\n", sgep->lba, sgep->num);
+    else if (1 == hex)
+        fprintf(fp, "0x%" PRIx64 ",0x%x\n", sgep->lba, sgep->num);
+    else if (hex > 1)
+        fprintf(fp, "%" PRIx64 ",%x\n", sgep->lba, sgep->num);
+    if (ferror(fp)) {
+        if (vb)
+            pr2serr("%s: failed during formatted write to output sgl\n",
+                    __func__);
+        clearerr(fp);   /* error flag stays set unless .... */
+        return SG_LIB_FILE_ERROR;
+    } else
+        return 0;
+}
+
+/* Calculates difference between iterators, logically: res <-- lhs - rhs
+ * Checks that lhsp and rhsp have same underlying sgl, if not returns
+ * INT_MIN. Assumes iterators close enough for result to lie in range
+ * from (-INT_MAX) to INT_MAX (inclusive). */
+int
+sgl_iter_diff(const struct sgl_iter_t * lhsp, const struct sgl_iter_t * rhsp)
+{
+    int res, k, r_e_ind, l_e_ind;
+    const struct scat_gath_elem * sgep;
+
+    if (! (lhsp && rhsp && (lhsp->sglp == rhsp->sglp) &&
+           (lhsp->elems == rhsp->elems))) {
+        pr2serr("%s: bad args\n", __func__);
+        return INT_MIN;
+    }
+    r_e_ind = rhsp->it_e_ind;
+    l_e_ind = lhsp->it_e_ind;
+    if (l_e_ind < r_e_ind) { /* so difference will be negative */
+        res = sgl_iter_diff(rhsp, lhsp);        /* cheat */
+        if (INT_MIN == res)
+            return res;
+        return -res;
+    } else if (l_e_ind == r_e_ind)
+        return (int)lhsp->it_bk_off - (int)rhsp->it_bk_off;
+    /* (l_e_ind > r_e_ind) so (lhs > rhs) */
+    sgep = rhsp->sglp + r_e_ind;
+    res = (int)sgep->num - rhsp->it_bk_off;
+    for (k = 1, ++sgep; (r_e_ind + k) < l_e_ind; ++k, ++sgep) {
+        // pr2serr("iter_diff: k=%d, res=%d, num=%d\n", k, res,
+        //         (int)sgep->num);
+        res += (int)sgep->num;
+    }
+    res += lhsp->it_bk_off;
+    // pr2serr("iter_diff: at exit res=%d\n", res);
+    return res;
+}
+
+/* Compares from lsgep, offset by l_bk_off against rsgep, offset by r_bk_off.
+ * While lbas compare equal lsgep is advanced by up to lelems, while rsgep
+ * is advanced by up to relems. Returns false on the first inequality;
+ * otherwise if both list are exhausted at the same point, then returns true.
+ * If no inequality and one list is exhausted before the other, then returns
+ * allow_partial. */
+bool
+sgl_eq(const struct scat_gath_elem * lsgep, int lelems, int l_bk_off,
+       const struct scat_gath_elem * rsgep, int relems, int r_bk_off,
+       bool allow_partial)
+{
+    int l_e_ind = 0;
+    int r_e_ind = 0;
+    int lrem, rrem;
+
+    while ((l_e_ind < lelems) && (r_e_ind < relems)) {
+        if ((lsgep->lba + l_bk_off) != (rsgep->lba + r_bk_off))
+            return false;
+        lrem = lsgep->num - l_bk_off;
+        rrem = rsgep->num - r_bk_off;
+        if (lrem == rrem) {
+            ++lsgep;
+            ++l_e_ind;
+            l_bk_off = 0;
+            ++rsgep;
+            ++r_e_ind;
+            r_bk_off = 0;
+        } else if (lrem < rrem) {
+            ++lsgep;
+            ++l_e_ind;
+            l_bk_off = 0;
+            r_bk_off += lrem;
+        } else {
+            ++rsgep;
+            ++r_e_ind;
+            r_bk_off = 0;
+            l_bk_off += rrem;
+        }
+    }
+    if ((l_e_ind >= lelems) && (r_e_ind >= relems))
+        return true;
+    return allow_partial;
+}
+
+/* Compares from the current iterator positions of lhsp and rhsp until
+ * the shorter list is exhausted. Returns false on the first inequality.
+ * If no inequality and both remaining lists are same length then returns
+ * true. If no inequality but remaining lists differ in length then returns
+ * allow_partial. */
+bool
+sgl_iter_eq(const struct sgl_iter_t * lhsp, const struct sgl_iter_t * rhsp,
+            bool allow_partial)
+{
+    const struct scat_gath_elem * lsgep;
+    const struct scat_gath_elem * rsgep;
+
+    if (! (lhsp && rhsp)) {
+        pr2serr("%s: bad args\n", __func__);
+        return false;
+    }
+    lsgep = lhsp->sglp + lhsp->it_e_ind;
+    rsgep = rhsp->sglp + rhsp->it_e_ind;
+    return sgl_eq(lsgep, lhsp->elems - lhsp->it_e_ind, lhsp->it_bk_off,
+                  rsgep, rhsp->elems - rhsp->it_e_ind, rhsp->it_bk_off,
+                  allow_partial);
 }
 
 
