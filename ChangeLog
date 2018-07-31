@@ -2,12 +2,14 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.96 [20180525] [svn: r353]
+Changelog for ddpt-0.96 [20180530] [svn: r354]
   - allow scatter gather lists for skip= and seek=
     where they can reasonably be implemented
   - add status=progress option, report every 2 minutes
   - add --dry-run and --quiet options
   - add iflag=00 and iflag=ff for fill bytes
+  - add oflag=wstream for WRITE STREAM(16) on OFILE,
+    STR_ID provided by list_id=LID operand
   - require job file to contain 'ddpt' argument (or
     'ddpt=<version_number>' or
     'ddpt=r<revision_number>') as sanity check
@@ -22,7 +24,7 @@ Changelog for ddpt-0.96 [20180525] [svn: r353]
   - fix reading fifo (stdin) and writing to regular file
   - rework pr2serr() handling
   - improve xcopy(odx) error reporting
-  - point svn:externals to rev 774 of sg3_utils
+  - point svn:externals to rev 775 of sg3_utils
   - convert many two valued 'int's to bool
   - upgrade automake to version 1.15 (U16.04)
     - cleanup configure.ac + Makefile.am

@@ -1,0 +1,12 @@
+PROPS-END
+ddpt
+
+# Straight forward sg device to sg device copy
+
+if=/tmp/sg_a_dev
+ibs=4096
+
+of=/tmp/sg_b_dev
+obs=4096
+
+

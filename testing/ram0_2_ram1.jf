@@ -1,0 +1,10 @@
+PROPS-END
+ddpt
+
+# Simple copy of ram0 to ram1, should both be same size
+
+if=/dev/ram0
+of=/dev/ram1
+bs=512
+
+
