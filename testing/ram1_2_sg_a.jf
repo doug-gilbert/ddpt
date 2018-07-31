@@ -1,11 +1,10 @@
-PROPS-END
 ddpt
 
 # Since ramdisks have 131070 blocks (in Linux) which is 2 blocks short or
 # 128*1024 (2**17); blocks have 512 bytes each. That ramdisk is smaller
-# than /dev/sg0 (102400 blocks at 4096 bytes per block). This combination
+# than /dev/sg<n> (102400 blocks at 4096 bytes per block). This combination
 # means that 131070 blocks will not fit evenly into 16383 (4096 byte)
-# /dev/sg0 blocks. So 131070 blocks is rounded down to 131064 blocks which
+# /dev/sg<n> blocks. So 131070 blocks is rounded down to 131064 blocks which
 # does fit.
 
 if=/dev/ram1

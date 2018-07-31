@@ -2770,7 +2770,7 @@ cp_state_init(struct cp_state_t * csp, struct opts_t * op)
     csp->stats = op->stats;
     op->stp = &csp->stats;
     csp->buf_name = "unknown";
-    csp->leave_reason = REASON_UNKNOWN;         /* -1 */
+    csp->leave_reason = DDPT_REASON_UNKNOWN;         /* -1 */
 }
 
 
