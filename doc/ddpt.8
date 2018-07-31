@@ -386,9 +386,13 @@ the 'status=progress' operand or by entering 'status=progress,progress',
 then a progress report is printed every minute. If it is used thrice, the
 a progress report is printed every 30 seconds. Note that care is taken not
 to flood the OS with calls to check the time which would slow down the copy
-process.
+process. The amount of data output by the progress reports can modified at
+runtime (e.g. during a long copy). If the verbose flag is 0 or 1 (but not
+higher and not if the \fI\-\-quiet\fR option is given) then sending a
+SIG_USR1 (or SIGINFO in FreeBSD) signal to the running ddpt process will
+toggle the verbose flag between 0 and 1.
 .br
-Note the GNU's dd supports 'noxfer', 'none' and 'progress' with similar
+Note that GNU's dd supports 'noxfer', 'none' and 'progress' with similar
 semantics.
 .TP
 \fBto\fR=\fITO\fR

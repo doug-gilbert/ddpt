@@ -724,8 +724,8 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
 {
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
     bool use_out_full;
-    struct timespec end_tm, res_tm;
-    double a, b, r;
+    struct timespec end_tm, res_tm, delta_tm;
+    double a, b, da, db, r, dr;
     int secs, h, m, elapsed_secs;
     struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
@@ -741,10 +741,31 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
         elapsed_secs = res_tm.tv_sec;
         a = res_tm.tv_sec;
         a += (0.000001 * (res_tm.tv_nsec / 1000));
-        if (use_out_full)
+        if (sp->prev_valid) {
+            delta_tm.tv_sec = end_tm.tv_sec - sp->prev_tm.tv_sec;
+            delta_tm.tv_nsec = end_tm.tv_nsec - sp->prev_tm.tv_nsec;
+            if (delta_tm.tv_nsec < 0) {
+                --delta_tm.tv_sec;
+                delta_tm.tv_nsec += 1000000000;
+            }
+            da = delta_tm.tv_sec;
+            da += (0.000001 * (delta_tm.tv_nsec / 1000));
+        } else
+            da = 0.0000001;
+        db = 1.0;
+
+        sp->prev_tm = end_tm;
+        if (use_out_full) {
             b = (double)op->obs_lb * sp->out_full;
-        else
+            if (sp->prev_valid)
+                db = (double)op->obs_lb * (sp->out_full - sp->prev_count);
+            sp->prev_count = sp->out_full;
+        } else {
             b = (double)op->ibs_hold * sp->in_full;
+            if (sp->prev_valid)
+                db = (double)op->obs_lb * (sp->in_full - sp->prev_count);
+            sp->prev_count = sp->in_full;
+        }
         pr2serr("%stime to %s data%s: %d.%06d secs", leadin,
                 (op->read1_or_transfer ? "read" : "transfer"),
                 (contin ? " so far" : ""), (int)res_tm.tv_sec,
@@ -753,11 +774,22 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
         if ((a > 0.00001) && (b > 511)) {
             r = b / (a * 1000000.0);
             if (r < 1.0)
-                pr2serr(" at %.1f KB/sec\n", r * 1000);
+                pr2serr(" at %.1f KB/sec", r * 1000);
             else
-                pr2serr(" at %.2f MB/sec\n", r);
-        } else
-            pr2serr("\n");
+                pr2serr(" at %.2f MB/sec", r);
+        }
+        if (sp->prev_valid) {
+            if ((da > 0.00001) && (db > 511)) {
+                dr = db / (da * 1000000.0);
+                if (dr < 1.0)
+                    pr2serr(" (delta %.1f KB/sec)", dr * 1000);
+                else
+                    pr2serr(" (delta %.2f MB/sec)", dr);
+            }
+        }
+        pr2serr("\n");
+        sp->prev_valid = true;
+
         if (contin && (! op->reading_fifo) && (r > 0.01) &&
             (op->dd_count > 100)) {
             secs = (int)(((double)op->ibs_hold * op->dd_count) /
@@ -779,11 +811,11 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
     }
 #elif defined(HAVE_GETTIMEOFDAY)
     bool use_out_full;
-    struct timeval end_tm, res_tm;
-    double a, b, r;
+    struct timeval end_tm, res_tm, delta_tm;
+    double a, b, da, db, dr, r;
     int secs, h, m, elapsed_secs;
+    struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
-    sp = sp ? sp : &op->stats;
     if (op->start_tm_valid && (op->start_tm.tv_sec || op->start_tm.tv_usec)) {
         use_out_full = ((0 == sp->in_full) && (op->obs_lb > 0));
         gettimeofday(&end_tm, NULL);
@@ -796,10 +828,31 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
         elapsed_secs = res_tm.tv_sec;
         a = res_tm.tv_sec;
         a += (0.000001 * res_tm.tv_usec);
-        if (use_out_full)
+        if (sp->prev_valid) {
+            delta_tm.tv_sec = end_tm.tv_sec - sp->prev_tm.tv_sec;
+            delta_tm.tv_usec = end_tm.tv_usec - sp->prev_tm.tv_usec;
+            if (delta_tm.tv_usec < 0) {
+                --delta_tm.tv_sec;
+                delta_tm.tv_usec += 1000000;
+            }
+            da = delta_tm.tv_sec;
+            da += (0.000001 * delta_tm.tv_usec);
+        } else
+            da = 0.0000001;
+        db = 1.0;
+
+        sp->prev_tm = end_tm;
+        if (use_out_full) {
             b = (double)op->obs_lb * sp->out_full;
-        else
+            if (sp->prev_valid)
+                db = (double)op->obs_lb * (sp->out_full - sp->prev_count);
+            sp->prev_count = sp->out_full;
+        } else {
             b = (double)op->ibs_hold * sp->in_full;
+            if (sp->prev_valid)
+                db = (double)op->obs_lb * (sp->in_full - sp->prev_count);
+            sp->prev_count = sp->in_full;
+        }
         pr2serr("%stime to %s data%s: %d.%06d secs", leadin,
                 (op->read1_or_transfer ? "read" : "transfer"),
                 (contin ? " so far" : ""), (int)res_tm.tv_sec,
@@ -808,11 +861,22 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
         if ((a > 0.00001) && (b > 511)) {
             r = b / (a * 1000000.0);
             if (r < 1.0)
-                pr2serr(" at %.1f KB/sec\n", r * 1000);
+                pr2serr(" at %.1f KB/sec", r * 1000);
             else
-                pr2serr(" at %.2f MB/sec\n", r);
-        } else
-            pr2serr("\n");
+                pr2serr(" at %.2f MB/sec", r);
+        }
+        if (sp->prev_valid) {
+            if ((da > 0.00001) && (db > 511)) {
+                dr = db / (da * 1000000.0);
+                if (dr < 1.0)
+                    pr2serr(" (delta %.1f KB/sec)", dr * 1000);
+                else
+                    pr2serr(" (delta %.2f MB/sec)", dr);
+            }
+        }
+        pr2serr("\n");
+        sp->prev_valid = true;
+
         if (contin && (! op->reading_fifo) && (r > 0.01) &&
             (op->dd_count > 100)) {
             secs = (int)(((double)op->ibs_hold * op->dd_count) /
@@ -1289,7 +1353,7 @@ install_signal_handlers(struct opts_t * op)
 /* Process any pending signals and perhaps do delay. If signals are caught,
  * this function should be called periodically.  Ideally there should never
  * be an unbounded amount of time when signals are not being processed. */
-void    /* Global function, used by ddpt_xcopy.c */
+void    /* Global function, used by ddpt.c and ddpt_xcopy.c */
 signals_process_delay(struct opts_t * op, int delay_type)
 {
     bool got_something = false;
@@ -1394,6 +1458,14 @@ signals_process_delay(struct opts_t * op, int delay_type)
             print_stats("  ", op, 0, true);
             if (op->do_time)
                 calc_duration_throughput("  ", true /* contin */, op);
+            if (op->progress && (op->verbose < 2) && (! op->quiet)) {
+                pr2serr("Toggling verbose %s for %s progress information\n",
+                        (op->verbose ? "off" : "on"),
+                        (op->verbose ? "less" : "more"));
+                op->verbose ^= 1;
+                pr2serr("Send this signal again if this is unwanted and it "
+                        "will toggle back\n");
+            }
             pr2serr("  continuing ...\n");
         }
         if (interrupt) {
@@ -1617,45 +1689,47 @@ count_sgl_blocks_from(const struct scat_gath_elem * sglp, int elems,
 }
 
 /* Given a blk_count, the iterator (*iter_p) is moved toward the EOL. If
- * relative is true the move is from the current position of the iterator.
- * If relative is false then the move is from the start of the sgl. The
- * sgl_iter_add(itp, 0, false) call sets the iterator to the start of the
- * sgl. Returns true unless blk_count takes iterator two or more past the
- * last element. So if blk_count takes the iterator to the EOL, this
- * function returns true. */
+ * relative is true the move is from the current position of the iterator. If
+ * relative is false then the move is from the start of the sgl. The
+ * sgl_iter_add(itp, 0, false) call sets the iterator to the start of the sgl.
+ * Returns true unless blk_count takes iterator two or more past the last
+ * element. So if blk_count takes the iterator to the EOL, this function
+ * returns true. Takes into account iterator's extend_last flag. */
 bool
 sgl_iter_add(struct sgl_iter_t * iter_p, uint64_t blk_count, bool relative)
 {
-    bool first;
+    bool first, extend_last;
     int k = relative ? iter_p->it_e_ind : 0;
+    int elems = iter_p->elems;
+    uint32_t num;
     uint64_t bc = 0;
     const struct scat_gath_elem * sglp = iter_p->sglp + k;
 
     if (0 == blk_count)
         return true;
-    for (first = true; k < iter_p->elems; ++k, ++sglp) {
+    extend_last = iter_p->extend_last;
+    for (first = true; k < elems; ++k, ++sglp, first = false) {
+        num = (extend_last && (k == (elems - 1))) ? (INT32_MAX - 1) :
+                                                    sglp->num;
         if (first && relative) {
             bc = blk_count + iter_p->it_bk_off;
-            if ((uint64_t)sglp->num < bc)
-                blk_count -= (sglp->num - iter_p->it_bk_off);
+            if ((uint64_t)num < bc)
+                blk_count -= (num - iter_p->it_bk_off);
             else
                 break;
-            first = false;
         } else {
-            if (first)
-                first = false;
             bc = blk_count;
-            if ((uint64_t)sglp->num < bc)
-                blk_count -= sglp->num;
+            if ((uint64_t)num < bc)
+                blk_count -= num;
             else
                 break;
         }
     }
     iter_p->it_e_ind = k;
     iter_p->it_bk_off = (uint32_t)bc;
-    if (k < iter_p->elems)
+    if (k < elems)
         return true;
-    else if ((k == iter_p->elems) && (0 == bc))
+    else if ((k == elems) && (0 == bc))
         return true;    /* EOL */
     else
         return false;
@@ -2134,9 +2208,10 @@ sgl_iter_forward_blks(struct dev_info_t * dip, struct sgl_iter_t * itp,
                       uint32_t n_blks, struct cp_state_t * csp, ddpt_rw_f fp,
                       struct opts_t * op)
 {
-    bool more;
+    bool more, extend_last, on_last;
     bool in_side = (DDPT_ARG_IN == dip->ddpt_arg);
     int b_off = 0;
+    int elems = itp->elems;
     int res = 0;
     int vb = op->verbose;
     uint32_t rem_blks, num;
@@ -2144,17 +2219,19 @@ sgl_iter_forward_blks(struct dev_info_t * dip, struct sgl_iter_t * itp,
     int64_t ablocks = n_blks;
     const struct scat_gath_elem * sgl_p = itp->sglp + itp->it_e_ind;
 
+    extend_last = itp->extend_last;
+    on_last = (extend_last && (itp->it_e_ind == (elems - 1)));
     while (ablocks > 0) {
         off = itp->it_bk_off + ablocks;
         lba = sgl_p->lba;
-        num = sgl_p->num;
+        num = on_last ? INT32_MAX - 1 : sgl_p->num;
         more = (off >= num);
         if (vb > 2)
             pr2serr("%s: [%s] off=%" PRId64 ", ablocks=%" PRId64 "  <<%s>>\n",
                     __func__, dip->dir_n, off, ablocks,
                     (more ? "more" : "last"));
-        if (itp->it_e_ind >= itp->elems) {
-            if ((itp->it_e_ind > itp->elems) || (off > 0)) {
+        if (itp->it_e_ind >= elems) {
+            if ((itp->it_e_ind > elems) || (off > 0)) {
                 if (vb)
                     pr2serr("%s: [%s] incrementing iterator (%d,%u) past "
                             "end\n", __func__, dip->dir_n, itp->it_e_ind,
@@ -2211,6 +2288,8 @@ sgl_iter_forward_blks(struct dev_info_t * dip, struct sgl_iter_t * itp,
             }
             ablocks -= (int64_t)rem_blks;
             ++itp->it_e_ind;    /* step to next element */
+            if (extend_last && (! on_last))
+                on_last = (itp->it_e_ind = (elems - 1));
             itp->it_bk_off = 0;
             ++sgl_p;
         } else {  /* last: move iter (and call *fp) within current sgl elem */
@@ -2349,13 +2428,14 @@ sgl_print(struct sgl_info_t * sgli_p, bool skip_meta, const char * id_str,
           bool to_stdout)
 {
     int k;
+    int elems = sgli_p->elems;
     const char * caller = id_str ? id_str : "unknown";
     const struct scat_gath_elem * sgep = sgli_p->sglp;
     FILE * fp = to_stdout ? stdout : stderr;
 
     if (! skip_meta) {
         fprintf(fp, "%s: from: %s: elems=%d, sgl %spresent, monotonic=%s\n",
-                __func__, caller, sgli_p->elems, (sgli_p->sglp ? "" : "not "),
+                __func__, caller, elems, (sgli_p->sglp ? "" : "not "),
                 (sgli_p->monotonic ? "true" : "false"));
         fprintf(fp, "  sum=%" PRId64 ", lowest=0x%" PRIx64 ", high_lba_p1=",
                 sgli_p->sum, sgli_p->lowest_lba);
@@ -2366,9 +2446,9 @@ sgl_print(struct sgl_info_t * sgli_p, bool skip_meta, const char * id_str,
                 (sgli_p->fragmented ? "true" : "false"));
     }
     fprintf(fp, "  >> %s scatter gather list (%d elements):\n", caller,
-            sgli_p->elems);
+            elems);
     if (sgli_p->sglp) {
-        for (k = 0, sgep = sgli_p->sglp; k < sgli_p->elems; ++k, ++sgep) {
+        for (k = 0, sgep = sgli_p->sglp; k < elems; ++k, ++sgep) {
             fprintf(fp, "    lba: 0x%" PRIx64 ", number: 0x%" PRIx32,
                     sgep->lba, sgep->num);
             if (sgep->lba > 0)
@@ -2461,7 +2541,7 @@ sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str, bool b_vb)
             prev_num = t_num;
         }
     }
-    if (k < sgli_p->elems) {    /* monot is now false */
+    if (k < elems) {    /* monot is now false */
         sgli_p->monotonic = false;
         sgli_p->overlapping = false;    /* no longer valid */
         sgli_p->fragmented = true;      /* must be fragmented */
@@ -2784,14 +2864,14 @@ cp_state_init(struct cp_state_t * csp, struct opts_t * op)
 }
 
 /* For each segment from and including iter_p, for length blk_count call
- * *a_fp with fp and my_op as arguments. Move iter_p forward by blk_count
+ * *a_fp with fp, hex and vb as arguments. Move iter_p forward by blk_count
  * (if valid). Returns 0 for good, else error value. */
 int
 iter_add_process(struct sgl_iter_t * ip, uint64_t blk_count,
                  process_sge_f a_fp, FILE * fp, int hex, int rblks, int vb)
 {
     bool extend_last, on_last;
-    int k, it_off;
+    int k, it_off, elems;
     int res = 0;
     uint32_t num;
     uint64_t lba;
@@ -2806,37 +2886,32 @@ iter_add_process(struct sgl_iter_t * ip, uint64_t blk_count,
         return sg_convert_errno(EINVAL);
     }
 
-    extend_last = ip->extend_last;
     if (vb > 4)
         pr2serr("%s: enter, blk_count=%" PRIu64 ", rblks=%d\n", __func__,
                 blk_count, rblks);
-    on_last = (extend_last & (ip->elems < 2));
+    extend_last = ip->extend_last;
+    elems = ip->elems;
+    on_last = (extend_last & (elems < 2));
     for (k = 0; blk_count > (uint32_t)rblks; ++k, blk_count -= num) {
-around:
         it_off = ip->it_bk_off;
-        if (ip->it_e_ind >= ip->elems) {
-            if ((ip->it_e_ind == ip->elems) && (0 == it_off)) {
+        if (ip->it_e_ind >= elems) {
+            if ((ip->it_e_ind == elems) && (0 == it_off)) {
                 if (vb > 3)
                     pr2serr("%s: at end, segment(k)=%d\n", __func__, k);
                 return 0;
             }
             pr2serr("%s: element index (%d) >= sgl (%d), segment=%d\n",
-                    __func__, ip->it_e_ind, ip->elems, k);
+                    __func__, ip->it_e_ind, elems, k);
             return SG_LIB_LOGIC_ERROR;
         }
         sgep = ip->sglp + ip->it_e_ind;
-        num = sgep->num;
+        num = on_last ? (INT32_MAX - 1) : sgep->num;
         if ((uint32_t)it_off >= num) {
-	    if (on_last)
-		num = INT32_MAX - 1;  /* 2**31 - 2; leaving headroom */
-	    else {
-// pr2serr("Boo, it_off=%u, num=%u\n", it_off, num);
-                ++ip->it_e_ind;
-	        if (extend_last && (ip->it_e_ind >= (ip->elems - 1)))
-		    on_last = true;
-                ip->it_bk_off = 0;
-                goto around;
-	    }
+            ++ip->it_e_ind;
+            if (extend_last)
+                on_last = (ip->it_e_ind >= (elems - 1));
+            ip->it_bk_off = 0;
+            continue;
         }
         lba = sgep->lba + it_off;
         num -= it_off;  /* number remaining in current element */
@@ -2854,28 +2929,24 @@ around:
             res = (*a_fp)(fp, &a_sge, hex, vb);
             if (blk_count == num) {
                 ++ip->it_e_ind;
-// pr2serr("Boo2\n");
                 ip->it_bk_off = 0;
             } else
                 ip->it_bk_off += (int)blk_count;
             blk_count = 0;      /* for 'on exit' verbose reporting below */
             break;
+        } else {        /* blk_count > num */
+            a_sge.num = num;
+            if (vb > 3)
+                sge_print(&a_sge, "ongoing", false);
+            res = (*a_fp)(fp, &a_sge, hex, vb);
+            if (res)
+                break;
+            ++ip->it_e_ind;
+            if (extend_last)
+                on_last = (ip->it_e_ind >= (elems - 1));
+            ip->it_bk_off = 0;
         }
-        a_sge.num = num;
-        if (vb > 3)
-            sge_print(&a_sge, "ongoing", false);
-        res = (*a_fp)(fp, &a_sge, hex, vb);
-        if (res)
-            break;
-        ++ip->it_e_ind;
-// pr2serr("Boo3\n");
-        ip->it_bk_off = 0;
-        if (num > blk_count) {
-            pr2serr("%s: num (%u) exceeds blk_count (%" PRIu64 "), "
-                    "segment=%d\n", __func__, num, blk_count, k);
-            return SG_LIB_LOGIC_ERROR;
-        }
-    }
+    }   /* end of decrementing blk_count _for_ loop */
     if (vb > 4)
         pr2serr("%s: on exit blk_count=%" PRIu64 ", res=%d\n", __func__,
                 blk_count, res);

@@ -788,6 +788,8 @@ pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff, int blocks,
                 return res;
             case SG_LIB_CAT_MEDIUM_HARD_WITH_INFO:
             case SG_LIB_CAT_MEDIUM_HARD:
+                pr2serr(">> partial re-read prior to reported 'bad' block "
+                        "has now failed, looks bad\n");
                 ret = SG_LIB_CAT_MEDIUM_HARD;
                 goto err_out;
             case SG_LIB_CAT_PROTECTION_WITH_INFO:

@@ -100,7 +100,7 @@ output file.
 .br
 For the case where \fIIL\fR is 1 and \fI\-\-action=split_1\fR is given
 then the output file will have every LBA (given by the 'A' sgl) as a
-separate sgl element (and thus each will have a 'num' of 1).
+separate sgl element (and thus each will have a NUM of 1).
 .br
 For the tsplit action the interleave is only applied to the 'A' sgl.
 .TP
@@ -164,10 +164,23 @@ is copied to \fIO_SGL\fR (or \fIO_SGL\fR.\fIFNE\fR if the
 The actions are listed below in alphabetical order.
 .TP
 \fBappend\-b2a\fR
-appends the b-sgl to the end of the a\-sgl and outputs the result to
+appends the b\-sgl to the end of the a\-sgl and outputs the result to
 \fIO_SGL\fR (or \fIO_SGL\fR.\fIFNE\fR if the \fI\-\-extension=FNE\fR option
 is given). Requires the \fI\-\-a\-sgl=SGL\fR, \fI\-\-b\-sgl=SGL\fR and
 \fI\-\-out=O_SGL\fR options.
+.TP
+\fBdivisible<n>[,L|N]\fR or \fBdivisible_<n>[,L|N]\fR
+where <n> is an integer, 1 or higher. This action checks if each LBA and NUM
+in a\-sgl is divisible by <n> (where 'is divisible' is equivalent to having a
+remainder of zero). If all are divisible then true is returned (i.e. the exit
+status 0); otherwise false is returned (i.e.  exit status 36).
+.br
+If the optional ",L" suffix (or ",LBA") is given then only each LBA element
+in a\-sgl is checked for divisibility. If the optional ",N" suffix (or ",NUM")
+then only each NUM element in a\-sgl is checked for divisibility.
+.br
+The output of the string to stderr announcing divisibility, or lack of it, can
+be suppressed by the \fI\-\-quiet\fR option.
 .TP
 \fBenum\fR
 prints out the list of supported actions then exits. Giving the action 'xxx'
@@ -205,6 +218,29 @@ that both lists must be in the same order. The implementation sorts both
 given lists before comparing them.  For example the two element
 sgl "0x15,0x2, 0x10,0x5" is the 'same' as the one element sgl "0x10, 0x7".
 .TP
+\fBscale<n>\fR or \fBscale_<n>\fR
+where <n> is an integer, positive or negative but not zero. When <n> is
+positive then the starting LBA in each a\-sgl element is multiplied by <n>
+while its corresponding NUM is divided by <n>. The new (scaled) sgl is
+written to \fIO_SGL\fR (or \fIO_SGL\fR.\fIFNE\fR if the
+\fI\-\-extension=FNE\fR option is given).
+.br
+When <n> is negative then the absolute value of <n> is used as a divisor
+for each starting LBA and a multiplier for each corresponding NUM.
+.br
+As an example: converting a 512 byte logical block (LB) size sgl to a 4096
+byte LB size and vice versa is relatively common. To convert from 4096 \-\->
+512 byte LB size then \fI\-\-action=scale_8\fR is appropriate. To convert
+from 512 \-\-> 4096 byte LB size then \fI\-\-action=scale_\-8\fR is
+appropriate. 
+.br
+Note: because an integer division is used (that rounds 'towards zero') then
+LBs may be "lost" in this conversion. This can be checked beforehand with the
+\fI\-\-action=divisible<n>[,L|N]\fR option. For example: for 512 \-\-> 4096
+conversions: \fI\-\-action=divisible_8,L\fR will report if any starting LBAs
+are not divisible be 8 and hence are not able to be precisely represented as
+4096 byte LB addresses.
+.TP
 \fBsort\fR
 this action will sort the sgl given by \fI\-\-a\-sgl=SGL\fR in ascending
 order by LBA. The resulting sgl is output to \fIO_SGL\fR (or
@@ -237,7 +273,7 @@ output sgls. The "roughly equal length" is influenced by the
 \fI\-\-interleave=IL\fR and \fI\-\-round=RB\fR options. The output filenames
 are generated the same way as described for the split action. The sgl
 from \fI\-\-a\-sgl=SGL\fR is expected to be a "hard" sgl which means its
-last element should not be degenerate (i.e. have a 'num' of 0).
+last element should not be degenerate (i.e. have a NUM of 0).
 .br
 The second half of the "twin split" is to split the \fI\-\-b\-sgl=SGL\fR
 sgl. The same number of output files are used as for the 'A' side but

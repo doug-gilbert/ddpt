@@ -367,8 +367,10 @@ struct dev_info_t {
 
 struct cp_statistics_t {
     bool copied_from_working;
+    bool prev_valid;    /* if delta throughput available */
     int64_t in_full;    /* full blocks read from IFILE so far */
     int64_t out_full;   /* full blocks written to OFILE so far */
+    int64_t prev_count; /* full blocks written to OFILE so far */
     int64_t dd_count_start;     /* dd_count prior to start of copy/read */
     int64_t out_sparse; /* counter for sparse, sparing + trim */
     int in_partial;
@@ -383,6 +385,11 @@ struct cp_statistics_t {
     int sum_of_resids;
     int interrupted_retries;
     int io_eagains;
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+    struct timespec prev_tm;
+#elif defined(HAVE_GETTIMEOFDAY)
+    struct timeval prev_tm;
+#endif
 };
 
 /* state of working variables within do_copy(). Note that block size from
@@ -564,7 +571,7 @@ struct opts_t {
     int wrprotect;
     int coe_limit;
     int coe_count;
-    int progress;       /* status=progress , report every 2 minutes */
+    int progress;       /* status=progress, report every 2 minutes or less */
     int verbose;
     int do_help;
     int odx_request;    /* ODX_REQ_NONE==0 for no ODX */
@@ -934,6 +941,8 @@ public:
 struct sgl_opts_t {
     bool append2out_f;
     bool chs_given;
+    bool div_lba_only;
+    bool div_num_only;
     bool document;
     bool out2stdout;
     bool non_overlap_chk;
@@ -941,6 +950,7 @@ struct sgl_opts_t {
     bool quiet;
     int act_val;
     int degen_mask;
+    int div_scale_n;
     int do_hex;
     int help;
     int interleave;   /* when splitting a sgl, max number of blocks before
