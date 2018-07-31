@@ -19,7 +19,9 @@ This variant is specialized for moving data to, from or between storage
 devices. If requested, SCSI commands can be sent to read or write data.
 SCSI commands are sent via a pass-through interface. Also supports
 two variants of SCSI copy offload: xcopy(LID1) and the disk->disk
-subset of xcopy(LID4) known as ODX.
+subset of xcopy(LID4) known as ODX. There are two helper utilities:
+ddptctl (for ODX type copy offload) and ddpt_sgl (for scatter gather
+lists)
 
 %prep
 
@@ -50,7 +52,7 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Tue May 15 2018 - dgilbert at interlog dot com
+* Thu Jun 14 2018 - dgilbert at interlog dot com
 - see ChangeLog
   * ddpt-0.96
 * Fri Dec 26 2014 - dgilbert at interlog dot com

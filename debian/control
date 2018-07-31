@@ -15,4 +15,7 @@ Description: Copies disks, partitions and files.
  Various sparse file and device handling options. Similar to
  and an extension of the Unix dd command. Also supports two
  variants of SCSI copy offload: xcopy(LID1) and the disk->disk 
- subset of xcopy(LID4) known as ODX.
+ subset of xcopy(LID4) known as ODX. Has two helper utilities:
+ ddptctl (for ODX support) and ddpt_sgl (for scatter gather lists)
+
+

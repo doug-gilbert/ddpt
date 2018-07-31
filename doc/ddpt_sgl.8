@@ -1,4 +1,3 @@
-PROPS-END
 .TH DDPT_SGL "8" "June 2018" "ddpt\-0.96" DDPT
 .SH NAME
 ddpt_sgl \- helper for ddpt utility's scatter gather lists
@@ -25,9 +24,14 @@ Arguments to long options are mandatory for short options as well.
 .TP
 \fB\-a\fR, \fB\-\-action\fR=\fIACT\fR
 \fIACT\fR is some actions to perform of the given scatter gather list(s).
-To list the available actions set \fIACT\fR to 'xxx' (or 'enum'). The only
-significant action currently defined is "append\-b2a" which appends sgl 'B'
-to the end of sgl 'A' with the result placed in sgl 'A'.
+To list the available actions set \fIACT\fR to 'xxx' (or 'enum'). There are
+only two significant action currently defined. One is "append\-b2a" which
+appends sgl 'B' to the end of sgl 'A' with the result placed in sgl 'A'.
+.br
+The other action is "to\-chs" which takes the 'flat' LBA SGL given to
+\fI\-\-a\-sgl=SGL\fR and converts it into CHS based SGL which is written
+out as directed by \fI\-\-out=O_SGL\fR. This action requires both the
+\fI\-\-chs=CHS\fR and \fI\-\-out=O_SGL\fR options to be given.
 .TP
 \fB\-A\fR, \fB\-\-a\-sgl\fR=\fISGL\fR
 \fISGL\fR is a scatter gather list, a sequence of comma separated unsigned
@@ -48,9 +52,10 @@ differentiate it from the other sgl.
 .TP
 \fB\-C\fR, \fB\-\-chs\fR=\fICHS\fR
 \fICHS\fR is a 3 element tuple, separated by commas. Currently 16 bit values
-from 1 to 0xffff are accepted. The first is the number of cylinders, the
-second number is the number of heads, and the final number is the number
-of sectors.
+from 1 to 0xffff are accepted (the cylinder can be one more: 0x10000 (or
+65536). The first is the number of cylinders, the second number is the
+number of heads (limited to 16), and the final number is the number
+of sectors per track (limited to 255).
 .TP
 \fB\-D\fR, \fB\-\-degen\fR=\fIDV\fR
 \fIDV\fR of 0 (the default) means the all degenerate element (apart from

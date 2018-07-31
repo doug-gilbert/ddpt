@@ -525,7 +525,7 @@ flags_process(const char * arg, struct flags_t * fp)
             fp->excl = true;
         else if (0 == strcmp(cp, "fdatasync"))
             fp->fdatasync = true;
-        else if (0 == strcmp(cp, "ff"))
+        else if ((0 == strcmp(cp, "ff")) || (0 == strcmp(cp, "FF")))
             fp->ff = true;
         else if (0 == strcmp(cp, "flock"))
             fp->flock = true;
