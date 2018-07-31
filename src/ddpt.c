@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.96 20180530 [svn: r355]";
+static const char * ddpt_version_str = "0.96 20180603 [svn: r356]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -498,7 +498,7 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
             idip->reg_sz = st.st_size;
             *in_num_blksp = st.st_size / ibs_lb;
             res = st.st_size % ibs_lb;
-            if (res)
+            if (res) /* round up, for dd_count */
                 ++*in_num_blksp;
             if (vb) {
                 print_blk_sizes(ifn, "reg", *in_num_blksp, ibs_lb, true);
@@ -2562,6 +2562,8 @@ do_rw_copy(struct opts_t * op)
                             }
                             csp->ocbpt = n / obs;
                             csp->icbpt = n / ibs;   /* so dd_count accurate */
+                            if (n % ibs)   /* for dd_count, round up */
+                                ++csp->icbpt;
                             csp->partial_write_bytes = n % obs;
                             /* drop through to write */
                         }

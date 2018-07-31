@@ -88,23 +88,31 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-bin_PROGRAMS = ddpt$(EXEEXT) ddptctl$(EXEEXT)
+bin_PROGRAMS = ddpt$(EXEEXT) ddptctl$(EXEEXT) ddpt_sgl$(EXEEXT)
 @OS_WIN32_MINGW_TRUE@am__append_1 = ddpt_win32.c \
 @OS_WIN32_MINGW_TRUE@			ddpt_wscan.c
 
 @OS_WIN32_MINGW_TRUE@am__append_2 = ddpt_win32.c \
 @OS_WIN32_MINGW_TRUE@			ddpt_wscan.c
 
-@OS_WIN32_CYGWIN_TRUE@am__append_3 = ddpt_win32.c \
-@OS_WIN32_CYGWIN_TRUE@			ddpt_wscan.c
+@OS_WIN32_MINGW_TRUE@am__append_3 = ddpt_win32.c \
+@OS_WIN32_MINGW_TRUE@			ddpt_wscan.c
 
 @OS_WIN32_CYGWIN_TRUE@am__append_4 = ddpt_win32.c \
 @OS_WIN32_CYGWIN_TRUE@			ddpt_wscan.c
 
-@HAVE_SGUTILS_FALSE@am__append_5 = $(sglib_SOURCES)
+@OS_WIN32_CYGWIN_TRUE@am__append_5 = ddpt_win32.c \
+@OS_WIN32_CYGWIN_TRUE@			ddpt_wscan.c
+
+@OS_WIN32_CYGWIN_TRUE@am__append_6 = ddpt_win32.c \
+@OS_WIN32_CYGWIN_TRUE@			ddpt_wscan.c
+
+@HAVE_SGUTILS_FALSE@am__append_7 = $(sglib_SOURCES)
 @HAVE_SGUTILS_TRUE@ddpt_DEPENDENCIES =
-@HAVE_SGUTILS_FALSE@am__append_6 = $(sglib_SOURCES)
+@HAVE_SGUTILS_FALSE@am__append_8 = $(sglib_SOURCES)
 @HAVE_SGUTILS_TRUE@ddptctl_DEPENDENCIES =
+@HAVE_SGUTILS_FALSE@am__append_9 = $(sglib_SOURCES)
+@HAVE_SGUTILS_TRUE@ddpt_sgl_DEPENDENCIES =
 subdir = src
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.ac
@@ -137,6 +145,17 @@ am_ddpt_OBJECTS = ddpt.$(OBJEXT) ddpt_cl.$(OBJEXT) ddpt_com.$(OBJEXT) \
 	ddpt_pt.$(OBJEXT) ddpt_xcopy.$(OBJEXT) $(am__objects_1) \
 	$(am__objects_2) $(am__objects_4)
 ddpt_OBJECTS = $(am_ddpt_OBJECTS)
+am__ddpt_sgl_SOURCES_DIST = ddpt_sgl.cpp ddpt.h ddpt_com.c ddpt_pt.c \
+	ddpt_win32.c ddpt_wscan.c ../lib/sg_lib.c ../include/sg_lib.h \
+	../lib/sg_lib_data.c ../include/sg_lib_data.h \
+	../lib/sg_cmds_basic.c ../lib/sg_cmds_basic2.c \
+	../include/sg_cmds_basic.h ../lib/sg_cmds_extra.c \
+	../include/sg_cmds_extra.h ../include/sg_pt.h \
+	../include/sg_pt_nvme.h ../lib/sg_pt_common.c
+am_ddpt_sgl_OBJECTS = ddpt_sgl.$(OBJEXT) ddpt_com.$(OBJEXT) \
+	ddpt_pt.$(OBJEXT) $(am__objects_1) $(am__objects_2) \
+	$(am__objects_4)
+ddpt_sgl_OBJECTS = $(am_ddpt_sgl_OBJECTS)
 am__ddptctl_SOURCES_DIST = ddptctl.c ddpt.h ddpt_com.c ddpt_pt.c \
 	ddpt_xcopy.c ddpt_win32.c ddpt_wscan.c ../lib/sg_lib.c \
 	../include/sg_lib.h ../lib/sg_lib_data.c \
@@ -181,9 +200,24 @@ AM_V_CCLD = $(am__v_CCLD_@AM_V@)
 am__v_CCLD_ = $(am__v_CCLD_@AM_DEFAULT_V@)
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
-SOURCES = $(ddpt_SOURCES) $(EXTRA_ddpt_SOURCES) $(ddptctl_SOURCES) \
+CXXCOMPILE = $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
+	$(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS)
+AM_V_CXX = $(am__v_CXX_@AM_V@)
+am__v_CXX_ = $(am__v_CXX_@AM_DEFAULT_V@)
+am__v_CXX_0 = @echo "  CXX     " $@;
+am__v_CXX_1 = 
+CXXLD = $(CXX)
+CXXLINK = $(CXXLD) $(AM_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) $(LDFLAGS) \
+	-o $@
+AM_V_CXXLD = $(am__v_CXXLD_@AM_V@)
+am__v_CXXLD_ = $(am__v_CXXLD_@AM_DEFAULT_V@)
+am__v_CXXLD_0 = @echo "  CXXLD   " $@;
+am__v_CXXLD_1 = 
+SOURCES = $(ddpt_SOURCES) $(EXTRA_ddpt_SOURCES) $(ddpt_sgl_SOURCES) \
+	$(EXTRA_ddpt_sgl_SOURCES) $(ddptctl_SOURCES) \
 	$(EXTRA_ddptctl_SOURCES)
 DIST_SOURCES = $(am__ddpt_SOURCES_DIST) $(EXTRA_ddpt_SOURCES) \
+	$(am__ddpt_sgl_SOURCES_DIST) $(EXTRA_ddpt_sgl_SOURCES) \
 	$(am__ddptctl_SOURCES_DIST) $(EXTRA_ddptctl_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
@@ -224,6 +258,9 @@ CCDEPMODE = @CCDEPMODE@
 CFLAGS = @CFLAGS@
 CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
+CXX = @CXX@
+CXXDEPMODE = @CXXDEPMODE@
+CXXFLAGS = @CXXFLAGS@
 CYGPATH_W = @CYGPATH_W@
 DEFS = @DEFS@
 DEPDIR = @DEPDIR@
@@ -265,6 +302,7 @@ abs_top_builddir = @abs_top_builddir@
 abs_top_srcdir = @abs_top_srcdir@
 ac_ct_AR = @ac_ct_AR@
 ac_ct_CC = @ac_ct_CC@
+ac_ct_CXX = @ac_ct_CXX@
 am__include = @am__include@
 am__leading_dot = @am__leading_dot@
 am__quote = @am__quote@
@@ -325,9 +363,11 @@ AM_CFLAGS = -Wall -W
 # AM_CFLAGS = -Wall -W -pedantic -std=c11 --analyze
 # AM_CFLAGS = -Wall -W -pedantic -std=c++14
 ddpt_SOURCES = ddpt.c ddpt.h ddpt_cl.c ddpt_com.c ddpt_pt.c \
-	ddpt_xcopy.c $(am__append_1) $(am__append_3) $(am__append_5)
+	ddpt_xcopy.c $(am__append_1) $(am__append_4) $(am__append_7)
 ddptctl_SOURCES = ddptctl.c ddpt.h ddpt_com.c ddpt_pt.c ddpt_xcopy.c \
-	$(am__append_2) $(am__append_4) $(am__append_6)
+	$(am__append_2) $(am__append_5) $(am__append_8)
+ddpt_sgl_SOURCES = ddpt_sgl.cpp ddpt.h ddpt_com.c ddpt_pt.c \
+	$(am__append_3) $(am__append_6) $(am__append_9)
 sglib_SOURCES = ../lib/sg_lib.c \
                         ../include/sg_lib.h     \
                         ../lib/sg_lib_data.c    \
@@ -367,10 +407,21 @@ EXTRA_ddptctl_SOURCES = ../lib/sg_pt_linux.c	\
 			../lib/sg_pt_win32.c	\
 			../include/sg_pt_win32.h
 
+@HAVE_SGUTILS_FALSE@ddpt_sgl_LDADD = @os_deps@ @SGUTILS_LIBS@
+@HAVE_SGUTILS_TRUE@ddpt_sgl_LDADD = @SGUTILS_LIBS@
+@HAVE_SGUTILS_FALSE@ddpt_sgl_DEPENDENCIES = @os_deps@
+EXTRA_ddpt_sgl_SOURCES = ../lib/sg_pt_linux.c	\
+			../include/sg_linux_inc.h	\
+			../lib/sg_pt_freebsd.c	\
+			../lib/sg_pt_osf1.c	\
+			../lib/sg_pt_solaris.c	\
+			../lib/sg_pt_win32.c	\
+			../include/sg_pt_win32.h
+
 all: all-am
 
 .SUFFIXES:
-.SUFFIXES: .c .o .obj
+.SUFFIXES: .c .cpp .o .obj
 $(srcdir)/Makefile.in: @MAINTAINER_MODE_TRUE@ $(srcdir)/Makefile.am  $(am__configure_deps)
 	@for dep in $?; do \
 	  case '$(am__configure_deps)' in \
@@ -447,6 +498,10 @@ ddpt$(EXEEXT): $(ddpt_OBJECTS) $(ddpt_DEPENDENCIES) $(EXTRA_ddpt_DEPENDENCIES)
 	@rm -f ddpt$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(ddpt_OBJECTS) $(ddpt_LDADD) $(LIBS)
 
+ddpt_sgl$(EXEEXT): $(ddpt_sgl_OBJECTS) $(ddpt_sgl_DEPENDENCIES) $(EXTRA_ddpt_sgl_DEPENDENCIES) 
+	@rm -f ddpt_sgl$(EXEEXT)
+	$(AM_V_CXXLD)$(CXXLINK) $(ddpt_sgl_OBJECTS) $(ddpt_sgl_LDADD) $(LIBS)
+
 ddptctl$(EXEEXT): $(ddptctl_OBJECTS) $(ddptctl_DEPENDENCIES) $(EXTRA_ddptctl_DEPENDENCIES) 
 	@rm -f ddptctl$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(ddptctl_OBJECTS) $(ddptctl_LDADD) $(LIBS)
@@ -461,6 +516,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt_cl.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt_com.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt_pt.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt_sgl.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt_win32.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt_wscan.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ddpt_xcopy.Po@am__quote@
@@ -659,6 +715,20 @@ sg_pt_win32.obj: ../lib/sg_pt_win32.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../lib/sg_pt_win32.c' object='sg_pt_win32.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o sg_pt_win32.obj `if test -f '../lib/sg_pt_win32.c'; then $(CYGPATH_W) '../lib/sg_pt_win32.c'; else $(CYGPATH_W) '$(srcdir)/../lib/sg_pt_win32.c'; fi`
+
+.cpp.o:
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXXCOMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/$*.Tpo $(DEPDIR)/$*.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='$<' object='$@' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXXCOMPILE) -c -o $@ $<
+
+.cpp.obj:
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXXCOMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ `$(CYGPATH_W) '$<'`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/$*.Tpo $(DEPDIR)/$*.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='$<' object='$@' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXXCOMPILE) -c -o $@ `$(CYGPATH_W) '$<'`
 
 ID: $(am__tagged_files)
 	$(am__define_uniq_tagged_files); mkid -fID $$unique

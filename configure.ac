@@ -5,7 +5,7 @@ AM_MAINTAINER_MODE
 AM_CONFIG_HEADER(config.h)
 
 AC_PROG_CC
-# AC_PROG_CXX
+AC_PROG_CXX
 AC_PROG_INSTALL
 
 # AM_PROG_AR is supported and needed since automake v1.12+

@@ -1,26 +1,45 @@
-K 14
-svn:executable
-V 1
-*
-PROPS-END
 #!/bin/bash
+
+# This script assumes Linux (Android ?) and is for testing ddpt which is a
+# dd clone. It uses ramdisks (/dev/ram0 and /dev/ram1) so users may need to
+# check if something else is using them. It also uses two scsi_debug virtual
+# disks (suggesting a scsi_debug modprobe instruction if they are not already
+# present. It also uses some /tmp/ddpt*.bin scratch files which may need to
+# be cleaned up by the user. It uses lsscsi (version 0.30 revision 149 or
+# later) to identify the scratch scsi_debug generic and block devices (lest
+# it accidentally overwritesthe users real disks or SSDs). Use:
+#   ./prepare.sh --help      or     ./prespare.sh -h
+# to see the command run options. By default (i.e. without the --run) option
+# it will do the preparation only. It is recommended that the user do
+#   ./prepare.sh --verbose    or    ./prepare.sh -vv
+# before using the --run option. Check that the devices that ./prepare.sh
+# selects are actually the correct ones ...
+#
+# Environment variables that may be overridden by caller:
+#    DDPT         default: `which ddpt`
+#    DDPT_OPTS    default: ""; command line options -d and -q appended
+#    DDPT_ARG     default: ""; command line option -a argument appended
+#
+# dpg 20180602
 
 VERBOSE="0"
 VB_ARG=""
 DDPT_OPTS=""
 
-# Command line parser from:
-#   stackoverflow.com/questions/192249/how-do-i-parse-command-line-arguments-in-bash
-
+echoerr() { printf "%s\n" "$*" >&2; }
+echoerr_n() { printf "%s" "$*" >&2; }
 
 getopt --test > /dev/null
 if [[ $? -ne 4 ]]; then
-    echo "I’m sorry, `getopt --test` failed in this environment."
+    echoerr "I’m sorry, `getopt --test` failed in this environment."
     exit 1
 fi
 
-OPTIONS=a:dho:qrv
-LONGOPTIONS=arg:,dry-run,help,output:,quiet,run,verbose
+# Command line parser from:
+#   stackoverflow.com/questions/192249/how-do-i-parse-command-line-arguments-in-bash
+
+OPTIONS=a:dhqrv
+LONGOPTIONS=arg:,dry-run,help,quiet,run,verbose
 
 # -temporarily store output to be able to check for errors
 # -e.g. use “--options” parameter by name to activate quoting/enhanced mode
@@ -50,10 +69,6 @@ while true; do
             HELP=y
             shift
             ;;
-        -o|--output)
-            outFile="$2"
-            shift 2
-            ;;
         -q|--quiet)
             QUIET=y
             DDPT_OPTS="${DDPT_OPTS} --quiet"
@@ -77,7 +92,7 @@ while true; do
             break
             ;;
         *)
-            echo "Programming error"
+            echoerr "Syntax error in script command line options"
             exit 3
             ;;
     esac
@@ -114,26 +129,29 @@ DDPT_OPTS="${DDPT_OPTS} ${VB_ARG}"
 
 # Just testing ....
 if [ ${VERBOSE} -gt 0 ] ; then
-    echo "DDPT_OPTS=${DDPT_OPTS}"
-    echo ""
+    echoerr "DDPT_OPTS=${DDPT_OPTS}"
+    echoerr ""
 fi
 
 if [[ $EUID -ne 0 ]]; then
-   echo ">>> This script should be run as root, will try anyway"
-   echo ""
+   echoerr ">>> This script should be run as root, will try anyway"
+   echoerr ""
 fi
 
 LSSCSI=`which lsscsi`
 PREP_TMP="/tmp/ddpt_prep.tmp"
-PREP2_TMP="/tmp/ddpt_prep2.tmp"
+PREP_BIN="/tmp/ddpt_prep.bin"
+PREP2_BIN="/tmp/ddpt_prep2.bin"
 
 if [ ! -x ${LSSCSI} ] ; then
-    echo "Can't find lsscsi utility, is the package loaded"
+    echoerr "Can't find lsscsi utility, is the package loaded?"
+    echoerr "Recent version at http://sg.danny.cz/scsi/lsscsi.html "
     exit 1
 else
     LSSCSI_VSTR=`lsscsi -VV`
     if [ -z "${LSSCSI_VSTR}" ] ; then
-        echo "lsscsi version is to old, not before 0.30 [rev 149]"
+        echoerr "lsscsi version is too old, not before 0.30 [rev 149]"
+        echoerr "Recent version at http://sg.danny.cz/scsi/lsscsi.html "
         exit 1
     fi
 fi
@@ -141,13 +159,13 @@ fi
 ${LSSCSI} --hosts --brief > ${PREP_TMP}
 
 if grep "scsi_debug" ${PREP_TMP} > /dev/null 2>&1 ; then
-    echo "found scsi_debug host, good, now checking it ..."
+    echoerr "found scsi_debug host, good, now checking it ..."
     SCSI_DEBUG_HOST=`grep "scsi_debug" ${PREP_TMP}`
 else
-    echo "Did not find scsi_debug host, need to load scsi_debug module."
-    echo "Try this (as root):"
-    echo -n "    modprobe scsi_debug max_luns=2 sector_size=4096 "
-    echo "dev_size_mb=400 ndelay=5000"
+    echoerr "Did not find scsi_debug host, need to load scsi_debug module."
+    echoerr "Try this (as root):"
+    echoerr_n "    modprobe scsi_debug max_luns=2 sector_size=4096 "
+    echoerr "dev_size_mb=400 ndelay=5000"
     exit 1
 fi
 
@@ -160,14 +178,12 @@ HOST_NUM=${HOST_NUM::1}
 if [ "$HOST_NUM" -eq "$HOST_NUM" ] 2>/dev/null
 then
     if [ $VERBOSE -gt 0 ] ; then
-        echo "scsi_debug driver is host number $HOST_NUM"
+        echoerr "scsi_debug driver is host number $HOST_NUM"
     fi
 else
-    echo "Didn't find scsi_debug host (with lsscsi), strange"
+    echoerr "Didn't find scsi_debug host (with lsscsi), strange"
     exit 1
 fi
-
-## echo ${a[1]} ;  echo ${a[2]}
 
 ${LSSCSI} --generic --brief ${HOST_NUM} > ${PREP_TMP}
 
@@ -180,48 +196,57 @@ do
     SG_DEV[${k}]=${a[2]}
     SG_BLK_DEV[${k}]=${a[1]}
     if [ $VERBOSE -gt 0 ] ; then
-        echo "sg dev name ${k}: " ${SG_DEV[${k}]}
-        echo "  corresponding block dev name ${k}: " ${SG_BLK_DEV[${k}]}
+        echoerr "sg dev name ${k}: " ${SG_DEV[${k}]}
+        echoerr "  corresponding block dev name ${k}: " ${SG_BLK_DEV[${k}]}
     fi
     k=$(( k + 1 ))
 done < "${PREP_TMP}"
 
+# Remove a temporary, symlinks still left in /tmp
+rm -f ${PREP_TMP}
+
 if [ ${k} -eq 0 ] ; then
-    echo "Strange, no sg devices found (in lsscsi)"
+    echoerr "Strange, no sg devices found (by lsscsi)"
     exit
 fi
 
 if [ ${#SG_DEV[@]} -lt 2 ] ; then
-    echo "Need at least 2 sg devices, looks like only one. Try removing "
-    echo "the scsi_debug module (with rmmod) and re-attach it (with "
-    echo "modprobe) and add 'max_luns=2' argument"
+    echoerr "Need at least 2 sg devices, looks like only one. Try removing "
+    echoerr "the scsi_debug module (with rmmod) and re-attach it (with "
+    echoerr "modprobe) and add 'max_luns=2' argument"
     exit 1
 fi
 
 if [ ${#SG_BLK_DEV[@]} -lt 2 ] ; then
-    echo "Something is wrong, should have at least 2 blocks devices "
-    echo "corresponding to the sg devices just found."
+    echoerr "Something is wrong, should have at least 2 blocks devices "
+    echoerr "corresponding to the sg devices just found."
     exit 1
 fi
 
 if [ -b /dev/ram0 -a -b /dev/ram1 ] ; then
     if [ $VERBOSE -gt 0 ] ; then
-        echo "Detected /dev/ram0 and /dev/ram1 block devices"
+        echoerr "Detected /dev/ram0 and /dev/ram1 block devices"
     fi
 else
-    echo "Need 2 scratch block devices: /dev/ram0 and /dev/ram1 but not found"
-    echo "As root try 'mknod -m 660 /dev/ram b 1 1' or if that doesn't "
-    echo "create them try:"
-    echo "    mknod -m 660 /dev/ram0 b 1 0 ; mknod -m 660 /dev/ram1 b 1 1"
+    echoerr "Need 2 scratch block devices: /dev/ram0 and /dev/ram1 but not found"
+    echoerr "As root try 'mknod -m 660 /dev/ram b 1 1' or if that doesn't "
+    echoerr "create them try:"
+    echoerr "    mknod -m 660 /dev/ram0 b 1 0 ; mknod -m 660 /dev/ram1 b 1 1"
     exit 1
 fi
 
+if [ ${DDPT} ] ; then
+    echoerr "Instead of ddpt using DDPT=${DDPT}"
+else
+    DDPT=`which ddpt`
+fi
+
 if [ ! ${RUN} ] ; then
-    echo ""
-    echo "Since --run option not given will exit now with preparation done"
+    echoerr ""
+    echoerr "Since --run option not given will exit now with preparation done"
     exit 0
 fi
-echo ""
+echoerr ""
 
 rm -f /tmp/sg_a_dev
 ln -s ${SG_DEV[0]} /tmp/sg_a_dev
@@ -232,107 +257,158 @@ ln -s ${SG_BLK_DEV[0]} /tmp/sd_sg_a_dev
 rm -f /tmp/sd_sg_b_dev
 ln -s ${SG_BLK_DEV[1]} /tmp/sd_sg_b_dev
 
+# >>> RUN section start here
 
-DDPT=`which ddpt`
-
-echo "${DDPT} ${DDPT_OPTS} if=/dev/ram0  bs=512 ${DDPT_ARG}"
+echoerr "${DDPT} ${DDPT_OPTS} if=/dev/ram0  bs=512 ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} if=/dev/ram0  bs=512 ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echo "ddpt failed; exit status: ${RES}"
+    echoerr "ddpt failed; exit status: ${RES}"
+    sg_decode_sense -v -e ${RES}
     exit ${RES}
 fi
-echo ""
+echoerr ""
 
-echo "${DDPT} ${DDPT_OPTS} if=/dev/ram1  bs=512 ${DDPT_ARG}"
+echoerr "${DDPT} ${DDPT_OPTS} if=/dev/ram1  bs=512 ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} if=/dev/ram1  bs=512 ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echo "ddpt failed; exit status: ${RES}"
+    echoerr "ddpt failed; exit status: ${RES}"
+    sg_decode_sense -v -e ${RES}
     exit ${RES}
 fi
-echo ""
+echoerr ""
 
-echo "${DDPT} ${DDPT_OPTS} if=/tmp/sg_a_dev bs=4096 ${DDPT_ARG}"
+echoerr "${DDPT} ${DDPT_OPTS} if=/tmp/sg_a_dev bs=4096 ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} if=/tmp/sg_a_dev bs=4096 ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echo "ddpt failed; exit status: ${RES}"
+    echoerr "ddpt failed; exit status: ${RES}"
+    sg_decode_sense -v -e ${RES}
     exit ${RES}
 fi
-echo ""
+echoerr ""
 
-echo "${DDPT} ${DDPT_OPTS} if=/tmp/sg_b_dev  bs=4096 ${DDPT_ARG}"
+echoerr "${DDPT} ${DDPT_OPTS} if=/tmp/sg_b_dev  bs=4096 ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} if=/tmp/sg_b_dev  bs=4096 ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echo "ddpt failed; exit status: ${RES}"
+    echoerr "ddpt failed; exit status: ${RES}"
+    sg_decode_sense -v -e ${RES}
     exit ${RES}
 fi
-echo ""
+echoerr ""
 
-echo "${DDPT} ${DDPT_OPTS} if=/tmp/sd_sg_a_dev bs=4096 ${DDPT_ARG}"
+echoerr "${DDPT} ${DDPT_OPTS} if=/tmp/sd_sg_a_dev bs=4096 ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} if=/tmp/sd_sg_a_dev bs=4096 ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echo "ddpt failed; exit status: ${RES}"
+    echoerr "ddpt failed; exit status: ${RES}"
+    sg_decode_sense -v -e ${RES}
     exit ${RES}
 fi
-echo ""
+echoerr ""
 
-echo "${DDPT} ${DDPT_OPTS} if=/tmp/sd_sg_b_dev  bs=4096 ${DDPT_ARG}"
+echoerr "${DDPT} ${DDPT_OPTS} if=/tmp/sd_sg_b_dev  bs=4096 ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} if=/tmp/sd_sg_b_dev  bs=4096 ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echo "ddpt failed; exit status: ${RES}"
+    echoerr "ddpt failed; exit status: ${RES}"
+    sg_decode_sense -v -e ${RES}
     exit ${RES}
 fi
-echo ""
+echoerr ""
 
-echo "${DDPT} ${DDPT_OPTS} urand_ram0.jf ${DDPT_ARG}"
+# Pick 16,999,999 since its a prime and noticeable
+echoerr "${DDPT} ${DDPT_OPTS} if=/dev/urandom bs=1 of=${PREP_BIN} count=16999999 ${DDPT_ARG}"
+${DDPT} ${DDPT_OPTS} if=/dev/urandom bs=1 of=${PREP_BIN} count=16999999 ${DDPT_ARG}
+RES=$?
+if [ ${RES} -ne 0 ] ; then
+    echoerr "ddpt failed; exit status: ${RES}"
+    sg_decode_sense -v -e ${RES}
+    exit ${RES}
+fi
+echoerr ""
+
+echoerr "${DDPT} ${DDPT_OPTS} if=${PREP_BIN} bs=512 ${DDPT_ARG}"
+${DDPT} ${DDPT_OPTS} if=${PREP_BIN} bs=512 ${DDPT_ARG}
+RES=$?
+if [ ${RES} -ne 0 ] ; then
+    echoerr "ddpt failed; exit status: ${RES}"
+    sg_decode_sense -v -e ${RES}
+    exit ${RES}
+fi
+echoerr ""
+
+echoerr "${DDPT} ${DDPT_OPTS} if=${PREP_BIN} bs=512 of=${PREP2_BIN} ${DDPT_ARG}"
+${DDPT} ${DDPT_OPTS} if=${PREP_BIN} of=${PREP2_BIN} bs=512 ${DDPT_ARG}
+RES=$?
+if [ ${RES} -ne 0 ] ; then
+    echoerr "ddpt failed; exit status: ${RES}"
+    sg_decode_sense -v -e ${RES}
+    exit ${RES}
+fi
+echoerr ""
+
+echoerr "${DDPT} ${DDPT_OPTS} if=${PREP_BIN} bs=1 of=${PREP2_BIN} ${DDPT_ARG}"
+${DDPT} ${DDPT_OPTS} if=${PREP_BIN} of=${PREP2_BIN} bs=1 ${DDPT_ARG}
+RES=$?
+if [ ${RES} -ne 0 ] ; then
+    echoerr "ddpt failed; exit status: ${RES}"
+    sg_decode_sense -v -e ${RES}
+    exit ${RES}
+fi
+echoerr ""
+
+echoerr "${DDPT} ${DDPT_OPTS} urand_ram0.jf ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} urand_ram0.jf ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echo "ddpt failed; exit status: ${RES}"
+    echoerr "ddpt failed; exit status: ${RES}"
+    sg_decode_sense -v -e ${RES}
     exit ${RES}
 fi
-echo ""
+echoerr ""
 
-echo "${DDPT} ${DDPT_OPTS} ram0_2_ram1.jf ${DDPT_ARG}"
+echoerr "${DDPT} ${DDPT_OPTS} ram0_2_ram1.jf ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} ram0_2_ram1.jf ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echo "ddpt failed; exit status: ${RES}"
+    echoerr "ddpt failed; exit status: ${RES}"
+    sg_decode_sense -v -e ${RES}
     exit ${RES}
 fi
-echo ""
+echoerr ""
 
-echo "${DDPT} ${DDPT_OPTS} ram1_2_sg_a.jf ${DDPT_ARG}"
+echoerr "${DDPT} ${DDPT_OPTS} ram1_2_sg_a.jf ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} ram1_2_sg_a.jf ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echo "ddpt failed; exit status: ${RES}"
+    echoerr "ddpt failed; exit status: ${RES}"
+    sg_decode_sense -v -e ${RES}
     exit ${RES}
 fi
-echo ""
+echoerr ""
 
-echo "${DDPT} ${DDPT_OPTS} sg_a_2_sg_b.jf ${DDPT_ARG}"
+echoerr "${DDPT} ${DDPT_OPTS} sg_a_2_sg_b.jf ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} sg_a_2_sg_b.jf ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echo "ddpt failed; exit status: ${RES}"
+    echoerr "ddpt failed; exit status: ${RES}"
+    sg_decode_sense -v -e ${RES}
     exit ${RES}
 fi
-echo ""
+echoerr ""
 
-echo "${DDPT} ${DDPT_OPTS} sd_b_2_sd_a.jf ${DDPT_ARG}"
+echoerr "${DDPT} ${DDPT_OPTS} sd_b_2_sd_a.jf ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} sd_b_2_sd_a.jf ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echo "ddpt failed; exit status: ${RES}"
+    echoerr "ddpt failed; exit status: ${RES}"
+    sg_decode_sense -v -e ${RES}
     exit ${RES}
 fi
-echo ""
+echoerr ""
 
 
 #

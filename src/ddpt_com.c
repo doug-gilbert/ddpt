@@ -2212,6 +2212,8 @@ sgl_iter_forward_blks(struct dev_info_t * dip, struct sgl_iter_t * itp,
                                 __func__, dip->dir_n, csp->blks_xfer);
                         if (csp->bytes_xfer > 0)
                             pr2serr(" (%d bytes)", csp->bytes_xfer);
+                        if (csp->last_segment)
+                            pr2serr(" last_seg");
                         if (csp->leave_reason >= 0)
                             pr2serr(", leave_reason=%d\n", csp->leave_reason);
                         else
