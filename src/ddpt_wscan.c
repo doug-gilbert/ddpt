@@ -664,7 +664,7 @@ sg_do_wscan(char letter, int do_scan, int verb)
     verbose = verb;
     show_bt = (do_scan > 1);
     scsi_scan = (do_scan > 2) ? (do_scan - 2) : 0;
-    storage_arr = calloc(sizeof(struct storage_elem) * MAX_SCSI_ELEMS, 1);
+    storage_arr = calloc(MAX_SCSI_ELEMS, sizeof(struct storage_elem));
     if (storage_arr) {
         ret = do_wscan(letter, show_bt, scsi_scan);
         free(storage_arr);
@@ -675,6 +675,6 @@ sg_do_wscan(char letter, int do_scan, int verb)
     return ret;
 }
 
-#endif		/* SG_LIB_WIN32 */
+#endif          /* SG_LIB_WIN32 */
 
 

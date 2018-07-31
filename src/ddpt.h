@@ -658,7 +658,7 @@ char * rt_cm_id_str(const uint8_t * rtp, int rt_len, char * b,
                     int b_mlen);
 void print_exit_status_msg(const char * prefix, int exit_stat,
                            bool to_stderr);
-struct scat_gath_elem * cli2sgl(const char * inp, int * arr_elems, bool b_vb);
+struct scat_gath_elem * cl2sgl(const char * inp, int * arr_elems, bool b_vb);
 struct scat_gath_elem * file2sgl(const char * file_name, bool def_hex,
                                  int * arr_elems, int * errp, bool b_vb);
 /* Assumes sgli_p->elems and sgli_p->slp are setup and the other fields
@@ -674,8 +674,9 @@ struct scat_gath_elem * file2sgl(const char * file_name, bool def_hex,
 void sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str,
                   bool b_verbose);
 
-/* Prints to stderr. */
-void sgl_print(struct sgl_info_t * sgli_p, const char * id_str);
+/* Prints to stderr or stdout. */
+void sgl_print(struct sgl_info_t * sgli_p, bool skip_meta,
+               const char * id_str, bool to_stdout);
 
 /* Return minimum(num_blks, <blocks_from_sgl-post-blk_off>). First it
  * starts skipping blk_off blocks and if elems is exceeded then it

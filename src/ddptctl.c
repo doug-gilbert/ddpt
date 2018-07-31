@@ -64,7 +64,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.96 20180606 [svn: r357]";
+const char * ddptctl_version_str = "0.96 20180611 [svn: r358]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -161,7 +161,7 @@ usage()
     pr2serr("Usage: "
             "ddptctl [--abort] [--all_toks] [--block] [--del_tkn] "
             "[--dry-run]\n"
-            "               [--help] [--hex] [-immed] [--info] "
+            "               [--help] [--hex] [--immed] [--info] "
             "[--list_id=LID]\n"
             "               [--oir=OIR] [--poll] [--pt=GL] [--readonly] "
             "[--receive]\n"
@@ -570,13 +570,13 @@ sgl_helper(struct opts_t * op, const char * opt, const char * buf,
         if (vb > 1)
             pr2serr("%s: file, %d sgl elements\n", opt, *num_elems_p);
     } else if (num_either_ch_in_str(buf, len, ',', ' ') > 0) {
-        *sgl_pp = cli2sgl(buf, num_elems_p, vb > 0);
+        *sgl_pp = cl2sgl(buf, num_elems_p, vb > 0);
         if (NULL == *sgl_pp) {
-            pr2serr("bad cli argument to '%s='\n", opt);
+            pr2serr("bad command line argument to '%s='\n", opt);
             return SG_LIB_SYNTAX_ERROR;
         }
         if (vb > 1)
-            pr2serr("%s: cli, %d sgl elements\n", opt, *num_elems_p);
+            pr2serr("%s: cl2sgl, %d sgl elements\n", opt, *num_elems_p);
     } else {
         *sgl_pp = (struct scat_gath_elem *)
                         calloc(1, sizeof(struct scat_gath_elem));

@@ -81,7 +81,7 @@ primary_help:
     pr2serr("Usage: "
             "ddpt  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=6|10|12|16|32] [coe=0|1]\n"
             "             [coe_limit=CL] [conv=CONVS] [count=COUNT] "
-            "[-ddpt=VERS]\n"
+            "[ddpt=VERS]\n"
             "             [delay=MS[,W_MS]] [ibs=IBS] [id_usage=LIU] "
             "if=IFILE\n"
             "             [iflag=FLAGS] [intio=0|1] [iseek=SKIP] [ito=ITO] "
@@ -368,9 +368,9 @@ skip_seek(struct opts_t * op, const char * key, const char * buf,
         if (vb > 1)
             pr2serr("%s: file, %d sgl elements\n", key, *num_elems_p);
     } else if (num_either_ch_in_str(buf, len, ',', ' ') > 0) {
-        *sgl_pp = cli2sgl(buf, num_elems_p, vb > 0);
+        *sgl_pp = cl2sgl(buf, num_elems_p, vb > 0);
         if (NULL == *sgl_pp) {
-            pr2serr("bad cli argument to '%s='\n", key);
+            pr2serr("bad command line argument to '%s='\n", key);
             return SG_LIB_SYNTAX_ERROR;
         }
         if (vb > 1)

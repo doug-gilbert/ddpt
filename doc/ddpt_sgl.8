@@ -1,0 +1,123 @@
+PROPS-END
+.TH DDPT_SGL "8" "June 2018" "ddpt\-0.96" DDPT
+.SH NAME
+ddpt_sgl \- helper for ddpt utility's scatter gather lists
+.SH SYNOPSIS
+.B ddpt_sgl
+[\fI\-\-action=ACT\fR] [\fI\-\-a\-sgl=SGL\fR] [\fI\-\-b\-sgl=SGL\fR]
+[\fI\-\-chs=CHS\fR] [\fI\-\-degen=DV\fR] [\fI\-\-dry\-run\fR]
+[\fI\-\-help\fR] [\fI\-\-hex\fR] [\fI\-\-out=O_SGL\fR] [\fI\-\-overlap\fR]
+[\fI\-\-verbose\fR] [\fI\-\-version\fR]
+.SH DESCRIPTION
+.\" Add any additional description here
+.PP
+This utility is a scatter gather list helper for the ddpt utility which
+copies data between or within SCSI devices (logical units). While ddpt's
+command line syntax is modelled on that of the POSIX dd command, this
+utility has a more standard Unix command line syntax with both short and
+long variants of each option.
+.PP
+For background on scatter gather lists see the section of that name in the
+ddpt(8) manpage found in this package. There is a web page at
+http://sg.danny.cz/sg/ddpt.html .
+.SH OPTIONS
+Arguments to long options are mandatory for short options as well.
+.TP
+\fB\-a\fR, \fB\-\-action\fR=\fIACT\fR
+\fIACT\fR is some actions to perform of the given scatter gather list(s).
+To list the available actions set \fIACT\fR to 'xxx' (or 'enum'). The only
+significant action currently defined is "append\-b2a" which appends sgl 'B'
+to the end of sgl 'A' with the result placed in sgl 'A'.
+.TP
+\fB\-A\fR, \fB\-\-a\-sgl\fR=\fISGL\fR
+\fISGL\fR is a scatter gather list, a sequence of comma separated unsigned
+integers (up to 64 bits each). \fISGL\fR has several forms, the simplest
+is: LBA0,NUM0,LBA1,NUM1,LBA2,NUM3... and there should be an even number
+values with the exception of LBA0 appearing by itself. In this case NUM0 is
+assumed to be 0. Other \fISGL\fR forms are '@<filename>' and 'H@<filename>'
+where the contents of the <filename> is parsed as a scatter gather list.
+Since there are two options for inputting \fISGL\fRs, this one is termed as
+the 'A sgl'.
+.br
+See the section on SCATTER GATHER LISTS in the ddpt(8) manpage for more
+information on these list and associated terminology.
+.TP
+\fB\-B\fR, \fB\-\-b\-sgl\fR=\fISGL\fR
+\fISGL\fR is a scatter gather list, a second list termed as the 'B sgl' to
+differentiate it from the other sgl.
+.TP
+\fB\-C\fR, \fB\-\-chs\fR=\fICHS\fR
+\fICHS\fR is a 3 element tuple, separated by commas. Currently 16 bit values
+from 1 to 0xffff are accepted. The first is the number of cylinders, the
+second number is the number of heads, and the final number is the number
+of sectors.
+.TP
+\fB\-D\fR, \fB\-\-degen\fR=\fIDV\fR
+\fIDV\fR of 0 (the default) means the all degenerate element (apart from
+the last) are ignored (and dropped from the output file). If \fIDV\fR
+is odd then its LBA is taken into account when calculating the highest
+and lowest LBA in a sgl (and is included in the output file). If \fIDV\fR
+is even (apart from 0) then its LBA it taken into account when determining
+if a sgl is monotonic increasing, descreasing or neither (and is included
+in the output file).
+.TP
+\fB\-d\fR, \fB\-\-dry\-run\fR
+this option is not currently implemented.
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+outputs the usage message summarizing command line options then exits.
+.TP
+\fB\-H\fR, \fB\-\-hex\fR
+used to define the numeric format of what is written to \fI\-\-out=O_SGL\fR.
+If not given then only decimal values are written to \fIO_SGL\fR. If this
+option is given once then hexadecimal values, prefixed with '0x', are
+written to \fIO_SGL\fR. If this option is given twice then a line with
+the string 'HEX' is written to \fIO_SGL\fR before any values, and those
+values are implicitly (i.e. no leading '0x' or 'h' suffix) hexadecimal.
+.TP
+\fB\-o\fR, \fB\-\-out\fR=\fIO_SGL\fR
+\fIO_SGL\fR is the name of a file to write a resultant scatter gather
+list to. If \fIO_SGL\fR is '\-' then the output is directed to stdout.
+If \fIO_SGL\fR starts with '+' then the output is appended to the file
+whose name follows the '+'.
+.TP
+\fB\-O\fR, \fB\-\-overlap\-sgl\fR
+Checks any given sgl and amy resulting sgl (from an action) to see if
+any portion of the sgl overlaps. This is done by first sorting each
+sgl by the LBA field, then checking every element against the previous
+one to determine if there is overlap. SCSI commands that accept sgls
+process degenerate elements without error but if two elements in a
+WRITE command overlap then it is the storage device's choice which one
+to WRITE first. The last one to be written will be the one read in
+subsequent read operations.
+.TP
+\fB\-s\fR, \fB\-\-stats\fR
+print out sgl statistics on any given sgl and any resultant sgl.
+.TP
+\fB\-v\fR, \fB\-\-verbose\fR
+increase the level of verbosity, (i.e. debug output).
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+print the version string and then exit.
+.SH NOTES
+There is a web page discussing ddptctl and ddpt, XCOPY and ODX at
+http://sg.danny.cz/sg/ddpt_xcopy_odx.html
+.SH EXIT STATUS
+The exit status of ddpt_sgl is 0 when it is successful. Otherwise the exit
+status for this utility is the same as that for ddpt. See the EXIT STATUS
+section in the ddpt man page.
+.SH EXAMPLES
+No examples yet.
+.SH AUTHORS
+Written by Douglas Gilbert.
+.SH "REPORTING BUGS"
+Report bugs to <dgilbert at interlog dot com>.
+.SH COPYRIGHT
+Copyright \(co 2018 Douglas Gilbert
+.br
+This software is distributed under a FreeBSD license. There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+.SH "SEE ALSO"
+.B ddpt
+
+
