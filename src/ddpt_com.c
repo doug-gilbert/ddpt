@@ -1588,90 +1588,15 @@ print_exit_status_msg(const char * prefix, int exit_stat, bool to_stderr)
                  exit_stat);
         return;
     }
-    if ((exit_stat > 0) && (exit_stat <= 99)) { /* SG_LIB_UNUSED_ABOVE */
-        if (sg_exit2str(exit_stat, false, b_len - n, b + n))
-            print_p("%s\n", b);
-        else
-            print_p("%sunexpected exit status value: %d\n", b, exit_stat);
-        return;
-    }
-
-    /* here only if exit_stat > 99 (SG_LIB_UNUSED_ABOVE) */
-    switch (exit_stat) {
-    case DDPT_CAT_PARAM_LST_LEN_ERR:   /* 100 */
-        print_p("%sparameter list length error\n", b);
-        break;
-    case DDPT_CAT_INVALID_FLD_IN_PARAM:   /* 101 */
-        print_p("%sinvalid field in parameter list\n", b);
-        break;
-    case DDPT_CAT_TOO_MANY_SEGS_IN_PARAM:   /* 102 */
-        print_p("%stoo many segments in parameter list\n", b);
-        break;
-    case DDPT_CAT_TARGET_UNDERRUN:   /* 103 */
-        print_p("%starget underrun\n", b);
-        break;
-    case DDPT_CAT_TARGET_OVERRUN:   /* 104 */
-        print_p("%starget overrun\n", b);
-        break;
-    case DDPT_CAT_OP_IN_PROGRESS:   /* 105 */
-        print_p("%soperation in progress [list_id in use]\n", b);
-        break;
-    case DDPT_CAT_INSUFF_RES_CREATE_ROD:   /* 106 */
-        print_p("%sinsufficient resources to create ROD\n", b);
-        break;
-    case DDPT_CAT_INSUFF_RES_CREATE_RODTOK:   /* 107 */
-        print_p("%sinsufficient resources to create ROD Token\n", b);
-        break;
-    case DDPT_CAT_CMDS_CLEARED_BY_DEV_SVR:   /* 108 */
-        print_p("%scommands cleared by device servers\n", b);
-        break;
-    default:
-        if ((exit_stat >= DDPT_CAT_TOKOP_BASE) &&
-            (exit_stat < 126)) {        /* 126+127 used by Unix OSes */
-            print_p("%sinvalid token operation, ", b);
-            switch (exit_stat - DDPT_CAT_TOKOP_BASE) {  /* asc=0x23 */
-            case 0:     /* asc=0x23, asq=0x0 */
-                print_p("cause not reportable\n");
-                break;
-            case 1:     /* asc=0x23, asq=0x1 */
-                print_p("unsupported token type\n");
-                break;
-            case 2:
-                print_p("remote token usage not supported\n");
-                break;
-            case 3:
-                print_p("remote ROD token creation not supported\n");
-                break;
-            case 4:
-                print_p("token unknown\n");
-                break;
-            case 5:
-                print_p("token corrupt\n");
-                break;
-            case 6:
-                print_p("token revoked\n");
-                break;
-            case 7:
-                print_p("token expired\n");
-                break;
-            case 8:
-                print_p("token cancelled\n");
-                break;
-            case 9:
-                print_p("token deleted\n");
-                break;
-            case 0xa:
-                print_p("invalid token length\n");
-                break;
-            default:
-                print_p("asc=0x23, asq=0x%x\n",
-                        exit_stat - DDPT_CAT_TOKOP_BASE);
-                break;
-            }
+    if (exit_stat > 0) {
+        if (exit_stat < 126) {
+            if (sg_exit2str(exit_stat, false, b_len - n, b + n))
+                print_p("%s\n", b);
+            else
+                print_p("%sunexpected exit status value: %d\n", b, exit_stat);
         } else
-            print_p("%sunexpected exit status value: %d [0x%x]\n", b,
-                    exit_stat, exit_stat);
-        break;
+            print_p("%sunexpectedly high exit status value: %d\n", b,
+                    exit_stat);
     }
 }
 
@@ -2379,6 +2304,7 @@ cp_via_sgl_iter(struct dev_info_t * dip, struct cp_state_t * csp,
     uint32_t n_blks;
     struct sgl_iter_t * itp;
     const char * arg_str = dip->dir_n;
+    const struct scat_gath_elem * sgep;
 
     if (add_blks < 0) {
         pr2serr("%s: [%s] don't support backward iteration\n", __func__,
@@ -2412,15 +2338,19 @@ cp_via_sgl_iter(struct dev_info_t * dip, struct cp_state_t * csp,
     elems = itp->elems;
     if (elems < 1)
         return 0;       /* nothing to do */
-    if ((e_ind >= elems) || ((e_ind == (elems - 1)) &&
-          (n_blks + itp->it_bk_off > (itp->sglp + e_ind)->num))) {
+    if (e_ind == (elems - 1))
+        sgep = itp->sglp + e_ind;
+    else
+        sgep = NULL;
+    if ((e_ind >= elems) ||
+        (sgep && (n_blks + itp->it_bk_off > sgep->num))) {
         if ((e_ind == elems) && (0 == itp->it_bk_off)) {
             if (vb > 2)
                 pr2serr("%s: [%s] iterator at end\n", __func__, arg_str);
         }
         if (vb)
-            pr2serr("%s: [%s] iterator: %d,%u exceeds range\n", __func__,
-                    arg_str, e_ind, itp->it_bk_off);
+            pr2serr("%s: [%s] iterator: %d,%u + %d blocks exceeds range\n",
+                    __func__, arg_str, e_ind, itp->it_bk_off, n_blks);
         return -9999;
     }
     if (vb > 3) {
@@ -2557,10 +2487,14 @@ sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str, bool b_vb)
         pr2serr("  >> %s scatter gather list (%d elements):\n", caller,
                 sgli_p->elems);
         if (sgli_p->sglp) {
-            for (k = 0, sgep = sgli_p->sglp; k < sgli_p->elems; ++k, ++sgep)
-                pr2serr("    lba: 0x%" PRIx64 ", number: 0x%" PRIx32
-                        " [next lba: 0x%" PRIx64 "]\n", sgep->lba,
-                        sgep->num, sgep->lba + sgep->num);
+            for (k = 0, sgep = sgli_p->sglp; k < sgli_p->elems; ++k, ++sgep) {
+                pr2serr("    lba: 0x%" PRIx64 ", number: 0x%" PRIx32,
+                        sgep->lba, sgep->num);
+                if (sgep->lba > 0)
+                    pr2serr(" [next lba: 0x%" PRIx64 "]",
+                            sgep->lba + sgep->num);
+                pr2serr("\n");
+            }
         }
     }
 }
@@ -2836,7 +2770,7 @@ cp_state_init(struct cp_state_t * csp, struct opts_t * op)
     csp->stats = op->stats;
     op->stp = &csp->stats;
     csp->buf_name = "unknown";
-    csp->leave_reason = REASON_UNKNOWN;		/* -1 */
+    csp->leave_reason = REASON_UNKNOWN;         /* -1 */
 }
 
 

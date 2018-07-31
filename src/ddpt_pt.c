@@ -76,6 +76,7 @@
 #define DDPT_WRITE_ATOMIC16_OC 0x9c     /* sbc4r02 */
 #define DDPT_WRITE_VERIFY10_OC 0x2e
 #define DDPT_WRITE_VERIFY16_OC 0x8e
+#define DDPT_WRITE_STREAM16_OC 0x9a
 #define DDPT_VARIABLE_LEN_OC 0x7f
 #define DDPT_READ32_SA 0x9
 #define DDPT_WRITE32_SA 0xb
@@ -303,10 +304,10 @@ pt_read_capacity(struct opts_t * op, bool in0_out1, int64_t * num_blks,
 }
 
 /* Build a SCSI READ or WRITE CDB. */
-static int
+static bool
 pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
                      int64_t start_block, bool write_true,
-                     const struct flags_t * fp, int protect)
+                     const struct flags_t * fp, int protect, uint32_t list_id)
 {
     int opcode_sa, options_byte, rw_sa;
     uint64_t s_block = (uint64_t)start_block;
@@ -318,7 +319,7 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
 
     if (cdb_sz < 6) {
         pr2serr("cdb_sz too small\n");
-        return 1;
+        return false;
     }
     memset(cdbp, 0, cdb_sz);
     opcode_sa = 0;
@@ -331,7 +332,14 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
                 opcode_sa = DDPT_WRITE_ATOMIC16_OC;
             else {
                 pr2serr("atomic flag only for WRITE_ATOMIC(16)\n");
-                return 1;
+                return false;
+            }
+        } else if (fp->wstream) {
+            if (16 == cdb_sz)
+                opcode_sa = DDPT_WRITE_STREAM16_OC;
+            else {
+                pr2serr("wstream flag only for WRITE_STREAM(16)\n");
+                return false;
             }
         } else if (fp->verify) {
             if (10 == cdb_sz)
@@ -340,7 +348,7 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
                 opcode_sa = DDPT_WRITE_VERIFY16_OC;
             else {
                 pr2serr("verify flag for WRITE AND VERIFY (10 or 16) only\n");
-                return 1;
+                return false;
             }
         } else
             opc_arr = wr_opcode;
@@ -377,21 +385,21 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
         cdbp[4] = (256 == blocks) ? 0 : (uint8_t)blocks;
         if (blocks > 256) {
             pr2serr("for 6 byte commands, maximum number of blocks is 256\n");
-            return 1;
+            return false;
         } else if (0 == blocks) {
             pr2serr("for 6 byte commands, cannot send '0 blocks' reads or "
                     "writes\n");
-            return 1;
+            return false;
         }
         if (s_block > 0x1fffff) {
             pr2serr("for 6 byte commands, can't address blocks beyond %d\n",
                     0x1fffff);
-            return 1;
+            return false;
         }
         if (fp->dpo || fp->fua || fp->rarc) {
             pr2serr("for 6 byte commands, neither dpo, fua, nor rarc bits "
                     "supported\n");
-            return 1;
+            return false;
         }
         break;
     case 10:
@@ -400,11 +408,11 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
         if (blocks & (~0xffff)) {
             pr2serr("for 10 byte commands, maximum number of blocks is %d\n",
                     0xffff);
-            return 1;
+            return false;
         }
         if (s_block > UINT32_MAX) {
             pr2serr("for 10 byte commands, starting LBA exceeds 32 bits\n");
-            return 1;
+            return false;
         }
         cdbp[0] = (uint8_t)opcode_sa;
         cdbp[1] = (uint8_t)options_byte;
@@ -416,7 +424,7 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
             opcode_sa = opc_arr[2];
         if (s_block > UINT32_MAX) {
             pr2serr("for 12 byte commands, starting LBA exceeds 32 bits\n");
-            return 1;
+            return false;
         }
         cdbp[0] = (uint8_t)opcode_sa;
         cdbp[1] = (uint8_t)options_byte;
@@ -429,7 +437,15 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
         cdbp[0] = (uint8_t)opcode_sa;
         cdbp[1] = (uint8_t)options_byte;
         sg_put_unaligned_be64(s_block, cdbp + 2);
-        sg_put_unaligned_be32((uint32_t)blocks, cdbp + 10);
+        if (fp->wstream) {
+            sg_put_unaligned_be16((uint16_t)list_id, cdbp + 10);
+            if (blocks > 0xffff) {
+                pr2serr("Write stream(16) number of blocks > 0xffff\n");
+                return false;
+            }
+            sg_put_unaligned_be16((uint16_t)blocks, cdbp + 12);
+        } else
+            sg_put_unaligned_be32((uint32_t)blocks, cdbp + 10);
         break;
     case 32:
         if (0 == opcode_sa)
@@ -445,9 +461,9 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
     default:
         pr2serr("expected cdb size of 6, 10, 12, 16 or 32 but got %d\n",
                 cdb_sz);
-        return 1;
+        return false;
     }
-    return 0;
+    return true;
 }
 
 /* Read using the pass-through. No retries or remedial work here.
@@ -472,8 +488,8 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
     struct sg_scsi_sense_hdr ssh;
     struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
-    if (pt_build_scsi_rw_cdb(rdCmd, fp->cdbsz, blocks, from_block, false,
-                             fp, protect)) {
+    if (! pt_build_scsi_rw_cdb(rdCmd, fp->cdbsz, blocks, from_block, false,
+                               fp, protect, op->list_id)) {
         pr2serr("bad rd cdb build, from_block=%" PRId64 ", blocks=%d\n",
                 from_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
@@ -582,6 +598,8 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
                     ret = SG_LIB_CAT_MEDIUM_HARD;
                 }
             }
+            break;
+        case SG_LIB_LBA_OUT_OF_RANGE:
             break;
         default:
             break;
@@ -702,6 +720,8 @@ pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff, int blocks,
         case SG_LIB_CAT_RES_CONFLICT:
         case SG_LIB_CAT_DATA_PROTECT:
         case SG_LIB_CAT_PROTECTION:
+        case SG_LIB_CAT_ILLEGAL_REQ:
+        case SG_LIB_LBA_OUT_OF_RANGE:
         default:
             if (retries_tmp > 0) {
                 pr2serr(">>> retrying pt read: starting lba=%" PRId64 " [0x%"
@@ -773,6 +793,16 @@ pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff, int blocks,
             case SG_LIB_CAT_PROTECTION_WITH_INFO:
             case SG_LIB_CAT_PROTECTION:
                 ret = SG_LIB_CAT_PROTECTION;
+                goto err_out;
+            case SG_LIB_CAT_ILLEGAL_REQ:
+                pr2serr(">> unexpected Illegal request from pt_low_read() "
+                        "[%s]\n", iop);
+                ret = res;
+                goto err_out;
+            case SG_LIB_LBA_OUT_OF_RANGE:
+                pr2serr(">> unexpected LBA out of range from pt_low_read() "
+                        "[%s]\n", iop);
+                ret = res;
                 goto err_out;
             case SG_LIB_SYNTAX_ERROR:
             default:
@@ -854,14 +884,16 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
     uint8_t sense_b[SENSE_BUFF_LEN];
     struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
-    if (pt_build_scsi_rw_cdb(wrCmd, fp->cdbsz, blocks, to_block, 1, fp,
-                             op->wrprotect)) {
+    if (! pt_build_scsi_rw_cdb(wrCmd, fp->cdbsz, blocks, to_block, 1, fp,
+                               op->wrprotect, op->list_id)) {
         pr2serr("bad wr cdb build, to_block=%" PRId64 ", blocks=%d\n",
                 to_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
     }
     if (DDPT_WRITE_ATOMIC16_OC == wrCmd[0])
         desc = "WRITE ATOMIC(16)";
+    else if (DDPT_WRITE_STREAM16_OC == wrCmd[0])
+        desc = "WRITE STREAM(16)";
     else if (0xe == (0xf & wrCmd[0]))
         desc = "WRITE AND VERIFY";
     else
@@ -922,6 +954,7 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
             break;
         case SG_LIB_CAT_NOT_READY:
         case SG_LIB_CAT_ILLEGAL_REQ:
+        case SG_LIB_LBA_OUT_OF_RANGE:
         case SG_LIB_CAT_INVALID_OP:
         case SG_LIB_CAT_SENSE:
         case SG_LIB_CAT_RES_CONFLICT:
@@ -1147,6 +1180,9 @@ pt_tpc_process_res(int cp_ret, int sense_cat, const uint8_t * sense_b,
                     ret = sense_cat;
             } else
                 ret = sense_cat;
+            break;
+        case SG_LIB_LBA_OUT_OF_RANGE:
+            ret = sense_cat;
             break;
         case SG_LIB_CAT_RECOVERED:
         case SG_LIB_CAT_NO_SENSE:
