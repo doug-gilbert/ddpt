@@ -5,10 +5,10 @@ ddpt_sgl \- helper for ddpt utility's scatter gather lists
 .B ddpt_sgl
 [\fI\-\-action=ACT\fR] [\fI\-\-a\-sgl=SGL\fR] [\fI\-\-b\-sgl=SGL\fR]
 [\fI\-\-chs=CHS\fR] [\fI\-\-degen=DV\fR] [\fI\-\-document\fR]
-[\fI\-\-extension=FNE\fR] [\fI\-\-help\fR] [\fI\-\-hex\fR]
-[\fI\-\-interleave=IL\fR] [\fI\-\-non\-overlap\fR] [\fI\-\-out=O_SGL\fR]
-[\fI\-\-quiet\fR] [\fI\-\-round=RB\fR] [\fI\-\-stats\fR] [\fI\-\-verbose\fR]
-[\fI\-\-version\fR]
+[\fI\-\-extension=FNE\fR] [\fI\-\-flexible\fR] [\fI\-\-help\fR]
+[\fI\-\-hex\fR] [\fI\-\-interleave=IL\fR] [\fI\-\-non\-overlap\fR]
+[\fI\-\-out=O_SGL\fR] [\fI\-\-quiet\fR] [\fI\-\-round=RB\fR]
+[\fI\-\-stats\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
@@ -33,17 +33,17 @@ available actions are listed in the ACTIONS section below.
 \fISGL\fR is a scatter gather list, a sequence of comma separated unsigned
 integers (up to 64 bits each). \fISGL\fR has several forms, the simplest
 is: LBA0,NUM0,LBA1,NUM1,LBA2,NUM3... and there should be an even number
-values with the exception of LBA0 appearing by itself. In this case NUM0 is
+of values with the exception of LBA0 appearing by itself. In this case NUM0 is
 assumed to be 0. Other \fISGL\fR forms are '@<filename>' and 'H@<filename>'
 where the contents of the <filename> is parsed as a scatter gather list.
 Since there are two options for inputting \fISGL\fRs, this one is termed as
-the 'A sgl'.
+the 'a\-sgl'.
 .br
 See the section on SCATTER GATHER LISTS in the ddpt(8) manpage for more
 information on sgls and their associated terminology.
 .TP
 \fB\-B\fR, \fB\-\-b\-sgl\fR=\fISGL\fR
-\fISGL\fR is a scatter gather list, a second list termed as the 'B sgl' to
+\fISGL\fR is a scatter gather list, a second list termed as the 'b\-sgl' to
 differentiate it from the other sgl.
 .TP
 \fB\-C\fR, \fB\-\-chs\fR=\fICHS\fR
@@ -78,6 +78,15 @@ the generated filenames are of the form: \fIO_SGL\fR[1..n]_b.\fIFNE\fR .
 .br
 If \fIO_SGL\fR is '\-' (by itself) then all output is sent to stdout and
 this option is ignored.
+.TP
+\fB\-f\fR, \fB\-\-flexible\fR
+this option currently only effects the parsing of sgl_s in files that are in
+hexadecimal plus they have a leading line with 'HEX' in them. Without this
+option any such line must be invoked with 'H@' before the filename; in other
+words the 'H' in the invocation needs to match the HEX in the file. With
+this option a sgl in a file can be invoked with '@' and if a line with HEX
+is parsed before any LBA,NUM pairs then it switches to hexadecimal mode; so
+all the parsed LBA,NUM pairs are assumed to be in hexadecimal.
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 outputs the usage message summarizing command line options then exits.
@@ -127,6 +136,13 @@ For the split and tsplit actions, the leading '+' is interpreted as appended
 to all files that meet the template and exist, otherwise the file is
 created. If '\-' is given then all output is directed to stdout (and the
 \fI\-\-extension=FNE\fR option, if given, is ignored).
+.TP
+\fB\-q\fR, \fB\-\-quiet\fR
+suppresses warning and messages announcing an action has succeeded. When
+this option is given, actions that have a logical (boolean) result don't
+output messages but still yield an indicative exit status. The exit status
+will typically be either 0 for true or 36 for false.
+are typically sent to stderr.
 .TP
 \fB\-r\fR, \fB\-\-round\fR=\fIRB\fR
 \fIRB\fR is the number of round blocks. Without the option the split action
@@ -197,8 +213,11 @@ sgl "0x10,0x5, 0x15,0x2" is 'equal' to the one element sgl "0x10, 0x7".
 The output of the string to stderr announcing equality, or lack of it, can
 be suppressed by the \fI\-\-quiet\fR option.
 .TP
-\fBnull\fR
-this action does nothing. It is a placeholder.
+\fBnone\fR
+this action does nothing. This is the default action. If \fI\-\-a\-sgl=SGL\fR
+and \fI\-\-out=O_SGL\fR options are given and no other action, then a\-sgl
+is copied to \fIO_SGL\fR.
+ It is a placeholder.
 .TP
 \fBpart\-equal\fR
 this action is similar to the \fBequal\fR action but relaxes the condition
@@ -232,7 +251,7 @@ As an example: converting a 512 byte logical block (LB) size sgl to a 4096
 byte LB size and vice versa is relatively common. To convert from 4096 \-\->
 512 byte LB size then \fI\-\-action=scale_8\fR is appropriate. To convert
 from 512 \-\-> 4096 byte LB size then \fI\-\-action=scale_\-8\fR is
-appropriate. 
+appropriate.
 .br
 Note: because an integer division is used (that rounds 'towards zero') then
 LBs may be "lost" in this conversion. This can be checked beforehand with the
@@ -263,8 +282,20 @@ out as directed to \fI\-\-out=O_SGL\fR. This action requires the
 \fI\-\-chs=CHS\fR option as well as the \fI\-\-a\-sgl=SGL\fR and
 \fI\-\-out=O_SGL\fR options.
 .TP
+\fBtsort\fR
+this is a "twin sort" action that sorts \fI\-\-a\-sgl=SGL\fR (a\-sgl) and
+re\-orders \fI\-\-b\-sgl=SGL\fR (b\-sgl) in unison. The sort of a\-sgl is
+the same as described under the sort action above. Additionally b\-sgl is
+is broken up so it has "breaks" at the same positions (i.e. number of blocks
+from the start of the sgl) as a\-sgl does; plus the "breaks" b\-sgl has
+already got. So the "broken up" b\-sgl will have at least as many elements
+as a\-sgl. The re\-ordering vector generated by the stable sort of a\-sgl
+is then applied to the broken up b\-sgl. The output of the re\-ordered
+b\-sgl is then written to \fIO_SGL\fR_b or \fIO_SGL\fR_b.\fIFNE\fR if the
+\fI\-\-extension=FNE\fR option is given
+.TP
 \fBtsplit<n>\fR or \fBtsplit_<n>\fR
-this is a "twin split" action the splits the \fI\-\-a\-sgl=SGL\fR and
+this is a "twin split" action that splits the \fI\-\-a\-sgl=SGL\fR and
 \fI\-\-b\-sgl=SGL\fR into separate series of output files. These separate
 series maintain the LBA to LBA correspondence of the original a_sgl and
 b_sgl lists. <n> is an integer, 1 or higher. This action divides
@@ -295,8 +326,9 @@ options and actions that return a boolean value return 0 for true and
 36 for false. Otherwise the exit status for this utility is the same as
 that for ddpt. See the EXIT STATUS section in the ddpt man page.
 .SH EXAMPLES
-Examples are needed.
-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Examples are needed. See testing/test_sgl.sh script in this package. That
+script can be run without root permissions and places its work file (sgls)
+in the /tmp directory.
 .SH AUTHORS
 Written by Douglas Gilbert.
 .SH "REPORTING BUGS"

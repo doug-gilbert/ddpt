@@ -1,8 +1,3 @@
-K 14
-svn:executable
-V 1
-*
-PROPS-END
 #!/bin/bash
 
 # This script assumes Linux (Android ?) and is for testing ddpt_sgl which
@@ -230,6 +225,25 @@ if [ ${RES} -ne 0 ] ; then
 fi
 echoerr ""
 
+# Now try out to-chs (to cylinders/heads/sectors)
+echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A 0,10k --out=${SGL_OUT}_chs -e sgl --chs=768,16,255 -a to-chs"
+${DDPT_SGL} ${DDPT_SGL_OPTS} -A 0,10k --out=${SGL_OUT}_chs -e sgl --chs=768,16,255 -a to-chs
+RES=$?
+if [ ${RES} -ne 0 ] ; then
+    pr_exit_stat ${DDPT_SGL} ${RES}
+    exit ${RES}
+fi
+echoerr ""
+
+# Since to-chs mapping doesn't maaintain ascending order, do a twin sort
+echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_chs.sgl -B 0,10k -o ${SGL_OUT}_chs_sort -e sgl -a tsort"
+${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_chs.sgl -B 0,10k -o ${SGL_OUT}_chs_sort -e sgl -a tsort
+RES=$?
+if [ ${RES} -ne 0 ] ; then
+    pr_exit_stat ${DDPT_SGL} ${RES}
+    exit ${RES}
+fi
+echoerr ""
 
 #
 # throw away stdout and stderr: > /dev/null 2>&1

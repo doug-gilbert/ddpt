@@ -92,12 +92,15 @@ primary_help:
             "[rtf=RTF]\n"
             "             [rtype=RTYPE] [seek=SEEK] [skip=SKIP] "
             "[status=STAT] [to=TO]\n"
-            "             [verbose=VERB] [--help] [--odx] [--quiet] "
-            "[--verbose]\n"
+            "             [verbose=VERB] [--dry-run] [--flexible] [--help] "
+            "[--odx]\n"
 #ifdef SG_LIB_WIN32
-            "             [--version] [--wscan] [--xcopy] [ddpt] [JF]\n"
+            "             [--quiet] [--verbose] [--version] [--wscan] "
+            "[--xcopy]\n"
+            "             [ddpt] [JF]\n"
 #else
-            "             [--version] [--xcopy] [ddpt] [JF]\n"
+            "             [--quiet] [--verbose] [--version] [--xcopy] "
+            "[ddpt] [JF]\n"
 #endif
            );
     pr2serr("  where the main operands are:\n"
@@ -139,6 +142,7 @@ primary_help:
            );
     pr2serr("  and the options are:\n"
             "    --dry-run|-d    do preparation, bypass copy\n"
+            "    --flexible|-f    relax rule about hex sgl\n"
             "    --help|-h     print out this usage message then exit\n"
             "    --job=JF|-j JF    JF is job file containing options\n"
             "    --odx|-o       do ODX copy rather than normal rw copy\n"
@@ -360,7 +364,8 @@ skip_seek(struct opts_t * op, const char * key, const char * buf,
             cp = buf;
         else
             cp = buf + 1;
-        *sgl_pp = file2sgl(cp, def_hex, num_elems_p, &err, true);
+        *sgl_pp = file2sgl(cp, def_hex, op->flexible, num_elems_p, &err,
+                           true);
         if (NULL == *sgl_pp) {
             pr2serr("bad argument to '%s=' [err=%d]\n", key, err);
             return err ? err : SG_LIB_SYNTAX_ERROR;
@@ -1515,6 +1520,8 @@ skip_name_eq_value:
             ++op->dry_run;
         else if (0 == strncmp(key, "--dry_run", 9))
             ++op->dry_run;
+        else if (0 == strncmp(key, "--flexible", 10))
+            op->flexible = true;
         else if (0 == strncmp(key, "--help", 6))
             ++op->do_help;
         else if (0 == strncmp(key, "--job", 5)) {
@@ -1556,6 +1563,9 @@ skip_name_eq_value:
             res = 0;
             n = num_chs_in_str(key + 1, keylen - 1, 'd');
             op->dry_run += n;
+            res += n;
+            n = num_chs_in_str(key + 1, keylen - 1, 'f');
+            op->flexible = (n > 0);
             res += n;
             n = num_chs_in_str(key + 1, keylen - 1, 'h');
             op->do_help += n;

@@ -4,11 +4,12 @@ ddptctl \- helper/auxiliary utility for ddpt
 .SH SYNOPSIS
 .B ddptctl
 [\fI\-\-abort\fR] [\fI\-\-all_toks\fR] [\fI\-\-block\fR] [\fI\-\-del_tkn\fR]
-[\fI\-\-help\fR] [\fI\-\-immed\fR] [\fI\-\-info\fR] [\fI\-\-list_id=LID\fR]
-[\fI\-\-oir=OIR\fR] [\fI\-\-poll\fR] [\fI\-\-pt=GL\fR] [\fI\-\-readonly\fR]
-[\fI\-\-prefer_rcs\fR] [\fI\-\-receive\fR] [\fI\-\-rtf=RTF\fR]
-[\fI\-\-rtype=RTYPE\fR] [\fI\-\-size\fR] [\fI\-\-timeout=ITO[,CMD]\fR]
-[\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wut=SL\fR] [\fIDEVICE\fR]
+[\fI\-\-flexible\fR] [\fI\-\-help\fR] [\fI\-\-immed\fR] [\fI\-\-info\fR]
+[\fI\-\-list_id=LID\fR] [\fI\-\-oir=OIR\fR] [\fI\-\-poll\fR] [\fI\-\-pt=GL\fR]
+[\fI\-\-readonly\fR] [\fI\-\-prefer_rcs\fR] [\fI\-\-receive\fR]
+[\fI\-\-rtf=RTF\fR] [\fI\-\-rtype=RTYPE\fR] [\fI\-\-size\fR]
+[\fI\-\-timeout=ITO[,CMD]\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR]
+[\fI\-\-wut=SL\fR] [\fIDEVICE\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
@@ -63,6 +64,15 @@ be useful for long\-lived ROD Tokens that are no longer needed.
 .br
 To delete an unused ROD Token a degenerate scatter list seems to be
 acceptable (e.g. '\-\-wut=0,0 \-\-del_tkn').
+.TP
+\fB\-f\fR, \fB\-\-flexible\fR
+this option currently only effects the parsing of sgl_s in files that are in
+hexadecimal plus they have a leading line with 'HEX' in them. Without this
+option any such line must be invoked with 'H@' before the filename; in other
+words the 'H' in the invocation needs to match the HEX in the file. With
+this option a sgl in a file can be invoked with '@' and if a line with HEX
+is parsed before any LBA,NUM pairs then it switches to hexadecimal mode; so
+all the parsed LBA,NUM pairs are assumed to be in hexadecimal.
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 outputs the usage message summarizing command line options then exits.

@@ -2,11 +2,11 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.96 [20180718] [svn: r361]
+Changelog for ddpt-0.96 [20180725] [svn: r362]
   - allow scatter gather lists for skip= and seek=
     where they can reasonably be implemented
   - add status=progress option, report every 2 minutes
-  - add --dry-run and --quiet options
+  - add --dry-run, --flexible and --quiet options
   - add iflag=00 and iflag=ff for fill bytes
   - add oflag=wstream for WRITE STREAM(16) on OFILE,
     STR_ID provided by list_id=LID operand
@@ -18,7 +18,11 @@ Changelog for ddpt-0.96 [20180718] [svn: r361]
   - add prefer_rcs flag and conversion for xcopy(odx)
   - add support for locally assigned UUIDs in VPD page
     0x83 (spc5r08)
+  - add 'delta' throughput calculation (e.g. since
+    previous report with status=progress)
   - add testing directory and scripts
+    - prepare.sh to test ddpt
+    - test_sgl.sh to test ddpt_sgl
   - improve device designator descriptor handling
   - resubmit IOs if EAGAIN, report count if > 0
   - fix SCSI recovered errors stopping copy
@@ -26,7 +30,7 @@ Changelog for ddpt-0.96 [20180718] [svn: r361]
   - fix reading fifo (stdin) and writing to regular file
   - rework pr2serr() handling
   - improve xcopy(odx) error reporting
-  - point svn:externals to rev 784 of sg3_utils
+  - point svn:externals to rev 785 of sg3_utils
   - convert many two valued 'int's to bool
   - upgrade automake to version 1.15 (U16.04)
     - cleanup configure.ac + Makefile.am

@@ -286,7 +286,7 @@ struct sgl_stats {
                          * and lowest are transferred once (i.e no holes) */
     int num_degen;
     int elems;  /* because of degen_mask may have < sge_p array elements */
-    int64_t sum;        /* of number_of_blocks */
+    int64_t sum;        /* sum of number_of_blocks (NUM) fields in sgl */
     uint64_t lowest_lba;
     uint64_t highest_lba;
 };
@@ -301,8 +301,7 @@ struct cl_sgl_stats {
 /* Iterator on a scatter gather list (which are arrays). IFILE and OFILE have
  * iterators, not OFILE2. The iterator is a "post increment" type starting
  * [0,0]. If the sgl is accessed in a linear fashion, after the last IO the
- * iterator will be at [<elems>, 0]. To make that more obvious
- * sgl_iter_print() outputs that as [<elems>, EOL] */
+ * iterator will be at [<elems>, 0]. */
 struct sgl_iter_t {
     bool extend_last;   /* hack for extending (sglp + elems - 1)->num */
     int elems;          /* elements in sglp array */
@@ -527,6 +526,8 @@ struct opts_t {
     bool cdbsz_given;
     bool count_given;   /* count=COUNT value placed in dd_count variable */
     bool do_time;       /* default true, set false by --status=none */
+    bool flexible;      /* if 'HEX' in sgl file, parse as hex without
+                         * 'H' prior to @ in skip= or seek= argument */
     bool has_odx;       /* --odx: equivalent to iflag=odx or oflag=odx */
     bool has_xcopy;     /* --xcopy (LID1): iflag=xcopy or oflag=xcopy */
     bool ibs_given;
@@ -703,7 +704,8 @@ void print_exit_status_msg(const char * prefix, int exit_stat,
                            bool to_stderr);
 struct scat_gath_elem * cl2sgl(const char * inp, int * arr_elems, bool b_vb);
 struct scat_gath_elem * file2sgl(const char * file_name, bool def_hex,
-                                 int * arr_elems, int * errp, bool b_vb);
+                                 bool flexible, int * arr_elems, int * errp,
+                                 bool b_vb);
 /* Assumes sgli_p->elems and sgli_p->slp are setup and the other fields
  * in struct sgl_info_t are zeroed. This function will populate the other
  * fields in that structure. Does one pass through the scatter gather list
@@ -738,6 +740,9 @@ uint64_t count_sgl_blocks_from(const struct scat_gath_elem * sglp, int elems,
                                uint64_t blk_off, uint32_t num_blks,
                                uint32_t max_descriptors /* from blk_off */);
 
+/* Points to start of sgl after init, sets extend_last bit */
+void sgl_iter_init(struct sgl_iter_t * iter_p, struct scat_gath_elem * sglp,
+                   int elems);
 /* Given a blk_count, the iterator (*iter_p) is moved toward the EOL. If
  * relative is true the move is from the current position of the iterator.
  * If relative is false then the move is from the start of the sgl. The
@@ -807,8 +812,9 @@ int64_t sgl_iter_lba(const struct sgl_iter_t * itp);
 /* Returns true of no sgl or sgl is at the end [<elems>, 0], otherwise it
  * returns false. */
 bool sgl_iter_at_end(const struct sgl_iter_t * itp);
+/* Print data held in struct sgl_iter_t to fp. If fp is NULL then to stderr */
 void sgl_iter_print(const struct sgl_iter_t * itp, const char * leadin,
-                    bool index_only);
+                    bool index_only, bool in_hex, FILE * fp);
 
 /* Returns true if either argument is NULL/0 or a 1 element list with both
  * lba and num 0; otherwise returns false. */
@@ -932,6 +938,7 @@ size_t win32_pagesize(void);
 
 /* Following only compiled to C++, bypassed for C */
 struct split_fn_fp {
+    // constructor
     split_fn_fp(const char * fn, FILE * a_fp) : out_fn(fn), fp(a_fp) {}
 public:
     std::string out_fn;
@@ -943,7 +950,7 @@ struct sgl_opts_t {
     bool chs_given;
     bool div_lba_only;
     bool div_num_only;
-    bool document;
+    bool flexible;
     bool out2stdout;
     bool non_overlap_chk;
     bool pr_stats;
@@ -951,12 +958,15 @@ struct sgl_opts_t {
     int act_val;
     int degen_mask;
     int div_scale_n;
+    int document;       /* Add comment(s) to O_SGL(s), >1 add cmdline */
     int do_hex;
     int help;
-    int interleave;   /* when splitting a sgl, max number of blocks before
-                       * moving to next sgl; def=0 --> no interleave */
+    int interleave;     /* when splitting a sgl, max number of blocks before
+                         * moving to next sgl; def=0 --> no interleave */
+    int last_elem;      /* init to -1 which makes start_elem a singleton */
     int round_blks;
     int split_n;
+    int start_elem;     /* init to -1 which means write out whole O_SGL */
     int verbose;
     const char * b_sgl_arg;
     const char * out_fn;
