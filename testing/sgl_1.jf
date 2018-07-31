@@ -1,0 +1,12 @@
+PROPS-END
+ddpt
+
+if=/dev/urandom
+skip=@sgl_ls10_cont.txt
+
+bs=512
+
+# of=OFILE provided by caller
+seek=H@sgl_ls10_cont_hex.txt
+
+

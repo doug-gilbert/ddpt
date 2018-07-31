@@ -453,9 +453,12 @@ dd_filetype(const char * filename, int vb)
 #endif
 
     if (vb > 2) {
+	const char * cp = filename ? filename : "<null>";
+
+	if (0 == memcmp(cp, ".", 2))
+	    cp = "<none>";
         dd_filetype_str(ret, b, sizeof(b), filename);
-        pr2serr("%s: guess %s filetype is: %s\n", __func__,
-                filename ? filename : "<empty>", b);
+        pr2serr("%s: guess %s filetype is: %s\n", __func__, cp, b);
     }
     return ret;
 }
@@ -2367,6 +2370,38 @@ cp_via_sgl_iter(struct dev_info_t * dip, struct cp_state_t * csp,
     return sgl_iter_forward_blks(dip, itp, n_blks, csp, fp, op);
 }
 
+void
+sgl_print(struct sgl_info_t * sgli_p, const char * id_str)
+{
+    int k;
+    const char * caller = id_str ? id_str : "unknown";
+    const struct scat_gath_elem * sgep = sgli_p->sglp;
+
+    pr2serr("%s: from: %s: elems=%d, sgl %spresent, monotonic=%s\n",
+            __func__, caller, sgli_p->elems, (sgli_p->sglp ? "" : "not "),
+            (sgli_p->monotonic ? "true" : "false"));
+    pr2serr("  sum=%" PRId64 ", lowest=0x%" PRIx64 ", high_lba_p1=",
+            sgli_p->sum, sgli_p->lowest_lba);
+    pr2serr("0x%" PRIx64 "\n", sgli_p->high_lba_p1);
+    pr2serr("  overlapping=%s, sum_hard=%s, fragmented=%s\n",
+            (sgli_p->overlapping ? "true" : "false"),
+            (sgli_p->sum_hard ? "true" : "false"),
+            (sgli_p->fragmented ? "true" : "false"));
+    pr2serr("  >> %s scatter gather list (%d elements):\n", caller,
+            sgli_p->elems);
+    if (sgli_p->sglp) {
+        for (k = 0, sgep = sgli_p->sglp; k < sgli_p->elems; ++k, ++sgep) {
+            pr2serr("    lba: 0x%" PRIx64 ", number: 0x%" PRIx32,
+                    sgep->lba, sgep->num);
+            if (sgep->lba > 0)
+                pr2serr(" [next lba: 0x%" PRIx64 "]",
+                        sgep->lba + sgep->num);
+            pr2serr("\n");
+        }
+    }
+
+}
+
 /* Assumes sgli_p->elems and sgli_p->slp are setup and the other fields
  * in struct sgl_info_t are zeroed. This function will populate the other
  * fields in that structure. Does one pass through the scatter gather list
@@ -2389,7 +2424,6 @@ sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str, bool b_vb)
     int elems = sgli_p->elems;
     uint32_t prev_num, t_num;
     uint64_t prev_lba, t_lba, sum, low, high, end;
-    const char * caller = id_str ? id_str : "unknown";
     const struct scat_gath_elem * sgep = sgli_p->sglp;
 
     for (k = 0, sum = 0, low = 0, high = 0; k < elems; ++k, ++sgep) {
@@ -2475,30 +2509,8 @@ sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str, bool b_vb)
         sgli_p->high_lba_p1 = high;
     sgli_p->sum = sum;
     sgli_p->sum_hard = (elems > 0) ? ! degen : false;
-    if (b_vb) {
-        pr2serr("%s: from: %s: elems=%d, sgl %spresent, monotonic=%s\n",
-                __func__, caller, sgli_p->elems, (sgli_p->sglp ? "" : "not "),
-                (sgli_p->monotonic ? "true" : "false"));
-        pr2serr("  sum=%" PRId64 ", lowest=0x%" PRIx64 ", high_lba_p1=",
-                sgli_p->sum, sgli_p->lowest_lba);
-        pr2serr("0x%" PRIx64 "\n", sgli_p->high_lba_p1);
-        pr2serr("  overlapping=%s, sum_hard=%s, fragmented=%s\n",
-                (sgli_p->overlapping ? "true" : "false"),
-                (sgli_p->sum_hard ? "true" : "false"),
-                (sgli_p->fragmented ? "true" : "false"));
-        pr2serr("  >> %s scatter gather list (%d elements):\n", caller,
-                sgli_p->elems);
-        if (sgli_p->sglp) {
-            for (k = 0, sgep = sgli_p->sglp; k < sgli_p->elems; ++k, ++sgep) {
-                pr2serr("    lba: 0x%" PRIx64 ", number: 0x%" PRIx32,
-                        sgep->lba, sgep->num);
-                if (sgep->lba > 0)
-                    pr2serr(" [next lba: 0x%" PRIx64 "]",
-                            sgep->lba + sgep->num);
-                pr2serr("\n");
-            }
-        }
-    }
+    if (b_vb)
+        sgl_print(sgli_p, id_str);
 }
 
 /* Returns number of elements in scatter gather list (array) whose pointer is

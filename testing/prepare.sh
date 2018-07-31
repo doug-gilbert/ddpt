@@ -1,13 +1,14 @@
 #!/bin/bash
 
 # This script assumes Linux (Android ?) and is for testing ddpt which is a
-# dd clone. It uses ramdisks (/dev/ram0 and /dev/ram1) so users may need to
-# check if something else is using them. It also uses two scsi_debug virtual
-# disks (suggesting a scsi_debug modprobe instruction if they are not already
-# present. It also uses some /tmp/ddpt*.bin scratch files which may need to
-# be cleaned up by the user. It uses lsscsi (version 0.30 revision 149 or
-# later) to identify the scratch scsi_debug generic and block devices (lest
-# it accidentally overwritesthe users real disks or SSDs). Use:
+# dd clone. It also assumes the sg3_utils package is loaded (for
+# sg_decode_sense) It uses ramdisks (/dev/ram0 and /dev/ram1) so users may
+# need to check if something else is using them. It also uses two scsi_debug
+# virtual disks (suggesting a scsi_debug modprobe instruction if they are
+# not already present. It also uses some /tmp/ddpt*.bin scratch files which
+# may need to be cleaned up by the user. It uses lsscsi (version 0.30
+# revision 149 or later) to identify the scratch scsi_debug generic and block
+# devices (lest it accidentally overwritesthe users real disks or SSDs). Use:
 #   ./prepare.sh --help      or     ./prespare.sh -h
 # to see the command run options. By default (i.e. without the --run) option
 # it will do the preparation only. It is recommended that the user do
@@ -20,7 +21,12 @@
 #    DDPT_OPTS    default: ""; command line options -d and -q appended
 #    DDPT_ARG     default: ""; command line option -a argument appended
 #
-# dpg 20180602
+# and these Environment variables are consumed by the ddpt utility:
+#    DDPT_DEF_BS        the default block size is 512 bytes, this overrides
+#    ODX_RTF_LEN        add 8 bytes to ROD length (512) that contain file
+#                       size in bytes (see ddpt manpage)
+#
+# dpg 20180605
 
 VERBOSE="0"
 VB_ARG=""
@@ -28,6 +34,11 @@ DDPT_OPTS=""
 
 echoerr() { printf "%s\n" "$*" >&2; }
 echoerr_n() { printf "%s" "$*" >&2; }
+pr_exit_stat() {
+    echoerr "${1} failed; exit status: ${2}"
+    # --verbose causes output --> stderr
+    sg_decode_sense --verbose --err="${2}"
+}
 
 getopt --test > /dev/null
 if [[ $? -ne 4 ]]; then
@@ -263,8 +274,7 @@ echoerr "${DDPT} ${DDPT_OPTS} if=/dev/ram0  bs=512 ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} if=/dev/ram0  bs=512 ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echoerr "ddpt failed; exit status: ${RES}"
-    sg_decode_sense -v -e ${RES}
+    pr_exit_stat ${DDPT} ${RES}
     exit ${RES}
 fi
 echoerr ""
@@ -273,8 +283,7 @@ echoerr "${DDPT} ${DDPT_OPTS} if=/dev/ram1  bs=512 ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} if=/dev/ram1  bs=512 ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echoerr "ddpt failed; exit status: ${RES}"
-    sg_decode_sense -v -e ${RES}
+    pr_exit_stat ${DDPT} ${RES}
     exit ${RES}
 fi
 echoerr ""
@@ -283,8 +292,7 @@ echoerr "${DDPT} ${DDPT_OPTS} if=/tmp/sg_a_dev bs=4096 ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} if=/tmp/sg_a_dev bs=4096 ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echoerr "ddpt failed; exit status: ${RES}"
-    sg_decode_sense -v -e ${RES}
+    pr_exit_stat ${DDPT} ${RES}
     exit ${RES}
 fi
 echoerr ""
@@ -293,8 +301,7 @@ echoerr "${DDPT} ${DDPT_OPTS} if=/tmp/sg_b_dev  bs=4096 ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} if=/tmp/sg_b_dev  bs=4096 ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echoerr "ddpt failed; exit status: ${RES}"
-    sg_decode_sense -v -e ${RES}
+    pr_exit_stat ${DDPT} ${RES}
     exit ${RES}
 fi
 echoerr ""
@@ -303,8 +310,7 @@ echoerr "${DDPT} ${DDPT_OPTS} if=/tmp/sd_sg_a_dev bs=4096 ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} if=/tmp/sd_sg_a_dev bs=4096 ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echoerr "ddpt failed; exit status: ${RES}"
-    sg_decode_sense -v -e ${RES}
+    pr_exit_stat ${DDPT} ${RES}
     exit ${RES}
 fi
 echoerr ""
@@ -313,8 +319,7 @@ echoerr "${DDPT} ${DDPT_OPTS} if=/tmp/sd_sg_b_dev  bs=4096 ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} if=/tmp/sd_sg_b_dev  bs=4096 ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echoerr "ddpt failed; exit status: ${RES}"
-    sg_decode_sense -v -e ${RES}
+    pr_exit_stat ${DDPT} ${RES}
     exit ${RES}
 fi
 echoerr ""
@@ -324,8 +329,7 @@ echoerr "${DDPT} ${DDPT_OPTS} if=/dev/urandom bs=1 of=${PREP_BIN} count=16999999
 ${DDPT} ${DDPT_OPTS} if=/dev/urandom bs=1 of=${PREP_BIN} count=16999999 ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echoerr "ddpt failed; exit status: ${RES}"
-    sg_decode_sense -v -e ${RES}
+    pr_exit_stat ${DDPT} ${RES}
     exit ${RES}
 fi
 echoerr ""
@@ -334,8 +338,7 @@ echoerr "${DDPT} ${DDPT_OPTS} if=${PREP_BIN} bs=512 ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} if=${PREP_BIN} bs=512 ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echoerr "ddpt failed; exit status: ${RES}"
-    sg_decode_sense -v -e ${RES}
+    pr_exit_stat ${DDPT} ${RES}
     exit ${RES}
 fi
 echoerr ""
@@ -344,8 +347,7 @@ echoerr "${DDPT} ${DDPT_OPTS} if=${PREP_BIN} bs=512 of=${PREP2_BIN} ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} if=${PREP_BIN} of=${PREP2_BIN} bs=512 ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echoerr "ddpt failed; exit status: ${RES}"
-    sg_decode_sense -v -e ${RES}
+    pr_exit_stat ${DDPT} ${RES}
     exit ${RES}
 fi
 echoerr ""
@@ -354,8 +356,7 @@ echoerr "${DDPT} ${DDPT_OPTS} if=${PREP_BIN} bs=1 of=${PREP2_BIN} ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} if=${PREP_BIN} of=${PREP2_BIN} bs=1 ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echoerr "ddpt failed; exit status: ${RES}"
-    sg_decode_sense -v -e ${RES}
+    pr_exit_stat ${DDPT} ${RES}
     exit ${RES}
 fi
 echoerr ""
@@ -364,8 +365,7 @@ echoerr "${DDPT} ${DDPT_OPTS} urand_ram0.jf ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} urand_ram0.jf ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echoerr "ddpt failed; exit status: ${RES}"
-    sg_decode_sense -v -e ${RES}
+    pr_exit_stat ${DDPT} ${RES}
     exit ${RES}
 fi
 echoerr ""
@@ -374,8 +374,7 @@ echoerr "${DDPT} ${DDPT_OPTS} ram0_2_ram1.jf ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} ram0_2_ram1.jf ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echoerr "ddpt failed; exit status: ${RES}"
-    sg_decode_sense -v -e ${RES}
+    pr_exit_stat ${DDPT} ${RES}
     exit ${RES}
 fi
 echoerr ""
@@ -384,8 +383,7 @@ echoerr "${DDPT} ${DDPT_OPTS} ram1_2_sg_a.jf ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} ram1_2_sg_a.jf ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echoerr "ddpt failed; exit status: ${RES}"
-    sg_decode_sense -v -e ${RES}
+    pr_exit_stat ${DDPT} ${RES}
     exit ${RES}
 fi
 echoerr ""
@@ -394,8 +392,7 @@ echoerr "${DDPT} ${DDPT_OPTS} sg_a_2_sg_b.jf ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} sg_a_2_sg_b.jf ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echoerr "ddpt failed; exit status: ${RES}"
-    sg_decode_sense -v -e ${RES}
+    pr_exit_stat ${DDPT} ${RES}
     exit ${RES}
 fi
 echoerr ""
@@ -404,12 +401,20 @@ echoerr "${DDPT} ${DDPT_OPTS} sd_b_2_sd_a.jf ${DDPT_ARG}"
 ${DDPT} ${DDPT_OPTS} sd_b_2_sd_a.jf ${DDPT_ARG}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    echoerr "ddpt failed; exit status: ${RES}"
-    sg_decode_sense -v -e ${RES}
+    pr_exit_stat ${DDPT} ${RES}
     exit ${RES}
 fi
 echoerr ""
 
+rm ${PREP2_BIN}
+echoerr "${DDPT} ${DDPT_OPTS} sgl_1.jf of=${PREP2_BIN} ${DDPT_ARG}"
+${DDPT} ${DDPT_OPTS} sgl_1.jf of=${PREP2_BIN} ${DDPT_ARG}
+RES=$?
+if [ ${RES} -ne 0 ] ; then
+    pr_exit_stat ${DDPT} ${RES}
+    exit ${RES}
+fi
+echoerr ""
 
 #
 # throw away stdout and stderr: > /dev/null 2>&1

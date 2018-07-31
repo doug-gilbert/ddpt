@@ -64,7 +64,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.96 20180603 [svn: r356]";
+const char * ddptctl_version_str = "0.96 20180606 [svn: r357]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -592,7 +592,7 @@ sgl_helper(struct opts_t * op, const char * opt, const char * buf,
         (*sgl_pp)->lba = (uint64_t)ll;
         *num_elems_p = 1;
         if (vb > 1)
-            pr2serr("%s: single, half a sgl element\n", opt);
+            pr2serr("%s: singleton, half a degenerate sgl element\n", opt);
     }
     return 0;
 }

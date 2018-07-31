@@ -113,14 +113,15 @@ primary_help:
             "(remaining)\n"
             "                device/file size)\n"
             "    ibs         input block size (default 512 bytes)\n"
-            "    if          file or device to read from (for stdin use "
-            "'-')\n"
+            "    if          IFILE is file or device to read from (for stdin "
+            "use '-')\n"
             "    iflag       input flags, comma separated list from FLAGS "
             "(see below)\n"
             "    obs         output block size (def: 512). When IBS is "
             "not equal to OBS\n"
             "                then (((IBS * BPT) %% OBS) == 0) is required\n"
-            "    of          file or device to write to (def: /dev/null)\n");
+            "    of          OFILE file or device to write to (def: "
+            "/dev/null)\n");
     pr2serr("    oflag       output flags, comma separated list from FLAGS "
             "(see below)\n"
             "    seek        block position to start writing in OFILE, "
@@ -389,7 +390,7 @@ skip_seek(struct opts_t * op, const char * key, const char * buf,
         (*sgl_pp)->lba = (uint64_t)ll;
         *num_elems_p = 1;
         if (vb > 1)
-            pr2serr("%s: single, half a sgl element\n", key);
+            pr2serr("%s: singleton, half a degenerate sgl element\n", key);
     }
     return 0;
 }
@@ -958,7 +959,7 @@ any_non_ascii(const char * cp, int len)
 
 static int
 jf_parse(struct opts_t * op, const char * jf_name, const char * version_str,
-         int jf_depth)
+         int jf_depth, int cl_pos)
 {
     bool first_real;
     int k, len, off, rlen, argc, err;
@@ -978,8 +979,16 @@ jf_parse(struct opts_t * op, const char * jf_name, const char * version_str,
         return SG_LIB_SYNTAX_ERROR;
     }
     if (stat(jf_name, &a_stat) < 0) {
-        err = errno;
-        pr2serr("unable to stat job_file: %s, depth=%d\n", jf_name, jf_depth);
+        err = errno;    /* stat() failed */
+        if (ENOENT == err) {
+            pr2serr("job_file: %s not found", jf_name);
+            if ((cl_pos < 2) && (jf_depth < 2))
+                pr2serr(", try 'ddpt --help' for command line information\n");
+            else
+                pr2serr(", depth=%d, cl_pos=%d\n", jf_depth, cl_pos);
+        } else
+            pr2serr("job_file (%s) failed: %s, depth=%d\n", jf_name,
+                    safe_strerror(err), jf_depth);
         return sg_convert_errno(err);
     }
     if (S_ISBLK(a_stat.st_mode) || S_ISCHR(a_stat.st_mode)) {
@@ -1072,7 +1081,8 @@ int
 cl_parse(struct opts_t * op, int argc, char * argv[],
          const char * version_str, int jf_depth)
 {
-    bool parsed;
+    bool parsed, parsed_2;
+    bool no_more_options = false;
     bool seek_seen = false;
     bool skip_seen = false;
     char str[STR_SZ];
@@ -1491,10 +1501,14 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
             parsed = false;     /* so will continue at next else if */
 
 skip_name_eq_value:
+        parsed_2 = true;
         if (parsed)
             ; /* nothing more to do */
+        else if (no_more_options) {
+            parsed_2 = false;
+            goto bypass_options;
         /* look for long options that start with '--' */
-        else if (0 == strncmp(key, "--dry-run", 9))
+        } else if (0 == strncmp(key, "--dry-run", 9))
             ++op->dry_run;
         else if (0 == strncmp(key, "--dry_run", 9))
             ++op->dry_run;
@@ -1504,7 +1518,7 @@ skip_name_eq_value:
             if (strlen(buf) > 0) {
                 if (0 == jf_depth)
                     op->jf_given = true;
-                res = jf_parse(op, buf, version_str, jf_depth);
+                res = jf_parse(op, buf, version_str, jf_depth, k);
                 if (res)
                     return res;
             } else {
@@ -1527,9 +1541,16 @@ skip_name_eq_value:
 #endif
         else if (0 == strncmp(key, "--xcopy", 7))
             op->has_xcopy = true;
+        else if (0 == memcmp(key, "--", 2)) {
+            if (2 == keylen)
+                no_more_options = true;
+            else {
+                pr2serr("Unrecognized option: %s\n", key);
+                return SG_LIB_SYNTAX_ERROR;
+            }
         /* look for short options that start with a single '-', they can be
          * concaternated (e.g. '-vvvx') */
-        else if ((keylen > 1) && ('-' == key[0]) && ('-' != key[1])) {
+        } else if ((keylen > 1) && ('-' == key[0]) && ('-' != key[1])) {
             res = 0;
             n = num_chs_in_str(key + 1, keylen - 1, 'd');
             op->dry_run += n;
@@ -1564,7 +1585,13 @@ skip_name_eq_value:
                 if (0 == op->do_help)
                     return -1;          /* early exit */
             }
-        } else if (('\0' == *buf) && (orig_strlen == (int)strlen(str))) {
+        } else
+            parsed_2 = false;
+
+bypass_options:
+        if (parsed_2)
+            ; /* nothing more to do */
+        else if (('\0' == *buf) && (orig_strlen == (int)strlen(str))) {
             if (0 == strcmp("ddpt", str)) {
                 if (0 == jf_depth) {
                     pr2serr("Don't expect 'ddpt' string on command line, if "
@@ -1577,7 +1604,7 @@ skip_name_eq_value:
             } else {
                 if (0 == jf_depth)
                     op->jf_given = true;
-                res = jf_parse(op, str, version_str, jf_depth);
+                res = jf_parse(op, str, version_str, jf_depth, k);
                 if (res)
                     return res;
             }
@@ -1587,7 +1614,7 @@ skip_name_eq_value:
                 pr2serr("For more information use '--help'\n");
             return SG_LIB_SYNTAX_ERROR;
         }
-    }
+    }   /* end of for loop on command line operands, options + arguments */
     return (0 == jf_depth) ? cl_sanity_defaults(op) : 0;
 }
 
