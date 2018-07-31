@@ -1482,6 +1482,8 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
                 }
             } else if (0 == strncmp(buf, "ppp", 3))
                 op->progress += 3;
+            else if (0 == strncmp(buf, "pp", 2))
+                op->progress += 2;
             else {
                 pr2serr("'status=' expects 'none', 'noxfer', 'progress' or "
                         "'null'\n");
