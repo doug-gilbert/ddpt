@@ -2142,6 +2142,16 @@ file2sgl(const char * file_name, bool def_hex, bool flexible,
                 pr2serr("%s: %s: %s\n", __func__, fnp, safe_strerror(err));
             return NULL;
         }
+#ifdef SG_LIB_MINGW
+        /* MinGW doesn't have S_ISSOCK */
+        if (S_ISDIR(a_stat.st_mode) || S_ISCHR(a_stat.st_mode)) {
+            if (b_vb)
+                pr2serr("%s: %s unsuitable (directory ?)\n", __func__, fnp);
+            *errp = sg_convert_errno(EBADF);
+            return NULL;
+        } else if (S_ISFIFO(a_stat.st_mode))
+            countable = false;
+#else
         if (S_ISDIR(a_stat.st_mode) || S_ISCHR(a_stat.st_mode) ||
             S_ISSOCK(a_stat.st_mode)) {
             if (b_vb)
@@ -2150,6 +2160,7 @@ file2sgl(const char * file_name, bool def_hex, bool flexible,
             return NULL;
         } else if (S_ISFIFO(a_stat.st_mode) || S_ISSOCK(a_stat.st_mode))
             countable = false;
+#endif
         fp = fopen(fnp, "r");
         if (NULL == fp) {
             err = errno;

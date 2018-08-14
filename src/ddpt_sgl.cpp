@@ -66,7 +66,7 @@
 #endif
 
 
-static const char * ddpt_sgl_version_str = "0.96 20180813 [svn: r364]";
+static const char * ddpt_sgl_version_str = "0.96 20180814 [svn: r365]";
 
 #include "ddpt.h"
 #include "sg_lib.h"
@@ -2105,10 +2105,15 @@ main(int argc, char * argv[])
                 cp = "LBAs";
             else if (op->div_num_only)
                 cp = "NUMs";
-            else
+            else if (ret_bool)
                 cp = "LBAs and NUMs";
-            pr2serr("--a-sgl=SGL, all %s are %sdivisible by %d\n",
-                    cp, (ret_bool ? "" : "_not_ "), n);
+            else
+                cp = "LBA or NUM";
+            pr2serr("--a-sgl=SGL, ");
+            if (ret_bool)
+                pr2serr("all %s are divisible by %d\n", cp, n);
+            else
+                pr2serr("at least one %s is indivisible by %d\n", cp, n);
             if (vb && (false == ret_bool))
                 pr2serr("  first false: sgl elem=%d (origin 0) %s\n",
                         k, (lba_side ? "LBA" : "NUM"));

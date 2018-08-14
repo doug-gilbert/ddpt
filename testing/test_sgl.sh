@@ -27,7 +27,7 @@ pr_exit_stat() {
 
 getopt --test > /dev/null
 if [[ $? -ne 4 ]]; then
-    echoerr "I’m sorry, `getopt --test` failed in this environment."
+    echoerr "I’m sorry, 'getopt --test' failed in this environment."
     exit 1
 fi
 

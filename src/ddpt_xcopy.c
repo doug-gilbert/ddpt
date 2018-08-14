@@ -889,7 +889,11 @@ open_rtf(struct opts_t * op)
 
     if (op->rtf_fd >= 0) {
         pr2serr("%s: rtf already open\n", __func__ );
+#ifdef SG_LIB_MINGW
+        return sg_convert_errno(EEXIST);
+#else
         return sg_convert_errno(EADDRINUSE);
+#endif
     }
     must_exist = false;
     switch (op->odx_request) {
