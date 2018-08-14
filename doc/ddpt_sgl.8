@@ -1,4 +1,4 @@
-.TH DDPT_SGL "8" "July 2018" "ddpt\-0.96" DDPT
+.TH DDPT_SGL "8" "August 2018" "ddpt\-0.96" DDPT
 .SH NAME
 ddpt_sgl \- helper for ddpt utility's scatter gather lists
 .SH SYNOPSIS
@@ -31,15 +31,15 @@ negative indexes are permitted where \-1 is the index of the last sgl
 element, \-2 is the index of the second last sgl element, etc.
 .PP
 For "twin" actions there is an assumed relationship between a\-sgl and
-b\-sgl as there is between two sgl_s used as the gather list (for reading)
-and the scatter list (for writing) in the ddpt utility. Breaking it down
+b\-sgl as there is between two sgl_s used as the gather list (e.g. skip=)
+and the scatter list (e.g. seek=) in the ddpt utility. Breaking it down
 to individual logical blocks: LBAr0 is read and its data is written to
 LBAw0, LBAr1\-\->LBAw1, LBAr2\-\->LBAw2, etc; or more generally
 LBAr_n\-\->LNAw_n. Many actions will change the order in which
 those "read\-write" items are performed, the twin portion of the action
 attempts to maintain the LBAr_n\-\->LNAw_n mapping. Generally speaking,
-copies are the same no matter what order the LBAs are read and written.
-One caveat is an overlapping scatter list (i.e. on the write side) in which
+copies are the same no matter what order the LBAs are read and written. One
+exception is an overlapping scatter list (i.e. on the write side) in which
 case the order of writes onto the same LBA does matter, hence there is an
 option to check sgl_s are well\-formed in that respect:
 \fI\-\-non\-overlap\fR.
@@ -144,10 +144,10 @@ outputs the usage message summarizing command line options then exits.
 used to define the numeric format of sgl and index array elements written to
 output (often a file named \fIO_SGL\fR or stdout). If not given then only
 decimal values are written to output. If this option is given once then
-hexadecimal values, prefixed with '0x', are written.. If this option is
+hexadecimal values, prefixed with '0x', are written. If this option is
 given twice then a line with the string 'HEX' is written to output, before
-any values, and those values are implicitly (i.e. no leading '0x' nor 'h'
-suffix) hexadecimal.
+any values, and those values are implicitly hexadecimal (i.e. no
+leading '0x' nor 'h' suffix).
 .TP
 \fB\-I\fR, \fB\-\-iaf\fR=\fIIAF\fR
 where \fIIAF\fR is a filename (or '\-' for stdout) to write an index array
@@ -317,13 +317,12 @@ sgl "0x15,0x2, 0x10,0x5" is the 'same' as the one element sgl "0x10, 0x7".
 .TP
 \fBscale<n>\fR or \fBscale_<n>\fR
 where <n> is an integer, positive or negative but not zero. When <n> is
-positive then the starting LBA in each a\-sgl element is multiplied by <n>
-while its corresponding NUM is divided by <n>. The new (scaled) sgl is
-written to \fIO_SGL\fR (or \fIO_SGL\fR.\fIFNE\fR if the
-\fI\-\-extension=FNE\fR option is given).
+positive then the starting LBA and the NUM in each a\-sgl element is
+multiplied by <n> . The new (scaled) sgl is written to \fIO_SGL\fR (or
+\fIO_SGL\fR.\fIFNE\fR if the \fI\-\-extension=FNE\fR option is given).
 .br
 When <n> is negative then the absolute value of <n> is used as a divisor
-for each starting LBA and a multiplier for each corresponding NUM.
+for each starting LBA and NUM in each a\-sgl element.
 .br
 As an example: converting a 512 byte logical block (LB) size sgl to a 4096
 byte LB size and vice versa is relatively common. To convert from 4096 \-\->
@@ -331,12 +330,13 @@ byte LB size and vice versa is relatively common. To convert from 4096 \-\->
 from 512 \-\-> 4096 byte LB size then \fI\-\-action=scale_\-8\fR is
 appropriate.
 .br
-Note: because an integer division is used (that rounds 'towards zero') then
-LBs may be "lost" in this conversion. This can be checked beforehand with the
-\fI\-\-action=divisible<n>[,L|N]\fR option. For example: for 512 \-\-> 4096
-conversions: \fI\-\-action=divisible_8,L\fR will report if any starting LBAs
-are not divisible be 8 and hence are not able to be precisely represented as
-4096 byte LB addresses.
+Note: because an integer division is used (that rounds 'towards zero')
+when <n> is negative then LBs or NUMs may be "lost" in this conversion. This
+can be checked beforehand with the \fI\-\-action=divisible<n>[,L|N]\fR
+option. For example: for 512 \-\-> 4096 conversions:
+\fI\-\-action=divisible_8\fR will report if any starting LBAs or NUMs are
+not divisible be 8 and hence are not able to be precisely represented as
+4096 byte LB addresses or number of 4096 byte blocks.
 .TP
 \fBselect\fR
 this action can be used to select a subset (or superset) of the a\-sgl in the
@@ -417,21 +417,21 @@ sgl. In the simplest case the 'B' side sgl can be just '0' which gets
 expanded to '0,0' (i.e. degenerate list starting at LBA 0); this will use
 the overall block count from the 'A' side.
 .SH FILE FORMATS
-Both sgl_s and index arrays can be read from, or written to, given files.
+Both sgl_s and index arrays can be read from, or written to, files.
 The options that supply sgl_s or index arrays to be read (e.g.
 \fI\-\-a\-sgl=SGL\fR, \fI\-\-b\-sgl=SGL\fR and \fI\-\-index=IA\fR) by
 default allow them to be given directly on the command line. These
 will typically be comma separated lists (although space and tab could be
-used as separators if they were appropriately escaped). So when reading
-sgl_s and index arrays a leading "@" or "H@" is needed to indicate that
-a file name follows.
+used as separators if they were appropriately escaped). So with these
+options when reading sgl_s and index arrays, a leading "@" or "H@" is
+needed to indicate that a file name follows.
 .PP
 By default, numbers given in this utility and other utilities in this
 package are assumed to be in decimal. Hexadecimal (hex) numbers can be given
 with either a leading "0x" or trailing "h". A whole file can be flagged
 as containing hex numbers (and thus not needing a leading "0x" nor
 trailing "h" on each number) by using "H@" on the command line before the
-filename. The file itself may contain a line with 'HEX' on it, prior to any
+filename. The file itself may contain a line with 'HEX' in it, prior to any
 numbers that are to be parsed. If the \fI\-\-flexible\fR option is given
 then "@" can be used before the filename and when 'HEX' is detected in the
 file (before any numbers) the code switches to hex mode. Without the
