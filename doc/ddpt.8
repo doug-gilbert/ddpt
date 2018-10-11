@@ -1,4 +1,4 @@
-.TH DDPT "8" "August 2018" "ddpt\-0.96" DDPT
+.TH DDPT "8" "October 2018" "ddpt\-0.96" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -377,7 +377,12 @@ additionally suppresses the records in and out reporting after the copy.
 So 'status=none' makes ddpt act like a traditional Unix command in which "no
 news is good news".  The default action of ddpt is to show the throughput (in
 megabytes per second) and the time taken to do the copy after the "records
-in" and "records out" lines at the end of the copy. As a convenience the
+in" and "records out" lines at the end of the copy. A \fISTAT\fR value
+of 'sgl' together with '-vv' option will print internally generated scatter
+gather lists before the copy begins. When the '-vv' options is given alone
+then internal scatter lists headers are printed, but not individual elements.
+In most cases these scatter gather lists will be the same lists given to the
+\fIseek=SEEK\fR and \fIskip=SKIP\fR operands.  As a convenience the
 value 'null' is accepted for \fISTAT\fR and does nothing.
 .br
 A \fISTAT\fR value of 'progress' prints a progress report (to stderr) every

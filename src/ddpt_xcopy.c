@@ -2080,13 +2080,14 @@ static int
 odx_full_zero_copy(struct opts_t * op)
 {
     bool got_count;
-    int k, res, out_blk_sz, out_elems, vb3;
+    int k, res, out_blk_sz, out_elems, vb, vb3;
     uint64_t out_blk_off, num, tc;
     int64_t out_num_blks, v;
     struct dev_info_t * odip = op->odip;
 
-    vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
-    k = dd_filetype(op->idip->fn, op->verbose);
+    vb = op->verbose;
+    vb3 = (vb > 1) ? (vb - 2) : 0;
+    k = dd_filetype(op->idip->fn, vb);
     got_count = (op->dd_count > 0);
     if (FT_DEV_NULL != k) {
         pr2serr("For single WUT version of ODX write blocks of zeros, "
@@ -2101,19 +2102,20 @@ odx_full_zero_copy(struct opts_t * op)
     v = out_num_blks;
     if (op->o_sgli.sglp) {  /* scatter list */
         out_elems = op->o_sgli.elems;
-        sgl_sum_scan(&op->o_sgli, "odx full zero", op->verbose > 1);
+        sgl_sum_scan(&op->o_sgli, "odx full zero",
+                     (op->show_sgl_v2 || (vb > 2)), vb > 1);
         out_num_blks = op->o_sgli.sum;
     } else { /* no scatter list */
         out_elems = 1;
         out_num_blks = got_count ? op->dd_count : 0;
     }
     if (0 == op->dd_count) {
-        if (op->verbose)
+        if (vb)
             pr2serr("%s: enough checks, count=0 given so exit\n", __func__);
         return 0;
     }
     if ((op->dd_count < 0) && (0 == out_num_blks)) {
-        if (1 == op->verbose)
+        if (1 == vb)
             pr2serr("%s: zero the lot after scaling for seek=\n", __func__);
         v -= op->o_sgli.lowest_lba;
         if (v < 0) {
@@ -2131,7 +2133,7 @@ odx_full_zero_copy(struct opts_t * op)
     sg_put_unaligned_be32(RODT_BLK_ZERO, local_rod_token + 0);
     sg_put_unaligned_be16(ODX_ROD_TOK_LEN_FLD, local_rod_token + 6);
 
-    if (op->verbose > 1)
+    if (vb > 1)
         pr2serr("%s: about to zero %" PRIi64 " blocks\n", __func__,
                 out_num_blks);
 
@@ -2169,12 +2171,13 @@ static int
 odx_read_into_rods(struct opts_t * op)
 {
     bool got_count;
-    int k, res, in_blk_sz, in_elems, vb3;
+    int k, res, in_blk_sz, in_elems, vb, vb3;
     uint64_t in_blk_off, num, tc_i;
     int64_t in_num_blks, u;
     struct dev_info_t * idip = op->idip;
 
-    vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
+    vb = op->verbose;
+    vb3 = (vb > 1) ? (vb - 2) : 0;
     got_count = (op->dd_count > 0);
     /* need to know block size of input and output */
     res = fetch_read_cap(op, DDPT_ARG_IN, &in_num_blks, &in_blk_sz);
@@ -2183,7 +2186,8 @@ odx_read_into_rods(struct opts_t * op)
     u = in_num_blks;
     if (op->i_sgli.sglp) {   /* gather list */
         in_elems = op->i_sgli.elems;
-        sgl_sum_scan(&op->i_sgli, "read into rods", op->verbose > 1);
+        sgl_sum_scan(&op->i_sgli, "read into rods",
+                     (op->show_sgl_v2 || (vb > 2)), vb > 1);
         in_num_blks = op->i_sgli.sum;
         if (got_count && (in_num_blks != op->dd_count)) {
             pr2serr("%s: count= value not equal to the sum of gather nums\n",
@@ -2195,12 +2199,12 @@ odx_read_into_rods(struct opts_t * op)
         in_num_blks = got_count ? op->dd_count : 0;
     }
     if (0 == op->dd_count) {
-        if (op->verbose)
+        if (vb)
             pr2serr("%s: enough checks, count=0 given so exit\n", __func__);
         return 0;
     }
     if ((op->dd_count < 0) && (0 == in_num_blks)) {
-        if (op->verbose > 1)
+        if (vb > 1)
             pr2serr("%s: read the lot after scaling for skip=\n", __func__);
         u -= op->i_sgli.lowest_lba;
         if (u < 0) {
@@ -2213,7 +2217,7 @@ odx_read_into_rods(struct opts_t * op)
     in_blk_off = 0;
     op->dd_count = in_num_blks;
     op->stats.dd_count_start = op->dd_count;
-    if (op->verbose > 1)
+    if (vb > 1)
         pr2serr("%s: about to read %" PRIi64 " blocks\n", __func__,
                 in_num_blks);
 
@@ -2231,7 +2235,7 @@ odx_read_into_rods(struct opts_t * op)
             num = count_sgl_blocks_from(op->i_sgli.sglp, in_elems,
                                         in_blk_off, num,
                                         idip->odxp->max_range_desc);
-        if (op->verbose > 2)
+        if (vb > 2)
             pr2serr("%s: k=%d, in_blk_off=0x%" PRIx64 ", i_num=%" PRIu64 "\n",
                     __func__, k, in_blk_off, num);
 
@@ -2258,13 +2262,14 @@ static int
 odx_write_from_rods(struct opts_t * op)
 {
     bool got_count;
-    int k, res, n, off, out_blk_sz, out_elems, err, vb3;
+    int k, res, n, off, out_blk_sz, out_elems, err, vb, vb3;
     uint64_t out_blk_off, num, o_num, r_o_num, oir, tc_o;
     int64_t out_num_blks, v;
     struct dev_info_t * odip = op->odip;
     uint8_t rt[520];
 
-    vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
+    vb = op->verbose;
+    vb3 = (vb > 1) ? (vb - 2) : 0;
     got_count = (op->dd_count > 0);
     res = fetch_read_cap(op, DDPT_ARG_OUT, &out_num_blks, &out_blk_sz);
     if (res)
@@ -2272,19 +2277,20 @@ odx_write_from_rods(struct opts_t * op)
     v = out_num_blks;
     if (op->o_sgli.sglp) {  /* scatter list */
         out_elems = op->o_sgli.elems;
-        sgl_sum_scan(&op->o_sgli, "write from rods", op->verbose > 1);
+        sgl_sum_scan(&op->o_sgli, "write from rods",
+                     (op->show_sgl_v2 || (vb > 2)), vb > 1);
         out_num_blks = op->o_sgli.sum;
     } else { /* no scatter list */
         out_elems = 1;
         out_num_blks = got_count ? op->dd_count : 0;
     }
     if (0 == op->dd_count) {
-        if (op->verbose)
+        if (vb)
             pr2serr("%s: enough checks, count=0 given so exit\n", __func__);
         return 0;
     }
     if ((op->dd_count < 0) && (0 == out_num_blks)) {
-        if (op->verbose > 1)
+        if (vb > 1)
             pr2serr("%s: write the lot after scaling for seek=\n", __func__);
         v -= op->o_sgli.lowest_lba;
         if (v < 0) {
@@ -2297,7 +2303,7 @@ odx_write_from_rods(struct opts_t * op)
     out_blk_off = 0;
     op->dd_count = out_num_blks;
     op->stats.dd_count_start = op->dd_count;
-    if (op->verbose > 1)
+    if (vb > 1)
         pr2serr("%s: about to write %" PRIi64 " blocks (seen from output)\n",
                     __func__, out_num_blks);
 
@@ -2316,7 +2322,7 @@ odx_write_from_rods(struct opts_t * op)
             return SG_LIB_FILE_ERROR;
         }
         if (0 == res) {
-            if (op->verbose)
+            if (vb)
                 pr2serr("%s: there are no more tokens to read from RTF or, \n"
                         "if it is a pipe or socket, the other end closed "
                         " it\n", __func__);
@@ -2407,13 +2413,14 @@ odx_full_copy(struct opts_t * op)
 {
     bool got_count, ok, oneto1;
     int k, res, in_blk_sz, out_blk_sz, in_mult, out_mult;
-    int in_elems, out_elems, vb3;
+    int in_elems, out_elems, vb, vb3;
     uint64_t in_blk_off, out_blk_off, num, o_num, r_o_num, oir, tc_i, tc_o;
     int64_t in_num_blks, out_num_blks, u, uu, v, vv;
     struct dev_info_t * idip = op->idip;
     struct dev_info_t * odip = op->odip;
 
-    vb3 = (op->verbose > 1) ? (op->verbose - 2) : 0;
+    vb = op->verbose;
+    vb3 = (vb > 1) ? (vb - 2) : 0;
     got_count = (op->dd_count > 0);
     /* need to know block size of input and output */
     res = fetch_read_cap(op, DDPT_ARG_IN, &in_num_blks, &in_blk_sz);
@@ -2445,7 +2452,8 @@ odx_full_copy(struct opts_t * op)
     }
     if (op->i_sgli.sglp) {   /* gather list */
         in_elems = op->i_sgli.elems;
-        sgl_sum_scan(&op->i_sgli, "odx full[in]", op->verbose > 1);
+        sgl_sum_scan(&op->i_sgli, "odx full[in]",
+                     (op->show_sgl_v2 || (vb > 2)), vb > 1);
         in_num_blks = op->i_sgli.sum;
         if (got_count && (in_num_blks != op->dd_count)) {
             pr2serr("%s: count= value not equal to the sum of gather nums\n",
@@ -2458,7 +2466,8 @@ odx_full_copy(struct opts_t * op)
     }
     if (op->o_sgli.sglp) {  /* scatter list */
         out_elems = op->o_sgli.elems;
-        sgl_sum_scan(&op->o_sgli, "odx full[out]", op->verbose > 1);
+        sgl_sum_scan(&op->o_sgli, "odx full[out]",
+                     (op->show_sgl_v2 || (vb > 2)), vb > 1);
         out_num_blks = op->o_sgli.sum;
         if (oneto1) {
             if (got_count && (out_num_blks != op->dd_count)) {
@@ -2503,12 +2512,12 @@ odx_full_copy(struct opts_t * op)
             out_num_blks = 0;
     }
     if (0 == op->dd_count) {
-        if (op->verbose)
+        if (vb)
             pr2serr("%s: enough checks, count=0 given so exit\n", __func__);
         return 0;
     }
     if ((op->dd_count < 0) && (0 == in_num_blks) && (0 == out_num_blks)) {
-        if (op->verbose > 1)
+        if (vb > 1)
             pr2serr("%s: copy the lot after scaling for skip= and seek=\n",
                     __func__);
         u -= op->i_sgli.lowest_lba;
@@ -2544,7 +2553,7 @@ odx_full_copy(struct opts_t * op)
     out_blk_off = 0;
     op->dd_count = in_num_blks;
     op->stats.dd_count_start = op->dd_count;
-    if (op->verbose > 1)
+    if (vb > 1)
         pr2serr("%s: about to copy %" PRIi64 " blocks (seen from input)\n",
                     __func__, in_num_blks);
 
@@ -2580,7 +2589,7 @@ odx_full_copy(struct opts_t * op)
                 o_num = num * out_mult;
         } else
             o_num = num;
-        if (op->verbose > 2)
+        if (vb > 2)
             pr2serr("%s: k=%d, in_blk_off=0x%" PRIx64 ", i_num=%" PRIu64 ", "
                     "out_blk_off=0x%" PRIx64 ", o_num=%" PRIu64 "\n",
                     __func__, k, in_blk_off, num, out_blk_off, o_num);

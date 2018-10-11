@@ -404,35 +404,37 @@ skip_seek(struct opts_t * op, const char * key, const char * buf,
 
 static int
 do_skip(struct opts_t * op, const char * key, const char * buf,
-        bool ignore_verbose)
+        bool ignore_vb)
 {
+    int vb = op->verbose;
     int ret;
 
     ret = skip_seek(op, key, buf, &op->i_sgli.sglp, &op->i_sgli.elems,
-                    ignore_verbose);
+                    ignore_vb);
     if (0 == ret)
-        sgl_sum_scan(&op->i_sgli, key,
-                     (! ignore_verbose) && (op->verbose > 1));
+        sgl_sum_scan(&op->i_sgli, key, (op->show_sgl_v2 || (vb > 2)),
+                     (! ignore_vb) && (vb > 1));
     return ret;
 }
 
 static int
 do_seek(struct opts_t * op, const char * key, const char * buf,
-        bool ignore_verbose)
+        bool ignore_vb)
 {
+    int vb = op->verbose;
     int ret;
 
     ret = skip_seek(op, key, buf, &op->o_sgli.sglp, &op->o_sgli.elems,
-                    ignore_verbose);
+                    ignore_vb);
     if (0 == ret)
-        sgl_sum_scan(&op->o_sgli, key,
-                     (! ignore_verbose) && (op->verbose > 1));
+        sgl_sum_scan(&op->o_sgli, key, (op->show_sgl_v2 || (vb > 2)),
+                     (! ignore_vb) && (vb > 1));
     return ret;
 }
 
-/* Process arguments given to 'conv=" operand. Returns 0 on success,
- * 1 on error. */
-static int
+/* Process arguments given to 'conv=" operand. Returns true on success,
+ * false on error. */
+static bool
 conv_process(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
 {
     char buff[256];
@@ -443,7 +445,7 @@ conv_process(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
     buff[sizeof(buff) - 1] = '\0';
     if ('\0' == buff[0]) {
         pr2serr("no conversions found\n");
-        return 1;
+        return false;
     }
     cp = buff;
     do {
@@ -480,17 +482,17 @@ conv_process(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
         else if (0 == strcmp(cp, "trunc"))
             ofp->trunc = true;
         else {
-            pr2serr("unrecognised flag: %s\n", cp);
-            return 1;
+            pr2serr("unrecognised conversion: %s\n", cp);
+            return false;
         }
         cp = np;
     } while (cp);
-    return 0;
+    return true;
 }
 
-/* Process arguments given to 'iflag=" and 'oflag=" operands. Returns 0
- * on success, 1 on error. */
-static int
+/* Process arguments given to 'iflag=" and 'oflag=" operands. Returns true
+ * on success, false on error. */
+static bool
 flags_process(const char * arg, struct flags_t * fp)
 {
     char buff[256];
@@ -501,7 +503,7 @@ flags_process(const char * arg, struct flags_t * fp)
     buff[sizeof(buff) - 1] = '\0';
     if ('\0' == buff[0]) {
         pr2serr("no flag found\n");
-        return 1;
+        return false;
     }
     cp = buff;
     do {
@@ -610,11 +612,58 @@ flags_process(const char * arg, struct flags_t * fp)
             fp->zero = true;
         else {
             pr2serr("unrecognised flag: %s\n", cp);
-            return 1;
+            return false;
         }
         cp = np;
     } while (cp);
-    return 0;
+    return true;
+}
+
+/* Process arguments given to 'status=" operand. Returns true on success,
+ * false on error. */
+static bool
+status_process(const char * arg, struct opts_t * op)
+{
+    char buff[256];
+    char * cp;
+    char * np;
+
+    strncpy(buff, arg, sizeof(buff));
+    buff[sizeof(buff) - 1] = '\0';
+    if ('\0' == buff[0]) {
+        pr2serr("no status strings found\n");
+        return false;
+    }
+    cp = buff;
+    do {
+        np = strchr(cp, ',');
+        if (np)
+            *np++ = '\0';
+        if (0 == strncmp(cp, "null", 4))
+            ;
+        else if (0 == strncmp(cp, "none", 4)) {
+            op->status_none = true; /* don't show dd type summary */
+            op->do_time = false;
+        } else if (0 == strncmp(cp, "noxfer", 6))
+            op->do_time = false;    /* don't output transfer timings */
+        else if (0 == strncmp(cp, "progress", 8)) {
+            /* once: every 2 minutes; twice: every minute; thrice:
+             * every 30 seconds */
+            ++op->progress;
+        } else if (0 == strncmp(cp, "ppp", 3))
+            op->progress += 3;
+        else if (0 == strncmp(cp, "pp", 2))
+            op->progress += 2;
+        else if (0 == strncmp(cp, "sgl", 3))
+            op->show_sgl_v2 = true;
+        else {
+            pr2serr("'status=' expects 'none', 'noxfer', 'progress', "
+                    "'sgl' or 'null'\n");
+            return false;
+        }
+        cp = np;
+    } while (cp);
+    return true;
 }
 
 /* Defaulting transfer (copy buffer) size depending on IBS. 128*2048 for
@@ -706,7 +755,8 @@ cl_sanity_defaults(struct opts_t * op)
     }
     if ((ofp->append > 0) && (op->o_sgli.elems > 0)) {
         /* seek= has possible sgl, want lowest LBA ... */
-        sgl_sum_scan(&op->o_sgli, "oflag=append", vb > 1);
+        sgl_sum_scan(&op->o_sgli, "oflag=append",
+                     ((op->show_sgl_v2) || (vb > 2)), vb > 1);
         if (op->o_sgli.lowest_lba > 0) {
             pr2serr("Can't use both append and seek switches\n");
             return SG_LIB_CONTRADICT;
@@ -1183,7 +1233,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strcmp(key, "conv")) {
-            if (conv_process(buf, ifp, ofp)) {
+            if (! conv_process(buf, ifp, ofp)) {
                 pr2serr("bad argument to 'conv='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
@@ -1298,7 +1348,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
             } else
                 strncpy(op->idip->fn, buf, INOUTF_SZ - 1);
         } else if (0 == strcmp(key, "iflag")) {
-            if (flags_process(buf, ifp)) {
+            if (! flags_process(buf, ifp)) {
                 pr2serr("bad argument to 'iflag='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
@@ -1364,7 +1414,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
             } else
                 strncpy(op->o2dip->fn, buf, INOUTF_SZ - 1);
         } else if (0 == strcmp(key, "oflag")) {
-            if (flags_process(buf, ofp)) {
+            if (! flags_process(buf, ofp)) {
                 pr2serr("bad argument to 'oflag='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
@@ -1468,27 +1518,8 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
                 return res;
             skip_seen = true;
         } else if (0 == strcmp(key, "status")) {
-            if (0 == strncmp(buf, "null", 4))
-                ;
-            else if (0 == strncmp(buf, "noxfer", 6))
-                op->do_time = false;
-            else if (0 == strncmp(buf, "none", 4)) {
-                op->status_none = true;
-                op->do_time = false;
-            } else if (0 == strncmp(buf, "progress", 8)) {
-                ++op->progress;
-                if (0 == strncmp(buf, "progress,progress", 17)) {
-                    ++op->progress;
-                    if (0 == strncmp(buf, "progress,progress,progress", 25))
-                        ++op->progress;
-                }
-            } else if (0 == strncmp(buf, "ppp", 3))
-                op->progress += 3;
-            else if (0 == strncmp(buf, "pp", 2))
-                op->progress += 2;
-            else {
-                pr2serr("'status=' expects 'none', 'noxfer', 'progress' or "
-                        "'null'\n");
+            if (! status_process(buf, op)) {
+                pr2serr("bad argument to 'status='\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
         } else if (0 == strcmp(key, "to")) {
