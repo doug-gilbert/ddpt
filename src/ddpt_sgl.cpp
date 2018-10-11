@@ -66,7 +66,7 @@
 #endif
 
 
-static const char * ddpt_sgl_version_str = "0.96 20180815 [svn: r366]";
+static const char * ddpt_sgl_version_str = "0.96 20181010 [svn: r367]";
 
 #include "ddpt.h"
 #include "sg_lib.h"
@@ -1592,7 +1592,7 @@ do_tsplit(const sgl_vect & a_sgl, const struct scat_gath_elem * a_sgep,
 }
 
 static int
-parse_action(const char * optarg, struct sgl_opts_t * op)
+parse_action(const char * o_arg, struct sgl_opts_t * op)
 {
     bool ok;
     int len, n, off;
@@ -1603,45 +1603,45 @@ parse_action(const char * optarg, struct sgl_opts_t * op)
 
     for (vnp = act_array, ok = false; vnp->name; ++vnp) {
         len = strlen(vnp->name);
-        commap = strchr(optarg, ',');
+        commap = strchr(o_arg, ',');
         if ((cp = strchr(vnp->name, '*'))) {  /* action with numeric suffix */
             if (cp == vnp->name)
                 break;  /* don't accept '*' in 1st position */
             off = cp - vnp->name;       /* offset corresponding to '*' */
-            if (0 == memcmp(optarg, vnp->name, off)) {
+            if (0 == memcmp(o_arg, vnp->name, off)) {
                 if ((op->act_val > 0) && (op->act_val == vnp->val))
                     return 0;   /* already processed this action */
                 op->act_val = vnp->val;
-                if ('-' == optarg[off]) {
-                    if (0 == strcmp("-1", optarg + off))
+                if ('-' == o_arg[off]) {
+                    if (0 == strcmp("-1", o_arg + off))
                         n = -1;
                     else {      /* decode starting after '-' */
-                        n = sg_get_num(optarg + off + 1);
+                        n = sg_get_num(o_arg + off + 1);
                         if (-1 == n) {
                             pr2serr("'--action=%s' unable to decode "
-                                    "negative number\n", optarg);
+                                    "negative number\n", o_arg);
                             return SG_LIB_SYNTAX_ERROR;
                         }
                         n = -n;         /* now turn negative */
                     }
                 } else {
-                    n = sg_get_num(optarg + off);
+                    n = sg_get_num(o_arg + off);
                     if (-1 == n) {
                         pr2serr("'--action=%s' unable to decode number\n",
-                                optarg);
+                                o_arg);
                         return SG_LIB_SYNTAX_ERROR;
                     }
                 }
                 if (0 == n) {
                     pr2serr("'--action=%s' value of 0 not permitted\n",
-                            optarg);
+                            o_arg);
                     return SG_LIB_SYNTAX_ERROR;
                 }
                 switch (vnp->val) {
                 case ACT_DIVISIBLE_N:
                     if (n < 0) {
                         pr2serr("'--action=%s' negative value not "
-                                "permitted\n", optarg);
+                                "permitted\n", o_arg);
                         return SG_LIB_SYNTAX_ERROR;
                     }
                     op->div_scale_n = n;
@@ -1670,17 +1670,17 @@ parse_action(const char * optarg, struct sgl_opts_t * op)
                 case ACT_TSPLIT_N:
                     if (n <= 0) {
                         pr2serr("'--action=%s' zero or negative value not "
-                                "permitted\n", optarg);
+                                "permitted\n", o_arg);
                         return SG_LIB_SYNTAX_ERROR;
                     }
                     op->split_n = n;
                     break;
                 default:
-                    pr2serr("'--action=%s' unexpected\n", optarg);
+                    pr2serr("'--action=%s' unexpected\n", o_arg);
                     return SG_LIB_LOGIC_ERROR;
                 }
             }
-        } else if (0 == memcmp(optarg, vnp->name, len)) {
+        } else if (0 == memcmp(o_arg, vnp->name, len)) {
             ok = true;
             op->act_val = vnp->val;
             break;
@@ -1688,7 +1688,7 @@ parse_action(const char * optarg, struct sgl_opts_t * op)
     }
     if (! ok) {
         pr2serr("'--action=%s' not found or ill-formed, try "
-                "'--action=xxx' to list available\n", optarg);
+                "'--action=xxx' to list available\n", o_arg);
         return SG_LIB_SYNTAX_ERROR;
     }
     return 0;
@@ -1998,7 +1998,7 @@ main(int argc, char * argv[])
             sgli.elems = a_num_elems;
             sgli.sglp = a_sge_p;
             pr_statistics(*b_statsp, stdout);
-            sgl_print(&sgli, true, "a_sgl", true);
+            sgl_print(&sgli, true, "a_sgl", true, true);
         }
     }
     if (b_sgl_arg) {
@@ -2014,7 +2014,7 @@ main(int argc, char * argv[])
             sgli.elems = b_num_elems;
             sgli.sglp = b_sge_p;
             pr_statistics(*b_statsp, stdout);
-            sgl_print(&sgli, true, "b_sgl", true);
+            sgl_print(&sgli, true, "b_sgl", true, true);
         }
     }
 
@@ -2069,7 +2069,7 @@ main(int argc, char * argv[])
             sgli.elems = a_num_elems;
             sgli.sglp = a_sge_p;
             pr_statistics(*a_statsp, stdout);
-            sgl_print(&sgli, true, "append_b2a", true);
+            sgl_print(&sgli, true, "append_b2a", true, true);
         }
         if (op->non_overlap_chk && a_sgl_arg && ret_bool)
             ret_bool = non_overlap_check(a_sgl, "a_append_b", op->quiet);

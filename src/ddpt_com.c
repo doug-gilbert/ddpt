@@ -2468,7 +2468,7 @@ cp_via_sgl_iter(struct dev_info_t * dip, struct cp_state_t * csp,
  * output. */
 void
 sgl_print(struct sgl_info_t * sgli_p, bool skip_meta, const char * id_str,
-          bool to_stdout)
+          bool to_stdout, bool show_sgl)
 {
     int k;
     int elems = sgli_p->elems;
@@ -2490,7 +2490,7 @@ sgl_print(struct sgl_info_t * sgli_p, bool skip_meta, const char * id_str,
     }
     fprintf(fp, "  >> %s scatter gather list (%d elements):\n", caller,
             elems);
-    if (sgli_p->sglp) {
+    if (sgli_p->sglp && show_sgl) {
         for (k = 0, sgep = sgli_p->sglp; k < elems; ++k, ++sgep) {
             fprintf(fp, "    lba: 0x%" PRIx64 ", number: 0x%" PRIx32,
                     sgep->lba, sgep->num);
@@ -2526,7 +2526,8 @@ sge_print(const struct scat_gath_elem * sgep, const char * id_str,
  * overlapping ==false . id_str may be NULL, present to enhance verbose
  * output. */
 void
-sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str, bool b_vb)
+sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str, bool show_sgl,
+             bool b_vb)
 {
     bool degen = false;
     bool first = true;
@@ -2623,7 +2624,7 @@ sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str, bool b_vb)
     sgli_p->sum = sum;
     sgli_p->sum_hard = (elems > 0) ? ! degen : false;
     if (b_vb)
-        sgl_print(sgli_p, false, id_str, false);
+        sgl_print(sgli_p, false, id_str, false, show_sgl);
 }
 
 /* Returns number of elements in scatter gather list (array) whose pointer is

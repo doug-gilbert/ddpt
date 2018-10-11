@@ -64,7 +64,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.96 20180815 [svn: r366]";
+const char * ddptctl_version_str = "0.96 20181010 [svn: r367]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -1026,7 +1026,8 @@ main(int argc, char * argv[])
         }
     } else if (req_pop) {
         op->odx_request = ODX_READ_INTO_RODS;
-        sgl_sum_scan(&op->i_sgli, "req_pop", vb > 1);
+        sgl_sum_scan(&op->i_sgli, "req_pop",
+                     (op->show_sgl_v2 || (vb > 2)), vb > 1);
         num_blks = op->i_sgli.sum;
         if (op->dry_run) {
             pr2serr("bypass populate token\n");
@@ -1092,7 +1093,8 @@ main(int argc, char * argv[])
                 pr2serr("unable to read %d bytes from '%s', only got %d "
                         "bytes\n", (int)sizeof(rt), op->rtf, ret);
         }
-        sgl_sum_scan(&op->o_sgli, "req_wut", vb > 1);
+        sgl_sum_scan(&op->o_sgli, "req_wut",
+                     (op->show_sgl_v2 || (vb > 2)), vb > 1);
         num_blks = op->o_sgli.sum;
         if (op->dry_run) {
             pr2serr("bypass write using token\n");

@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.96 20180815 [svn: r366]";
+static const char * ddpt_version_str = "0.96 20181010 [svn: r367]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -2297,7 +2297,8 @@ the_end:
                 free(isglip->sglp);
             isglip->sglp = sgep;
             isglip->elems = n;
-            sgl_sum_scan(isglip, "count_calculate[in]", vb > 1);
+            sgl_sum_scan(isglip, "count_calculate[in]",
+                         (op->show_sgl_v2 || vb > 2), vb > 1);
         }
     }
     if ((isglip->elems > 0) && (NULL == isglip->sglp)) {
@@ -2325,7 +2326,8 @@ the_end:
                 free(osglip->sglp);
             osglip->sglp = sgep;
             osglip->elems = n;
-            sgl_sum_scan(osglip, "count_calculate[out]", vb > 1);
+            sgl_sum_scan(osglip, "count_calculate[out]",
+                         (op->show_sgl_v2 || vb > 2), vb > 1);
         }
     }
     if ((osglip->elems > 0) && (NULL == osglip->sglp)) {
@@ -3476,7 +3478,8 @@ main(int argc, char * argv[])
                 goto cleanup;
             }
             if (*sgepp != hold_sgep)
-                sgl_sum_scan(sglip, "[in] append to sgl", vb > 1);
+                sgl_sum_scan(sglip, "[in] append to sgl",
+                             (op->show_sgl_v2 || vb > 2), vb > 1);
         }
         if (! (op->o_sgli.sum_hard || (FT_DEV_NULL & op->odip->d_type))) {
             int64_t odd_count = (ibs == obs) ? d_count :
@@ -3493,7 +3496,8 @@ main(int argc, char * argv[])
                 goto cleanup;
             }
             if (*sgepp != hold_sgep)
-                sgl_sum_scan(sglip, "[out] append to sgl", vb > 1);
+                sgl_sum_scan(sglip, "[out] append to sgl",
+                             (op->show_sgl_v2 || vb > 2), vb > 1);
         }
     } else if (op->reading_fifo && (op->dd_count < 0) &&
                (! op->o_sgli.sum_hard)) {
@@ -3509,7 +3513,8 @@ main(int argc, char * argv[])
             goto cleanup;
         }
         if (*sgepp != hold_sgep)
-            sgl_sum_scan(sglip, "[out] append 'biggest' to sgl", vb > 1);
+            sgl_sum_scan(sglip, "[out] append 'biggest' to sgl",
+                         (op->show_sgl_v2 || vb > 2), vb > 1);
     }
 
     /* Check dd_count doesn't overflow out block/sg device */

@@ -547,6 +547,7 @@ struct opts_t {
     bool rod_type_given;
     bool rtf_append;    /* if rtf is regular file: open(O_APPEND) */
     bool rtf_len_add;   /* append 64 bit ROD byte size to token */
+    bool show_sgl_v2;	/* show built sgls if -vv or higher also given */
     bool status_none;   /* status=none given */
     bool subsequent_wdelay;     /* so no delay before first write */
     bool verbose_given;
@@ -718,11 +719,11 @@ struct scat_gath_elem * file2sgl(const char * file_name, bool def_hex,
  * overlapping ==false . id_str may be NULL, present to enhance verbose
  * output. */
 void sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str,
-                  bool b_verbose);
+                  bool show_sgl, bool b_verbose);
 
 /* Prints sgl to stderr or stdout. */
 void sgl_print(struct sgl_info_t * sgli_p, bool skip_meta,
-               const char * id_str, bool to_stdout);
+               const char * id_str, bool to_stdout, bool show_sg);
 
 /* Prints a single sge (scatter gather list element) to stderr or stdout. */
 void sge_print(const struct scat_gath_elem * sgep, const char * id_str,

@@ -1,10 +1,14 @@
 bin_PROGRAMS = ddpt ddptctl ddpt_sgl
 
+# This is active if --enable-debug given to ./configure
+# removed -Wduplicated-branches because needs gcc-8
 if DEBUG
-DBG_CFLAGS = -Wextra -Wmisleading-indentation -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wnull-dereference -Wshadow -Wjump-misses-init
+DBG_CFLAGS = -Wextra -Wmisleading-indentation -Wduplicated-cond -Wlogical-op -Wnull-dereference -Wshadow -Wjump-misses-init
+DBG_CFLAGS_FOR_CXX = -Wextra -Wmisleading-indentation -Wduplicated-cond -Wlogical-op -Wnull-dereference -Wshadow
 DBG_CPPFLAGS = -DDEBUG
 else
 DBG_CFLAGS =
+DBG_CFLAGS_FOR_CXX =
 DBG_CPPFLAGS =
 endif
 
@@ -23,7 +27,7 @@ endif
 # -std=<s> can be c99, c11, c14, gnu11, etc. Default is gnu89 (gnu90 is the same)
 AM_CPPFLAGS = -iquote ${top_srcdir}/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 $(DBG_CPPFLAGS)
 AM_CFLAGS = -Wall -W $(DBG_CFLAGS)
-AM_CXXFLAGS = -Wall -W $(DBG_CFLAGS) -std=c++11
+AM_CXXFLAGS = -Wall -W $(DBG_CFLAGS_FOR_CXX) -std=c++11
 # AM_CFLAGS = -Wall -W -Wextra -Wmisleading-indentation -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wnull-dereference -Wshadow -Wjump-misses-init
 # AM_CFLAGS = -Wall -W -Werror=misleading-indentation
 # AM_CFLAGS = -Wall -W -pedantic -std=c11 --analyze
