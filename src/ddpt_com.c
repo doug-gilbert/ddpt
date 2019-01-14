@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2018, Douglas Gilbert
+ * Copyright (c) 2013-2019, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -1570,6 +1570,10 @@ rod_type_str(uint32_t rt, char * b, int b_mlen)
         break;
     case RODT_PIT_PERS:
         cp = "persistent";
+        got_pit = true;
+        break;
+    case RODT_PIT_COW:
+        cp = "copy on write";
         got_pit = true;
         break;
     case RODT_PIT_ANY:

@@ -1,4 +1,4 @@
-.TH DDPTCTL "8" "September 2018" "ddpt\-0.96" DDPT
+.TH DDPTCTL "8" "January 2019" "ddpt\-0.96" DDPT
 .SH NAME
 ddptctl \- helper/auxiliary utility for ddpt
 .SH SYNOPSIS
@@ -186,9 +186,9 @@ where \fIRTYPE\fR is the ROD Type, a field in the PT command (apart
 from "zero"). The default value (0) indicates that the copy manager (in the
 \fIDEVICE\fR) decides. \fIRTYPE\fR can be a decimal number, a hex
 number (prefixed by 0x or with a "h" appended) or one
-of "pit\-def", "pit\-vuln", "pit\-pers", "pit\-any" or "zero". The final
-truncated word can be spelt out (e.g. "pit\-vulnerable"). The "pit\-"
-lead\-in stands for "point in time" copy.
+of "pit\-def", "pit\-vuln", "pit\-pers", "pit\-cow", "pit\-any" or "zero".
+The final truncated word can be spelt out (e.g. "pit\-vulnerable").
+The "pit\-" lead\-in stands for "point in time" copy.
 .br
 The "zero" is a special case and is not given to a PT command. Instead it
 causes a special Block Device Zero Token to be created that can be used
@@ -357,7 +357,7 @@ Written by Douglas Gilbert.
 .SH "REPORTING BUGS"
 Report bugs to <dgilbert at interlog dot com>.
 .SH COPYRIGHT
-Copyright \(co 2014\-2018 Douglas Gilbert
+Copyright \(co 2014\-2019 Douglas Gilbert
 .br
 This software is distributed under a FreeBSD license. There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.

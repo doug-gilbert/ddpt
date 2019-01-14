@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2018, Douglas Gilbert
+ * Copyright (c) 2008-2019, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -523,8 +523,8 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
     }
 
     vt = ((op->verbose > 1) ? (op->verbose - 1) : op->verbose);
-    ret = sg_cmds_process_resp(ptvp, "READ", res, bs * blocks, sense_b,
-                               false /* noisy */, vt, &sense_cat);
+    ret = sg_cmds_process_resp(ptvp, "READ", res, false /* noisy */, vt,
+			       &sense_cat);
     if (-1 == ret)
         ret = sg_convert_errno(get_scsi_pt_os_err(ptvp));
     else if (-2 == ret) {
@@ -929,8 +929,8 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
     }
 
     vt = ((op->verbose > 1) ? (op->verbose - 1) : op->verbose);
-    ret = sg_cmds_process_resp(ptvp, desc, res, bs * blocks, sense_b,
-                               false /* noisy */, vt, &sense_cat);
+    ret = sg_cmds_process_resp(ptvp, desc, res, false /* noisy */, vt,
+			       &sense_cat);
     if (-1 == ret)
         ret = sg_convert_errno(get_scsi_pt_os_err(ptvp));
     else if (-2 == ret) {
@@ -1086,8 +1086,8 @@ pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
         else
             ++sp->io_eagains;
     }
-    ret = sg_cmds_process_resp(ptvp, "Write same(16)", res, 0, sense_b,
-                               true /*noisy */, vt, &sense_cat);
+    ret = sg_cmds_process_resp(ptvp, "Write same(16)", res, true /*noisy */,
+			       vt, &sense_cat);
     if (-1 == ret)
         ret = sg_convert_errno(get_scsi_pt_os_err(ptvp));
     else if (-2 == ret) {
@@ -1281,7 +1281,7 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_out(ptvp, (uint8_t *)paramp, param_len);
     res = do_scsi_pt(ptvp, sg_fd, tmout, vb);
-    ret = sg_cmds_process_resp(ptvp, cname, res, 0, sense_b, noisy,
+    ret = sg_cmds_process_resp(ptvp, cname, res, noisy,
                                ((err_vb > 0) ? err_vb : 0), &sense_cat);
     if (-1 == ret) {
         int sstatus = get_scsi_pt_status_response(ptvp);
@@ -1340,7 +1340,7 @@ pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_in(ptvp, (uint8_t *)resp, mx_resp_len);
     res = do_scsi_pt(ptvp, sg_fd, tmout, vb);
-    ret = sg_cmds_process_resp(ptvp, cname, res, mx_resp_len, sense_b, noisy,
+    ret = sg_cmds_process_resp(ptvp, cname, res, noisy,
                                ((err_vb > 0) ? err_vb : 0), &sense_cat);
     if (-1 == ret) {
         int sstatus = get_scsi_pt_status_response(ptvp);

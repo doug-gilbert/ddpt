@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2018, Douglas Gilbert
+ * Copyright (c) 2014-2019, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -64,7 +64,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.96 20181010 [svn: r367]";
+const char * ddptctl_version_str = "0.96 20190113 [svn: r368]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -764,6 +764,8 @@ main(int argc, char * argv[])
                 op->rod_type = RODT_PIT_VULN;
             else if (0 == strncmp("pit-pers", optarg, 8))
                 op->rod_type = RODT_PIT_PERS;
+            else if (0 == strncmp("pit-cow", optarg, 7))
+                op->rod_type = RODT_PIT_COW;
             else if (0 == strncmp("pit-any", optarg, 7))
                 op->rod_type = RODT_PIT_ANY;
             else if (0 == strncmp("zero", optarg, 4))
@@ -773,7 +775,7 @@ main(int argc, char * argv[])
                 if (-1 == i64) {
                     pr2serr("bad argument to '--rtype='; can give (hex) "
                             "number, 'pit-def', 'pit-vuln',\n");
-                    pr2serr("'pit-pers', 'pit-any' or 'zero'\n");
+                    pr2serr("'pit-pers', 'pit-cow', 'pit-any' or 'zero'\n");
                     return SG_LIB_SYNTAX_ERROR;
                 }
                 if (i64 > UINT32_MAX) {

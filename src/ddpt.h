@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2018, Douglas Gilbert
+ * Copyright (c) 2008-2019, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -171,6 +171,7 @@ extern "C" {
 #define RODT_PIT_DEF 0x800000
 #define RODT_PIT_VULN 0x800001
 #define RODT_PIT_PERS 0x800002
+#define RODT_PIT_COW 0x800003		/* added spc5r20 */
 #define RODT_PIT_ANY 0x80ffff
 #define RODT_BLK_ZERO 0xffff0001
 
@@ -221,7 +222,7 @@ extern "C" {
 #define XCOPY_TO_DST "XCOPY_TO_DST"
 #define DEF_XCOPY_SRC0_DST1 1
 #define ODX_RTF_LEN "ODX_RTF_LEN"     /* append 8 byte ROD size to token */
-#define DDPT_DEF_BS "DDPT_DEF_BS"     /* default block size: 512 bytes */
+#define DDPT_DEF_BS "DDPT_DEF_BS" /* default logical block size: 512 bytes */
 
 #define DDPT_BIGGEST_CONTINUAL (1024LL * 1024 * 1024 * 64)
 
@@ -352,7 +353,7 @@ struct dev_info_t {
     int pdt;
     int prot_type;      /* from RCAP(16) or 0 */
     int p_i_exp;        /* protection intervals (PIs) exponent */
-    int bs_pi;          /* block size plus PI, if any */
+    int bs_pi;          /* logical block size plus PI, if any */
     int ddpt_arg;       /* 1 of DDPT_ARG_IN, DDPT_ARG_OUT or DDPT_ARG_OUT2 */
     uint32_t xc_min_bytes;
     uint32_t xc_max_bytes;
@@ -391,8 +392,8 @@ struct cp_statistics_t {
 #endif
 };
 
-/* state of working variables within do_copy(). Note that block size from
- * the copy buffer's perspective is dip->bs_pi bytes. */
+/* state of working variables within do_copy(). Note that logical block size
+ * from the copy buffer's perspective is dip->bs_pi bytes. */
 struct cp_state_t {
     bool leave_after_write;     /* partial read then EOF or error */
     bool in_soft;       /* keep going at end of in sgl */
@@ -547,7 +548,7 @@ struct opts_t {
     bool rod_type_given;
     bool rtf_append;    /* if rtf is regular file: open(O_APPEND) */
     bool rtf_len_add;   /* append 64 bit ROD byte size to token */
-    bool show_sgl_v2;	/* show built sgls if -vv or higher also given */
+    bool show_sgl_v2;   /* show built sgls if -vv or higher also given */
     bool status_none;   /* status=none given */
     bool subsequent_wdelay;     /* so no delay before first write */
     bool verbose_given;
@@ -586,7 +587,7 @@ struct opts_t {
     /* working variables and statistics */
     int64_t dd_count;   /* -1 for not specified, 0 for no blocks to copy */
                         /* after copy/read starts, decrements to 0 */
-                        /* unit is ibs (input block size) */
+                        /* unit is ibs (input logical block size) */
     int64_t lowest_unrecovered;         /* on reads */
     int64_t highest_unrecovered;        /* on reads */
     int64_t resume_iblks;       /* nz when this indicates restart point */

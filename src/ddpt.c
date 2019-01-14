@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2018, Douglas Gilbert
+ * Copyright (c) 2008-2019, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.96 20181010 [svn: r367]";
+static const char * ddpt_version_str = "0.96 20190113 [svn: r368]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -443,8 +443,8 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
                             idip->prot_type, idip->p_i_exp);
             }
             if ((*in_num_blksp > 0) && (in_lb_sz != ibs_lb)) {
-                pr2serr(">> warning: %s block size confusion: ibs=%d, "
-                        "device claims=%d\n", ifn, ibs_lb, in_lb_sz);
+                pr2serr(">> warning: %s logical block size confusion: "
+                        "ibs=%d, device claims=%d\n", ifn, ibs_lb, in_lb_sz);
                 if (0 == op->iflagp->force) {
                     pr2serr(">> abort copy, use iflag=force to override\n");
                     return -1;
@@ -475,7 +475,7 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
             if (vb)
                 print_blk_sizes(ifn, "blk", *in_num_blksp, in_lb_sz, true);
             if ((*in_num_blksp > 0) && (ibs_lb != in_lb_sz)) {
-                pr2serr(">> warning: %s block size confusion: bs=%d, "
+                pr2serr(">> warning: %s logical block size confusion: bs=%d, "
                         "device claims=%d\n", ifn, ibs_lb, in_lb_sz);
                 *in_num_blksp = DDPT_COUNT_INDEFINITE;
                 if (0 == op->iflagp->force) {
@@ -564,7 +564,7 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
                             odip->prot_type, odip->p_i_exp);
             }
             if ((*out_num_blksp > 0) && (obs_lb != out_lb_sz)) {
-                pr2serr(">> warning: %s block size confusion: "
+                pr2serr(">> warning: %s logical block size confusion: "
                         "obs=%d, device claims=%d\n", ofn, obs_lb, out_lb_sz);
                 if (0 == op->oflagp->force) {
                     pr2serr(">> abort copy, use oflag=force to override\n");
@@ -595,8 +595,8 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
             if (vb)
                 print_blk_sizes(ofn, "blk", *out_num_blksp, out_lb_sz, true);
             if ((*out_num_blksp > 0) && (obs_lb != out_lb_sz)) {
-                pr2serr(">> warning: %s block size confusion: obs=%d, "
-                        "device claims=%d\n", ofn, obs_lb, out_lb_sz);
+                pr2serr(">> warning: %s logical block size confusion: "
+                        "obs=%d, device claims=%d\n", ofn, obs_lb, out_lb_sz);
                 *out_num_blksp = DDPT_COUNT_INDEFINITE;
                 if (0 == op->oflagp->force) {
                     pr2serr(">> abort copy, use oflag=force to override\n");
@@ -631,8 +631,8 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
 
 
 /* Calculates the number of blocks associated with the in and out files.
- * May also yield the block size in bytes of devices. For regular files
- * uses ibs or obs as the logical block size. Returns 0 for continue,
+ * May also yield the logical block size in bytes of devices. For regular
+ * files uses ibs or obs as the logical block size. Returns 0 for continue,
  * otherwise bypass copy and exit. */
 static int
 calc_count_both(struct opts_t * op, int64_t * in_num_blksp,
@@ -2882,7 +2882,7 @@ prepare_pi(struct opts_t * op)
         }
         if (op->ibs_lb != op->obs_lb) {
             pr2serr("protect: don't support IFILE and OFILE "
-                    "with different block sizes\n");
+                    "with different logical block sizes\n");
             return SG_LIB_CAT_OTHER;
         }
         if (op->wrprotect) {
@@ -2905,7 +2905,7 @@ prepare_pi(struct opts_t * op)
         }
         if (op->ibs_lb != op->obs_lb) {
             pr2serr("protect: don't support IFILE and OFILE "
-                    "with different block sizes\n");
+                    "with different logical block sizes\n");
             return SG_LIB_CAT_OTHER;
         }
         res = (op->odip->p_i_exp ? (1 << op->odip->p_i_exp) : 1) * 8;
