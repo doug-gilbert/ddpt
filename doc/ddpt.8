@@ -1,4 +1,4 @@
-.TH DDPT "8" "October 2018" "ddpt\-0.96" DDPT
+.TH DDPT "8" "January 2019" "ddpt\-0.96" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -349,10 +349,10 @@ of bytes represented' is placed after each ROD Token if rtf_len is given.
 odx: where \fIRTYPE\fR is the ROD Type. The default value (0) indicates that
 the copy manager (in the source) decides. \fIRTYPE\fR can be a decimal number,
 a hex number (prefixed by 0x or with a "h" appended) or one
-of "pit\-def", "pit\-vuln", "pit\-pers", "pit\-any" or "zero". The final
-truncated word can be spelt out (e.g. "pit\-vulnerable"). The "pit\-" prefix
-is a shortening of "point in time" copy. The "zero" causes a special Block
-device zero Token to be created.
+of "pit\-def", "pit\-vuln", "pit\-pers", "pit\-cow", "pit\-any" or "zero".
+The final truncated word can be spelt out (e.g. "pit\-vulnerable").
+The "pit\-" prefix is a shortening of "point in time" copy. The "zero"
+causes a special Block device zero Token to be created.
 .TP
 \fBseek\fR=\fISEEK\fR
 start writing \fISEEK\fR blocks (each of \fIOBS\fR bytes) from the start of
@@ -1925,7 +1925,7 @@ Written by Doug Gilbert
 .SH "REPORTING BUGS"
 Report bugs to <dgilbert at interlog dot com>.
 .SH COPYRIGHT
-Copyright \(co 2008\-2018 Douglas Gilbert
+Copyright \(co 2008\-2019 Douglas Gilbert
 .br
 This software is distributed under the GPL version 2. There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.

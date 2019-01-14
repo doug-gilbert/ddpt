@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2018, Douglas Gilbert
+ * Copyright (c) 2008-2019, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -109,20 +109,20 @@ primary_help:
             "IBS is 512)\n"
             "                Output Blocks Per Check (OBPC) (def: 0 implies "
             "BPT*IBS/OBS)\n"
-            "    bs          block size for input and output (overrides "
-            "ibs and obs)\n"
+            "    bs          logical block size for input and output "
+            "(overrides ibs and obs)\n"
             "    coe         0->exit on error (def), 1->continue on "
             "error (zero fill)\n"
             "    count       number of input blocks to copy (def: "
             "(remaining)\n"
             "                device/file size)\n"
-            "    ibs         input block size (default 512 bytes)\n"
+            "    ibs         input logical block size (default 512 bytes)\n"
             "    if          IFILE is file or device to read from (for stdin "
             "use '-')\n"
             "    iflag       input flags, comma separated list from FLAGS "
             "(see below)\n"
-            "    obs         output block size (def: 512). When IBS is "
-            "not equal to OBS\n"
+            "    obs         output logical block size (def: 512). When IBS "
+            "is not equal to OBS\n"
             "                then (((IBS * BPT) %% OBS) == 0) is required\n"
             "    of          OFILE file or device to write to (def: "
             "/dev/null)\n");
@@ -309,8 +309,8 @@ tertiary_help:
             "for coe\n"
             "   trunc          same as oflag=trunc\n\n"
             "ENVIRONMENT VARIABLES:\n"
-            "   DDPT_DEF_BS    its value replaces the default block size of "
-            "512 bytes\n"
+            "   DDPT_DEF_BS    its value replaces the default logical block "
+            "size of 512 bytes\n"
             "   ODX_RTF_LEN    append ROD size (8 byte big-endian) to token "
             "in RTF\n"
             "   XCOPY_TO_DST   send XCOPY command to OFILE (destination) "
@@ -724,20 +724,20 @@ cl_sanity_defaults(struct opts_t * op)
         op->obs_lb = def_bs;
         op->obs_pi = op->obs_lb;
         if (op->idip->fn[0] && (! op->quiet))
-            pr2serr("Assume block size of %d bytes for both input and "
-                    "output\n", def_bs);
+            pr2serr("Assume logical block size of %d bytes for both input "
+                    "and output\n", def_bs);
     } else if (0 == op->obs_lb) {
         op->obs_lb = def_bs;
         op->obs_pi = op->obs_lb;
         if ((op->ibs_lb != def_bs) && op->odip->fn[0] && (! op->quiet))
             pr2serr("Neither obs nor bs given so set obs=%d (default "
-                    "block size)\n", op->obs_lb);
+                    "logical block size)\n", op->obs_lb);
     } else if (0 == op->ibs_lb) {
         op->ibs_lb = def_bs;
         op->ibs_pi = op->ibs_lb;
         if ((op->obs_lb != def_bs) && (! op->quiet))
             pr2serr("Neither ibs nor bs given so set ibs=%d (default "
-                    "block size)\n", op->ibs_lb);
+                    "logical block size)\n", op->ibs_lb);
     }
     op->ibs_hold = op->ibs_lb;
     if (op->bpt_given && (op->bpt_i < 1)) {
@@ -1479,6 +1479,9 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
             else if ((0 == strncmp("pit-pers", buf, 8)) ||
                      (0 == strncmp("pit_pers", buf, 8)))
                 op->rod_type = RODT_PIT_PERS;
+            else if ((0 == strncmp("pit-cow", buf, 7)) ||
+                     (0 == strncmp("pit_cow", buf, 7)))
+                op->rod_type = RODT_PIT_COW;
             else if ((0 == strncmp("pit-any", buf, 7)) ||
                      (0 == strncmp("pit_any", buf, 7)))
                 op->rod_type = RODT_PIT_ANY;
@@ -1489,7 +1492,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
                 if (-1 == i64) {
                     pr2serr("bad argument to 'rtype='; can give (hex) "
                             "number, 'pit-def', 'pit-vuln',\n");
-                    pr2serr("'pit-pers', 'pit-any' or 'zero'\n");
+                    pr2serr("'pit-pers', 'pit-cow', 'pit-any' or 'zero'\n");
                     return SG_LIB_SYNTAX_ERROR;
                 }
                 if (i64 > UINT32_MAX) {
