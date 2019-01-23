@@ -705,6 +705,11 @@ pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff, int blocks,
             ret = SG_LIB_CAT_MEDIUM_HARD;
             break; /* unrecovered read error at lba=io_addr */
         case SG_LIB_SYNTAX_ERROR:
+        case SG_LIB_CAT_RES_CONFLICT:	
+        case SG_LIB_CAT_DATA_PROTECT:
+        case SG_LIB_CAT_PROTECTION:
+        case SG_LIB_CAT_ILLEGAL_REQ:
+        case SG_LIB_LBA_OUT_OF_RANGE: /* treat these as non-retryable fatal */
             fp->coe = 0;
             ret = res;
             goto err_out;
@@ -717,11 +722,6 @@ pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff, int blocks,
             if (0 == retries_tmp)
                 errblk_put_range(lba, blks, op);
             /* fall through */
-        case SG_LIB_CAT_RES_CONFLICT:
-        case SG_LIB_CAT_DATA_PROTECT:
-        case SG_LIB_CAT_PROTECTION:
-        case SG_LIB_CAT_ILLEGAL_REQ:
-        case SG_LIB_LBA_OUT_OF_RANGE:
         default:
             if (retries_tmp > 0) {
                 pr2serr(">>> retrying pt read: starting lba=%" PRId64 " [0x%"
