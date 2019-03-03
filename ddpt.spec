@@ -52,7 +52,7 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Thu Jan 31 2019 - dgilbert at interlog dot com
+* Sat Mar 02 2019 - dgilbert at interlog dot com
 - see ChangeLog
   * ddpt-0.96
 * Fri Dec 26 2014 - dgilbert at interlog dot com

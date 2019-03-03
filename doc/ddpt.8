@@ -1,4 +1,4 @@
-.TH DDPT "8" "January 2019" "ddpt\-0.96" DDPT
+.TH DDPT "8" "March 2019" "ddpt\-0.96" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -941,7 +941,7 @@ The size of pt devices is deduced from the SCSI READ CAPACITY command.
 Block device sizes (or their partition sizes) are obtained from the
 operating system, if available.
 .PP
-If \fIskip=SKIP\fR or \fIskip=SEEK\fR are given and the \fICOUNT\fR is
+If \fIskip=SKIP\fR or \fIseek=SEEK\fR are given and the \fICOUNT\fR is
 deduced (i.e. not explicitly given) then that size is scaled back so
 that the copy will not overrun the file or device.
 .PP

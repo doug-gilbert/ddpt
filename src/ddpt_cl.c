@@ -199,7 +199,7 @@ secondary_help:
            );
     pr2serr("    list_id     xcopy: list_id (def: 1 or 0) [1 byte]\n"
             "                odx: list_id (def: 257 or 258) [4 bytes]\n"
-            "                oflag=wstream: stream identifer [2 bytes]\n"
+            "                oflag=wstream: stream identifier [2 bytes]\n"
             "    of2         additional output file (def: /dev/null), "
             "OFILE2 should be\n"
             "                regular file or pipe\n"
