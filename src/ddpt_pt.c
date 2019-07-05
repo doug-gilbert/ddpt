@@ -111,6 +111,10 @@
 
 #define DEF_PT_TIMEOUT 60       /* 60 seconds */
 
+/* ascending number assigned to each command, pre-incremented, so starts
+ * at 1 . If we go multi-threaded, this needs protection */
+static int packet_id = 0;
+
 
 void *
 pt_construct_obj(void)
@@ -512,6 +516,7 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
 #ifdef SCSI_PT_FLAGS_FUNCTION
     set_scsi_pt_flags(ptvp, SCSI_PT_FLAGS_QUEUE_AT_TAIL);
 #endif
+    set_scsi_pt_packet_id(ptvp, ++packet_id);
     vt = (op->verbose ? (op->verbose - 1) : 0);
     while (((res = do_scsi_pt(ptvp, dip->fd, DEF_RW_TIMEOUT, vt)) < 0) &&
            ((-EINTR == res) || (-EAGAIN == res))) {
@@ -524,7 +529,7 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
 
     vt = ((op->verbose > 1) ? (op->verbose - 1) : op->verbose);
     ret = sg_cmds_process_resp(ptvp, "READ", res, false /* noisy */, vt,
-			       &sense_cat);
+                               &sense_cat);
     if (-1 == ret)
         ret = sg_convert_errno(get_scsi_pt_os_err(ptvp));
     else if (-2 == ret) {
@@ -705,7 +710,7 @@ pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff, int blocks,
             ret = SG_LIB_CAT_MEDIUM_HARD;
             break; /* unrecovered read error at lba=io_addr */
         case SG_LIB_SYNTAX_ERROR:
-        case SG_LIB_CAT_RES_CONFLICT:	
+        case SG_LIB_CAT_RES_CONFLICT:
         case SG_LIB_CAT_DATA_PROTECT:
         case SG_LIB_CAT_PROTECTION:
         case SG_LIB_CAT_ILLEGAL_REQ:
@@ -918,6 +923,7 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
 #ifdef SCSI_PT_FLAGS_FUNCTION
     set_scsi_pt_flags(ptvp, SCSI_PT_FLAGS_QUEUE_AT_TAIL);
 #endif
+    set_scsi_pt_packet_id(ptvp, ++packet_id);
     vt = (op->verbose ? (op->verbose - 1) : 0);
     while (((res = do_scsi_pt(ptvp, sg_fd, DEF_RW_TIMEOUT, vt)) < 0) &&
            ((-EINTR == res) || (-EAGAIN == res))) {
@@ -930,7 +936,7 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
 
     vt = ((op->verbose > 1) ? (op->verbose - 1) : op->verbose);
     ret = sg_cmds_process_resp(ptvp, desc, res, false /* noisy */, vt,
-			       &sense_cat);
+                               &sense_cat);
     if (-1 == ret)
         ret = sg_convert_errno(get_scsi_pt_os_err(ptvp));
     else if (-2 == ret) {
@@ -1077,6 +1083,7 @@ pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
     set_scsi_pt_cdb(ptvp, wsCmdBlk, sizeof(wsCmdBlk));
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_out(ptvp, buff, bs);
+    set_scsi_pt_packet_id(ptvp, ++packet_id);
     vt = ((op->verbose > 1) ? (op->verbose - 1) : 0);
     while (((res = do_scsi_pt(ptvp, sg_fd, WRITE_SAME16_TIMEOUT, vt)) < 0) &&
            ((-EINTR == res) || (-EAGAIN == res))) {
@@ -1087,7 +1094,7 @@ pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
             ++sp->io_eagains;
     }
     ret = sg_cmds_process_resp(ptvp, "Write same(16)", res, true /*noisy */,
-			       vt, &sense_cat);
+                               vt, &sense_cat);
     if (-1 == ret)
         ret = sg_convert_errno(get_scsi_pt_os_err(ptvp));
     else if (-2 == ret) {
@@ -1280,6 +1287,7 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
     set_scsi_pt_cdb(ptvp, xcopyCmdBlk, sizeof(xcopyCmdBlk));
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_out(ptvp, (uint8_t *)paramp, param_len);
+    set_scsi_pt_packet_id(ptvp, ++packet_id);
     res = do_scsi_pt(ptvp, sg_fd, tmout, vb);
     ret = sg_cmds_process_resp(ptvp, cname, res, noisy,
                                ((err_vb > 0) ? err_vb : 0), &sense_cat);
@@ -1339,6 +1347,7 @@ pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
     set_scsi_pt_cdb(ptvp, rcvcopyresCmdBlk, sizeof(rcvcopyresCmdBlk));
     set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
     set_scsi_pt_data_in(ptvp, (uint8_t *)resp, mx_resp_len);
+    set_scsi_pt_packet_id(ptvp, ++packet_id);
     res = do_scsi_pt(ptvp, sg_fd, tmout, vb);
     ret = sg_cmds_process_resp(ptvp, cname, res, noisy,
                                ((err_vb > 0) ? err_vb : 0), &sense_cat);
