@@ -495,11 +495,12 @@ struct flags_t {
     bool sync;          /* open non-pt file with O_SYNC flag */
     bool trunc;         /* truncate non-pt OF to SEEK (typically 0 length)
                          * before start of copy */
-    bool verify;        /* oflag with pt, turns WRITE into WRITE AND VERIFY */
+    bool v_verify;      /* oflag with pt, hidden flag, set by --verify */
     bool wsame16;       /* given trim or unmap then wsame16 is set. Trim/unmap
                          * done on pt using SCSI WRITE SAME(16) command */
     bool wstream;       /* oflag with pt, send WRITE STREAM(16) with list_id
                          * as Stream ID (valid range: 0x1 to 0xffff) */
+    bool wverify;       /* oflag with pt, turns WRITE into WRITE AND VERIFY */
     bool xcopy;         /* xcopy(LID1) requested */
     bool zero;          /* iflag=00 makes input all 0x0 bytes */
 
@@ -541,6 +542,7 @@ struct opts_t {
     bool out_sparse_active;
     bool out_trim_active;
     bool outf_given;
+    bool prefetch_given;/* only active with --verify */
     bool primary_ddpt;  /* true if ddpt, false if helper utility */
     bool quiet;         /* set true when verbose=-1 (or any negative int) */
     bool reading_fifo;  /* true when if=- (read stdin) or if=PIPE */
@@ -552,6 +554,7 @@ struct opts_t {
     bool status_none;   /* status=none given */
     bool subsequent_wdelay;     /* so no delay before first write */
     bool verbose_given;
+    bool verify_given;
     bool version_given;
     bool xc_cat;
     bool xc_dc;
@@ -884,6 +887,7 @@ int pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
 int pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
                       void * resp, int mx_resp_len, bool noisy, int verbose,
                       int err_vb);
+int pt_pre_fetch(struct opts_t * op, int blocks, int64_t start_block);
 
 /* defined in ddpt_xcopy.c */
 int open_rtf(struct opts_t * op);

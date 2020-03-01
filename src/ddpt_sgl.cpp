@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2019, Douglas Gilbert
+ * Copyright (c) 2008-2020, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -66,7 +66,7 @@
 #endif
 
 
-static const char * ddpt_sgl_version_str = "0.96 20190917 [svn: r373]";
+static const char * ddpt_sgl_version_str = "0.96 20200301 [svn: r374]";
 
 #include "ddpt.h"
 #include "sg_lib.h"

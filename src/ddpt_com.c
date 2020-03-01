@@ -204,6 +204,7 @@ void
 print_stats(const char * str, struct opts_t * op, int who, bool estimate)
 {
     const char * cp;
+    const char * out_verify = op->verify_given ? "verified" : "out";
     struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
 #ifdef SG_LIB_LINUX
@@ -237,8 +238,8 @@ print_stats(const char * str, struct opts_t * op, int who, bool estimate)
     if (1 != who) {
         cp = (op->oflagp->nowrite && (sp->out_full || sp->out_partial)) ?
                         " [not done due to nowrite flag]" : "";
-        pr2serr("%s%" PRId64 "+%d records out%s\n", str, sp->out_full,
-                sp->out_partial, cp);
+        pr2serr("%s%" PRId64 "+%d records %s%s\n", str, sp->out_full,
+                sp->out_partial, out_verify, cp);
     }
     if (op->out_sparse_active || op->out_sparing_active) {
         if (op->out_trim_active) {
@@ -247,8 +248,8 @@ print_stats(const char * str, struct opts_t * op, int who, bool estimate)
                 pr2serr("%s%" PRId64 "+%d %s records out\n", str,
                         sp->out_sparse, sp->out_sparse_partial, cp);
             else
-                pr2serr("%s%" PRId64 " %s records out\n", str,
-                        sp->out_sparse, cp);
+                pr2serr("%s%" PRId64 " %s records %s\n", str,
+                        sp->out_sparse, cp, out_verify);
         } else if (sp->out_sparse_partial > 0)
             pr2serr("%s%" PRId64 "+%d bypassed records out\n", str,
                     sp->out_sparse, sp->out_sparse_partial);
@@ -2390,7 +2391,7 @@ sgl_iter_forward_blks(struct dev_info_t * dip, struct sgl_iter_t * itp,
     return 0;
 }
 
-/* Copies abs(add_blks) blocks for current position of file/device (referred
+/* Copies |add_blks| blocks from current position of file/device (referred
  * to by dip) to or from a segment of the computer's ram. The copy is into
  * ram when ddpt_arg is 0 (i.e. a "read"), otherwise it is from ram (i.e. a
  * "write"). IO is performed by the fp (callback function) and the iterator

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2019, Douglas Gilbert
+ * Copyright (c) 2008-2020, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -95,13 +95,12 @@ primary_help:
             "             [verbose=VERB]\n"
             "             [--dry-run] [--flexible] [--help] [--job=JF] "
             "[--odx]\n"
+            "             [--prefetch] [--quiet] [--verbose] [--verify] "
+            "[--version]\n"
 #ifdef SG_LIB_WIN32
-            "             [--quiet] [--verbose] [--version] [--wscan] "
-            "[--xcopy]\n"
-            "             [ddpt] [JF]\n"
+            "             [--wscan] [--xcopy] [ddpt] [JF]\n"
 #else
-            "             [--quiet] [--verbose] [--version] [--xcopy] "
-            "[ddpt] [JF]\n"
+            "             [--xcopy] [ddpt] [JF]\n"
 #endif
            );
     pr2serr("  where the main operands are:\n"
@@ -147,9 +146,13 @@ primary_help:
             "    --help|-h     print out this usage message then exit\n"
             "    --job=JF|-j JF    JF is job file containing options\n"
             "    --odx|-o       do ODX copy rather than normal rw copy\n"
+            "    --prefetch|-o    only active with --verify : adds "
+            "PRE-FETCH(OFILE, IMMED)\n"
             "    --quiet|-q     suppresses messages (by redirecting them "
             "to /dev/null)\n"
             "    --verbose|-v    equivalent to verbose=1\n"
+            "    --verify|-X     does verify between IFILE and OFILE "
+            "instead of copy\n"
             "    --version|-V    print version information then exit\n"
 #ifdef SG_LIB_WIN32
             "    --wscan|-w     windows scan for device names and volumes\n"
@@ -163,11 +166,12 @@ primary_help:
             "start\n"
             "                  with '-' or contain '='. Parsed when seen\n"
             "\nCopy all or part of IFILE to OFILE, IBS*BPT bytes at a time. "
-            "Similar to\n"
-            "dd command. Support for block devices, especially those "
-            "accessed via a\nSCSI pass-through. Also supports offloaded "
-            "copies: xcopy(LID1) and ODX.\nFor more information use "
-            "'-h' multiple times (e.g. '-hh' or '-hhh').\n"
+            "Similar to\ndd command. With the --verify option, it compares "
+            "IFILE with OFILE,\nstopping at the first inequality. Support "
+            "for block devices, especially\nthose accessed via a SCSI "
+            "pass-through. Also supports offloaded copies:\nxcopy(LID1) and "
+            "ODX. For more information use '-h' multiple times (e.g.\n"
+            "'-hh' or '-hhh').\n"
            );
     return;
 
@@ -292,6 +296,7 @@ tertiary_help:
             "   trunc (o)      truncate a regular OFILE prior to copy (def: "
             "overwrite)\n"
             "   unmap (pt)     same as trim flag\n"
+            "   wverify (o,pt)    turns WRITE into WRITE AND VERIFY\n"
             "   xcopy (pt)     invoke SCSI XCOPY; send to IFILE or OFILE.\n\n"
             "CONVS:\n"
             "   fdatasync      same as oflag=fdatasync\n"
@@ -602,10 +607,10 @@ flags_process(const char * arg, struct flags_t * fp)
             fp->wsame16 = true;
         } else if (0 == strcmp(cp, "trunc"))
             fp->trunc = true;
-        else if (0 == strcmp(cp, "verify"))
-            fp->verify = true;
         else if (0 == strcmp(cp, "wstream"))
             fp->wstream = true;
+        else if (0 == strcmp(cp, "wverify"))
+            fp->wverify = true;
         else if (0 == strcmp(cp, "xcopy"))
             fp->xcopy = true;
         else if (0 == strcmp(cp, "00"))
@@ -829,11 +834,11 @@ cl_sanity_defaults(struct opts_t * op)
     if (ofp->strunc && (0 == ofp->sparse))
         ++ofp->sparse;
 
-    n = (int)ofp->wsame16 + (int)ofp->wstream + (int)ofp->verify +
+    n = (int)ofp->wsame16 + (int)ofp->wstream + (int)ofp->wverify +
         (int)ofp->atomic;
     if (n > 1) {
         pr2serr("Cannot have more than one of "
-                "oflag=trim,unmap,wstream,verify,atomic\n");
+                "oflag=trim,unmap,wstream,wverify,atomic\n");
         return SG_LIB_SYNTAX_ERROR;
     }
 
@@ -1575,12 +1580,16 @@ skip_name_eq_value:
             }
         } else if (0 == strncmp(key, "--odx", 5))
             op->has_odx = true;
+        else if (0 == strncmp(key, "--prefetch", 10))
+            op->prefetch_given = true;
         else if (0 == strncmp(key, "--quiet", 7))
             op->quiet = true;
         else if (0 == strncmp(key, "--verb", 6)) {
             op->verbose_given = true;
             ++op->verbose;
-        } else if (0 == strncmp(key, "--vers", 6))
+        } else if (0 == strncmp(key, "--veri", 6))
+            op->verify_given = true;
+        else if (0 == strncmp(key, "--vers", 6))
             op->version_given = true;
 #ifdef SG_LIB_WIN32
         else if (0 == strncmp(key, "--wscan", 7))
@@ -1603,16 +1612,23 @@ skip_name_eq_value:
             op->dry_run += n;
             res += n;
             n = num_chs_in_str(key + 1, keylen - 1, 'f');
-            op->flexible = (n > 0);
+            if (n > 0)
+                op->flexible = true;
             res += n;
             n = num_chs_in_str(key + 1, keylen - 1, 'h');
             op->do_help += n;
             res += n;
             n = num_chs_in_str(key + 1, keylen - 1, 'o');
-            op->has_odx = (n > 0);
+            if (n > 0)
+                op->has_odx = true;
+            res += n;
+            n = num_chs_in_str(key + 1, keylen - 1, 'p');
+            if (n > 0)
+                op->prefetch_given = true;
             res += n;
             n = num_chs_in_str(key + 1, keylen - 1, 'q');
-            op->quiet = (n > 0);
+            if (n > 0)
+                op->quiet = true;
             res += n;
             n = num_chs_in_str(key + 1, keylen - 1, 'v');
             if (n > 0)
@@ -1629,7 +1645,12 @@ skip_name_eq_value:
             res += n;
 #endif
             n = num_chs_in_str(key + 1, keylen - 1, 'x');
-            op->has_xcopy = (n > 0);
+            if (n > 0)
+                op->has_xcopy = true;
+            res += n;
+            n = num_chs_in_str(key + 1, keylen - 1, 'X');
+            if (n > 0)
+                op->verify_given = true;
             res += n;
             if (res < (keylen - 1)) {
                 pr2serr("Unrecognised short option in '%s', try '--help'\n",

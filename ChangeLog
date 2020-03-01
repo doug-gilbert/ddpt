@@ -2,7 +2,7 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.96 [20190917] [svn: r373]
+Changelog for ddpt-0.96 [20200301] [svn: r374]
   - allow scatter gather lists for skip= and seek=
     where they can reasonably be implemented
   - add status=progress option, report every 2 minutes
@@ -26,6 +26,12 @@ Changelog for ddpt-0.96 [20190917] [svn: r373]
   - add testing directory and scripts
     - prepare.sh to test ddpt
     - test_sgl.sh to test ddpt_sgl
+  - add --verify option to change from doing
+    WRITE(OFILE) to doing VERIFY(OFILE,BYTCHK=1)
+  - add --prefetch option to add PRE-FETCH(OFILE,IMMED)
+    command to the --verify seqeunce of commands
+  - change oflag=verify to oflag=wverify to distinguish 
+    it from the new --verify option
   - improve device designator descriptor handling
   - resubmit IOs if EAGAIN, report count if > 0
   - fix SCSI recovered errors stopping copy
@@ -35,7 +41,7 @@ Changelog for ddpt-0.96 [20190917] [svn: r373]
   - use sg_pt::set_scsi_pt_packet_id() with ascending
     counter, helps debugging (mainly Linux)
   - improve xcopy(odx) error reporting
-  - point svn:externals to rev 832 of sg3_utils
+  - point svn:externals to rev 843 of sg3_utils
   - convert many two valued 'int's to bool
   - upgrade automake to version 1.15 (U16.04)
     - cleanup configure.ac + Makefile.am
