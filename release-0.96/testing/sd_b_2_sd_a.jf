@@ -1,0 +1,10 @@
+ddpt
+
+# Straight forward sd device to sd device copy
+
+if=/tmp/sd_sg_b_dev
+bs=4096
+iflag=direct
+
+of=/tmp/sd_sg_a_dev
+oflag=direct

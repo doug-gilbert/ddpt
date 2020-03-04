@@ -1,0 +1,10 @@
+Some suggestions:
+
+  - look into supporting the SCSI EXTENDED COPY command. Syntax should be
+    interesting [20090320]. Done can now do XCOPY(LID1) and ODX type copies
+    (with POPULATE TOKEN and WRITE USING TOKEN commands)
+
+  - cope with MEDIUM/HARDWARE ERROR when no valid INFO field given and
+    bpt>1 . Broken devices are out there [20100903]. Pretty sure this
+    one is fixed now (by temporarily setting bpt=1 for rest of segment
+    then returning bpt to its original value).

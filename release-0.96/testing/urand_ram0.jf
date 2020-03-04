@@ -1,0 +1,7 @@
+ddpt
+
+# xxx
+if=/dev/urandom
+of=/dev/ram0
+bs=512
+# -vvvvv
