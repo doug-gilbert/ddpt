@@ -66,7 +66,7 @@
 #endif
 
 
-static const char * ddpt_sgl_version_str = "0.96 20180730 [svn: r363]";
+static const char * ddpt_sgl_version_str = "0.96 20180813 [svn: r364]";
 
 #include "ddpt.h"
 #include "sg_lib.h"
@@ -197,9 +197,9 @@ usage()
             "                            1: take in account for highest and "
             "lowest\n"
             "                            2: take in account for monotonic\n"
-            "    --document|-d         place copy of command line as "
-            "comment in\n"
-            "                          start of O_SGL(s); >1: add command "
+            "    --document|-d         place datetime stamp and other "
+            "info at start\n"
+            "                          of O_SGL(s); >1: add invoking command "
             "line\n"
             "    --elem=SE[,LE]|-E SE[,LE]    write sgl element SE (origin "
             "0) to O_SGL\n"
@@ -273,13 +273,13 @@ action_enum(void)
             "   part-equal    compare a-sgl to b-sgl\n"
             "   part-same     compare a-sgl to b-sgl\n"
             "   same          compare a-sgl to b-sgl, ignoring order\n"
-            "   scale<n>      multiply all starting LBAs in a_sgl by <n> "
-            "(if > 0)\n"
-            "                 and divide all NUMs by <n>, result --> "
-            "O_SGL;\n"
-            "                 if <n> < 0 then divide all ...\n"
+            "   scale<n>      multiply all starting LBAs and NUMS in a_sgl "
+            "by <n>\n "
+            "                 (when <n> > 0), result --> O_SGL; if <n> < 0 "
+            "then\n"
+            "                 divide all LBAs and NUMs by |n|\n"
             "   select        from a-sgl based on index array, output to "
-            "O_SGL"
+            "O_SGL\n"
             "   sort          sort a-sgl and output to O_SGL\n"
             "   split<n>      divide a-sgl into 'n' O_SGLs\n"
             "   to-chs        assume a-sgl is flat sgl, convert to CHS in "
@@ -2193,12 +2193,12 @@ main(int argc, char * argv[])
         a = (n >= 0) ? n : -n;
         sgvi = a_sgl.begin();
         for (k = 0; k < (int)a_sgl.size(); ++k, ++sgvi) {
-            if (n > 0) {
+            if (n >= 0) {
                 sgvi->lba *= a;
-                sgvi->num /= a;
+                sgvi->num *= a;
             } else {
                 sgvi->lba /= a;
-                sgvi->num *= a;
+                sgvi->num /= a;
             }
         }
         use_res_sgl = false;

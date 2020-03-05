@@ -8,7 +8,7 @@
 #    DDPT_SGL_OPTS   default: "";
 #
 #
-# dpg 20180715
+# dpg 20180801
 
 VERBOSE="0"
 VERSION="1.00 20180715 [r361]"
@@ -75,10 +75,10 @@ while true; do
             shift
             ;;
         -V|--version)
-	    echo "${VERSION}"
-	    exit
-	    shift
-	    ;;
+            echo "${VERSION}"
+            exit
+            shift
+            ;;
         --)
             shift
             break
@@ -235,7 +235,7 @@ if [ ${RES} -ne 0 ] ; then
 fi
 echoerr ""
 
-# Since to-chs mapping doesn't maaintain ascending order, do a twin sort
+# Since to-chs mapping doesn't maintain ascending order, do a twin sort
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_chs.sgl -B 0,10k -o ${SGL_OUT}_chs_sort -e sgl -a tsort"
 ${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_chs.sgl -B 0,10k -o ${SGL_OUT}_chs_sort -e sgl -a tsort
 RES=$?
@@ -245,7 +245,59 @@ if [ ${RES} -ne 0 ] ; then
 fi
 echoerr ""
 
-#
-# throw away stdout and stderr: > /dev/null 2>&1
+# Now use --elem=-1,0 to reverse that sort (with no --action)
+echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_chs_sort.sgl -o ${SGL_OUT}_chs_sort_rev -e sgl --elem=-1,0"
+${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_chs_sort.sgl -o ${SGL_OUT}_chs_sort_rev -e sgl --elem=-1,0
+RES=$?
+if [ ${RES} -ne 0 ] ; then
+    pr_exit_stat ${DDPT_SGL} ${RES}
+    exit ${RES}
+fi
+echoerr ""
 
+# Do another twin sort, this time by NUM, ascending
+echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_chs.sgl -B 0,10k -o ${SGL_OUT}_chs_sort_n -e sgl -a tsort -S 2"
+${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_chs.sgl -B 0,10k -o ${SGL_OUT}_chs_sort_n -e sgl -a tsort -S 2
+RES=$?
+if [ ${RES} -ne 0 ] ; then
+    pr_exit_stat ${DDPT_SGL} ${RES}
+    exit ${RES}
+fi
+echoerr ""
+
+# Do a scale test, assume 4096 byte sectors, going to 512; scale by x8
+echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A 1,2,3,3,6,4 -o ${SGL_OUT}_scale_8 -e sgl -a scale_8"
+${DDPT_SGL} ${DDPT_SGL_OPTS} -A 1,2,3,3,6,4 -o ${SGL_OUT}_scale_8 -e sgl -a scale_8
+RES=$?
+if [ ${RES} -ne 0 ] ; then
+    pr_exit_stat ${DDPT_SGL} ${RES}
+    exit ${RES}
+fi
+echoerr ""
+
+# Do a scale test, assume 512 byte sectors, going to 4096; scale by /8
+echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_scale_8.sgl -o ${SGL_OUT}_scale_back -e sgl -a scale_-8"
+${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_scale_8.sgl -o ${SGL_OUT}_scale_back -e sgl -a scale_-8
+RES=$?
+if [ ${RES} -ne 0 ] ; then
+    pr_exit_stat ${DDPT_SGL} ${RES}
+    exit ${RES}
+fi
+echoerr ""
+
+# Do a divisible test, expect failure (36 ==> false) ; divisible by 8
+echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_scale_back.sgl -a divisible_8"
+${DDPT_SGL} ${DDPT_SGL_OPTS} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_scale_back.sgl -a divisible_8
+RES=$?
+if [ ${RES} -eq 36 ] ; then
+    echoerr "Expected false exit status (36) and got it"
+else
+    echoerr "Expected false exit status (36) but did _not_ get it"
+    pr_exit_stat ${DDPT_SGL} ${RES}
+fi
+echoerr ""
+
+
+#
+# Example: throw away both stdout and stderr: > /dev/null 2>&1
 
