@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2019, Douglas Gilbert
+ * Copyright (c) 2014-2020, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -64,7 +64,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.96 20190917 [svn: r373]";
+const char * ddptctl_version_str = "0.96 20200301[svn: r374]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>

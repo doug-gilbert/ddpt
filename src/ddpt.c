@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2019, Douglas Gilbert
+ * Copyright (c) 2008-2020, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.96 20190917 [svn: r373]";
+static const char * ddpt_version_str = "0.96 20200301 [svn: r374]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -297,7 +297,8 @@ open_of(struct opts_t * op)
         }
         if ((fd = open(ofn, flags, 0666)) < 0) {
             err = errno;
-            pr2serr("could not open %s for writing: %s\n", ofn,
+            pr2serr("could not open %s for %s: %s\n", ofn,
+                    (op->verify_given ? "verifying" : " writing"),
                     safe_strerror(err));
             return -sg_convert_errno(err);
         }
@@ -1448,7 +1449,6 @@ cp_read_of_block_reg(struct opts_t * op, struct cp_state_t * csp,
     }
 }
 
-
 /* Main copy loop's write (output (of)) via pt. Returns 0 on success, else
  * see pt_write()'s return values. */
 static int
@@ -1525,6 +1525,54 @@ cp_write_pt_wrap(struct dev_info_t * dip, struct cp_state_t * csp,
         return SG_LIB_CAT_OTHER;
     }
     return cp_write_pt(op, csp, bp);
+}
+
+/* Main copy loop's prefetch on OFILE via pt. Returns 0 on success, else
+ * see pt_pre_fetch()'s return values. */
+static int
+cp_pre_fetch_pt(struct opts_t * op, struct cp_state_t * csp)
+{
+    bool dr = (bool)op->dry_run;
+    int res;
+    uint32_t blks = csp->cur_out_num;
+    int64_t aseek = csp->cur_out_lba;
+
+    if (dr)
+        goto fini;
+    res = pt_pre_fetch(op, blks, aseek);
+    if (0 != res) {
+        pr2serr("%s: failed,%s seek=%" PRId64 "\n", __func__,
+                ((-2 == res) ? " try reducing bpt," : ""), aseek);
+        return res;
+    }
+fini:
+    csp->blks_xfer = blks;
+    csp->bytes_xfer = -1;
+    return 0;
+}
+
+static int
+cp_pre_fetch_pt_wrap(struct dev_info_t * dip, struct cp_state_t * csp,
+                     struct opts_t * op)
+{
+    struct dev_info_t * der_dip;
+
+    switch (dip->ddpt_arg) {
+    case DDPT_ARG_OUT:
+        der_dip = op->odip;
+        break;
+    case DDPT_ARG_IN:
+    case DDPT_ARG_OUT2:
+    default:
+        pr2serr("%s: logic error, unexpected ddpt_arg=%d\n", __func__,
+                dip->ddpt_arg);
+        return SG_LIB_CAT_OTHER;
+    }
+    if (dip != der_dip) {
+        pr2serr("%s: logic error, unexpected dip\n", __func__);
+        return SG_LIB_CAT_OTHER;
+    }
+    return cp_pre_fetch_pt(op, csp);
 }
 
 #ifdef SG_LIB_LINUX
@@ -2543,6 +2591,7 @@ do_rw_copy(struct opts_t * op)
     uint8_t * wPos = op->wrkPos;
     struct cp_state_t * csp;
     struct cp_state_t cp_st;
+    struct cp_state_t cp_st_tmp;
 
     csp = &cp_st;
     cp_state_init(csp, op);
@@ -2581,6 +2630,17 @@ do_rw_copy(struct opts_t * op)
         } else        /* last segment's write could be shorter */
             last_seg_helper(csp, wPos, ibs, obs, op);
 
+        if (op->verify_given && op->prefetch_given) {
+            cp_st_tmp = cp_st;  /* structure copy */
+            cp_st_tmp.cur_countp = NULL;  /* stop out_full increasing */
+            cp_st_tmp.buf_name = "prefetch no_buff";
+            csp->reading = false;
+            /* PRE-FETCH(IMMED) commands(s), should be fast */
+            ret = cp_via_sgl_iter(op->odip, &cp_st_tmp, csp->ocbpt,
+                                  cp_pre_fetch_pt_wrap, op);
+            if (ret)
+                break;
+        }
         /* Start of reading section */
         ret = 0;
         num = csp->icbpt;
@@ -2959,6 +3019,23 @@ open_files_devices(struct opts_t * op)
         return SG_LIB_SYNTAX_ERROR;
     }
 
+    if (op->verify_given) {
+        op->oflagp->v_verify = true;
+        if (op->oflagp->sparse || op->oflagp->sparing) {
+            pr2serr("oflag=sparse or =sparing disallowed with --verify\n");
+            return SG_LIB_CONTRADICT;
+        }
+        if (op->oflagp->append || op->oflagp->atomic) {
+            pr2serr("oflag=append or =atomic disallowed with --verify\n");
+            return SG_LIB_CONTRADICT;
+        }
+        if (op->oflagp->wstream || op->oflagp->wverify) {
+            pr2serr("oflag=wverify or =wstream disallowed with --verify\n");
+            return SG_LIB_CONTRADICT;
+        }
+    } else if (op->prefetch_given && (vb > 0))
+            pr2serr("warning: --prefetch ignored in the absence of "
+                    "--verify\n");
     if ('\0' == odip->fn[0])
         strcpy(odip->fn, "."); /* treat no 'of=OFILE' operand as /dev/null */
     if (('-' == odip->fn[0]) && ('\0' == odip->fn[1])) {
@@ -2976,6 +3053,10 @@ open_files_devices(struct opts_t * op)
             else
                 return -fd;     /* negated sg3_utils style error code */
         }
+    }
+    if (op->verify_given && !(odip->d_type & FT_PT)) {
+        pr2serr("--verify only available via pass-through on OFILE\n");
+        return SG_LIB_FILE_ERROR;
     }
     odip->fd = fd;
 

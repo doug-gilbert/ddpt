@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2019, Douglas Gilbert
+ * Copyright (c) 2008-2020, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -65,10 +65,15 @@
 #include "sg_unaligned.h"
 #include "sg_pr2serr.h"
 
+#define DDPT_PRE_FETCH10_OC 0x34
+#define DDPT_PRE_FETCH16_OC 0x90
 #define DDPT_READ6_OC 0x8
 #define DDPT_READ10_OC 0x28
 #define DDPT_READ12_OC 0xa8
 #define DDPT_READ16_OC 0x88
+#define DDPT_VERIFY10_OC 0x2f
+#define DDPT_VERIFY12_OC 0xaf
+#define DDPT_VERIFY16_OC 0x8f
 #define DDPT_WRITE6_OC 0xa
 #define DDPT_WRITE10_OC 0x2a
 #define DDPT_WRITE12_OC 0xaa
@@ -307,7 +312,7 @@ pt_read_capacity(struct opts_t * op, bool in0_out1, int64_t * num_blks,
     return 0;
 }
 
-/* Build a SCSI READ or WRITE CDB. */
+/* Build a SCSI READ,  WRITE * or VERIFY CDB. */
 static bool
 pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
                      int64_t start_block, bool write_true,
@@ -318,6 +323,8 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
     int * opc_arr;
     int rd_opcode[] = {DDPT_READ6_OC, DDPT_READ10_OC, DDPT_READ12_OC,
                        DDPT_READ16_OC, DDPT_READ32_SA};
+    int ve_opcode[] = {0xffffff, DDPT_VERIFY10_OC, DDPT_VERIFY12_OC,
+                       DDPT_VERIFY16_OC, 0xffffff};
     int wr_opcode[] = {DDPT_WRITE6_OC, DDPT_WRITE10_OC, DDPT_WRITE12_OC,
                        DDPT_WRITE16_OC, DDPT_WRITE32_SA};
 
@@ -331,7 +338,9 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
     opc_arr = NULL;
 
     if (write_true) {
-        if (fp->atomic) {
+        if (fp->v_verify)
+            opc_arr = ve_opcode;
+        else if (fp->atomic) {
             if (16 == cdb_sz)
                 opcode_sa = DDPT_WRITE_ATOMIC16_OC;
             else {
@@ -345,13 +354,14 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
                 pr2serr("wstream flag only for WRITE_STREAM(16)\n");
                 return false;
             }
-        } else if (fp->verify) {
+        } else if (fp->wverify) {
             if (10 == cdb_sz)
                 opcode_sa = DDPT_WRITE_VERIFY10_OC;
             else if (16 == cdb_sz)
                 opcode_sa = DDPT_WRITE_VERIFY16_OC;
             else {
-                pr2serr("verify flag for WRITE AND VERIFY (10 or 16) only\n");
+                pr2serr("wverify flag for WRITE AND VERIFY (10 or 16) "
+                        "only\n");
                 return false;
             }
         } else
@@ -367,7 +377,9 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
     if (cdb_sz > 6) {
         if (fp->dpo)
             options_byte |= 0x10;
-        if (fp->verify && write_true) {
+        if (fp->v_verify && write_true)         /* --verify case */
+                options_byte |= (0x1 << 1);     /* set BYTCHK=1 */
+        else if (fp->wverify && write_true) {
             if (fp->bytchk)
                 options_byte |= ((fp->bytchk & 0x3) << 1);
         } else {
@@ -384,6 +396,10 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
     case 6:
         if (0 == opcode_sa)
             opcode_sa = opc_arr[0];
+        if (0xffffff == opcode_sa) {
+            pr2serr("for 6 byte commands, desired command not available\n");
+            return false;
+        }
         cdbp[0] = (uint8_t)opcode_sa;
         sg_put_unaligned_be24((uint32_t)(0x1fffff & s_block), cdbp + 1);
         cdbp[4] = (256 == blocks) ? 0 : (uint8_t)blocks;
@@ -409,6 +425,10 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
     case 10:
         if (0 == opcode_sa)
             opcode_sa = opc_arr[1];
+        if (0xffffff == opcode_sa) {
+            pr2serr("for 10 byte commands, desired command not available\n");
+            return false;
+        }
         if (blocks & (~0xffff)) {
             pr2serr("for 10 byte commands, maximum number of blocks is %d\n",
                     0xffff);
@@ -426,6 +446,10 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
     case 12:
         if (0 == opcode_sa)
             opcode_sa = opc_arr[2];
+        if (0xffffff == opcode_sa) {
+            pr2serr("for 12 byte commands, desired command not available\n");
+            return false;
+        }
         if (s_block > UINT32_MAX) {
             pr2serr("for 12 byte commands, starting LBA exceeds 32 bits\n");
             return false;
@@ -438,6 +462,10 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
     case 16:
         if (0 == opcode_sa)
             opcode_sa = opc_arr[3];
+        if (0xffffff == opcode_sa) {
+            pr2serr("for 16 byte commands, desired command not available\n");
+            return false;
+        }
         cdbp[0] = (uint8_t)opcode_sa;
         cdbp[1] = (uint8_t)options_byte;
         sg_put_unaligned_be64(s_block, cdbp + 2);
@@ -454,6 +482,10 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
     case 32:
         if (0 == opcode_sa)
             opcode_sa = opc_arr[4];
+        if (0xffffff == opcode_sa) {
+            pr2serr("for 32 byte commands, desired command not available\n");
+            return false;
+        }
         cdbp[0] = (uint8_t)DDPT_VARIABLE_LEN_OC;
         cdbp[7] = (uint8_t)0x18;  /* additional length=>32 byte cdb */
         rw_sa = opcode_sa;
@@ -482,7 +514,7 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
             int blocks, int64_t from_block, int bs, uint64_t * io_addrp)
 {
     bool info_valid;
-    int res, k, slen, sense_cat, ret, vt;
+    int res, slen, sense_cat, ret, vt;
     int protect = (in0_out1 ? op->wrprotect : op->rdprotect);
     const struct dev_info_t * dip = (in0_out1 ? op->odip : op->idip);
     const struct flags_t * fp = (in0_out1 ? op->oflagp : op->iflagp);
@@ -499,10 +531,10 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
         return SG_LIB_SYNTAX_ERROR;
     }
     if (op->verbose > 2) {
-        pr2serr("    READ cdb: ");
-        for (k = 0; k < fp->cdbsz; ++k)
-            pr2serr("%02x ", rdCmd[k]);
-        pr2serr("\n");
+        char b[128];
+
+        pr2serr("    READ cdb: %s\n",
+                sg_get_command_str(rdCmd, fp->cdbsz, false, sizeof(b), b));
     }
 
     if (NULL == ptvp) {
@@ -519,7 +551,7 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
     set_scsi_pt_packet_id(ptvp, ++packet_id);
     vt = (op->verbose ? (op->verbose - 1) : 0);
     while (((res = do_scsi_pt(ptvp, dip->fd, DEF_RW_TIMEOUT, vt)) < 0) &&
-           ((-EINTR == res) || (-EAGAIN == res))) {
+           ((-EINTR == res) || (-EAGAIN == res) || (-EBUSY == res))) {
         /* resubmit in these cases */
         if (-EINTR == res)
             ++sp->interrupted_retries;
@@ -579,6 +611,7 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
                         "of failure in sense data\n");
             break;
         case SG_LIB_CAT_NO_SENSE:
+        case SG_LIB_CAT_CONDITION_MET:
             ret = 0;
             break;
         case SG_LIB_CAT_ILLEGAL_REQ:
@@ -881,12 +914,11 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
              int64_t to_block, int bs)
 {
     bool info_valid;
-    int res, k, ret, sense_cat, slen, vt;
+    int res, ret, sense_cat, slen, vt;
     int sg_fd = op->odip->fd;
     uint64_t io_addr = 0;
     struct sg_pt_base * ptvp = op->odip->ptvp;
     const struct flags_t * fp = op->oflagp;
-    const char * desc;
     uint8_t wrCmd[MAX_SCSI_CDBSZ];
     uint8_t sense_b[SENSE_BUFF_LEN];
     struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
@@ -897,21 +929,12 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
                 to_block, blocks);
         return SG_LIB_SYNTAX_ERROR;
     }
-    if (DDPT_WRITE_ATOMIC16_OC == wrCmd[0])
-        desc = "WRITE ATOMIC(16)";
-    else if (DDPT_WRITE_STREAM16_OC == wrCmd[0])
-        desc = "WRITE STREAM(16)";
-    else if (0xe == (0xf & wrCmd[0]))
-        desc = "WRITE AND VERIFY";
-    else
-        desc = "WRITE";
     if (op->verbose > 2) {
-        pr2serr("    %s cdb: ", desc);
-        for (k = 0; k < fp->cdbsz; ++k)
-            pr2serr("%02x ", wrCmd[k]);
-        pr2serr("\n");
-    }
+        char b[128];
 
+        pr2serr("    %s\n",
+                sg_get_command_str(wrCmd, fp->cdbsz, true, sizeof(b), b));
+    }
     if (NULL == ptvp) {
         pr2serr("%s: of_ptvp NULL?\n", __func__);
         return -1;
@@ -926,7 +949,7 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
     set_scsi_pt_packet_id(ptvp, ++packet_id);
     vt = (op->verbose ? (op->verbose - 1) : 0);
     while (((res = do_scsi_pt(ptvp, sg_fd, DEF_RW_TIMEOUT, vt)) < 0) &&
-           ((-EINTR == res) || (-EAGAIN == res))) {
+           ((-EINTR == res) || (-EAGAIN == res) || (-EBUSY == res))) {
         /* resubmit in these cases */
         if (-EINTR == res)
             ++sp->interrupted_retries;
@@ -935,7 +958,7 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
     }
 
     vt = ((op->verbose > 1) ? (op->verbose - 1) : op->verbose);
-    ret = sg_cmds_process_resp(ptvp, desc, res, false /* noisy */, vt,
+    ret = sg_cmds_process_resp(ptvp, NULL, res, false /* noisy */, vt,
                                &sense_cat);
     if (-1 == ret)
         ret = sg_convert_errno(get_scsi_pt_os_err(ptvp));
@@ -944,6 +967,10 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
         ret = sense_cat;
 
         switch (sense_cat) {
+        case SG_LIB_CAT_NO_SENSE:
+        case SG_LIB_CAT_CONDITION_MET:
+            ret = 0;
+            break;
         case SG_LIB_CAT_RECOVERED:
             ++sp->wr_recovered_errs;
             info_valid = sg_get_sense_info_fld(sense_b, slen, &io_addr);
@@ -952,8 +979,10 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
                     pr2serr("    lba of last recovered error in this WRITE=0x%"
                             PRIx64 "\n", io_addr);
                 else
-                    pr2serr("Recovered error: [no info] writing to block=0x%"
-                            PRIx64 ", num=%d\n", to_block, blocks);
+                    pr2serr("Recovered error: [no info] %s block=0x%"
+                            PRIx64 ", num=%d\n",
+                            (op->verify_given ? "verifying" : "writing to"),
+                            to_block, blocks);
             }
             ret = 0;    /* quash error so copy will continue */
             break;
@@ -986,7 +1015,7 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
 }
 
 
-/* Control pass-through write retries.
+/* Control pass-through write (or verify) retries.
  * 0 -> successful, SG_LIB_SYNTAX_ERROR -> unable to build cdb,
  * SG_LIB_CAT_UNIT_ATTENTION -> try again, SG_LIB_CAT_NOT_READY,
  * SG_LIB_CAT_MEDIUM_HARD, SG_LIB_CAT_ABORTED_COMMAND,
@@ -1026,9 +1055,10 @@ pt_write(struct opts_t * op, const uint8_t * buff, int blocks,
         } else if (ret < 0)
             break;
         else if (retries_tmp > 0) {
-            pr2serr(">>> retrying pt write: starting lba=%" PRId64 " [0x%"
-                    PRIx64 "] blocks=%d\n", to_block, (uint64_t)to_block,
-                    blocks);
+            pr2serr(">>> retrying pt %s: starting lba=%" PRId64 " [0x%"
+                    PRIx64 "] blocks=%d\n",
+                    (op->verify_given ? "verify" : "write"),
+                    to_block, (uint64_t)to_block, blocks);
             --retries_tmp;
             ++sp->num_retries;
             if (sp->wr_unrecovered_errs > 0)
@@ -1050,7 +1080,7 @@ int
 pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
                 int blocks, int64_t start_block)
 {
-    int k, ret, res, sense_cat, vt;
+    int ret, res, sense_cat, vt;
     int sg_fd = op->odip->fd;
     uint32_t unum;
     uint64_t s_block = start_block;
@@ -1067,10 +1097,11 @@ pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
     unum = blocks;
     sg_put_unaligned_be32(unum, wsCmdBlk + 10);
     if (op->verbose > 2) {
-        pr2serr("    WRITE SAME(16) cdb: ");
-        for (k = 0; k < (int)sizeof(wsCmdBlk); ++k)
-            pr2serr("%02x ", wsCmdBlk[k]);
-        pr2serr("\n");
+        char b[128];
+
+        pr2serr("    WRITE SAME(16) cdb: %s\n",
+                sg_get_command_str(wsCmdBlk, (int)sizeof(wsCmdBlk), false,
+                                   sizeof(b), b));
         if (op->verbose > 4)
             pr2serr("    Data-out buffer length=%d\n", bs);
     }
@@ -1086,7 +1117,7 @@ pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
     set_scsi_pt_packet_id(ptvp, ++packet_id);
     vt = ((op->verbose > 1) ? (op->verbose - 1) : 0);
     while (((res = do_scsi_pt(ptvp, sg_fd, WRITE_SAME16_TIMEOUT, vt)) < 0) &&
-           ((-EINTR == res) || (-EAGAIN == res))) {
+           ((-EINTR == res) || (-EAGAIN == res) || (-EBUSY == res))) {
         /* resubmit in these cases */
         if (-EINTR == res)
             ++sp->interrupted_retries;
@@ -1101,6 +1132,7 @@ pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
         switch (sense_cat) {
         case SG_LIB_CAT_RECOVERED:
         case SG_LIB_CAT_NO_SENSE:
+        case SG_LIB_CAT_CONDITION_MET:
             ret = 0;
             break;
         case SG_LIB_CAT_MEDIUM_HARD:
@@ -1195,6 +1227,7 @@ pt_tpc_process_res(int cp_ret, int sense_cat, const uint8_t * sense_b,
             break;
         case SG_LIB_CAT_RECOVERED:
         case SG_LIB_CAT_NO_SENSE:
+        case SG_LIB_CAT_CONDITION_MET:
             ret = 0;
             break;
         default:
@@ -1220,7 +1253,7 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
                    bool noisy, int vb, int err_vb)
 {
     bool has_lid;
-    int k, res, ret, sense_cat, tmout;
+    int res, ret, sense_cat, tmout;
     struct sg_pt_base * ptvp;
     uint8_t xcopyCmdBlk[DDPT_TPC_OUT_CMDLEN] =
       {DDPT_TPC_OUT_CMD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -1259,10 +1292,11 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
 
     if (vb) {
         if ((vb > 1) || (param_len <= 0)) {
-            pr2serr("    %s cmd : ", cname);
-            for (k = 0; k < DDPT_TPC_OUT_CMDLEN; ++k)
-                pr2serr("%02x ", xcopyCmdBlk[k]);
-            pr2serr("\n");
+            char b[128];
+
+            pr2serr("    %s cdb: %s\n", cname,
+                    sg_get_command_str(xcopyCmdBlk, DDPT_TPC_OUT_CMDLEN,
+                                       false, sizeof(b), b));
         } else if (has_lid)
             pr2serr("    %s for list_id=%" PRIu32 "\n", cname, list_id);
         if (paramp && param_len) {
@@ -1311,7 +1345,7 @@ pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
                   void * resp, int mx_resp_len, bool noisy, int vb,
                   int err_vb)
 {
-    int k, res, ret, sense_cat, tmout;
+    int res, ret, sense_cat, tmout;
     struct sg_pt_base * ptvp;
     uint8_t rcvcopyresCmdBlk[DDPT_TPC_IN_CMDLEN] =
       {DDPT_TPC_IN_CMD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -1333,10 +1367,11 @@ pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
     tmout = (timeout_secs > 0) ? timeout_secs : DEF_PT_TIMEOUT;
 
     if (vb > 1) {
-        pr2serr("    %s cmd: ", cname);
-        for (k = 0; k < DDPT_TPC_IN_CMDLEN; ++k)
-            pr2serr("%02x ", rcvcopyresCmdBlk[k]);
-        pr2serr("\n");
+        char b[128];
+
+        pr2serr("    %s cdb: %s\n", cname,
+                sg_get_command_str(rcvcopyresCmdBlk, DDPT_TPC_IN_CMDLEN,
+                                   false, sizeof(b), b));
     }
 
     ptvp = construct_scsi_pt_obj();
@@ -1366,4 +1401,87 @@ pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
     return ret;
 }
 
+/* This function performs a PRE-FETCH(10 or 16) with the IMMED bit set. If
+ * cdbsz <=12 does PRE-FETCH(10) otherwise it does PRE-FETCH(16). Returns 0
+ * on success. */
+int
+pt_pre_fetch(struct opts_t * op, int blocks, int64_t start_block)
+{
+    bool pf16;
+    int ret, res, sense_cat, vt;
+    int sg_fd = op->odip->fd;
+    uint64_t s_block = start_block;
+    struct sg_pt_base * ptvp = op->odip->ptvp;
+    uint8_t pfCmdBlk[16];
+    uint8_t sense_b[SENSE_BUFF_LEN];
+    struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
+    pf16 = (op->oflagp->cdbsz > 12);
+    memset(pfCmdBlk, 0, sizeof(pfCmdBlk));
+    pfCmdBlk[0] = pf16 ? DDPT_PRE_FETCH16_OC : DDPT_PRE_FETCH10_OC;
+    pfCmdBlk[1] = 0x2;		/* IMMED */
+    if (pf16) {
+        sg_put_unaligned_be64(s_block, pfCmdBlk + 2);
+        sg_put_unaligned_be32((uint32_t)blocks, pfCmdBlk + 10);
+    } else {
+        sg_put_unaligned_be32(s_block, pfCmdBlk + 2);
+        sg_put_unaligned_be16((uint16_t)blocks, pfCmdBlk + 7);
+    }
+    if (op->verbose > 2) {
+        char b[128];
+
+        pr2serr("    PRE-FETCH(%d) cdb: %s\n", (pf16 ? 16: 10),
+                sg_get_command_str(pfCmdBlk, (pf16 ? 16: 10), false,
+                                   sizeof(b), b));
+    }
+    if (NULL == ptvp) {
+        pr2serr("%s: ptvp NULL?\n", __func__);
+        return -1;
+    }
+    clear_scsi_pt_obj(ptvp);
+    set_scsi_pt_cdb(ptvp, pfCmdBlk, sizeof(pfCmdBlk));
+    set_scsi_pt_sense(ptvp, sense_b, sizeof(sense_b));
+    set_scsi_pt_packet_id(ptvp, ++packet_id);
+    vt = ((op->verbose > 1) ? (op->verbose - 1) : 0);
+    while (((res = do_scsi_pt(ptvp, sg_fd, DEF_PT_TIMEOUT, vt)) < 0) &&
+           ((-EINTR == res) || (-EAGAIN == res) || (-EBUSY == res))) {
+        /* resubmit in these cases */
+        if (-EINTR == res)
+            ++sp->interrupted_retries;
+        else
+            ++sp->io_eagains;
+    }
+    ret = sg_cmds_process_resp(ptvp, "Pre-fetch", res, true /*noisy */,
+                               vt, &sense_cat);
+    if (-1 == ret)
+        ret = sg_convert_errno(get_scsi_pt_os_err(ptvp));
+    else if (-2 == ret) {
+        switch (sense_cat) {
+        case SG_LIB_CAT_RECOVERED:
+        case SG_LIB_CAT_NO_SENSE:
+        case SG_LIB_CAT_CONDITION_MET:
+            ret = 0;
+            break;
+        case SG_LIB_CAT_MEDIUM_HARD:
+            {
+                bool valid;
+                int slen;
+                uint64_t ull = 0;
+
+                slen = get_scsi_pt_sense_len(ptvp);
+                valid = sg_get_sense_info_fld(sense_b, slen, &ull);
+                if (valid)
+                    pr2serr("Medium or hardware error starting at lba=%"
+                            PRIu64 " [0x%" PRIx64 "]\n", ull, ull);
+            }
+            ret = sense_cat;
+            break;
+        default:
+            ret = sense_cat;
+            break;
+        }
+    } else
+        ret = 0;
+
+    return ret;
+}

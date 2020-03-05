@@ -1,4 +1,4 @@
-.TH DDPT "8" "September 2019" "ddpt\-0.96" DDPT
+.TH DDPT "8" "March 2020" "ddpt\-0.96" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -14,8 +14,9 @@ devices that understand the SCSI command set.
 [\fIrtf=RTF\fR] [\fIrtype=RTYPE\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR]
 [\fIstatus=STAT\fR] [\fIto=TO\fR] [\fIverbose=VERB\fR] [\fI\-\-dry\-run\fR]
 [\fI\-\-flexible\fR] [\fI\-\-help\fR] [\fI\-\-job=JF\fR] [\fI\-\-odx\fR]
-[\fI\-\-quiet\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR]
-[\fI\-\-xcopy\fR] [\fIddpt\fR] [\fIJF\fR]
+[\fI\-\-prefetch\fR] [\fI\-\-quiet\fR] [\fI\-\-verbose\fR] [\fI\-\-verify\fR]
+[\fI\-\-version\fR] [\fI\-\-wscan\fR] [\fI\-\-xcopy\fR]
+[\fIddpt\fR] [\fIJF\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
 .PP
@@ -27,7 +28,9 @@ For comparison here is the synopsis for GNU's dd command:
 .SH DESCRIPTION
 .\" Add any additional description here
 .PP
-Copies data between files or simply reads data from a file. This utility is
+Copies data between files or simply reads data from a file. Alternatively
+if the \fI\-\-verify\fR option is given, the \fIIFILE\fR and \fIOFILE\fR
+contents are compared, stopping if an inequality is found. This utility is
 specialized for "files" that are storage devices, especially those that can
 use the SCSI command sets (e.g. SATA and SAS disks). It can issue SCSI
 commands in pass\-through ("pt") mode. Similar syntax and semantics to the
@@ -459,6 +462,11 @@ listed in this and the previous sections. See the JOB FILES section below.
 indicates to this utility that one of the four odx variants is requested.
 See ODX section.
 .TP
+\fB\-p\fR, \fB\-\-prefetch\fR
+this option is only active when the \fI\-\-verify\fR option is also given.
+It causes the SCSI PER-FETCH(OFILE, IMMED) command to be sent at the start
+of each copy segment. See the VERIFY section below.
+.TP
 \fB\-q\fR, \fB\-\-quiet\fR
 redirects the messages (sent to stderr) to /dev/null which is essentially
 throwing them away. That redirect takes place after the command line
@@ -468,6 +476,13 @@ operands and options are parsed and associated sanity checks performed.
 equivalent of \fIverbose=1\fR. If \fI\-\-verbose\fR appears twice then
 that is equivalent to \fIverbose=2\fR. Also \fI\-vv\fR is equivalent to
 \fIverbose=2\fR.
+.TP
+\fB\-X\fR, \fB\-\-verify\fR
+rather than copy, a comparison is done between \fIIFILE\fR and \fIOFILE\fR.
+The compare continues until an inequality is found at which point the
+operation stops. This is only available if \fIOFILE\fR is a pass\-through
+device that implements VERIFY(10 or 16) with BYTCHK set to 1. See the
+VERIFY section below.
 .TP
 \fB\-V\fR, \fB\-\-version\fR
 reports version number information then exits.
@@ -604,7 +619,7 @@ another process locking (or with an exclusive open) is complete before
 continuing.
 .TP
 bytchk [o] [pt]
-only active when used together with oflag=verify. Sets the BYTCHK field in
+only active when used together with oflag=wverify. Sets the BYTCHK field in
 the SCSI WRITE AND VERIFY command. Since that field is two bits wide, this
 flag can be specified multiple times (up to three) to place the corresponding
 value in the field.
@@ -899,7 +914,7 @@ with "oflag=sparing".
 unmap [io] [pt]
 same as the trim flag.
 .TP
-verify [o] [pt]
+wverify [o] [pt]
 this causes SCSI WRITE AND VERIFY commands to be sent to \fIOFILE\fR (instead
 of SCSI WRITE (or WRITE ATOMIC) commands). Note that the fua flag is ignored
 when this flag is given. The BYTCHK field in the SCSI WRITE AND VERIFY
@@ -1548,6 +1563,30 @@ timeout if there is a low level error. However NFS (the Network File
 System) will potentially wait for a long time (e.g. expecting a network
 problem will soon be fixed) and in this case using "intio=1" may be
 best.
+.SH VERIFY
+The usual way to check the two disks (or part of the disks) are the same
+is to move through the segments to be compared, reading from both and
+comparing the returned buffers, stopping if there is an in equality.
+.PP
+This utility takes a different approach that relies on the \fIOFILE\fR
+being a pass through device. That pass-through device needs to support
+the SCSI VERIFY command with the BYTCHK field set to 1. Optionally, for
+the \fI\-\-prefetch\fR option to improve performance that pass-through
+device needs to support the SCSI PRE-FETCH command with its IMMED bit
+set.
+.PP
+When the \fI\-\-verify\fR option is given, instead of reading both
+\fIIFILE\fR and \fIOFILE\fR, only the \fIIFILE\fR is read. Then the result
+of that read is sent to the \fIOFILE\fR device as the data\-out buffer
+of a VERIFY(BYTCHK=1) command. So the comparison is actually done on the
+\fIOFILE\fR device rather than the host computer's main memory.
+.PP
+If the \fI\-\-prefetch\fR option is also given, then before the \fIIFILE\fR
+read, a PRE-FETCH(OFILE, IMMED) is sent. The IMMED bit will make it return
+more or less immediately. The effect of the PRE-FETCH should be to bring
+the contents of the data to be used for the \fIOFILE\fR side of the
+comparison, into the \fIOFILE\fR device's cache. And that should make the
+later VERIFY(BYTCHK=1) command faster.
 .SH TAPE
 There is support for copies to and from tape drives in Linux. Only the st
 driver device names can be used (e.g. /dev/st0 and /dev/nst2). Hence use of
@@ -1925,7 +1964,7 @@ Written by Doug Gilbert
 .SH "REPORTING BUGS"
 Report bugs to <dgilbert at interlog dot com>.
 .SH COPYRIGHT
-Copyright \(co 2008\-2019 Douglas Gilbert
+Copyright \(co 2008\-2020 Douglas Gilbert
 .br
 This software is distributed under the GPL version 2. There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -1945,8 +1984,7 @@ To change mode parameters that effect a SCSI device's caching and error
 recovery see
 .B sdparm(sdparm)
 .PP
-To verify the data on the media or to verify it against some other
-copy of the data see
+To verify the data on the media is readable see:
 .B sg_verify(sg3_utils)
 .PP
 To scan and repair disk partitions see TestDisk (testdisk).
