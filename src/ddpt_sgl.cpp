@@ -66,7 +66,7 @@
 #endif
 
 
-static const char * ddpt_sgl_version_str = "0.96 20200301 [svn: r374]";
+static const char * ddpt_sgl_version_str = "0.96 20200303 [svn: r375]";
 
 #include "ddpt.h"
 #include "sg_lib.h"
@@ -1262,7 +1262,7 @@ cl_index_parse(const char * arg, struct sgl_opts_t * op)
     return 0;
 }
 
-/* hold limiting values of CHS or the mapping a a flat LBA */
+/* hold limiting values of CHS or the mapping a flat LBA */
 struct work_chs_t {
     uint32_t cyl;
     uint32_t head;

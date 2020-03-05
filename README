@@ -73,7 +73,7 @@ html file is placed in the "doc" directory.
 
 Build infrastructure
 --------------------
-This packages uses the automake and autoconf tools. The generating files
+This package uses the automake and autoconf tools. The generating files
 (scripts) are configure.ac, Makefile.am, doc/Makefile.am, src/Makefile.am and
 autogen.sh .  The autogen.sh script only needs to be executed if one of the
 other generating files in the above list is changed.
@@ -148,6 +148,5 @@ See README.win32
 
 
 Douglas Gilbert
-25th April 2018
-
+3rd March 2020
 
