@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2019, Douglas Gilbert
+ * Copyright (c) 2008-2020, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -156,7 +156,8 @@ extern "C" {
 #define FT_BLOCK 32             /* block device */
 #define FT_FIFO 64              /* fifo (named or unnamed pipe (stdout)) */
 #define FT_CHAR 128             /* char dev, doesn't fit another category */
-#define FT_ALL_FF 256           /* iflag=ff so input will be 0xff bytes */
+#define FT_NVME 256             /* char or blk dev, NVMe device/SSD */
+#define FT_ALL_FF 512           /* iflag=ff so input will be 0xff bytes */
 #define FT_ERROR 0x800000       /* couldn't "stat" file */
 
 /* ODX type requested */

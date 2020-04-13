@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019, Douglas Gilbert
+ * Copyright (c) 2013-2020, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -402,9 +402,13 @@ unix_dd_filetype(const char * filename, int verbose)
 #else
         return FT_PT;
 #endif
-    } else if (S_ISBLK(st.st_mode))
+    } else if (S_ISBLK(st.st_mode)) {
+#ifdef SG_LIB_LINUX
+	if (BLOCK_EXT_MAJOR == major(st.st_rdev))
+	    return FT_NVME;
+#endif 
         return FT_BLOCK;
-    else if (S_ISFIFO(st.st_mode))
+    } else if (S_ISFIFO(st.st_mode))
         return FT_FIFO;
     return FT_OTHER;
 }
@@ -457,6 +461,11 @@ dd_filetype_str(int ft, char * buff, int max_bufflen, const char * fname)
         off += sg_scnpr(buff + off, max_bufflen - off, "regular file ");
     if (FT_CHAR & ft)
         off += sg_scnpr(buff + off, max_bufflen - off, "char device ");
+    if (FT_NVME & ft)
+        off += sg_scnpr(buff + off, max_bufflen - off, "NVMe device ");
+    if (FT_ALL_FF & ft)
+        off += sg_scnpr(buff + off, max_bufflen - off,
+		        "null device full of 0xff bytes ");
     if (FT_OTHER & ft)
         off += sg_scnpr(buff + off, max_bufflen - off, "other file type ");
     if (FT_ERROR & ft)

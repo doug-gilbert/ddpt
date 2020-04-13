@@ -1,5 +1,5 @@
 %define	name	ddpt
-%define	version	0.96
+%define	version	0.97
 %define	release	1
 
 Summary:	Copy files (like dd) especially SCSI/storage devices
@@ -52,6 +52,9 @@ fi
 %{_mandir}/man8/*
 
 %changelog
+* Mon Apr 13 2020 - dgilbert at interlog dot com
+- see ChangeLog
+  * ddpt-0.97
 * Tue Mar 03 2020 - dgilbert at interlog dot com
 - see ChangeLog
   * ddpt-0.96
