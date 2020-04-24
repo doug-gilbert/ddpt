@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.97 20200413 [svn: r377]";
+static const char * ddpt_version_str = "0.98 20200423 [svn: r378]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -2786,10 +2786,10 @@ do_rw_copy(struct opts_t * op)
                 ++csp->stats.out_sparse_partial;
             goto bypass_write;
         }
+        signals_process_delay(op, DELAY_WRITE);
         if (FT_DEV_NULL & od_type)
             goto bypass_write;  /* don't bump out_full (earlier revs did) */
 
-        signals_process_delay(op, DELAY_WRITE);
         if (FT_PT & od_type) {
             csp->low_bp = wPos;
             csp->subseg_bp = csp->low_bp;

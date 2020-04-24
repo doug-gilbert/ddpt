@@ -133,7 +133,7 @@ extern "C" {
 #define DEF_LID4_LID 257        /* just above the LID1 highest of 255 */
 #define DEF_LID4_WR_LID 258
 
-/* status=progress or status=progress,progress */
+/* status=progress, status=progress,progress, --progress or -p */
 #define PROGRESS_TRIGGER_MS 120000      /* milliseconds: 2 minutes */
 #define PROGRESS2_TRIGGER_MS 60000      /* milliseconds: 1 minute */
 #define PROGRESS3_TRIGGER_MS 30000      /* milliseconds: 30 seconds */

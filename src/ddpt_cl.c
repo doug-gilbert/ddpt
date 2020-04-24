@@ -95,12 +95,12 @@ primary_help:
             "             [verbose=VERB]\n"
             "             [--dry-run] [--flexible] [--help] [--job=JF] "
             "[--odx]\n"
-            "             [--prefetch] [--quiet] [--verbose] [--verify] "
-            "[--version]\n"
+            "             [--prefetch] [--progress] [--quiet] [--verbose] "
+	    "[--verify]\n"
 #ifdef SG_LIB_WIN32
-            "             [--wscan] [--xcopy] [ddpt] [JF]\n"
+            "             [--version] [--wscan] [--xcopy] [ddpt] [JF]\n"
 #else
-            "             [--xcopy] [ddpt] [JF]\n"
+            "             [--version] [--xcopy] [ddpt] [JF]\n"
 #endif
            );
     pr2serr("  where the main operands are:\n"
@@ -146,8 +146,10 @@ primary_help:
             "    --help|-h     print out this usage message then exit\n"
             "    --job=JF|-j JF    JF is job file containing options\n"
             "    --odx|-o       do ODX copy rather than normal rw copy\n"
-            "    --prefetch|-o    only active with --verify : adds "
+            "    --prefetch|-P    only active with --verify : adds "
             "PRE-FETCH(OFILE, IMMED)\n"
+            "    --progress|-p    same as status=progress, periodic "
+	    "progress reports\n"
             "    --quiet|-q     suppresses messages (by redirecting them "
             "to /dev/null)\n"
             "    --verbose|-v    equivalent to verbose=1\n"
@@ -1582,6 +1584,8 @@ skip_name_eq_value:
             op->has_odx = true;
         else if (0 == strncmp(key, "--prefetch", 10))
             op->prefetch_given = true;
+        else if (0 == strncmp(key, "--progress", 10))
+            ++op->progress;
         else if (0 == strncmp(key, "--quiet", 7))
             op->quiet = true;
         else if (0 == strncmp(key, "--verb", 6)) {
@@ -1623,6 +1627,9 @@ skip_name_eq_value:
                 op->has_odx = true;
             res += n;
             n = num_chs_in_str(key + 1, keylen - 1, 'p');
+            op->progress += n;
+            res += n;
+            n = num_chs_in_str(key + 1, keylen - 1, 'P');
             if (n > 0)
                 op->prefetch_given = true;
             res += n;
