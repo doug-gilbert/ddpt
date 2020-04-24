@@ -342,7 +342,8 @@ find_bsg_major(int verbose)
 
 /* Categorize file by using the stat() system call on its filename.
  * If not found FT_ERROR returned. The FT_* constants are a bit mask
- * and later logic can combine them (e.g. FT_BLOCK | FT_PT).
+ * so this function and later logic can combine them
+ * (e.g. FT_BLOCK | FT_PT).
  */
 static int
 unix_dd_filetype(const char * filename, int verbose)
@@ -405,7 +406,7 @@ unix_dd_filetype(const char * filename, int verbose)
     } else if (S_ISBLK(st.st_mode)) {
 #ifdef SG_LIB_LINUX
 	if (BLOCK_EXT_MAJOR == major(st.st_rdev))
-	    return FT_NVME;
+	    return FT_NVME | FT_BLOCK;
 #endif 
         return FT_BLOCK;
     } else if (S_ISFIFO(st.st_mode))

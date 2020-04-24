@@ -14,8 +14,9 @@ devices that understand the SCSI command set.
 [\fIrtf=RTF\fR] [\fIrtype=RTYPE\fR] [\fIseek=SEEK\fR] [\fIskip=SKIP\fR]
 [\fIstatus=STAT\fR] [\fIto=TO\fR] [\fIverbose=VERB\fR] [\fI\-\-dry\-run\fR]
 [\fI\-\-flexible\fR] [\fI\-\-help\fR] [\fI\-\-job=JF\fR] [\fI\-\-odx\fR]
-[\fI\-\-prefetch\fR] [\fI\-\-quiet\fR] [\fI\-\-verbose\fR] [\fI\-\-verify\fR]
-[\fI\-\-version\fR] [\fI\-\-wscan\fR] [\fI\-\-xcopy\fR]
+[\fI\-\-prefetch\fR] [\fI\-\-progress\fR] [\fI\-\-quiet\fR]
+[\fI\-\-verbose\fR] [\fI\-\-verify\fR] [\fI\-\-version\fR] [\fI\-\-wscan\fR]
+[\fI\-\-xcopy\fR]
 [\fIddpt\fR] [\fIJF\fR]
 .PP
 For comparison here is the synopsis for GNU's dd command:
@@ -398,7 +399,8 @@ process. The amount of data output by the progress reports can modified at
 runtime (e.g. during a long copy). If the verbose flag is 0 or 1 (but not
 higher and not if the \fI\-\-quiet\fR option is given) then sending a
 SIG_USR1 (or SIGINFO in FreeBSD) signal to the running ddpt process will
-toggle the verbose flag between 0 and 1.
+toggle the verbose flag between 0 and 1. Note there is now a shorter
+form, the command line option: \fI\-\-progress\fR or simply '\-p'.
 .br
 Note that GNU's dd supports 'noxfer', 'none' and 'progress' with similar
 semantics.
@@ -462,10 +464,16 @@ listed in this and the previous sections. See the JOB FILES section below.
 indicates to this utility that one of the four odx variants is requested.
 See ODX section.
 .TP
-\fB\-p\fR, \fB\-\-prefetch\fR
+\fB\-P\fR, \fB\-\-prefetch\fR
 this option is only active when the \fI\-\-verify\fR option is also given.
 It causes the SCSI PER-FETCH(OFILE, IMMED) command to be sent at the start
 of each copy segment. See the VERIFY section below.
+.TP
+\fB\-p\fR, \fB\-\-progress\fR
+this option has the same effect as status=progress but is shorter to type
+and easier to remember. When given once, the default reporting period is
+two minutes, if given twice (e.g. '\-pp') that period is shortened to
+one minute.
 .TP
 \fB\-q\fR, \fB\-\-quiet\fR
 redirects the messages (sent to stderr) to /dev/null which is essentially
