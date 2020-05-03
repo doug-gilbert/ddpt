@@ -636,6 +636,8 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
                     ret = SG_LIB_CAT_MEDIUM_HARD;
                 }
             }
+            if (op->verbose > 0)
+                sg_print_command_len(rdCmd, fp->cdbsz);
             break;
         case SG_LIB_LBA_OUT_OF_RANGE:
             break;
@@ -989,8 +991,11 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
         case SG_LIB_CAT_ABORTED_COMMAND:
         case SG_LIB_CAT_UNIT_ATTENTION:
             break;
-        case SG_LIB_CAT_NOT_READY:
         case SG_LIB_CAT_ILLEGAL_REQ:
+            if (op->verbose > 0)
+                sg_print_command_len(wrCmd, fp->cdbsz);
+            /* FALL THROUGH */
+        case SG_LIB_CAT_NOT_READY:
         case SG_LIB_LBA_OUT_OF_RANGE:
         case SG_LIB_CAT_INVALID_OP:
         case SG_LIB_CAT_SENSE:
@@ -1333,9 +1338,12 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
             ret = SG_LIB_CAT_RES_CONFLICT;
         else
             ret = sg_convert_errno(get_scsi_pt_os_err(ptvp));
-    } else
+    } else {
         ret = pt_tpc_process_res(ret, sense_cat, sense_b,
                                  get_scsi_pt_sense_len(ptvp));
+        if ((vb > 0) && (-2 == ret) && (SG_LIB_CAT_ILLEGAL_REQ == sense_cat))
+            sg_print_command_len(xcopyCmdBlk, sizeof(xcopyCmdBlk));
+    }
     destruct_scsi_pt_obj(ptvp);
     return ret;
 }
@@ -1394,9 +1402,12 @@ pt_3party_copy_in(int sg_fd, int sa, uint32_t list_id, int timeout_secs,
             ret = SG_LIB_CAT_RES_CONFLICT;
         else
             ret = sg_convert_errno(get_scsi_pt_os_err(ptvp));
-    } else
+    } else {
         ret = pt_tpc_process_res(ret, sense_cat, sense_b,
                                  get_scsi_pt_sense_len(ptvp));
+        if ((vb > 0) && (-2 == ret) && (SG_LIB_CAT_ILLEGAL_REQ == sense_cat))
+            sg_print_command_len(rcvcopyresCmdBlk, sizeof(rcvcopyresCmdBlk));
+    }
     destruct_scsi_pt_obj(ptvp);
     return ret;
 }
@@ -1419,7 +1430,7 @@ pt_pre_fetch(struct opts_t * op, int blocks, int64_t start_block)
     pf16 = (op->oflagp->cdbsz > 12);
     memset(pfCmdBlk, 0, sizeof(pfCmdBlk));
     pfCmdBlk[0] = pf16 ? DDPT_PRE_FETCH16_OC : DDPT_PRE_FETCH10_OC;
-    pfCmdBlk[1] = 0x2;		/* IMMED */
+    pfCmdBlk[1] = 0x2;          /* IMMED */
     if (pf16) {
         sg_put_unaligned_be64(s_block, pfCmdBlk + 2);
         sg_put_unaligned_be32((uint32_t)blocks, pfCmdBlk + 10);

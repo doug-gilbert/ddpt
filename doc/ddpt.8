@@ -1364,6 +1364,28 @@ Some random product examples: the Intel X25\-M G2 SSDs have trim with
 recent firmware and they do deterministic read zero after trim. The
 Seagate Pulsar SSD has an ATA interface which supports the deterministic
 reads of zero after the DATA SET MANAGEMENT command with the TRIM option.
+.SH NVME SUPPORT
+The following information is Linux specific at this time. NVMe devices in
+Linux have names like /dev/nvme0, /dev/nvme0n1 and /dev/nvme0n1p3. The first
+device name is a character device and some "Admin" commands can be sent to
+it (e.g. Identify) but no media access commands (which the NVMe
+specification calls the "NVM" Command set). The number given is a controller
+identifier. Storage in NVMe is associated with namespaces which are numbered
+within a controller, starting at 1 (e.g. /dev/nvme0n1 is controller 0,
+namespace 1). These device nodes are block devices and can be given as
+\fIIFILE\fR and/or \fIOFILE\fR. The third type of NVMe device node
+selects a partition (within a namespace, within a controller). Partition
+numbers also start with 1.
+.PP
+By default ddpt will treat the second and third form (of NVMe device nodes)
+as standard Linux block devices. So ddpt will act in the same as the
+dd utility would. In a similar fashion to accessing SCSI block devices (e.g.
+/dev/sdc3) get access NVMe block devices the "pt" flag is required, either
+with \fIiflag=FLAGS\fR and/or \fIoflag=FLAGS\fR. There is a SCSI to NVMe
+Translation Layer (SNTL) in the sg3_utils library which underpins this
+utility.
+yyyyyyyy
+xxxxxxxx
 .SH DD DIFFERENCES
 dd defaults "if=" and "of=" to stdin and stdout respectively. This follows
 Unix filter conventions. However since dd and ddpt are often used to read
