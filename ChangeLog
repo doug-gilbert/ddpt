@@ -2,13 +2,13 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.97 [20200503] [svn: r379]
+Changelog for ddpt-0.97 [20200713] [svn: r380]
   - NVMe devices can now be accessed via iflag=pt or oflag=pt
     without those flags they will be accessed as block devices
   - now accept --progress or -p as shorter form of
     status=progress [borrowed from FreeBSD's dd]
   - fix progress reporting when OFILE is /dev/null
-  - point svn:externals to rev 850 of sg3_utils
+  - point svn:externals to rev 855 of sg3_utils
 
 Changelog for ddpt-0.96 [20200303] [svn: r375]
   - allow scatter gather lists for skip= and seek= where they can
