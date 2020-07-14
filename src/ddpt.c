@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.98 20200503 [svn: r379]";
+static const char * ddpt_version_str = "0.98 20200713 [svn: r380]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -146,7 +146,7 @@ open_if(struct opts_t * op)
         pr2serr("unable to access %s\n", ifn);
         return -SG_LIB_FILE_ERROR;
     } else if (((FT_BLOCK | FT_TAPE | FT_NVME | FT_OTHER) & idip->d_type) &&
-	       ifp->pt)
+               ifp->pt)
         idip->d_type |= FT_PT;
     if (vb)
         pr2serr(" >> Input file type: %s\n",
