@@ -98,7 +98,7 @@ extern "C" {
 
 
 #define STR_SZ 1024
-#define INOUTF_SZ 512
+#define INOUTF_SZ (STR_SZ + 2)
 #define EBUFF_SZ 512
 
 #define DEF_BLOCK_SIZE 512

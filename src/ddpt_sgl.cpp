@@ -66,7 +66,7 @@
 #endif
 
 
-static const char * ddpt_sgl_version_str = "0.97 20200713 [svn: r380]";
+static const char * ddpt_sgl_version_str = "0.97 20200823 [svn: r381]";
 
 #include "ddpt.h"
 #include "sg_lib.h"
@@ -244,7 +244,7 @@ usage()
             "    --version|-V          print version string and exit\n\n"
             "A SGL can be a single value (a starting_LBA) or an even "
             "number of comma\nseparated values parsed into a sequence of "
-            " starting_LBA,NUM pairs.\nAlternatively SGL can be a filename "
+            "starting_LBA,NUM pairs.\nAlternatively SGL can be a filename "
             "prefixed by '@' or 'H@'. For '@' that\nfile contains decimal "
             "values by default unless prefixed by '0x' or with\na trailing "
             "'h'. For 'H@' that file contains hexadecimal values with the\n"
