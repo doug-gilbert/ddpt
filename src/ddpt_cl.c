@@ -257,6 +257,7 @@ secondary_help:
 tertiary_help:
     pr2serr("FLAGS: (continued)\n"
             "   nocache        use posix_fadvise(POSIX_FADV_DONTNEED)\n"
+            "   nocreat (o)    OFILE must exist, it will not be created\n"
             "   no_del_tkn (odx)  do not set DEL_TKN on last write from "
             "ROD\n"
             "   nofm (o)       no File Mark (FM) on close when writing to "
@@ -304,6 +305,7 @@ tertiary_help:
             "   fdatasync      same as oflag=fdatasync\n"
             "   fsync          same as oflag=fsync\n"
             "   no_del_tkn     same as oflag=no_del_tkn\n"
+            "   nocreat        same as oflag=nocreat\n"
             "   noerror        similar to iflag=coe\n"
             "   notrunc        does nothing because this is default action "
             "of ddpt\n"
@@ -465,6 +467,8 @@ conv_process(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
             ofp->fsync = true;
         else if (0 == strcmp(cp, "no_del_tkn"))
             ofp->no_del_tkn = true;
+        else if (0 == strcmp(cp, "nocreat"))
+            ofp->nocreat = true;
         else if (0 == strcmp(cp, "noerror"))
             ifp->coe = true;        /* will still fail on write error */
         else if (0 == strcmp(cp, "notrunc"))
@@ -563,6 +567,8 @@ flags_process(const char * arg, struct flags_t * fp)
         else if ((0 == strcmp(cp, "no_del_tkn")) ||
                  (0 == strcmp(cp, "no-del-tkn")))
             fp->no_del_tkn = true;
+        else if (0 == strcmp(cp, "nocreat"))
+            fp->nocreat = true;
         else if (0 == strcmp(cp, "nofm"))     /* No filemark on tape close */
             fp->nofm = true;
         else if (0 == strcmp(cp, "nopad"))

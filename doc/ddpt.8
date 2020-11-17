@@ -1,4 +1,4 @@
-.TH DDPT "8" "August 2020" "ddpt\-0.97" DDPT
+.TH DDPT "8" "October 2020" "ddpt\-0.97" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -540,6 +540,13 @@ with the \fIOFILE\fR to storage at the end of the copy. This conversion
 no_del_tkn
 equivalent to "oflag=no_del_tkn".
 .TP
+nocreat
+\fIOFILE\fR will not be created if it doesn't exist. The default action
+if \fIOFILE\fR does not exist is to create a regular file (then write
+into it). The default action can be surprising if writing to a device
+node in /dev and due to some external action (e.g. a USB key being
+removed) that device node name disappears.
+.TP
 noerror
 this conversion is very close to "iflag=coe" and is treated as such. See
 the "coe" flag. Note that an error on a block device or regular file
@@ -773,6 +780,11 @@ be used (one after the other). The default action is to set the DEL_TKN bit
 on the last WUT command of each ROD. Either way it should not make much
 difference because the copy manager deletes a ROD Token when its inactivity
 time\-out occurs.
+.TP
+nocreat [o]
+if \fIOFILE\fR does not exist then an error will be generated rather than
+creating an empty regular file. This flag has the same action
+as "conv=nocreat".
 .TP
 nofm [o] [tape]
 no File Mark (FM) on close when writing to tape. See TAPE section.
@@ -1384,8 +1396,6 @@ dd utility would. In a similar fashion to accessing SCSI block devices (e.g.
 with \fIiflag=FLAGS\fR and/or \fIoflag=FLAGS\fR. There is a SCSI to NVMe
 Translation Layer (SNTL) in the sg3_utils library which underpins this
 utility.
-yyyyyyyy
-xxxxxxxx
 .SH DD DIFFERENCES
 dd defaults "if=" and "of=" to stdin and stdout respectively. This follows
 Unix filter conventions. However since dd and ddpt are often used to read

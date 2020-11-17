@@ -469,6 +469,7 @@ struct flags_t {
     bool immed;         /* xcopy(odx): returns immediately from POPULATE
                          * TOKEN and WRITE USING TOKEN then poll */
     bool no_del_tkn;    /* xcopy(odx): don't delete token after xfer */
+    bool nocreat;       /* OFILE must exist, it won't be created */
     bool nofm;          /* tape: no filemark on close */
     bool nopad;         /* tape: no pad on partial writes */
     bool norcap;        /* no READ CAPACITY calls on pt */

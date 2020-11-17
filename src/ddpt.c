@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.98 20200823 [svn: r381]";
+static const char * ddpt_version_str = "0.98 20201116 [svn: r382]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -275,9 +275,13 @@ open_of(struct opts_t * op)
             /* if oflag=pt, then creating a regular file is unhelpful */
             pr2serr("Cannot create a regular file called %s as a pt\n", ofn);
             return -SG_LIB_FILE_ERROR;
+        } else if (ofp->nocreat) {
+            pr2serr("Cannot create a regular file [%s] due to "
+                    "oflag=nocreat\n", ofn);
+            return -SG_LIB_FILE_ERROR;
         }
         flags = ofp->sparing ? O_RDWR : O_WRONLY;
-        if (! outf_exists)
+        if ((! outf_exists) && (! ofp->nocreat))
             flags |= O_CREAT;
         if (ofp->direct)
             flags |= O_DIRECT;
