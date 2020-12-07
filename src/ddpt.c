@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.98 20201116 [svn: r382]";
+static const char * ddpt_version_str = "0.97 20201207 [svn: r383]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -2950,6 +2950,10 @@ prepare_pi(struct opts_t * op)
                     "with different logical block sizes\n");
             return SG_LIB_CAT_OTHER;
         }
+        if ((2 == op->idip->prot_type) && (FT_PT & op->idip->d_type) &&
+            (32 != op->iflagp->cdbsz))
+            pr2serr("Warning: 'cdbsz=32' may be needed due to protection "
+                    "type 2 on IFILE\n");
         if (op->wrprotect) {
             if (op->idip->p_i_exp != op->odip->p_i_exp) {
                 pr2serr("Don't support IFILE and OFILE with "
@@ -2973,6 +2977,10 @@ prepare_pi(struct opts_t * op)
                     "with different logical block sizes\n");
             return SG_LIB_CAT_OTHER;
         }
+        if ((2 == op->odip->prot_type) && (FT_PT & op->odip->d_type) &&
+            (32 != op->oflagp->cdbsz))
+            pr2serr("Warning: 'cdbsz=32' may be needed due to protection "
+                    "type 2 on OFILE\n");
         res = (op->odip->p_i_exp ? (1 << op->odip->p_i_exp) : 1) * 8;
         op->obs_pi += res;
         if ((op->ibs_lb == op->obs_lb) && (0 == op->rdprotect))

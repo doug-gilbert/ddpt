@@ -507,7 +507,7 @@ struct flags_t {
     bool zero;          /* iflag=00 makes input all 0x0 bytes */
 
     int bytchk;         /* set field (2 bit) in WRITE AND VERIFY */
-    int cdbsz;          /* 6, 10, 12, 16 or 32 */
+    int cdbsz;          /* 0, 6, 10, 12, 16 or 32 */
     int force;          /* overrides errors, 2: force harder */
     int nocache;        /* (1 & nocache): IF and/or OF; (2 & nocache): OF .
                          * OF, OF2: use posix_fadvise(POSIX_FADV_DONTNEED)

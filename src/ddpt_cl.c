@@ -79,7 +79,7 @@ ddpt_usage(int help)
 
 primary_help:
     pr2serr("Usage: "
-            "ddpt  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=6|10|12|16|32] [coe=0|1]\n"
+            "ddpt  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=IO_CDBSZ] [coe=0|1]\n"
             "             [coe_limit=CL] [conv=CONVS] [count=COUNT] "
             "[ddpt=VERS]\n"
             "             [delay=MS[,W_MS]] [ibs=IBS] [id_usage=LIU] "
@@ -96,7 +96,7 @@ primary_help:
             "             [--dry-run] [--flexible] [--help] [--job=JF] "
             "[--odx]\n"
             "             [--prefetch] [--progress] [--quiet] [--verbose] "
-	    "[--verify]\n"
+            "[--verify]\n"
 #ifdef SG_LIB_WIN32
             "             [--version] [--wscan] [--xcopy] [ddpt] [JF]\n"
 #else
@@ -124,7 +124,9 @@ primary_help:
             "is not equal to OBS\n"
             "                then (((IBS * BPT) %% OBS) == 0) is required\n"
             "    of          OFILE file or device to write to (def: "
-            "/dev/null)\n");
+            "/dev/null)\n"
+            "                if '--verify' also given then VERIFY command "
+            "done on OFILE\n");
     pr2serr("    oflag       output flags, comma separated list from FLAGS "
             "(see below)\n"
             "    seek        block position to start writing in OFILE, "
@@ -149,7 +151,7 @@ primary_help:
             "    --prefetch|-P    only active with --verify : adds "
             "PRE-FETCH(OFILE, IMMED)\n"
             "    --progress|-p    same as status=progress, periodic "
-	    "progress reports\n"
+            "progress reports\n"
             "    --quiet|-q     suppresses messages (by redirecting them "
             "to /dev/null)\n"
             "    --verbose|-v    equivalent to verbose=1\n"
@@ -161,9 +163,10 @@ primary_help:
 #endif
             "    --xcopy|-x    do xcopy(LID1) rather than normal rw copy\n\n"
             "  and the arguments are:\n"
-            "    ddpt          string must not appear on command line, "
-            "required\n"
-            "                  in JF\n"
+            "    ddpt          string 'ddpt' must not appear in command "
+            "line\n"
+            "                  arguments but is required to appear inside a "
+            "JF\n"
             "    JF            job file: a file containing options; can not "
             "start\n"
             "                  with '-' or contain '='. Parsed when seen\n"
@@ -179,8 +182,14 @@ primary_help:
 
 secondary_help:
     pr2serr("  where the lesser used command line operands are:\n"
-            "    cdbsz       size of SCSI READ or WRITE cdb (default is "
-            "10)\n"
+            "    cdbsz       if IO_CDBSZ is a single number it can be 0, 6, "
+            "10, 12, 16\n"
+            "                or 32. The default is 0 which will prefer 10 "
+            "over 16 byte\n"
+            "                CDB size. If two numbers separated by comma "
+            "given then\n"
+            "                the first is for IFILE and second is for "
+            "OFILE\n"
             "    coe_limit   limit consecutive 'bad' blocks on reads to CL "
             "times\n"
             "                when coe=1 (default: 0 which is no limit)\n"
@@ -1232,8 +1241,21 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
         } else if (0 == strcmp(key, "cbs"))
             pr2serr("the cbs= operand is ignored\n");
         else if (0 == strcmp(key, "cdbsz")) {
-            ifp->cdbsz = sg_get_num(buf);
-            ofp->cdbsz = ifp->cdbsz;
+            n = sg_get_num(buf);
+            if (-1 == n) {
+                pr2serr("bad argument to 'cdbsz='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            ifp->cdbsz = (n > 0 ? n : DEF_SCSI_CDBSZ);
+            if ((cp = strchr(buf, ','))) {
+                n = sg_get_num(cp + 1);
+                if (-1 == n) {
+                    pr2serr("bad argument to 'cdbsz=' after comma\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+                ofp->cdbsz = (n > 0 ? n : DEF_SCSI_CDBSZ);
+            } else
+                ofp->cdbsz = (n > 0 ? n : DEF_SCSI_CDBSZ);
             op->cdbsz_given = true;
         } else if (0 == strcmp(key, "coe")) {
             ifp->coe = sg_get_num(buf);
