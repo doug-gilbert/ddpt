@@ -98,7 +98,7 @@ extern "C" {
 
 
 #define STR_SZ 1024
-#define INOUTF_SZ 512
+#define INOUTF_SZ (STR_SZ + 2)
 #define EBUFF_SZ 512
 
 #define DEF_BLOCK_SIZE 512
@@ -469,6 +469,7 @@ struct flags_t {
     bool immed;         /* xcopy(odx): returns immediately from POPULATE
                          * TOKEN and WRITE USING TOKEN then poll */
     bool no_del_tkn;    /* xcopy(odx): don't delete token after xfer */
+    bool nocreat;       /* OFILE must exist, it won't be created */
     bool nofm;          /* tape: no filemark on close */
     bool nopad;         /* tape: no pad on partial writes */
     bool norcap;        /* no READ CAPACITY calls on pt */
@@ -506,7 +507,7 @@ struct flags_t {
     bool zero;          /* iflag=00 makes input all 0x0 bytes */
 
     int bytchk;         /* set field (2 bit) in WRITE AND VERIFY */
-    int cdbsz;          /* 6, 10, 12, 16 or 32 */
+    int cdbsz;          /* 0, 6, 10, 12, 16 or 32 */
     int force;          /* overrides errors, 2: force harder */
     int nocache;        /* (1 & nocache): IF and/or OF; (2 & nocache): OF .
                          * OF, OF2: use posix_fadvise(POSIX_FADV_DONTNEED)
@@ -995,5 +996,3 @@ struct sgl_opts_t {
 #endif  /* end of __cplusplus block */
 
 #endif  /* DDPT_H guard against multiple includes */
-
-

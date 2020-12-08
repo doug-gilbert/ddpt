@@ -119,5 +119,3 @@ AC_ARG_ENABLE([fast-lebe],
 
 # AC_PROG_LIBTOOL
 AC_OUTPUT(Makefile src/Makefile doc/Makefile)
-
-

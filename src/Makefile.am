@@ -144,5 +144,3 @@ EXTRA_ddpt_sgl_SOURCES = ../lib/sg_pt_linux.c	\
 			../lib/sg_pt_solaris.c	\
 			../lib/sg_pt_win32.c	\
 			../include/sg_pt_win32.h
-
-

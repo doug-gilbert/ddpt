@@ -79,7 +79,7 @@ ddpt_usage(int help)
 
 primary_help:
     pr2serr("Usage: "
-            "ddpt  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=6|10|12|16|32] [coe=0|1]\n"
+            "ddpt  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=IO_CDBSZ] [coe=0|1]\n"
             "             [coe_limit=CL] [conv=CONVS] [count=COUNT] "
             "[ddpt=VERS]\n"
             "             [delay=MS[,W_MS]] [ibs=IBS] [id_usage=LIU] "
@@ -96,7 +96,7 @@ primary_help:
             "             [--dry-run] [--flexible] [--help] [--job=JF] "
             "[--odx]\n"
             "             [--prefetch] [--progress] [--quiet] [--verbose] "
-	    "[--verify]\n"
+            "[--verify]\n"
 #ifdef SG_LIB_WIN32
             "             [--version] [--wscan] [--xcopy] [ddpt] [JF]\n"
 #else
@@ -124,7 +124,9 @@ primary_help:
             "is not equal to OBS\n"
             "                then (((IBS * BPT) %% OBS) == 0) is required\n"
             "    of          OFILE file or device to write to (def: "
-            "/dev/null)\n");
+            "/dev/null)\n"
+            "                if '--verify' also given then VERIFY command "
+            "done on OFILE\n");
     pr2serr("    oflag       output flags, comma separated list from FLAGS "
             "(see below)\n"
             "    seek        block position to start writing in OFILE, "
@@ -149,7 +151,7 @@ primary_help:
             "    --prefetch|-P    only active with --verify : adds "
             "PRE-FETCH(OFILE, IMMED)\n"
             "    --progress|-p    same as status=progress, periodic "
-	    "progress reports\n"
+            "progress reports\n"
             "    --quiet|-q     suppresses messages (by redirecting them "
             "to /dev/null)\n"
             "    --verbose|-v    equivalent to verbose=1\n"
@@ -161,9 +163,10 @@ primary_help:
 #endif
             "    --xcopy|-x    do xcopy(LID1) rather than normal rw copy\n\n"
             "  and the arguments are:\n"
-            "    ddpt          string must not appear on command line, "
-            "required\n"
-            "                  in JF\n"
+            "    ddpt          string 'ddpt' must not appear in command "
+            "line\n"
+            "                  arguments but is required to appear inside a "
+            "JF\n"
             "    JF            job file: a file containing options; can not "
             "start\n"
             "                  with '-' or contain '='. Parsed when seen\n"
@@ -179,8 +182,14 @@ primary_help:
 
 secondary_help:
     pr2serr("  where the lesser used command line operands are:\n"
-            "    cdbsz       size of SCSI READ or WRITE cdb (default is "
-            "10)\n"
+            "    cdbsz       if IO_CDBSZ is a single number it can be 0, 6, "
+            "10, 12, 16\n"
+            "                or 32. The default is 0 which will prefer 10 "
+            "over 16 byte\n"
+            "                CDB size. If two numbers separated by comma "
+            "given then\n"
+            "                the first is for IFILE and second is for "
+            "OFILE\n"
             "    coe_limit   limit consecutive 'bad' blocks on reads to CL "
             "times\n"
             "                when coe=1 (default: 0 which is no limit)\n"
@@ -257,6 +266,7 @@ secondary_help:
 tertiary_help:
     pr2serr("FLAGS: (continued)\n"
             "   nocache        use posix_fadvise(POSIX_FADV_DONTNEED)\n"
+            "   nocreat (o)    OFILE must exist, it will not be created\n"
             "   no_del_tkn (odx)  do not set DEL_TKN on last write from "
             "ROD\n"
             "   nofm (o)       no File Mark (FM) on close when writing to "
@@ -304,6 +314,7 @@ tertiary_help:
             "   fdatasync      same as oflag=fdatasync\n"
             "   fsync          same as oflag=fsync\n"
             "   no_del_tkn     same as oflag=no_del_tkn\n"
+            "   nocreat        same as oflag=nocreat\n"
             "   noerror        similar to iflag=coe\n"
             "   notrunc        does nothing because this is default action "
             "of ddpt\n"
@@ -465,6 +476,8 @@ conv_process(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
             ofp->fsync = true;
         else if (0 == strcmp(cp, "no_del_tkn"))
             ofp->no_del_tkn = true;
+        else if (0 == strcmp(cp, "nocreat"))
+            ofp->nocreat = true;
         else if (0 == strcmp(cp, "noerror"))
             ifp->coe = true;        /* will still fail on write error */
         else if (0 == strcmp(cp, "notrunc"))
@@ -563,6 +576,8 @@ flags_process(const char * arg, struct flags_t * fp)
         else if ((0 == strcmp(cp, "no_del_tkn")) ||
                  (0 == strcmp(cp, "no-del-tkn")))
             fp->no_del_tkn = true;
+        else if (0 == strcmp(cp, "nocreat"))
+            fp->nocreat = true;
         else if (0 == strcmp(cp, "nofm"))     /* No filemark on tape close */
             fp->nofm = true;
         else if (0 == strcmp(cp, "nopad"))
@@ -1226,8 +1241,21 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
         } else if (0 == strcmp(key, "cbs"))
             pr2serr("the cbs= operand is ignored\n");
         else if (0 == strcmp(key, "cdbsz")) {
-            ifp->cdbsz = sg_get_num(buf);
-            ofp->cdbsz = ifp->cdbsz;
+            n = sg_get_num(buf);
+            if (-1 == n) {
+                pr2serr("bad argument to 'cdbsz='\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            ifp->cdbsz = (n > 0 ? n : DEF_SCSI_CDBSZ);
+            if ((cp = strchr(buf, ','))) {
+                n = sg_get_num(cp + 1);
+                if (-1 == n) {
+                    pr2serr("bad argument to 'cdbsz=' after comma\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+                ofp->cdbsz = (n > 0 ? n : DEF_SCSI_CDBSZ);
+            } else
+                ofp->cdbsz = (n > 0 ? n : DEF_SCSI_CDBSZ);
             op->cdbsz_given = true;
         } else if (0 == strcmp(key, "coe")) {
             ifp->coe = sg_get_num(buf);
@@ -1697,5 +1725,3 @@ bypass_options:
     }   /* end of for loop on command line operands, options + arguments */
     return (0 == jf_depth) ? cl_sanity_defaults(op) : 0;
 }
-
-

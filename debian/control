@@ -17,5 +17,3 @@ Description: Copies disks, partitions and files.
  variants of SCSI copy offload: xcopy(LID1) and the disk->disk 
  subset of xcopy(LID4) known as ODX. Has two helper utilities:
  ddptctl (for ODX support) and ddpt_sgl (for scatter gather lists)
-
-

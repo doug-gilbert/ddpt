@@ -297,7 +297,5 @@ else
 fi
 echoerr ""
 
-
 #
 # Example: throw away both stdout and stderr: > /dev/null 2>&1
-

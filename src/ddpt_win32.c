@@ -617,5 +617,3 @@ win32_get_blkdev_capacity(struct opts_t * op, int which_arg,
 }
 
 #endif
-
-

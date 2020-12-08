@@ -2754,5 +2754,3 @@ the_end:
         free(op->o2dip->free_odxp);
     return ret;
 }
-
-

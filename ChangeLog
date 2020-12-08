@@ -2,13 +2,18 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.97 [20200713] [svn: r380]
+Changelog for ddpt-0.97 [20201207] [svn: r383]
+  - ddpt: add oflag=nocreat and conv=nocreat that require
+    OFILE to exist, it won't be created
+  - ddpt: warn if disk has protection type 2 and cdbsz!=32
+    has not been used (it is required according to SBC-4)
+  - ddpt: cdbsz= operand can now take 2 comma-separated numbers
   - NVMe devices can now be accessed via iflag=pt or oflag=pt
     without those flags they will be accessed as block devices
   - now accept --progress or -p as shorter form of
     status=progress [borrowed from FreeBSD's dd]
   - fix progress reporting when OFILE is /dev/null
-  - point svn:externals to rev 855 of sg3_utils
+  - point svn:externals to rev 868 of sg3_utils
 
 Changelog for ddpt-0.96 [20200303] [svn: r375]
   - allow scatter gather lists for skip= and seek= where they can
@@ -188,5 +193,3 @@ Changelog for ddpt-0.90 [20100508] [svn: r85]
   - accept 'count=-1' to mean calculate COUNT
   - accept '-V' as synonym for '--version'
   - point svn:externals to rev 334 of sg3_utils
-
-

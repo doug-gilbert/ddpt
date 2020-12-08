@@ -1,4 +1,3 @@
-PROPS-END
 ddpt
 
 # Straight forward sd device to sd device copy
@@ -9,5 +8,3 @@ iflag=direct
 
 of=/tmp/sd_sg_a_dev
 oflag=direct
-
-

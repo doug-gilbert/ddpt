@@ -12,5 +12,3 @@ ibs=512
 
 of=/tmp/sg_a_dev
 obs=4096
-
-

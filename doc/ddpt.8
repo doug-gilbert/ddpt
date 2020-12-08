@@ -1,10 +1,10 @@
-.TH DDPT "8" "July 2020" "ddpt\-0.97" DDPT
+.TH DDPT "8" "December 2020" "ddpt\-0.97" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
 .SH SYNOPSIS
 .B ddpt
-[\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fR{6|10|12|16|32}]
+[\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fRIO_CDBSZ]
 [\fIcoe=\fR{0|1}] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
 [\fIddpt=VERS\fR] [\fIdelay=MS[,W_MS]\fR] [\fIibs=IBS\fR]
 [\fIid_usage=LIU\fR] \fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIintio=\fR{0|1}]
@@ -146,11 +146,18 @@ environment variable. Note that newer disks use 4096 byte blocks
 with perhaps larger block sizes coming in the future. CD/DVD/BD media use
 a logical block size of 2048 bytes.
 .TP
-\fBcdbsz\fR={6|10|12|16|32}
-size of SCSI READ and/or WRITE commands issued to pt devices. The default is
-10 byte SCSI command blocks unless calculations indicate that a 4 byte block
-number may be exceeded or \fIBPT\fR is greater than 16 bits (i.e. more than
-65535 blocks), in which case it defaults to 16 byte SCSI commands.
+\fBcdbsz\fR=\fIIO_CDBSZ\fR
+size of SCSI READ and/or WRITE (VERIFY) command descriptor blocks (cdb) in
+bytes. \fIIO_CDBSZ\fR may be one number or two numbers separated by a comma.
+The acceptable numbers are 0, 6, 10, 12, 16 or 32. The default 0 will usually
+be set to 10 internally unless the (first and last) LBAs cannot fit in 32
+bits in which case the 16 byte variant of each command is used. If one number
+is given it applies both to the \fIIFILE\fR and \fOIFILE\fR. If two numbers
+are given, the first applies to the \fIIFILE\fR (i.e. the READ command) and
+the second applies to the \fIOFILE\fR.
+.PP
+If \fIIFILE\fR or \fIOFILE\fR is not a SCSI pass-through devices then
+\fIIO_CDBSZ\fR is ignored.
 .TP
 \fBcoe\fR={0|1}
 set to 1 for continue on error. Applies to errors on input and output for pt
@@ -332,8 +339,12 @@ is the WRPROTECT field in SCSI WRITE commands. The default value for both
 is 0 which implies no additional protection information will be transferred.
 Both \fIRDP\fR and \fIWRP\fR can be from 0 to 7. If \fIRDP\fR is greater
 than 0 then \fIIFILE\fR must be a pt device. If \fIWRP\fR is greater than 0
-then \fIOFILE\fR must be a pt device. See the PROTECTION INFORMATION section
-below.
+then \fIOFILE\fR must be a pt device.
+.br
+When copying data plus protection information from one disk to another
+then 'protect=3,3' will give the least number of problems as that combination
+then of PI checking on both the read and write side. See the PROTECTIO
+INFORMATION section below.
 .TP
 \fBretries\fR=\fIRETR\fR
 sometimes retries at the host are useful, for example when there is a
@@ -382,8 +393,8 @@ So 'status=none' makes ddpt act like a traditional Unix command in which "no
 news is good news".  The default action of ddpt is to show the throughput (in
 megabytes per second) and the time taken to do the copy after the "records
 in" and "records out" lines at the end of the copy. A \fISTAT\fR value
-of 'sgl' together with '-vv' option will print internally generated scatter
-gather lists before the copy begins. When the '-vv' options is given alone
+of 'sgl' together with '\-vv' option will print internally generated scatter
+gather lists before the copy begins. When the '\-vv' options is given alone
 then internal scatter lists headers are printed, but not individual elements.
 In most cases these scatter gather lists will be the same lists given to the
 \fIseek=SEEK\fR and \fIskip=SKIP\fR operands.  As a convenience the
@@ -466,7 +477,7 @@ See ODX section.
 .TP
 \fB\-P\fR, \fB\-\-prefetch\fR
 this option is only active when the \fI\-\-verify\fR option is also given.
-It causes the SCSI PER-FETCH(OFILE, IMMED) command to be sent at the start
+It causes the SCSI PRE\-FETCH(OFILE, IMMED) command to be sent at the start
 of each copy segment. See the VERIFY section below.
 .TP
 \fB\-p\fR, \fB\-\-progress\fR
@@ -539,6 +550,13 @@ with the \fIOFILE\fR to storage at the end of the copy. This conversion
 .TP
 no_del_tkn
 equivalent to "oflag=no_del_tkn".
+.TP
+nocreat
+\fIOFILE\fR will not be created if it doesn't exist. The default action
+if \fIOFILE\fR does not exist is to create a regular file (then write
+into it). The default action can be surprising if writing to a device
+node in /dev and due to some external action (e.g. a USB key being
+removed) that device node name disappears.
 .TP
 noerror
 this conversion is very close to "iflag=coe" and is treated as such. See
@@ -674,10 +692,11 @@ direct [io] [reg,blk]
 causes the O_DIRECT flag to be added to the open of \fIIFILE\fR and/or
 \fIOFILE\fR. This flag requires some memory alignment on IO. Hence user
 memory buffers are aligned to the page size. May have no effect on pt
-devices. This flag will bypass caching/buffering normally done by block
-layer. Beware of data coherency issues if the same locations have been
-recently accessed via the block layer in its normal mode (i.e.
-non\-direct). See open(2) man page.
+devices or cause an error (e.g. Linux seems to dis\-allow O_DIRECT on
+character devices (like sg devices) yielding EINVAL). This flag will
+bypass caching/buffering normally done by block layer. Beware of data
+coherency issues if the same locations have been recently accessed via the
+block layer in its normal mode (i.e. non\-direct). See open(2) man page.
 .TP
 dpo [io] [pt]
 set the DPO bit (disable page out) in SCSI READ and WRITE commands. Not
@@ -773,6 +792,11 @@ be used (one after the other). The default action is to set the DEL_TKN bit
 on the last WUT command of each ROD. Either way it should not make much
 difference because the copy manager deletes a ROD Token when its inactivity
 time\-out occurs.
+.TP
+nocreat [o]
+if \fIOFILE\fR does not exist then an error will be generated rather than
+creating an empty regular file. This flag has the same action
+as "conv=nocreat".
 .TP
 nofm [o] [tape]
 no File Mark (FM) on close when writing to tape. See TAPE section.
@@ -1384,8 +1408,6 @@ dd utility would. In a similar fashion to accessing SCSI block devices (e.g.
 with \fIiflag=FLAGS\fR and/or \fIoflag=FLAGS\fR. There is a SCSI to NVMe
 Translation Layer (SNTL) in the sg3_utils library which underpins this
 utility.
-yyyyyyyy
-xxxxxxxx
 .SH DD DIFFERENCES
 dd defaults "if=" and "of=" to stdin and stdout respectively. This follows
 Unix filter conventions. However since dd and ddpt are often used to read
@@ -1466,6 +1488,11 @@ block size has protection information then the actual number of bytes
 transferred for each logical block is typically 520 bytes. For such a disk
 \fIBS=512\fR is required even when additional protection information is
 being transferred.
+.PP
+When protection type 2 is used, the "normal" READ, WRITE and VERIFY SCSI
+commands are disallowed. In this context "normal" means the 6, 10, 12, and
+16 byte variants. Only READ(32) and WRITE(32) can be used. The 32 byte
+variants can be selected in this utility by using the operand 'cdbsz=32'.
 .SH MULTIPLIERS
 By default numeric arguments to options are assumed to be decimal. Almost
 all numeric arguments to options (e.g. \fICOUNT\fR in the \fIcount=COUNT\fR
@@ -1599,10 +1626,10 @@ is to move through the segments to be compared, reading from both and
 comparing the returned buffers, stopping if there is an in equality.
 .PP
 This utility takes a different approach that relies on the \fIOFILE\fR
-being a pass through device. That pass-through device needs to support
+being a pass through device. That pass\-through device needs to support
 the SCSI VERIFY command with the BYTCHK field set to 1. Optionally, for
 the \fI\-\-prefetch\fR option to improve performance that pass-through
-device needs to support the SCSI PRE-FETCH command with its IMMED bit
+device needs to support the SCSI PRE\-FETCH command with its IMMED bit
 set.
 .PP
 When the \fI\-\-verify\fR option is given, instead of reading both
@@ -1612,8 +1639,8 @@ of a VERIFY(BYTCHK=1) command. So the comparison is actually done on the
 \fIOFILE\fR device rather than the host computer's main memory.
 .PP
 If the \fI\-\-prefetch\fR option is also given, then before the \fIIFILE\fR
-read, a PRE-FETCH(OFILE, IMMED) is sent. The IMMED bit will make it return
-more or less immediately. The effect of the PRE-FETCH should be to bring
+read, a PRE\-FETCH(OFILE, IMMED) is sent. The IMMED bit will make it return
+more or less immediately. The effect of the PRE\-FETCH should be to bring
 the contents of the data to be used for the \fIOFILE\fR side of the
 comparison, into the \fIOFILE\fR device's cache. And that should make the
 later VERIFY(BYTCHK=1) command faster.
@@ -2022,5 +2049,3 @@ To scan and repair disk partitions see TestDisk (testdisk).
 Additional references:
 .B dd(1), open(2), flock(2), sg_xcopy,sg_copy_results,
 .B sg_dd(sg3_utils)
-
-

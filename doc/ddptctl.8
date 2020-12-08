@@ -1,4 +1,4 @@
-.TH DDPTCTL "8" "July 2020" "ddpt\-0.97" DDPT
+.TH DDPTCTL "8" "December 2020" "ddpt\-0.97" DDPT
 .SH NAME
 ddptctl \- helper/auxiliary utility for ddpt
 .SH SYNOPSIS
@@ -59,7 +59,7 @@ pass\-through device.
 \fB\-D\fR, \fB\-\-del_tkn\fR
 set the DEL_TKN bit in a WUT command (default: clear the DEL_TKN bit).
 Since an ODX copy manager deletes the ROD Token when its inactivity
-time-out is reached, this option is typically not needed. It may
+time\-out is reached, this option is typically not needed. It may
 be useful for long\-lived ROD Tokens that are no longer needed.
 .br
 To delete an unused ROD Token a degenerate scatter list seems to be
@@ -276,11 +276,11 @@ the same locations on /dev/sdc:
 .PP
 So the copy was successful. Now taking a closer look at the ROD token:
 .PP
-  # ddptctl \-\-info --rtf=aa.rt
+  # ddptctl \-\-info \-\-rtf=aa.rt
 .br
   Decoding information from ROD Token:
 .br
-    ROD type: point in time copy - default [0x800000]
+    ROD type: point in time copy \- default [0x800000]
 .br
     Copy manager ROD Token identifier: 0x520000710000000c
 .br
@@ -307,7 +307,7 @@ ROD type and the token length) so expect to see some empty fields.
 .PP
 To see information about /dev/sdb relevant to ODX, try:
 .PP
-  # ddptctl --info /dev/sdb
+  # ddptctl \-\-info /dev/sdb
 .br
     /dev/sdb [readcap]: num_blks=209715200 [0xc800000], blk_size=512, 107 GB
 .br
@@ -331,19 +331,19 @@ That maximum token transfer size [524288 blocks each 512 bytes gives 256 MB]
 is the largest size a ROD Token created by /dev/sdb can hold. Use that and
 show the \fI\-\-immed\fR option on the destination:
 .PP
-  # ddptctl --pt=0x0,0x80000 --rtf=aa.rt /dev/sdb
+  # ddptctl \-\-pt=0x0,0x80000 \-\-rtf=aa.rt /dev/sdb
 .br
   PT completes with a transfer count of 524288 [0x80000]
 .PP
-  # ddptctl --rtf=aa.rt --wut=0x0,0x80000 --immed /dev/sdc
+  # ddptctl \-\-rtf=aa.rt \-\-wut=0x0,0x80000 \-\-immed /dev/sdc
 .br
   Started ODX Write Using Token command in immediate mode.
 .br
-  User may need --list_id=257 on following invocation with --receive or
+  User may need \-\-list_id=257 on following invocation with \-\-receive or
 .br
-  --poll for completion
+  \-\-poll for completion
 .PP
-  # ddptctl --poll --rtf=aa.rt /dev/sdc
+  # ddptctl \-\-poll \-\-rtf=aa.rt /dev/sdc
 .br
   RRTI for Write using token: Operation completed without errors
 .br
@@ -363,5 +363,3 @@ This software is distributed under a FreeBSD license. There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 .SH "SEE ALSO"
 .B ddpt(8), ddpt_sgl(8)
-
-

@@ -2,7 +2,7 @@ ddpt (0.97-0.1) unstable; urgency=low
 
   * see ChangeLog
 
- -- Douglas Gilbert <dgilbert@interlog.org>  Mon, 13 Jul 2020 21:00:00 -0400
+ -- Douglas Gilbert <dgilbert@interlog.org>  Sat, 05 Dec 2020 21:00:00 -0500
 
 ddpt (0.96-0.1) unstable; urgency=low
 
@@ -53,6 +53,4 @@ ddpt (0.90-0.1) unstable; urgency=low
   * ddpt initial version
 
  -- Douglas Gilbert <dgilbert@interlog.org>  Sat, 08 May 2010 18:00:00 -0400
-
-
 

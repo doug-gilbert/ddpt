@@ -676,5 +676,3 @@ sg_do_wscan(char letter, int do_scan, int verb)
 }
 
 #endif          /* SG_LIB_WIN32 */
-
-

@@ -3142,5 +3142,3 @@ sgl_iter_eq(const struct sgl_iter_t * lhsp, const struct sgl_iter_t * rhsp,
                     rsgep, rhsp->elems - rhsp->it_e_ind, rhsp->it_bk_off,
                     allow_partial);
 }
-
-
