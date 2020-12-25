@@ -155,9 +155,9 @@ bits in which case the 16 byte variant of each command is used. If one number
 is given it applies both to the \fIIFILE\fR and \fOIFILE\fR. If two numbers
 are given, the first applies to the \fIIFILE\fR (i.e. the READ command) and
 the second applies to the \fIOFILE\fR.
-.PP
-If \fIIFILE\fR or \fIOFILE\fR is not a SCSI pass-through devices then
-\fIIO_CDBSZ\fR is ignored.
+.br
+If \fIIFILE\fR or \fIOFILE\fR is not a SCSI pass-through device then the
+corresponding \fIIO_CDBSZ\fR value is ignored.
 .TP
 \fBcoe\fR={0|1}
 set to 1 for continue on error. Applies to errors on input and output for pt
