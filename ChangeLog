@@ -2,7 +2,7 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for ddpt-0.97 [20201224] [svn: r384]
+Changelog for pre-release ddpt-0.97 [20210104] [svn: r385]
   - ddpt: add oflag=nocreat and conv=nocreat that require
     OFILE to exist, it won't be created
   - ddpt: warn if disk has protection type 2 and cdbsz!=32
@@ -14,7 +14,7 @@ Changelog for ddpt-0.97 [20201224] [svn: r384]
     status=progress [borrowed from FreeBSD's dd]
   - fix progress reporting when OFILE is /dev/null
   - start using autoconf 2.70
-  - point svn:externals to rev 871 of sg3_utils
+  - point svn:externals to rev 872 of sg3_utils
 
 Changelog for ddpt-0.96 [20200303] [svn: r375]
   - allow scatter gather lists for skip= and seek= where they can
