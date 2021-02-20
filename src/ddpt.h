@@ -944,6 +944,9 @@ size_t win32_pagesize(void);
 #ifdef __cplusplus
 }       /* trailing brace for 'extern "C" { ' at top of this file */
 
+#include <string>
+#include <vector>
+
 /* Following only compiled to C++, bypassed for C */
 struct split_fn_fp {
     // constructor

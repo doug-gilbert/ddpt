@@ -28,10 +28,12 @@ endif
 AM_CPPFLAGS = -iquote ${top_srcdir}/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 $(DBG_CPPFLAGS)
 AM_CFLAGS = -Wall -W $(DBG_CFLAGS)
 AM_CXXFLAGS = -Wall -W $(DBG_CFLAGS_FOR_CXX) -std=c++11
+## AM_CXXFLAGS = -Wall -W $(DBG_CFLAGS_FOR_CXX) -std=c++20
 # AM_CFLAGS = -Wall -W -Wextra -Wmisleading-indentation -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wnull-dereference -Wshadow -Wjump-misses-init
 # AM_CFLAGS = -Wall -W -Werror=misleading-indentation
 # AM_CFLAGS = -Wall -W -pedantic -std=c11 --analyze
 # AM_CFLAGS = -Wall -W -pedantic -std=c++14
+# AM_CFLAGS = -Wall -W -pedantic -std=c++20
 
 
 ddpt_SOURCES =		ddpt.c	\
