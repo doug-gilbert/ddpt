@@ -168,13 +168,13 @@ PREP2_BIN="/tmp/ddpt_prep2.bin"
 
 if [ ! -x ${LSSCSI} ] ; then
     echoerr "Can't find lsscsi utility, is the package loaded?"
-    echoerr "Recent version at http://sg.danny.cz/scsi/lsscsi.html "
+    echoerr "Recent version at https://sg.danny.cz/scsi/lsscsi.html "
     exit 1
 else
     LSSCSI_VSTR=`lsscsi -VV`
     if [ -z "${LSSCSI_VSTR}" ] ; then
         echoerr "lsscsi version is too old, not before 0.30 [rev 149]"
-        echoerr "Recent version at http://sg.danny.cz/scsi/lsscsi.html "
+        echoerr "Recent version at https://sg.danny.cz/scsi/lsscsi.html "
         exit 1
     fi
 fi
