@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2020, Douglas Gilbert
+ * Copyright (c) 2008-2021, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -79,20 +79,20 @@ ddpt_usage(int help)
 
 primary_help:
     pr2serr("Usage: "
-            "ddpt  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=IO_CDBSZ] [coe=0|1]\n"
-            "             [coe_limit=CL] [conv=CONVS] [count=COUNT] "
-            "[ddpt=VERS]\n"
-            "             [delay=MS[,W_MS]] [ibs=IBS] [id_usage=LIU] "
-            "if=IFILE\n"
-            "             [iflag=FLAGS] [intio=0|1] [iseek=SKIP] [ito=ITO] "
-            "[list_id=LID]\n"
-            "             [obs=OBS] [of=OFILE] [of2=OFILE2] [oflag=FLAGS] "
-            "[oseek=SEEK]\n"
-            "             [prio=PRIO] [protect=RDP[,WRP]] [retries=RETR] "
-            "[rtf=RTF]\n"
-            "             [rtype=RTYPE] [seek=SEEK] [skip=SKIP] "
-            "[status=STAT] [to=TO]\n"
-            "             [verbose=VERB]\n"
+            "ddpt  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=IO_CDBSZ] [cdl=CDL]\n"
+            "             [coe=0|1] [coe_limit=CL] [conv=CONVS] "
+            "[count=COUNT]\n"
+            "             [ddpt=VERS] [delay=MS[,W_MS]] [ibs=IBS] "
+            "[id_usage=LIU]\n"
+            "             if=IFILE [iflag=FLAGS] [intio=0|1] [iseek=SKIP] "
+            "[ito=ITO]\n"
+            "             [list_id=LID] [obs=OBS] [of=OFILE] [of2=OFILE2] "
+            "[oflag=FLAGS]\n"
+            "             [oseek=SEEK] [prio=PRIO] [protect=RDP[,WRP]] "
+            "[retries=RETR]\n"
+            "             [rtf=RTF] [rtype=RTYPE] [seek=SEEK] [skip=SKIP] "
+            "[status=STAT]\n"
+            "             [to=TO] [verbose=VERB]\n"
             "             [--dry-run] [--flexible] [--help] [--job=JF] "
             "[--odx]\n"
             "             [--prefetch] [--progress] [--quiet] [--verbose] "
@@ -193,8 +193,13 @@ secondary_help:
             "    coe_limit   limit consecutive 'bad' blocks on reads to CL "
             "times\n"
             "                when coe=1 (default: 0 which is no limit)\n"
+            "    cdl         command duration limit value, 0 to 7 (def: 0 "
+            "(no cdl))\n"
             "    conv        conversions, comma separated list of CONVS "
             "(see '-hhh')\n"
+            "    ddpt        lowest version number (if VER numeric) or "
+            "subversion\n"
+            "                revision (if VER starts with 'r') accepted\n"
             "    delay       wait MS milliseconds between each copy segment "
             "(def: 0)\n"
             "                wait W_MS milliseconds prior to each write "
@@ -1253,10 +1258,26 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
                     pr2serr("bad argument to 'cdbsz=' after comma\n");
                     return SG_LIB_SYNTAX_ERROR;
                 }
-                ofp->cdbsz = (n > 0 ? n : DEF_SCSI_CDBSZ);
-            } else
-                ofp->cdbsz = (n > 0 ? n : DEF_SCSI_CDBSZ);
+            }
+            ofp->cdbsz = (n > 0 ? n : DEF_SCSI_CDBSZ);
             op->cdbsz_given = true;
+        } else if (0 == strcmp(key, "cdl")) {
+            n = sg_get_num(buf);
+            if ((n < 0) || (n > 7)) {
+                pr2serr("bad argument to 'cdl=' want 0 to 7\n");
+                return SG_LIB_SYNTAX_ERROR;
+            }
+            ifp->cdl = n;
+            if ((cp = strchr(buf, ','))) {
+                n = sg_get_num(cp + 1);
+                if ((n < 0) || (n > 7)) {
+                    pr2serr("bad argument to 'cdl=ICDL,OCDL' want 0 to 7 "
+                            "after comma\n");
+                    return SG_LIB_SYNTAX_ERROR;
+                }
+            }
+            ofp->cdl = n;
+            op->cdl_given = true;
         } else if (0 == strcmp(key, "coe")) {
             ifp->coe = sg_get_num(buf);
             ofp->coe = ifp->coe;

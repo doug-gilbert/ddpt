@@ -68,7 +68,7 @@ commands). It can be accessed with "man ddpt" once this package is installed.
 Prior to installation the man page can be viewed from this package's main
 directory with "man doc/ddpt.8".
 
-There is a web page at http://sg.danny.cz/sg/ddpt.html and a copy of that
+There is a web page at https://sg.danny.cz/sg/ddpt.html and a copy of that
 html file is placed in the "doc" directory.
 
 Build infrastructure

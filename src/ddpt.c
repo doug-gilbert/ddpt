@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.97 20210104 [svn: r385]";
+static const char * ddpt_version_str = "0.97 20210421 [svn: r388]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -3621,6 +3621,29 @@ main(int argc, char * argv[])
             op->dd_count = ((nn / op->obs_pi) * op->obs_pi) / op->ibs_pi;
             pr2serr("Reducing dd_count from %" PRId64 " to %" PRId64 " to "
                     "fit last out block\n", orig_dd_count, op->dd_count);
+        }
+    }
+    if (op->cdl_given && (! op->cdbsz_given)) {
+        bool changed = false;
+
+        if ((FT_PT & op->idip->d_type) && (op->iflagp->cdbsz < 16) &&
+            (op->iflagp->cdl > 0)) {
+            if (! op->quiet)
+                pr2serr(">> changing IFILE cdbsz to 16 due to cdl\n");
+            op->iflagp->cdbsz = 16;
+            changed = true;
+        }
+        if ((FT_PT & op->odip->d_type) && (op->oflagp->cdbsz < 16) &&
+            (op->oflagp->cdl > 0)) {
+            if (! op->quiet) {
+                if (op->verify_given) {
+                    if (! changed)
+                        pr2serr(">> cdl ignored OFILE as it is a VERIFY\n");
+                } else
+                    pr2serr(">> changing OFILE cdbsz to 16 due to cdl\n");
+            }
+            if (! op->verify_given)
+                op->oflagp->cdbsz = 16;
         }
     }
 

@@ -1,10 +1,10 @@
-.TH DDPT "8" "January 2021" "ddpt\-0.97" DDPT
+.TH DDPT "8" "April 2021" "ddpt\-0.97" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
 .SH SYNOPSIS
 .B ddpt
-[\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fRIO_CDBSZ]
+[\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fRIO_CDBSZ] [\fIcdl=CDL\fR]
 [\fIcoe=\fR{0|1}] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
 [\fIddpt=VERS\fR] [\fIdelay=MS[,W_MS]\fR] [\fIibs=IBS\fR]
 [\fIid_usage=LIU\fR] \fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIintio=\fR{0|1}]
@@ -156,8 +156,24 @@ is given it applies both to the \fIIFILE\fR and \fOIFILE\fR. If two numbers
 are given, the first applies to the \fIIFILE\fR (i.e. the READ command) and
 the second applies to the \fIOFILE\fR.
 .br
-If \fIIFILE\fR or \fIOFILE\fR is not a SCSI pass-through device then the
+If \fIIFILE\fR or \fIOFILE\fR is not a SCSI pass\-through device then the
 corresponding \fIIO_CDBSZ\fR value is ignored.
+.TP
+\fBcdl\fR=\fICDL\fR
+allows setting of command duration limits. \fICDL\fR is either a single value
+or two values separated by a comma. If one value is given, it applies to both
+\fIIFILE\fR and \fIOFILE\fR (if they are pass\-through devices). If two
+values are given, the first applies to \fIIFILE\fR while the second applies
+to \fIOFILE\fR. The value may be from 0 to 7 where 0 is the default and means
+there are no command duration limits. Command duration limits are only
+supported by 16 and 32 byte READ and WRITE commands (and the WRITE SCATTERED
+command which is not used by this utility). If the cdbsz operand is not given
+and would have a value less than 16, then if \fICDL\fR is greater than 0, the
+cdbsz is increased to 16.
+.br
+Command duration limits can be accesses and changed in the Command duration
+limit A and B mode pages, plus the Command duration limit T2A and T2B mode
+pages. The sdparm utility may be used to access and change these mode pages.
 .TP
 \fBcoe\fR={0|1}
 set to 1 for continue on error. Applies to errors on input and output for pt
@@ -1231,7 +1247,7 @@ source data will be discarded, and any residual destination data will
 be padded.
 .PP
 There is a web page discussing ddpt, XCOPY and ODX at
-http://sg.danny.cz/sg/ddpt_xcopy_odx.html
+https://sg.danny.cz/sg/ddpt_xcopy_odx.html
 .SH ODX
 This section describes ODX support (an XCOPY(LID4) subset) for this utility.
 ODX descriptions use the following command name abbreviations: PT for
@@ -1311,7 +1327,7 @@ not as informative as it should be) and print the number of blocks and block
 size of a disk, plus protection information if available. See ddptctl.
 .PP
 There is a web page discussing ddpt, XCOPY and ODX at
-http://sg.danny.cz/sg/ddpt_xcopy_odx.html
+https://sg.danny.cz/sg/ddpt_xcopy_odx.html
 .SH SPARSE WRITES
 Bypassing writes of blocks full of zeros can save a lot of IO. However
 with regular files, bypassed writes at the end of the copy can lead
@@ -1518,7 +1534,7 @@ is another special case.
 .SH NOTES
 Copying data behind an Operating System's back can cause problems. In the
 case of Linux, users should look at this link:
-http://linux\-mm.org/Drop_Caches
+https://linux\-mm.org/Drop_Caches
 .br
 This command sequence may be useful:
 .br
@@ -1628,7 +1644,7 @@ comparing the returned buffers, stopping if there is an in equality.
 This utility takes a different approach that relies on the \fIOFILE\fR
 being a pass through device. That pass\-through device needs to support
 the SCSI VERIFY command with the BYTCHK field set to 1. Optionally, for
-the \fI\-\-prefetch\fR option to improve performance that pass-through
+the \fI\-\-prefetch\fR option to improve performance that pass\-through
 device needs to support the SCSI PRE\-FETCH command with its IMMED bit
 set.
 .PP
@@ -1844,7 +1860,7 @@ status indicates false.
 .TP
 .B 40
 the command sent to a device has received an "aborted command" sense
-key with an additional sense code of 0x10. This group is related to
+key with an additional sense code of 0x10. This value is related to
 problems with protection information (PI or DIF). For example this error
 may occur when reading a block on a drive that has never been written (or
 is unmapped) if that drive was formatted with type 1, 2 or 3 protection.
@@ -1930,7 +1946,7 @@ not happen; given here for completeness.
 .SH EXAMPLES
 The examples in this page use Linux device names. For suitable device
 names in other supported Operating Systems see this web page:
-http://sg.danny.cz/sg/device_name.html . The sg3_utils(8) man page
+https://sg.danny.cz/sg/device_name.html . The sg3_utils(8) man page
 in the sg3_utils package also covers device naming.
 .PP
 ddpt usage looks quite similar to dd:
@@ -2012,7 +2028,7 @@ So, for example, volumes D: and F: reside on PhysicalDisk1 (abbreviated to
 "PD1") which is manufactured by WD (Western Digital).
 .PP
 Further examples can be found on this web page:
-http://sg.danny.cz/sg/ddpt.html . There is a text file containing examples
+https://sg.danny.cz/sg/ddpt.html . There is a text file containing examples
 called ddpt_examples.txt in the "doc" directory of this package's
 distribution tarball. The ddpt_examples.txt file contains some examples of
 using job files.
@@ -2029,7 +2045,7 @@ warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 This utility has companion/helper utilities
 .B ddptctl(8), ddpt_sgl(8)
 .br
-There is a web page discussing ddpt at http://sg.danny.cz/sg/ddpt.html
+There is a web page discussing ddpt at https://sg.danny.cz/sg/ddpt.html
 .PP
 The lmbench package contains
 .B lmdd

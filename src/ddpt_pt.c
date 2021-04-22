@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2020, Douglas Gilbert
+ * Copyright (c) 2008-2021, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -318,6 +318,7 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
                      int64_t start_block, bool write_true,
                      const struct flags_t * fp, int protect, uint32_t list_id)
 {
+    bool normal_rw = false;
     int opcode_sa, options_byte, rw_sa;
     uint64_t s_block = (uint64_t)start_block;
     int * opc_arr;
@@ -364,10 +365,13 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
                         "only\n");
                 return false;
             }
-        } else
+        } else {
+            normal_rw = true;
             opc_arr = wr_opcode;
+        }
     } else {    /* READs */
         opc_arr = rd_opcode;
+        normal_rw = true;
         if (6 != cdb_sz) {    /* a READ(10, 12, 16, 32) */
             if (fp->rarc)
                 options_byte |= 0x4;
@@ -377,8 +381,8 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
     if (cdb_sz > 6) {
         if (fp->dpo)
             options_byte |= 0x10;
-        if (fp->v_verify && write_true)         /* --verify case */
-                options_byte |= (0x1 << 1);     /* set BYTCHK=1 */
+        if (write_true && fp->v_verify)     /* --verify case */
+            options_byte |= (0x1 << 1);     /* set BYTCHK=1 */
         else if (fp->wverify && write_true) {
             if (fp->bytchk)
                 options_byte |= ((fp->bytchk & 0x3) << 1);
@@ -476,8 +480,15 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
                 return false;
             }
             sg_put_unaligned_be16((uint16_t)blocks, cdbp + 12);
-        } else
+        } else {
             sg_put_unaligned_be32((uint32_t)blocks, cdbp + 10);
+            if (normal_rw && fp->cdl > 0) {
+                if (fp->cdl & 0x4)
+                    cdbp[1] |= 0x1;
+                if (fp->cdl & 0x3)
+                    cdbp[14] |= ((fp->cdl & 0x3) << 6);
+            }
+        }
         break;
     case 32:
         if (0 == opcode_sa)
@@ -493,6 +504,8 @@ pt_build_scsi_rw_cdb(uint8_t * cdbp, int cdb_sz, unsigned int blocks,
         cdbp[10] = (uint8_t)options_byte;
         sg_put_unaligned_be64(s_block, cdbp + 12);
         sg_put_unaligned_be32((uint32_t)blocks, cdbp + 28);
+        if (normal_rw && fp->cdl > 0)
+            cdbp[11] |= (fp->cdl & 0x7);
         break;
     default:
         pr2serr("expected cdb size of 6, 10, 12, 16 or 32 but got %d\n",

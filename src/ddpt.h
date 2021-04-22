@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2020, Douglas Gilbert
+ * Copyright (c) 2008-2021, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -172,7 +172,7 @@ extern "C" {
 #define RODT_PIT_DEF 0x800000
 #define RODT_PIT_VULN 0x800001
 #define RODT_PIT_PERS 0x800002
-#define RODT_PIT_COW 0x800003		/* added spc5r20 */
+#define RODT_PIT_COW 0x800003           /* added spc5r20 */
 #define RODT_PIT_ANY 0x80ffff
 #define RODT_BLK_ZERO 0xffff0001
 
@@ -508,6 +508,7 @@ struct flags_t {
 
     int bytchk;         /* set field (2 bit) in WRITE AND VERIFY */
     int cdbsz;          /* 0, 6, 10, 12, 16 or 32 */
+    int cdl;            /* command duration limits; 0 to 7 (0: def, none) */
     int force;          /* overrides errors, 2: force harder */
     int nocache;        /* (1 & nocache): IF and/or OF; (2 & nocache): OF .
                          * OF, OF2: use posix_fadvise(POSIX_FADV_DONTNEED)
@@ -528,6 +529,7 @@ struct opts_t {
     bool bs_given;      /* bs=BS given, check if ibs= or obs= also given */
     bool bs_same;       /* true when ibs[_lb|_pi] and obs[_lb|_pi] the same */
     bool cdbsz_given;
+    bool cdl_given;
     bool count_given;   /* count=COUNT value placed in dd_count variable */
     bool do_time;       /* default true, set false by --status=none */
     bool flexible;      /* if 'HEX' in sgl file, parse as hex without
@@ -943,6 +945,9 @@ size_t win32_pagesize(void);
 
 #ifdef __cplusplus
 }       /* trailing brace for 'extern "C" { ' at top of this file */
+
+#include <string>
+#include <vector>
 
 /* Following only compiled to C++, bypassed for C */
 struct split_fn_fp {
