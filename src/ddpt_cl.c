@@ -604,7 +604,7 @@ flags_process(const char * arg, struct flags_t * fp)
                  (0 == strcmp(cp, "prefer-rcs")))
             fp->prefer_rcs = true;
         else if (0 == strcmp(cp, "pt"))
-            fp->pt = true;
+            fp->pt_pt = true;
         else if (0 == strcmp(cp, "rarc"))
             fp->rarc = true;
         else if (0 == strcmp(cp, "resume"))
@@ -910,16 +910,16 @@ cl_sanity_defaults(struct opts_t * op)
         op->xc_dc = (ifp->dc || ofp->dc);
         op->xc_cat = (ifp->cat || ofp->cat);
         if (ifp->xcopy) {
-            if (! ifp->pt) {
-                ifp->pt = true;
+            if (! ifp->pt_pt) {
+                ifp->pt_pt = true;
                 if (vb > 3)
                     pr2serr("Setting pt (pass-through) on IFILE for "
                             "xcopy\n");
 
             }
         } else {
-            if (! ofp->pt) {
-                ofp->pt = true;
+            if (! ofp->pt_pt) {
+                ofp->pt_pt = true;
                 if (vb > 3)
                     pr2serr("Setting pt (pass-through) on OFILE for "
                             "xcopy\n");

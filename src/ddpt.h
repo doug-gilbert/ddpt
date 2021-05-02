@@ -480,7 +480,7 @@ struct flags_t {
     bool prealloc;      /* use (posix_)fallocate() on output file before
                          *  transfer */
     bool prefer_rcs;    /* prefer Receive Copy Status command over RRTI */
-    bool pt;            /* use pass-through to inject SCSI commands */
+    bool pt_pt;         /* use pass-through to inject SCSI commands */
     bool rarc;          /* Set Rebuild Assist Recovery Control bit on READs */
     bool resume;        /* try to restart previously interrupted copy */
     bool rtf_len;       /* odx: append number of bytes ROD represents to end
