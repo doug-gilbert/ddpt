@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.97 20210421 [svn: r388]";
+static const char * ddpt_version_str = "0.98 20210503 [svn: r393]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -146,7 +146,7 @@ open_if(struct opts_t * op)
         pr2serr("unable to access %s\n", ifn);
         return -SG_LIB_FILE_ERROR;
     } else if (((FT_BLOCK | FT_TAPE | FT_NVME | FT_OTHER) & idip->d_type) &&
-               ifp->pt)
+               ifp->pt_pt)
         idip->d_type |= FT_PT;
     if (vb)
         pr2serr(" >> Input file type: %s\n",
@@ -238,7 +238,8 @@ open_of(struct opts_t * op)
     struct stat st;
 
     odip->d_type = dd_filetype(ofn, vb);
-    if (((FT_BLOCK | FT_TAPE | FT_NVME | FT_OTHER) & odip->d_type) && ofp->pt)
+    if (((FT_BLOCK | FT_TAPE | FT_NVME | FT_OTHER) & odip->d_type) &&
+        ofp->pt_pt)
         odip->d_type |= FT_PT;
     odip->d_type_hold = odip->d_type;
     if (vb)
@@ -271,7 +272,7 @@ open_of(struct opts_t * op)
         memset(&st, 0, sizeof(st));
         if (0 == stat(ofn, &st))
             outf_exists = true;
-        else if (ofp->pt) {
+        else if (ofp->pt_pt) {
             /* if oflag=pt, then creating a regular file is unhelpful */
             pr2serr("Cannot create a regular file called %s as a pt\n", ofn);
             return -SG_LIB_FILE_ERROR;
@@ -403,7 +404,7 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
     struct stat st;
     int in_lb_sz, id_type;
     struct dev_info_t * idip = op->idip;
-#ifndef SG_LIB_WIN32
+#ifdef SG_LIB_LINUX
     int64_t num_blks, t;
     int blk_sz;
 #endif
@@ -457,8 +458,8 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
                 }
             }
         }
-#ifndef SG_LIB_WIN32
-        /* aleady have (FT_sg & in_type), check overall size for both */
+#ifdef SG_LIB_LINUX
+        /* aleady have (FT_PT & in_type), check overall size for both */
         if ((FT_BLOCK & id_type) && (0 == op->iflagp->force) &&
             (0 == get_blkdev_capacity(op, DDPT_ARG_IN, &num_blks,
                                       &blk_sz))) {
@@ -527,7 +528,7 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
     struct dev_info_t * odip = op->odip;
     int out_lb_sz;
     int od_type = odip->d_type;
-#ifndef SG_LIB_WIN32
+#ifdef SG_LIB_LINUX
     int64_t num_blks, t;
     int blk_sz;
 #endif
@@ -578,7 +579,7 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
                 }
             }
         }
-#ifndef SG_LIB_WIN32
+#ifdef SG_LIB_LINUX
         if ((FT_BLOCK & od_type) && (0 == op->oflagp->force) &&
              (0 == get_blkdev_capacity(op, DDPT_ARG_OUT, &num_blks,
                                        &blk_sz))) {
