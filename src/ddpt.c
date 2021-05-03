@@ -64,7 +64,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.98 20210502 [svn: r392]";
+static const char * ddpt_version_str = "0.98 20210503 [svn: r393]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -239,7 +239,7 @@ open_of(struct opts_t * op)
 
     odip->d_type = dd_filetype(ofn, vb);
     if (((FT_BLOCK | FT_TAPE | FT_NVME | FT_OTHER) & odip->d_type) &&
-	ofp->pt_pt)
+        ofp->pt_pt)
         odip->d_type |= FT_PT;
     odip->d_type_hold = odip->d_type;
     if (vb)
