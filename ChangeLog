@@ -2,8 +2,8 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for pre-release ddpt-0.98 [20210607] [svn: r394]
-  - point svn:externals to sg3_utils revision 903
+Changelog for pre-release ddpt-0.98 [20210623] [svn: r395]
+  - point svn:externals to sg3_utils revision 905
 
 Changelog for released ddpt-0.97 [20210421] [svn: r388]
   - ddpt: add cdl operand for command duration limits
