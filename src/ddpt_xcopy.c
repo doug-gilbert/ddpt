@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019, Douglas Gilbert
+ * Copyright (c) 2013-2021, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -633,27 +633,27 @@ desc_from_vpd_id(struct opts_t * op, uint8_t *desc, int desc_len,
         if (op->verbose > 2)
             pr2serr("    Desc %d: assoc %u desig %u len %d\n", off, assoc,
                     desig, i_len);
-        /* Descriptor must be less than 16 bytes */
-        if (i_len > 16)
+        /* Identification descriptor's Designator length must be <= 20. */
+        if (i_len > 20)
             continue;
-        if (desig == 3) {
+        if (desig == /*NAA=*/ 3) {
             best = bp;
             best_len = i_len;
             break;
         }
-        if (desig == 2) {
+        if (desig == /*EUI64=*/ 2) {
             if (!best || f_desig < 2) {
                 best = bp;
                 best_len = i_len;
                 f_desig = 2;
             }
-        } else if (desig == 1) {
+        } else if (desig == /*T10*/ 1) {
             if (!best || f_desig == 0) {
                 best = bp;
                 best_len = i_len;
                 f_desig = desig;
             }
-        } else if (desig == 0) {
+        } else if (desig == /*Vendor specific=*/ 0) {
             if (!best) {
                 best = bp;
                 best_len = i_len;
@@ -667,9 +667,10 @@ desc_from_vpd_id(struct opts_t * op, uint8_t *desc, int desc_len,
                                           true /* to_stderr */, op->verbose);
         if (best_len + 4 < desc_len) {
             memset(desc, 0, 32);
-            desc[0] = 0xe4;
+            desc[0] = 0xe4; /* Identification Descriptor */
             memcpy(desc + 4, best, best_len + 4);
-            desc[4] &= 0x1f;
+            desc[4] &= 0x0f; /* code set */
+            desc[5] &= 0x3f; /* association and designator type */
             if (flp->pad)
                 desc[28] = 0x4;
             sg_put_unaligned_be24((uint32_t)block_size, desc + 29);

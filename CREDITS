@@ -1,7 +1,7 @@
 The author of ddpt would like to thank the following people who
 have made contributions:
 
-Mark Knibbs <markk at clara dot co dot uk>
+Mark Knibbs <markk at clara dot co dot uk> <mark_k at iname dot com>
         defined write sparing and sparse writing. [20081212]
         defined granularity control for sparing+sparse; oflag=resume;
         lazy seeks; trim and self-trim. [20100730]
@@ -19,4 +19,4 @@ Thomas Glanzmann <thomas at glanzmann dot de>
 
 
 Doug Gilbert
-7th November 2013
+1st September 2021

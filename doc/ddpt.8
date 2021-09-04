@@ -1,4 +1,4 @@
-.TH DDPT "8" "May 2021" "ddpt\-0.98" DDPT
+.TH DDPT "8" "September 2021" "ddpt\-0.98" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -1853,6 +1853,12 @@ like "shouldn't/can't get here". Perhaps the author should be contacted.
 .B 33
 the command sent to device has timed out. This occurs in Linux only; in
 other ports a command timeout will appear as a transport (or OS) error.
+.TP
+.B 35
+a transport error has been detected. This is an error from the low level
+driver (e.g. HBA driver) or from the interconnect between the host (initiator)
+and the device (target). For example a SAS expander may not be able to
+find a free path to return the user data from a READ command.
 .TP
 .B 36
 no error has occurred. For actions that result in a boolean, this exit
