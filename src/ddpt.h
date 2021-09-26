@@ -158,6 +158,7 @@ extern "C" {
 #define FT_CHAR 128             /* char dev, doesn't fit another category */
 #define FT_NVME 256             /* char or blk dev, NVMe device/SSD */
 #define FT_ALL_FF 512           /* iflag=ff so input will be 0xff bytes */
+#define FT_RANDOM 1024          /* iflag=random so input is random bytes */
 #define FT_ERROR 0x800000       /* couldn't "stat" file */
 
 /* ODX type requested */
@@ -481,6 +482,7 @@ struct flags_t {
                          *  transfer */
     bool prefer_rcs;    /* prefer Receive Copy Status command over RRTI */
     bool pt_pt;         /* use pass-through to inject SCSI commands */
+    bool random;        /* instead of if=IFILE sourcing random data */
     bool rarc;          /* Set Rebuild Assist Recovery Control bit on READs */
     bool resume;        /* try to restart previously interrupted copy */
     bool rtf_len;       /* odx: append number of bytes ROD represents to end
@@ -605,6 +607,7 @@ struct opts_t {
     int read_tape_numbytes;
     int last_tape_read_len;  /* Length of previous tape read */
     unsigned int consec_same_len_reads;
+    long seed;          /* for when iflag=random is in use */
     FILE * errblk_fp;
     struct flags_t * iflagp;
     struct dev_info_t * idip;
@@ -621,6 +624,9 @@ struct opts_t {
     struct cp_statistics_t stats;  /* copied here after internal copy done */
     struct sgl_info_t i_sgli; /* in scatter gather list info including list */
     struct sgl_info_t o_sgli; /* out scatter gather list info */
+#ifdef HAVE_SRAND48_R  /* gcc extension. N.B. non-reentrant version slower */
+    struct drand48_data drand;/* opaque, used by srand48_r and mrand48_r */
+#endif
     char rtf[INOUTF_SZ];        /* ODX: ROD token filename */
 #ifdef SG_LIB_WIN32
     int wscan;          /* only used on Windows, for scanning devices */

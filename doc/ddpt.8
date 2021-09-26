@@ -278,7 +278,7 @@ given).
 .TP
 \fBlist_id\fR=\fILID\fR
 \fILID\fR is the xcopy LIST IDENTIFIER field or the STR_ID field for the
-WRITE STREAM command. Fo xcopy it is used to associate an originating xcopy
+WRITE STREAM command. For xcopy it is used to associate an originating xcopy
 command with follow\-up commands such as RECEIVE ROD TOKEN INFORMATION. If
 given, the \fILID\fR should not clash with any other xcopy \fILID\fR
 currently in use on this I_T nexus.
@@ -873,6 +873,16 @@ some /dev/bsg/* devices in Linux). This flag is needed for device nodes
 that can be accessed both via standard UNIX read() and write() commands
 as well as SCSI commands. Such devices default standard UNIX read()
 and write() commands in the absence of this flag.
+.TP
+random [i]
+this flag is only active with \fIiflag=\fR and when given replaces
+\fIif=IFILE\fR. If both are given an error is generated. The input will
+be a stream of pseudo random bytes. The Linux getrandom(2) system call is
+used to create a seed and there after mrand48(3) is used to generate a
+pseudo random sequence, 4 bytes at a time. The quality of the randomness
+can be viewed with the ent(1) utility. This is not a high quality random
+number generator, it is built for speed, not quality. One application is
+checking the correctness of the copy and verify operations of this utility.
 .TP
 rarc [i] [pt]
 bit set in READ(10, 12, 16 and 32) to suppress RAID rebuild functions
