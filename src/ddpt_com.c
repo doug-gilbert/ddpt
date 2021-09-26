@@ -467,6 +467,9 @@ dd_filetype_str(int ft, char * buff, int max_bufflen, const char * fname)
     if (FT_ALL_FF & ft)
         off += sg_scnpr(buff + off, max_bufflen - off,
 		        "null device full of 0xff bytes ");
+    if (FT_RANDOM & ft)
+        off += sg_scnpr(buff + off, max_bufflen - off,
+		        "random bytes as input ");
     if (FT_OTHER & ft)
         off += sg_scnpr(buff + off, max_bufflen - off, "other file type ");
     if (FT_ERROR & ft)

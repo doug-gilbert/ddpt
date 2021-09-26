@@ -39,7 +39,7 @@
 // #include <mutex>
 // #include <chrono>
 // #include <atomic>
-#include <random>
+#include <random>	/* iota() needs this */
 
 /* Need _GNU_SOURCE for O_DIRECT */
 #ifndef _GNU_SOURCE
@@ -66,7 +66,7 @@
 #endif
 
 
-static const char * ddpt_sgl_version_str = "0.98 20210903 [svn: r397]";
+static const char * ddpt_sgl_version_str = "0.98 20210925 [svn: r398]";
 
 #include "ddpt.h"
 #include "sg_lib.h"

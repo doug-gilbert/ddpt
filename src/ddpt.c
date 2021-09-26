@@ -54,6 +54,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <fcntl.h>
+#include <time.h>
 #define __STDC_FORMAT_MACROS 1
 #include <inttypes.h>
 #include <sys/stat.h>
@@ -63,8 +64,12 @@
 #include "config.h"
 #endif
 
+#ifdef HAVE_GETRANDOM
+#include <sys/random.h>         /* for getrandom() system call */
+#endif
 
-static const char * ddpt_version_str = "0.98 20210903 [svn: r397]";
+
+static const char * ddpt_version_str = "0.98 20210925 [svn: r398]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -2456,18 +2461,23 @@ rw_reg_blk_see_leave(struct opts_t * op, struct cp_state_t * csp, int num,
 
     n = csp->rem_seg_bytes;
     if (DDPT_REASON_EOF_ON_READ == csp->leave_reason) {
-        if (op->iflagp->zero || op->iflagp->ff) {
+        if (op->iflagp->zero || op->iflagp->ff || op->iflagp->random) {
             rem_blks = num - csp->blks_xfer;
             csp->leave_after_write = false;
             if (op->iflagp->zero) {
                 memset(wPos + n, 0x0, ibs * ibpt - n);
                 *id_typep = FT_DEV_NULL;
                 op->idip->d_type = FT_DEV_NULL;
-            } else {
+            } else if (op->iflagp->ff) {
                 memset(wPos + n, 0xff, ibs * ibpt - n);
                 *id_typep = FT_ALL_FF;
                 op->idip->d_type = FT_ALL_FF;
-            }
+            } else {
+
+// memset(wPos + n, 0xff, ibs * ibpt - n);
+                *id_typep = FT_RANDOM;
+                op->idip->d_type = FT_RANDOM;
+	    }
             *change_overp = true;
             csp->stats.in_full += rem_blks;
             if (! op->quiet)
@@ -2726,12 +2736,6 @@ do_rw_copy(struct opts_t * op)
             ret = SG_LIB_CAT_OTHER;
             break;
 #endif
-        } else if (FT_DEV_NULL & id_type) {
-            if (first_time || change_over) {
-                memset(wPos, 0x0, ibs * ibpt);
-                change_over = false;
-            }
-            csp->stats.in_full += csp->icbpt;
         } else if (FT_ALL_FF & id_type) {
             if (first_time || change_over) {
                 n = ibs * ibpt;
@@ -2743,6 +2747,30 @@ do_rw_copy(struct opts_t * op)
                 change_over = false;
             }
             csp->stats.in_full += num;
+        } else if (FT_DEV_NULL & id_type) {
+            if (first_time || change_over) {
+                memset(wPos, 0x0, ibs * ibpt);
+                change_over = false;
+            }
+            csp->stats.in_full += csp->icbpt;
+        } else if (FT_RANDOM & id_type) {
+            int kk, j;
+            const int jbump = sizeof(uint32_t);
+            long rn;
+            uint8_t * bp;
+
+            bp = wPos;
+            for (kk = 0; kk < ibpt; ++kk, bp += ibs) {
+                for (j = 0; j < ibs; j += jbump) {
+                   /* mrand48 takes uniformly from [-2^31, 2^31) */
+#ifdef HAVE_SRAND48_R
+                    mrand48_r(&op->drand, &rn);
+#else
+                    rn = mrand48();
+#endif
+                    *((uint32_t *)(bp + j)) = (uint32_t)rn;
+                }
+            }
         } else {        /* assume regular file or block device */
             csp->low_bp = wPos;
             csp->subseg_bp = wPos;
@@ -3026,6 +3054,29 @@ open_files_devices(struct opts_t * op)
     } else if (op->iflagp->zero) {
         idip->d_type = FT_DEV_NULL;
         idip->fd = 9998;        /* unlikely file descriptor */
+    } else if (op->iflagp->random) {
+        idip->d_type = FT_RANDOM;
+        idip->fd = 9997;        /* unlikely file descriptor */
+#ifdef HAVE_GETRANDOM
+        {
+            ssize_t ssz = getrandom(&op->seed, sizeof(op->seed),
+				    GRND_NONBLOCK);
+
+            if (ssz < (ssize_t)sizeof(op->seed)) {
+                pr2serr("getrandom() failed, ret=%d\n", (int)ssz);
+                op->seed = (long)time(NULL);
+            }
+        }
+#else
+        op->seed = (long)time(NULL);    /* use seconds since epoch as proxy */
+#endif
+        if (vb > 1)
+            pr2serr("seed=%ld\n", op->seed);
+#ifdef HAVE_SRAND48_R
+        srand48_r(op->seed, &op->drand);
+#else
+        srand48(op->seed);
+#endif
     } else {
         pr2serr("'if=IFILE' operand must be given. For stdin as input use "
                 "'if=-'\n");

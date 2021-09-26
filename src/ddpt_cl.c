@@ -291,6 +291,7 @@ tertiary_help:
             "                  expected size\n"
             "   prefer_rts (odx)  prefer RCS over RRTI command (def: RRTI)\n"
             "   pt             instruct pass-through interface to be used\n"
+            "   random (i)     instead of if=IFILE, input is random bytes\n"
             "   rarc (i,pt)    set RARC (rebuild assist) bit in SCSI READs\n"
             "   resume (o)     attempt to restart an interrupted copy\n"
             "   rtf_len        place ROD size after each ROD token in RTF\n"
@@ -605,6 +606,8 @@ flags_process(const char * arg, struct flags_t * fp)
             fp->prefer_rcs = true;
         else if (0 == strcmp(cp, "pt"))
             fp->pt_pt = true;
+        else if (0 == strcmp(cp, "random"))
+            fp->random = true;
         else if (0 == strcmp(cp, "rarc"))
             fp->rarc = true;
         else if (0 == strcmp(cp, "resume"))

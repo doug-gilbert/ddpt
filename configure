@@ -5637,6 +5637,13 @@ then :
 
 fi
 
+ac_fn_c_check_func "$LINENO" "srand48_r" "ac_cv_func_srand48_r"
+if test "x$ac_cv_func_srand48_r" = xyes
+then :
+  printf "%s\n" "#define HAVE_SRAND48_R 1" >>confdefs.h
+
+fi
+
 
 
 
@@ -5718,6 +5725,21 @@ case $host_os in *\ *) host_os=`echo "$host_os" | sed 's/ /-/g'`;; esac
 printf "%s\n" "#define SG_LIB_BUILD_HOST \"${host}\"" >>confdefs.h
 
 
+check_for_getrandom() {
+               for ac_header in sys/random.h
+do :
+  ac_fn_c_check_header_compile "$LINENO" "sys/random.h" "ac_cv_header_sys_random_h" "$ac_includes_default"
+if test "x$ac_cv_header_sys_random_h" = xyes
+then :
+  printf "%s\n" "#define HAVE_SYS_RANDOM_H 1" >>confdefs.h
+
+printf "%s\n" "#define HAVE_GETRANDOM 1" >>confdefs.h
+
+fi
+
+done
+}
+
 check_for_linux_nvme_headers() {
                for ac_header in linux/nvme_ioctl.h
 do :
@@ -5774,6 +5796,7 @@ printf "%s\n" "#define SG_LIB_ANDROID 1" >>confdefs.h
 
 printf "%s\n" "#define SG_LIB_LINUX 1" >>confdefs.h
 
+                check_for_getrandom;
                 check_for_linux_nvme_headers;;
         *-*-freebsd*|*-*-kfreebsd*-gnu*)
                 os_deps='sg_pt_freebsd.o'
@@ -5784,6 +5807,7 @@ printf "%s\n" "#define SG_LIB_FREEBSD 1" >>confdefs.h
 
 printf "%s\n" "#define HAVE_NVME 1" >>confdefs.h
 
+                check_for_getrandom;
                 LIBS="$LIBS -lcam";;
         *-*-solaris*)
                 os_deps='sg_pt_solaris.o'
@@ -5806,6 +5830,7 @@ printf "%s\n" "#define SG_LIB_WIN32 1" >>confdefs.h
 
 printf "%s\n" "#define HAVE_NVME 1" >>confdefs.h
 
+                check_for_getrandom;
                 CFLAGS="$CFLAGS -Wno-char-subscripts";;
         *-*-mingw*)
                 os_deps='sg_pt_win32.o'
@@ -5819,6 +5844,7 @@ printf "%s\n" "#define SG_LIB_MINGW 1" >>confdefs.h
 
 printf "%s\n" "#define HAVE_NVME 1" >>confdefs.h
 
+                check_for_getrandom;
 		CFLAGS="$CFLAGS -D__USE_MINGW_ANSI_STDIO";;
         *-*-linux-gnu* | *-*-linux* | *)
                 os_deps='sg_pt_linux.o sg_pt_linux_nvme.o'
@@ -5826,6 +5852,7 @@ printf "%s\n" "#define HAVE_NVME 1" >>confdefs.h
 
 printf "%s\n" "#define SG_LIB_LINUX 1" >>confdefs.h
 
+                check_for_getrandom;
                 check_for_linux_nvme_headers;;
 esac
 
