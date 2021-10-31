@@ -69,7 +69,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.98 20210925 [svn: r398]";
+static const char * ddpt_version_str = "0.98 20211030 [svn: r399]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -2477,7 +2477,7 @@ rw_reg_blk_see_leave(struct opts_t * op, struct cp_state_t * csp, int num,
 // memset(wPos + n, 0xff, ibs * ibpt - n);
                 *id_typep = FT_RANDOM;
                 op->idip->d_type = FT_RANDOM;
-	    }
+            }
             *change_overp = true;
             csp->stats.in_full += rem_blks;
             if (! op->quiet)
@@ -3060,7 +3060,7 @@ open_files_devices(struct opts_t * op)
 #ifdef HAVE_GETRANDOM
         {
             ssize_t ssz = getrandom(&op->seed, sizeof(op->seed),
-				    GRND_NONBLOCK);
+                                    GRND_NONBLOCK);
 
             if (ssz < (ssize_t)sizeof(op->seed)) {
                 pr2serr("getrandom() failed, ret=%d\n", (int)ssz);
