@@ -265,7 +265,7 @@ pt_read_capacity(struct opts_t * op, bool in0_out1, int64_t * num_blks,
     int protect = (in0_out1 ? op->wrprotect : op->rdprotect);
     int sg_fd = (in0_out1 ? op->odip->fd : op->idip->fd);
     unsigned int ui;
-    uint8_t rcBuff[RCAP16_REPLY_LEN];
+    uint8_t rcBuff[RCAP16_REPLY_LEN] = {0, };
 
     verb = (op->verbose ? op->verbose - 1: 0);
     memset(rcBuff, 0, sizeof(rcBuff));
@@ -532,8 +532,8 @@ pt_low_read(struct opts_t * op, bool in0_out1, uint8_t * buff,
     const struct dev_info_t * dip = (in0_out1 ? op->odip : op->idip);
     const struct flags_t * fp = (in0_out1 ? op->oflagp : op->iflagp);
     struct sg_pt_base * ptvp = (in0_out1 ? op->odip->ptvp : op->idip->ptvp);
-    uint8_t rdCmd[MAX_SCSI_CDBSZ];
-    uint8_t sense_b[SENSE_BUFF_LEN];
+    uint8_t rdCmd[MAX_SCSI_CDBSZ] = {0, };
+    uint8_t sense_b[SENSE_BUFF_LEN] = {0, };
     struct sg_scsi_sense_hdr ssh;
     struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
@@ -937,8 +937,8 @@ pt_low_write(struct opts_t * op, const uint8_t * buff, int blocks,
     uint64_t io_addr = 0;
     struct sg_pt_base * ptvp = op->odip->ptvp;
     const struct flags_t * fp = op->oflagp;
-    uint8_t wrCmd[MAX_SCSI_CDBSZ];
-    uint8_t sense_b[SENSE_BUFF_LEN];
+    uint8_t wrCmd[MAX_SCSI_CDBSZ] = {0, };
+    uint8_t sense_b[SENSE_BUFF_LEN] = {0, };
     struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
     if (! pt_build_scsi_rw_cdb(wrCmd, fp->cdbsz, blocks, to_block, 1, fp,
@@ -1110,7 +1110,7 @@ pt_write_same16(struct opts_t * op, const uint8_t * buff, int bs,
     uint64_t s_block = start_block;
     struct sg_pt_base * ptvp = op->odip->ptvp;
     uint8_t wsCmdBlk[16];
-    uint8_t sense_b[SENSE_BUFF_LEN];
+    uint8_t sense_b[SENSE_BUFF_LEN] = {0, };
     struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
     memset(wsCmdBlk, 0, sizeof(wsCmdBlk));
@@ -1284,7 +1284,7 @@ pt_3party_copy_out(int sg_fd, int sa, uint32_t list_id, int group_num,
     struct sg_pt_base * ptvp;
     uint8_t xcopyCmdBlk[DDPT_TPC_OUT_CMDLEN] =
       {DDPT_TPC_OUT_CMD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    uint8_t sense_b[SENSE_BUFF_LEN];
+    uint8_t sense_b[SENSE_BUFF_LEN] = {0, };
     char cname[80];
 
     if (vb < 0)
@@ -1454,7 +1454,7 @@ pt_pre_fetch(struct opts_t * op, int blocks, int64_t start_block)
     uint64_t s_block = start_block;
     struct sg_pt_base * ptvp = op->odip->ptvp;
     uint8_t pfCmdBlk[16];
-    uint8_t sense_b[SENSE_BUFF_LEN];
+    uint8_t sense_b[SENSE_BUFF_LEN] = {0, };
     struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
     pf16 = (op->oflagp->cdbsz > 12);

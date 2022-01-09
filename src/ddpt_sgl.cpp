@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2021, Douglas Gilbert
+ * Copyright (c) 2020-2022, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -39,7 +39,7 @@
 // #include <mutex>
 // #include <chrono>
 // #include <atomic>
-#include <random>	/* iota() needs this */
+#include <random>       /* iota() needs this */
 
 /* Need _GNU_SOURCE for O_DIRECT */
 #ifndef _GNU_SOURCE
@@ -66,7 +66,7 @@
 #endif
 
 
-static const char * ddpt_sgl_version_str = "0.98 20210925 [svn: r398]";
+static const char * ddpt_sgl_version_str = "0.98 20220109 [svn: r400]";
 
 #include "ddpt.h"
 #include "sg_lib.h"
