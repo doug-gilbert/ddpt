@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2021, Douglas Gilbert
+ * Copyright (c) 2008-2022, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -684,10 +684,8 @@ pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff, int blocks,
         int64_t from_block, int * blks_readp)
 {
     bool may_coe = false;
-    bool use_io_addr;
     int res, blks, xferred, pi_len, bs, retries_tmp;
     int ret = 0;
-    uint64_t io_addr;
     int64_t lba;
     struct flags_t * fp;
     uint8_t * bp;
@@ -708,8 +706,11 @@ pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff, int blocks,
     retries_tmp = fp->retries;
     for (xferred = 0, blks = blocks, lba = from_block, bp = buff;
          blks > 0; blks = blocks - xferred) {
-        io_addr = 0;
+        bool use_io_addr;
+        uint64_t io_addr;
+
         use_io_addr = false;
+        io_addr = 0;
         may_coe = false;
         res = pt_low_read(op, in0_out1, bp, blks, lba, bs, &io_addr);
         switch (res) {
