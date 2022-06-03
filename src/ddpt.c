@@ -69,7 +69,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.98 20220129 [svn: r401]";
+static const char * ddpt_version_str = "0.98 20220602 [svn: r403]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -464,7 +464,7 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
             }
         }
 #ifdef SG_LIB_LINUX
-        /* aleady have (FT_PT & in_type), check overall size for both */
+        /* already have (FT_PT & in_type), check overall size for both */
         if ((FT_BLOCK & id_type) && (0 == op->iflagp->force) &&
             (0 == get_blkdev_capacity(op, DDPT_ARG_IN, &num_blks,
                                       &blk_sz))) {
@@ -496,13 +496,7 @@ calc_count_in(struct opts_t * op, int64_t * in_num_blksp)
                 }
             }
         }
-    }
-#if 0
-// don't understand why this is here
-    else if ((op->dd_count > 0) && (! op->oflagp->resume))
-        return 0;
-#endif
-    else if (FT_REG & id_type) {
+    } else if (FT_REG & id_type) {
         if (fstat(idip->fd, &st) < 0) {
             perror("fstat(idip->fd) error");
             *in_num_blksp = DDPT_COUNT_INDEFINITE;
@@ -616,13 +610,7 @@ calc_count_out(struct opts_t * op, int64_t * out_num_blksp)
                 }
             }
         }
-    }
-#if 0
-// don't understand why this is here
-    else if ((op->dd_count > 0) && (! op->oflagp->resume))
-        return 0;
-#endif
-    else if (FT_REG & od_type) {
+    } else if (FT_REG & od_type) {
         if (fstat(odip->fd, &st) < 0) {
             perror("fstat(odip->fd) error");
             *out_num_blksp = DDPT_COUNT_INDEFINITE;
@@ -800,9 +788,6 @@ cp_read_pt(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
             pr2serr("short read(pt), requested %d blocks, got %d blocks\n",
                     blks, blks_read);
         csp->leave_after_write = true;
-        // csp->icbpt = blks_read;
-        /* round down since don't do partial writes from pt reads */
-        // yyyy csp->ocbpt = x_mult_div(blks_read, op->ibs_pi, op->obs_pi);
     }
 fini:
     csp->blks_xfer = blks_read;
@@ -861,7 +846,7 @@ cp_write_same_wrap(struct dev_info_t * dip, struct cp_state_t * csp,
     }
 }
 
-/* Error occurred on block/regular read. coe>0 so assume all full
+/* Error occurred on block/regular read. If coe==1 then assume all full
  * blocks prior to error are good (if any) and start to read from the
  * block containing the error, one block at a time, until ibpt. Supply
  * zeros for unreadable blocks. Return 0 if successful, SG_LIB_CAT_OTHER
@@ -869,8 +854,10 @@ cp_write_same_wrap(struct dev_info_t * dip, struct cp_state_t * csp,
  * and SG_LIB_CAT_MEDIUM_HARD if the coe_limit is exceeded. */
 static int
 coe_cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
-                      uint8_t * bp, int numread_errno)
+                      uint8_t * bp, int bytes_read_or_errno)
 {
+    bool coe_gt_1 = op->iflagp->coe > 1;
+    bool io_error_detected = false;
     int res, res2, k, total_read, num_read, err;
     int ibs = op->ibs_pi;
     int obs = op->obs_pi;
@@ -878,12 +865,11 @@ coe_cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
     int vb = op->verbose;
     int64_t offset, my_skip;
 
-    err = (numread_errno < 0) ? -numread_errno : 0;
-    if (0 == numread_errno) {
+    err = (bytes_read_or_errno < 0) ? -bytes_read_or_errno : 0;
+    if (0 == bytes_read_or_errno) {
         csp->blks_xfer = 0;
         csp->bytes_read = 0;
         csp->bytes_of = 0;
-        /* yyyy csp->ocbpt = 0; */
         csp->leave_after_write = true;
         csp->leave_reason = DDPT_REASON_EOF_ON_READ;
         return 0;       /* EOF */
@@ -895,7 +881,6 @@ coe_cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
                 memset(bp, 0, ibs);
                 if ((res2 = coe_process_eio(op, csp->cur_in_lba)))
                     return res2;
-                ++csp->stats.in_full;
                 csp->blks_xfer += 1;
                 csp->bytes_xfer += ibs;
                 csp->bytes_read += ibs;
@@ -903,8 +888,8 @@ coe_cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
             }
         } else
             return sg_convert_errno(err);
-    } else
-        num_read = (numread_errno / ibs) * ibs; /* round down to n*ibs */
+    } else      /* bytes_read_or_errno > 0 */
+        num_read = (bytes_read_or_errno / ibs) * ibs; /* round down to n*ibs */
 
     k = num_read / ibs;
     if (k > 0) {
@@ -916,26 +901,38 @@ coe_cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
     offset = my_skip * ibs;
     bp += num_read;
     for ( ; k < blks; ++k, ++my_skip, bp += ibs, offset += ibs) {
+        /* read from location of error, 1 block at a time */
         res = set_filepos_if_needed(op->idip, offset, csp->in_iter.filepos,
-                                    __func__, vb > 1, vb);
+                                    __func__, vb > 2, vb);
         if (res)
             return res;
         csp->in_iter.filepos = offset;
         memset(bp, 0, ibs);
-        while (((res = read(op->idip->fd, bp, ibs)) < 0) &&
-               (EINTR == errno))
-            ++csp->stats.interrupted_retries;
+        if (coe_gt_1 && io_error_detected) {
+            res = ibs;          /* this will zero rest of segment */
+            /* don't bump in_iter.filepos as no read() done on this path */
+            if ((op->coe_limit > 0) && (op->coe_count > 0))
+                --op->coe_count; /* counters increment done by next line */
+            coe_process_eio(op, my_skip);
+            csp->bytes_read += ibs;
+            continue;
+        } else {        /* normal case */
+            while (((res = read(op->idip->fd, bp, ibs)) < 0) &&
+                   (EINTR == errno))
+                ++csp->stats.interrupted_retries;
+        }
         if (0 == res) {
             csp->leave_reason = DDPT_REASON_EOF_ON_READ;
             goto short_read;
         } else if (res < 0) {
             err = errno;
+            io_error_detected = true;
             if ((EIO == err) || (EREMOTEIO == err)) {
                 if ((res2 = coe_process_eio(op, my_skip)))
                     return res2;
             } else {
-                pr2serr("reading 1 block, skip=%" PRId64 " : %s\n", my_skip,
-                        safe_strerror(err));
+                pr2serr("reading 1 block, skip=%" PRId64 " : error: %s\n",
+                        my_skip, safe_strerror(err));
                 csp->leave_reason = sg_convert_errno(err);
                 goto short_read;
             }
@@ -951,10 +948,10 @@ coe_cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp,
             if (vb > 2)
                 pr2serr("reading 1 block, skip=%" PRId64 " : okay\n",
                         my_skip);
+            ++csp->stats.in_full;
         }
-        ++csp->stats.in_full;
         csp->bytes_read += ibs;
-    }
+    }           /* end of one-block-at-a-time for loop */
     csp->bytes_xfer = csp->bytes_read;
     csp->blks_xfer = csp->bytes_read / ibs;
     return 0;
@@ -964,20 +961,11 @@ short_read:
     csp->blks_xfer = total_read / ibs;
     csp->bytes_read = total_read;
     csp->bytes_xfer = total_read;
-    if ((total_read % ibs) > 0) {
-        // yyyy ++csp->icbpt;
+    if ((total_read % ibs) > 0)
         ++csp->stats.in_partial;
-    }
-    // yyyy csp->ocbpt = total_read / obs;
     csp->leave_after_write = true;
-    if (DDPT_REASON_EOF_ON_READ == csp->leave_reason) {
+    if (DDPT_REASON_EOF_ON_READ == csp->leave_reason)
         csp->partial_write_bytes = total_read % obs;
-    } else {
-        /* if short read (not EOF) implies partial writes, bump obpt */
-        if ((total_read % obs) > 0) {
-            ; // yyyy ++csp->ocbpt;
-        }
-    }
     return 0;
 }
 
@@ -996,8 +984,8 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
     int vb = op->verbose;
     int64_t offset = csp->cur_in_lba * ibs;
 
-    if (dr || (vb > 3)) {
-        if ((vb > 3) || (dr && (vb > 1)))
+    if (dr || (vb > 5)) {
+        if ((vb > 5) || (dr && (vb > 1)))
             deep_dry_run_fpos(__func__, dr, true, offset, numbytes,
                               bp - csp->low_bp, csp->buf_name);
         if (dr) {
@@ -1019,7 +1007,7 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
     }
 #endif
     res = set_filepos_if_needed(op->idip, offset, csp->in_iter.filepos,
-                                __func__, vb > 1, vb);
+                                __func__, vb > 2, vb);
     if (res)
         return res;
     csp->in_iter.filepos = offset;
@@ -1031,20 +1019,21 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
     err = errno;
     if (vb > 2)
         pr2serr("read(unix): requested bytes=%d, res=%d\n", numbytes, res);
-    if ((op->iflagp->coe) && (res < numbytes)) {
+    if ((op->iflagp->coe > 0) && (res < numbytes)) {
         res2 = (res >= 0) ? res : -err;
         if ((res < 0) && vb) {
-            pr2serr("reading, skip=%" PRId64 " : %s, go to coe\n",
+            pr2serr("skip/lba_in=%" PRId64 " : %s, attempt "
+                    "continue-on-error\n",
                     csp->cur_in_lba, safe_strerror(err));
         } else if (vb)
-            pr2serr("reading, skip=%" PRId64 " : short read, go to coe\n",
-                    csp->cur_in_lba);
+            pr2serr("skip/lba_in=%" PRId64 " : short read,  attempt "
+                    "continue-on-error\n", csp->cur_in_lba);
         if (res2 > 0)
             csp->in_iter.filepos += res2;
         return coe_cp_read_block_reg(op, csp, bp, res2);
     }
     if (res < 0) {
-        pr2serr("reading, skip=%" PRId64 " : %s\n", csp->cur_in_lba,
+        pr2serr("skip/lba_in=%" PRId64 " : %s\n", csp->cur_in_lba,
                 safe_strerror(err));
         if ((EIO == err) || (EREMOTEIO == err))
             return SG_LIB_CAT_MEDIUM_HARD;
@@ -1091,9 +1080,6 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
         /* allow for partial write */
         if (DDPT_REASON_EOF_ON_READ == csp->leave_reason)
             csp->partial_write_bytes = (res + res2) % obs;
-        else if ((res % obs) > 0) { /* else if extra bytes bump obpt */
-            ;  /* yyyy ++oocbpt;     // do this at higher level */
-        }
     }
 fini:
     csp->in_iter.filepos += res;
@@ -1139,8 +1125,8 @@ cp_read_tape(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
     int vb = op->verbose;
 
     op->read_tape_numbytes = numbytes;
-    if (dr || (vb > 3)) {
-        if ((vb > 3) || (dr && (vb > 1)))
+    if (dr || (vb > 5)) {
+        if ((vb > 5) || (dr && (vb > 1)))
             deep_dry_run_fpos(__func__, dr, true, -1, numbytes,
                               bp - csp->low_bp, csp->buf_name);
         if (dr) {
@@ -1197,11 +1183,9 @@ cp_read_tape(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
             csp->bytes_xfer = res;
             csp->blks_xfer = res / ibs;
             if ((res % ibs) > 0) {
-                // yyyy ++csp->icbpt;
                 ++csp->stats.in_partial;
                 --csp->stats.in_full;
             }
-            // yyyy csp->ocbpt = res / obs;
             csp->leave_after_write = true;
             csp->leave_reason = DDPT_REASON_TAPE_SHORT_READ;
             csp->partial_write_bytes = res % obs;
@@ -1235,8 +1219,8 @@ cp_read_fifo(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
     int vb = op->verbose;
     int64_t offset = csp->cur_in_lba * ibs;
 
-    if (dr || (vb > 3)) {
-        if ((vb > 3) || (dr && (vb > 1)))
+    if (dr || (vb > 5)) {
+        if ((vb > 5) || (dr && (vb > 1)))
             deep_dry_run_fpos(__func__, dr, true, offset, numbytes,
                               bp - csp->low_bp, csp->buf_name);
         if (dr) {
@@ -1295,8 +1279,8 @@ cp_write_of2(struct opts_t * op, struct cp_state_t * csp, const uint8_t * bp)
     int numbytes = (num * obs) + csp->partial_write_bytes;
     int vb = op->verbose;
 
-    if (dr || (vb > 3)) {
-        if ((vb > 3) || (dr && (vb > 1)))
+    if (dr || (vb > 5)) {
+        if ((vb > 5) || (dr && (vb > 1)))
             deep_dry_run_fpos(__func__, dr, false, -1, numbytes,
                               bp - csp->low_bp, csp->buf_name);
         if (dr)
@@ -1381,8 +1365,8 @@ cp_read_of_block_reg(struct opts_t * op, struct cp_state_t * csp,
     int numbytes = csp->cur_out_num * obs;
     int vb = op->verbose;
 
-    if (dr || (vb > 3)) {
-        if ((vb > 3) || (dr && (vb > 1)))
+    if (dr || (vb > 5)) {
+        if ((vb > 5) || (dr && (vb > 1)))
             deep_dry_run_fpos(__func__, dr, true, offset, numbytes,
                               bp - csp->low_bp, csp->buf_name);
         if (dr) {
@@ -1489,7 +1473,6 @@ cp_write_pt(struct opts_t * op, struct cp_state_t * csp, const uint8_t * bp)
 
             numbytes = blks * obs;
             numbytes += csp->partial_write_bytes;
-            // yyyy ++csp->ocbpt;
             ++blks;
             res = blks * obs;
             if (res > numbytes)
@@ -1608,8 +1591,8 @@ cp_write_tape(struct opts_t * op, struct cp_state_t * csp,
 /* Only print early warning message once when verbose=2 */
 
     numbytes = blks * obs;
-    if (dr || (vb > 3)) {
-        if ((vb > 3) || (dr && (vb > 1)))
+    if (dr || (vb > 5)) {
+        if ((vb > 5) || (dr && (vb > 1)))
             deep_dry_run_fpos(__func__, dr, false, -1, numbytes,
                               bp - csp->low_bp, csp->buf_name);
         if (dr)
@@ -1626,7 +1609,6 @@ cp_write_tape(struct opts_t * op, struct cp_state_t * csp,
         else {
             uint8_t * ncbp = (uint8_t *)bp;
 
-            // yyyy ++csp->ocbpt;
             ++blks;
             res = blks * obs;
             if (res > numbytes)
@@ -1725,8 +1707,8 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
     int vb_thresh_filepos_change = got_sparse_sparing ? 3 : 2;
 
     offset = aseek * obs;
-    if (dr || (vb > 3)) {
-        if ((vb > 3) || (dr && (vb > 1)))
+    if (dr || (vb > 5)) {
+        if ((vb > 5) || (dr && (vb > 1)))
             deep_dry_run_fpos(__func__, dr, false, aseek * obs, numbytes,
                               bp - csp->low_bp, csp->buf_name);
         if (dr)
@@ -1741,7 +1723,6 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
             rem = csp->partial_write_bytes;
             if (op->oflagp->pad) {
                 numbytes += rem;
-                // yyyy ++csp->ocbpt;
                 ++blks;
                 res = blks * obs;
                 if (res > numbytes)
@@ -1794,7 +1775,6 @@ cp_write_block_reg(struct opts_t * op, struct cp_state_t * csp,
                 uint8_t * ncbp = (uint8_t *)bp;
 
                 numbytes += rem;
-                // yyyy ++csp->ocbpt;
                 ++blks;
                 res = blks * obs;
                 if (res > numbytes)
@@ -1922,8 +1902,8 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
     struct sgl_iter_t * itp = &csp->out_iter;
     struct stat a_st;
 
-    if (dr || (vb > 3)) {
-        if ((vb > 3) || (dr && (vb > 1)))
+    if (dr || (vb > 5)) {
+        if ((vb > 5) || (dr && (vb > 1)))
             deep_dry_run_fpos(__func__, dr, false, csp->cur_out_lba * obs,
                               csp->cur_out_num *obs,
                               0, csp->buf_name);
@@ -2035,8 +2015,8 @@ cp_finer_comp_wr(struct opts_t * op, struct cp_state_t * csp,
     int obs = op->obs_pi;
     int numbytes = oblks * obs;
 
-    if (dr || (op->verbose > 3)) {
-        if ((op->verbose > 3) || (dr && (op->verbose > 1)))
+    if (dr || (op->verbose > 5)) {
+        if ((op->verbose > 5) || (dr && (op->verbose > 1)))
             deep_dry_run_fpos(__func__, dr, false, csp->cur_out_lba * obs,
                               oblks * obs, b2p - csp->low_bp, csp->buf_name);
         if (dr)
@@ -2474,7 +2454,6 @@ rw_reg_blk_see_leave(struct opts_t * op, struct cp_state_t * csp, int num,
                 op->idip->d_type = FT_ALL_FF;
             } else {
 
-// memset(wPos + n, 0xff, ibs * ibpt - n);
                 *id_typep = FT_RANDOM;
                 op->idip->d_type = FT_RANDOM;
             }

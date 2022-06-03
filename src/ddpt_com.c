@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2020, Douglas Gilbert
+ * Copyright (c) 2013-2022, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -405,9 +405,9 @@ unix_dd_filetype(const char * filename, int verbose)
 #endif
     } else if (S_ISBLK(st.st_mode)) {
 #ifdef SG_LIB_LINUX
-	if (BLOCK_EXT_MAJOR == major(st.st_rdev))
-	    return FT_NVME | FT_BLOCK;
-#endif 
+        if (BLOCK_EXT_MAJOR == major(st.st_rdev))
+            return FT_NVME | FT_BLOCK;
+#endif
         return FT_BLOCK;
     } else if (S_ISFIFO(st.st_mode))
         return FT_FIFO;
@@ -466,10 +466,10 @@ dd_filetype_str(int ft, char * buff, int max_bufflen, const char * fname)
         off += sg_scnpr(buff + off, max_bufflen - off, "NVMe device ");
     if (FT_ALL_FF & ft)
         off += sg_scnpr(buff + off, max_bufflen - off,
-		        "null device full of 0xff bytes ");
+                        "null device full of 0xff bytes ");
     if (FT_RANDOM & ft)
         off += sg_scnpr(buff + off, max_bufflen - off,
-		        "random bytes as input ");
+                        "random bytes as input ");
     if (FT_OTHER & ft)
         off += sg_scnpr(buff + off, max_bufflen - off, "other file type ");
     if (FT_ERROR & ft)
@@ -1555,8 +1555,9 @@ coe_process_eio(struct opts_t * op, int64_t skip)
     ++sp->unrecovered_errs;
     ++sp->in_partial;
     --sp->in_full;
-    pr2serr(">> unrecovered read error at blk=%" PRId64 ", "
-            "substitute zeros\n", skip);
+    if (op->verbose > 1)
+        pr2serr(">> unrecovered read error at blk=%" PRId64 ", "
+                "substitute zeros\n", skip);
     return 0;
 }
 
@@ -2120,7 +2121,7 @@ err_out:
  * is non-NULL). Assumed decimal (and may have suffix multipliers) when
  * def_hex==false; if a number is prefixed by '0x', '0X' or contains trailing
  * 'h' or 'H' that denotes a hex number. When def_hex==true all numbers are
- * assumed to be hex (ignored '0x' prefixes and 'h' suffixes) and multiplers
+ * assumed to be hex (ignored '0x' prefixes and 'h' suffixes) and multipliers
  * are not permitted. Heap allocates an array just big enough to hold all
  * elements if the file is countable. Pipes and stdin are not considered
  * countable. In the non-countable case an array of MAX_FIXED_SGL_ELEMS
@@ -2278,14 +2279,14 @@ sgl_iter_forward_blks(struct dev_info_t * dip, struct sgl_iter_t * itp,
     uint32_t rem_blks, num;
     uint64_t off, lba;
     int64_t ablocks = n_blks;
-    const struct scat_gath_elem * sgl_p = itp->sglp + itp->it_e_ind;
+    const struct scat_gath_elem * sge_p = itp->sglp + itp->it_e_ind;
 
     extend_last = itp->extend_last;
     on_last = (extend_last && (itp->it_e_ind == (elems - 1)));
     while (ablocks > 0) {
         off = itp->it_bk_off + ablocks;
-        lba = sgl_p->lba;
-        num = on_last ? INT32_MAX - 1 : sgl_p->num;
+        lba = sge_p->lba;
+        num = on_last ? INT32_MAX - 1 : sge_p->num;
         more = (off >= num);
         if (vb > 2)
             pr2serr("%s: [%s] off=%" PRId64 ", ablocks=%" PRId64 "  <<%s>>\n",
@@ -2352,7 +2353,7 @@ sgl_iter_forward_blks(struct dev_info_t * dip, struct sgl_iter_t * itp,
             if (extend_last && (! on_last))
                 on_last = (itp->it_e_ind = (elems - 1));
             itp->it_bk_off = 0;
-            ++sgl_p;
+            ++sge_p;
         } else {  /* last: move iter (and call *fp) within current sgl elem */
             rem_blks = (uint32_t)ablocks;
             if (fp) {
@@ -2572,6 +2573,7 @@ sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str, bool show_sgl,
             prev_num = t_num;
             sum = t_num;
             high = prev_lba + prev_num;
+            t_lba = 0;
             first = false;
         } else {
             t_lba = sgep->lba;

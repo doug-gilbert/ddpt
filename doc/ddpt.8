@@ -1,12 +1,12 @@
-.TH DDPT "8" "January 2022" "ddpt\-0.98" DDPT
+.TH DDPT "8" "March 2022" "ddpt\-0.98" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
 .SH SYNOPSIS
 .B ddpt
 [\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fRIO_CDBSZ] [\fIcdl=CDL\fR]
-[\fIcoe=\fR{0|1}] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR] [\fIcount=COUNT\fR]
-[\fIddpt=VERS\fR] [\fIdelay=MS[,W_MS]\fR] [\fIibs=IBS\fR]
+[\fIcoe=\fR{0|1|2}] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR]
+[\fIcount=COUNT\fR] [\fIddpt=VERS\fR] [\fIdelay=MS[,W_MS]\fR] [\fIibs=IBS\fR]
 [\fIid_usage=LIU\fR] \fIif=IFILE\fR [\fIiflag=FLAGS\fR] [\fIintio=\fR{0|1}]
 [\fIiseek=SKIP\fR] [\fIito=ITO\fR] [\fIlist_id=LID\fR] [\fIobs=OBS\fR]
 [\fIof=OFILE\fR] [\fIof2=OFILE2\fR] [\fIoflag=FLAGS\fR] [\fIoseek=SEEK\fR]
@@ -175,9 +175,9 @@ Command duration limits can be accesses and changed in the Command duration
 limit A and B mode pages, plus the Command duration limit T2A and T2B mode
 pages. The sdparm utility may be used to access and change these mode pages.
 .TP
-\fBcoe\fR={0|1}
-set to 1 for continue on error. Applies to errors on input and output for pt
-devices but only on input from block devices or regular files. Errors on
+\fBcoe\fR={0|1|2}
+set to 1 or 2 for continue on error. Applies to errors on input and output for
+pt devices but only on input from block devices or regular files. Errors on
 other files will stop ddpt. Default is 0 which implies stop on any error. See
 the 'coe' flag for more information.
 .TP

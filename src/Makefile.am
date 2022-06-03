@@ -63,6 +63,10 @@ sglib_SOURCES =         ../lib/sg_lib.c \
                         ../include/sg_cmds_basic.h      \
                         ../lib/sg_cmds_extra.c  \
                         ../include/sg_cmds_extra.h      \
+                        ../lib/sg_pr2serr.c     \
+                        ../include/sg_pr2serr.h \
+                        ../lib/sg_json_builder.c        \
+                        ../lib/sg_json_builder.h        \
                         ../include/sg_pt.h      \
                         ../include/sg_pt_nvme.h      \
                         ../lib/sg_pt_common.c

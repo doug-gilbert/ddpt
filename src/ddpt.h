@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2021, Douglas Gilbert
+ * Copyright (c) 2008-2022, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -372,7 +372,7 @@ struct cp_statistics_t {
     bool prev_valid;    /* if delta throughput available */
     int64_t in_full;    /* full blocks read from IFILE so far */
     int64_t out_full;   /* full blocks written to OFILE so far */
-    int64_t prev_count; /* full blocks written to OFILE so far */
+    int64_t prev_count; /* used to calculate throughput since last report */
     int64_t dd_count_start;     /* dd_count prior to start of copy/read */
     int64_t out_sparse; /* counter for sparse, sparing + trim */
     int in_partial;
@@ -453,7 +453,6 @@ struct flags_t {
     bool atomic;        /* for pt OF use WRITE ATOMIC instead of WRITE */
     bool block;         /* only for pt, non blocking open is default */
     bool cat;           /* xcopy(lid1) tape: strategy for inexact fit */
-    bool coe;           /* continue on (read) error, supply zeros */
     bool dc;            /* xcopy(lid1): destination count */
     bool del_tkn;       /* xcopy(odx): delete token after operation */
     bool direct;        /* set O_DIRECT on non-pt open() */
@@ -511,6 +510,7 @@ struct flags_t {
     int bytchk;         /* set field (2 bit) in WRITE AND VERIFY */
     int cdbsz;          /* 0, 6, 10, 12, 16 or 32 */
     int cdl;            /* command duration limits; 0 to 7 (0: def, none) */
+    int coe;            /* continue on (read) error, supply zeros */
     int force;          /* overrides errors, 2: force harder */
     int nocache;        /* (1 & nocache): IF and/or OF; (2 & nocache): OF .
                          * OF, OF2: use posix_fadvise(POSIX_FADV_DONTNEED)

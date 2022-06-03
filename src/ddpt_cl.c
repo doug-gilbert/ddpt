@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2021, Douglas Gilbert
+ * Copyright (c) 2008-2022, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -80,7 +80,7 @@ ddpt_usage(int help)
 primary_help:
     pr2serr("Usage: "
             "ddpt  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=IO_CDBSZ] [cdl=CDL]\n"
-            "             [coe=0|1] [coe_limit=CL] [conv=CONVS] "
+            "             [coe=0|1|2] [coe_limit=CL] [conv=CONVS] "
             "[count=COUNT]\n"
             "             [ddpt=VERS] [delay=MS[,W_MS]] [ibs=IBS] "
             "[id_usage=LIU]\n"
@@ -111,7 +111,9 @@ primary_help:
             "    bs          logical block size for input and output "
             "(overrides ibs and obs)\n"
             "    coe         0->exit on error (def), 1->continue on "
-            "error (zero fill)\n"
+            "error at next\n"
+	    "                block, 2->continue at next bpt segment; zero "
+	    "fill bypassed\n"
             "    count       number of input blocks to copy (def: "
             "(remaining)\n"
             "                device/file size)\n"
@@ -192,7 +194,7 @@ secondary_help:
             "OFILE\n"
             "    coe_limit   limit consecutive 'bad' blocks on reads to CL "
             "times\n"
-            "                when coe=1 (default: 0 which is no limit)\n"
+            "                when coe>0 (default: 0 which is no limit)\n"
             "    cdl         command duration limit value, 0 to 7 (def: 0 "
             "(no cdl))\n"
             "    conv        conversions, comma separated list of CONVS "
@@ -244,7 +246,7 @@ secondary_help:
             "   atomic (o,pt)  use WRITE ATOMIC(16) on OFILE\n"
             "   block (pt)     pt opens are non blocking by default\n"
             "   cat (xcopy)    set CAT bit in segment descriptor header\n"
-            "   coe            continue on (read) error\n"
+            "   coe            continue on (read) error, see coe option\n"
             "   dc (xcopy)     set DC bit in segment descriptor header\n"
             "   direct         set O_DIRECT flag in open() of IFILE and/or "
             "OFILE\n"
@@ -482,10 +484,10 @@ conv_process(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
             ofp->fsync = true;
         else if (0 == strcmp(cp, "no_del_tkn"))
             ofp->no_del_tkn = true;
-        else if (0 == strcmp(cp, "nocreat"))
-            ofp->nocreat = true;
+        else if (0 == memcmp(cp, "nocreat", 7))
+            ofp->nocreat = true;	// memcmp() will allow 'nocreate'
         else if (0 == strcmp(cp, "noerror"))
-            ifp->coe = true;        /* will still fail on write error */
+            ++ifp->coe;                 /* will still fail on write error */
         else if (0 == strcmp(cp, "notrunc"))
             ;         /* this is the default action of ddpt so ignore */
         else if (0 == strcmp(cp, "null"))
@@ -547,7 +549,7 @@ flags_process(const char * arg, struct flags_t * fp)
         else if (0 == strcmp(cp, "cat"))
             fp->cat = true;
         else if (0 == strcmp(cp, "coe"))
-            fp->coe = true;
+            ++fp->coe;
         else if (0 == strcmp(cp, "dc"))
             fp->dc = true;
         else if (0 == strcmp(cp, "direct"))
@@ -582,7 +584,7 @@ flags_process(const char * arg, struct flags_t * fp)
         else if ((0 == strcmp(cp, "no_del_tkn")) ||
                  (0 == strcmp(cp, "no-del-tkn")))
             fp->no_del_tkn = true;
-        else if (0 == strcmp(cp, "nocreat"))
+        else if (0 == memcmp(cp, "nocreat", 7))
             fp->nocreat = true;
         else if (0 == strcmp(cp, "nofm"))     /* No filemark on tape close */
             fp->nofm = true;
