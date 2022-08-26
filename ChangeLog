@@ -2,13 +2,13 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for pre-release ddpt-0.98 [20220330] [svn: r403]
+Changelog for pre-release ddpt-0.98 [20220825] [svn: r404]
   - add coe=2 for skip and zero output of rest of segment;
     useful for flash that has elements (e.g. 16 KB long) of
     sequential bad blocks. Retrying 1 at a time is tiresome
   - support iflag=random
   - xcopy: tweak CSCD identification descriptor
-  - point svn:externals to sg3_utils revision 954
+  - point svn:externals to sg3_utils revision 969
 
 Changelog for released ddpt-0.97 [20210421] [svn: r388]
   - ddpt: add cdl operand for command duration limits
