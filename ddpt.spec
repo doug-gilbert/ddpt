@@ -9,7 +9,7 @@ Release:	%{release}
 License:	FreeBSD
 Group:		Utilities/System
 URL:		https://sg.danny.cz/sg/ddpt.html
-Source0:	https://sg.danny.cz/sg/p/%{name}-%{version}.tgz
+Source0:	https://sg.danny.cz/sg/p/%{name}-%{version}.tar.gz
 BuildRoot:	%{_tmppath}/%{name}-%{version}-root
 Packager:	Douglas Gilbert <dgilbert at interlog dot com>
 
@@ -52,7 +52,7 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Sat Jan 29 2022 - dgilbert at interlog dot com
+* Thu Sep 08 2022 - dgilbert at interlog dot com
 - see ChangeLog
   * ddpt-0.98
 * Wed Apr 21 2021 - dgilbert at interlog dot com

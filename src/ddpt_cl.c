@@ -112,8 +112,8 @@ primary_help:
             "(overrides ibs and obs)\n"
             "    coe         0->exit on error (def), 1->continue on "
             "error at next\n"
-	    "                block, 2->continue at next bpt segment; zero "
-	    "fill bypassed\n"
+            "                block, 2->continue at next bpt segment; zero "
+            "fill bypassed\n"
             "    count       number of input blocks to copy (def: "
             "(remaining)\n"
             "                device/file size)\n"
@@ -485,7 +485,7 @@ conv_process(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
         else if (0 == strcmp(cp, "no_del_tkn"))
             ofp->no_del_tkn = true;
         else if (0 == memcmp(cp, "nocreat", 7))
-            ofp->nocreat = true;	// memcmp() will allow 'nocreate'
+            ofp->nocreat = true;        // memcmp() will allow 'nocreate'
         else if (0 == strcmp(cp, "noerror"))
             ++ifp->coe;                 /* will still fail on write error */
         else if (0 == strcmp(cp, "notrunc"))
@@ -1236,7 +1236,12 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
             }
             if (op->bs_given) {
                 pr2serr("second 'bs=' operand given, dangerous\n");
-                return SG_LIB_CONTRADICT;
+                if ((n == op->ibs_lb) || (n == op->obs_lb))
+                    pr2serr("... same value, continue\n");
+                else {
+                    pr2serr("... different values, exit\n");
+                    return SG_LIB_CONTRADICT;
+                }
             } else
                 op->bs_given = true;
             if ((op->ibs_given) || (op->obs_given)) {
