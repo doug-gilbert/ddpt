@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2022, Douglas Gilbert
+ * Copyright (c) 2013-2023, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -136,6 +136,15 @@ sleep_ms(int millisecs)
         request.tv_nsec = (millisecs % 1000) * 1000000;
         if ((nanosleep(&request, NULL) < 0) && (EINTR != errno))
             perror("nanosleep");
+    }
+#else
+    struct timeval request;
+
+    if (millisecs > 0) {
+        request.tv_sec = millisecs / 1000;
+        request.tv_usec = (millisecs % 1000) * 1000;
+        if (select(0, NULL, NULL, NULL, &request) < 0)
+            perror("select");
     }
 #endif
 }

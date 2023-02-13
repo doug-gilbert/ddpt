@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2022, Douglas Gilbert
+ * Copyright (c) 2008-2023, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
