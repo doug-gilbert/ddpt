@@ -54,7 +54,7 @@ endif
 endif
 
 if OS_NETBSD
-libsgutils2_la_SOURCES += sg_pt_dummy.c
+libsgutils2_la_SOURCES += sg_pt_netbsd.c
 endif
 
 if OS_OPENBSD
@@ -78,6 +78,7 @@ endif
 # For C++/clang testing
 ## CC = gcc-9
 ## CXX = g++
+## CC = g++
 ## CC = clang
 ## CXX = clang++
 ## CC = clang++
@@ -89,12 +90,13 @@ AM_CPPFLAGS = -iquote ${top_srcdir}/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET
 AM_CFLAGS = -Wall -W $(DBG_CFLAGS)
 # AM_CFLAGS = -Wall -W $(DBG_CFLAGS) -fanalyzer
 # AM_CFLAGS = -Wall -W -Wextra -Wmisleading-indentation -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wnull-dereference -Wshadow -Wjump-misses-init
+# AM_CFLAGS = -Wall -W -pedantic -std=c99
 # AM_CFLAGS = -Wall -W -pedantic -std=c11
 # AM_CFLAGS = -Wall -W -pedantic -std=c11 --analyze
 # AM_CFLAGS = -Wall -W -pedantic -std=c++11
 # AM_CFLAGS = -Wall -W -pedantic -std=c++14
 # AM_CFLAGS = -Wall -W -pedantic -std=c++1z
-# AM_CFLAGS = -Wall -W -pedantic -std=c++20
+# AM_CFLAGS = -Wall -W -pedantic -std=c++20 --analyze
 # AM_CFLAGS = -Wall -W -pedantic -std=c++23
 
 lib_LTLIBRARIES = libsgutils2.la
@@ -104,3 +106,6 @@ libsgutils2_la_LDFLAGS = -version-info 2:0:0 -no-undefined -release ${PACKAGE_VE
 libsgutils2_la_LIBADD = @GETOPT_O_FILES@
 libsgutils2_la_DEPENDENCIES = @GETOPT_O_FILES@
 
+EXTRA_DIST = \
+	sg_json_builder.h \
+	BSD_LICENSE

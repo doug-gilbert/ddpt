@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2022, Douglas Gilbert
+ * Copyright (c) 2008-2023, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -69,7 +69,9 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.98 20220825 [svn: r404]";
+static const char * ddpt_version_str = "0.98 20230410 [svn: r406]";
+
+static const char * my_name = "ddpt: ";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -3150,10 +3152,10 @@ block_size_bpt_check(struct opts_t * op)
         }
 #ifdef SG_LIB_FREEBSD
         else {
-     /* FreeBSD (7+8 [DFLTPHYS]) doesn't like buffers larger than 64 KB being
+     /* FreeBSD (7+8 [DFLTPHYS]) doesn't like buffers larger than 64 kB being
      * sent to its pt interface (CAM), so take that into account when choosing
      * the default bpt value. There is overhead in the pt interface so reduce
-     * default bpt value so bpt*ibs <= 32 KB .*/
+     * default bpt value so bpt*ibs <= 32 kB .*/
         if (((FT_PT & op->idip->d_type) || (FT_PT & op->odip->d_type)) &&
             ((op->ibs_lb <= 32768) && (op->bpt_i * op->ibs_lb) > 32768))
             op->bpt_i = 32768 / op->ibs_lb;
@@ -3499,6 +3501,9 @@ main(int argc, char * argv[])
     op = &ops;
     state_init(op, &iflag, &oflag, &ids, &ods, &o2ds);
     op->primary_ddpt = true;
+    if (getenv("SG3_UTILS_INVOCATION"))
+        sg_rep_invocation(my_name, ddpt_version_str, argc, argv, stderr);
+
     ret = cl_parse(op, argc, argv, ddpt_version_str, jf_depth);
     if (op->do_help > 0) {
         ddpt_usage(op->do_help);

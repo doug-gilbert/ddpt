@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007-2022 Douglas Gilbert.
+ * Copyright (c) 2007-2023 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -19,8 +19,8 @@
 #include "sg_lib_data.h"
 
 
-const char * sg_lib_version_str = "2.93 20220816";
-/* spc6r06, sbc5r03, zbc2r13 */
+const char * sg_lib_version_str = "3.07 20230329";
+/* spc6r08, sbc5r04, zbc2r13 */
 
 
 /* indexed by pdt; those that map to own index do not decay */
@@ -768,6 +768,7 @@ struct sg_lib_asc_ascq_t sg_lib_asc_ascq[] =
     {0x00,0x20,"Extended copy information available"},
     {0x00,0x21,"Atomic command aborted due to ACA"},
     {0x00,0x22,"Deferred microcode is pending"},
+    {0x00,0x23,"Overlapping atomic command in progress"},       /* spc6r08 */
     {0x01,0x00,"No index/sector signal"},
     {0x02,0x00,"No seek complete"},
     {0x03,0x00,"Peripheral device write fault"},
@@ -1602,6 +1603,43 @@ const char * sg_lib_pdt_strs[32] = {    /* should have 2**5 elements */
                                     via this lu's port (try the other) */
 };
 
+/* name or abbreviation of standard associated with this PDT if other than
+ * SPC. If multiple entries per pdt then semi-colon is used as separator. */
+struct sg_aux_info_t sg_lib_pdt_aux_a[32] = {
+    {"disk;sbc", 3, 0, 0, 0},
+    {"tape;ssc", 3, 0, 0, 0},
+    {"printer", 5, 0, 0, 0},
+    {"processor", 4, 0, 0, 0},
+    {"wo_opt", 5, 0, 0, 0},
+    /* 5 */ {"dvd;cd;bd;mmc", 2, 0, 0, 0},
+    {"scanner", 4, 0, 0, 0},
+    {"optical", 3, 0, 0, 0},
+    {"changer;mch;smc", 3, 0, 0, 0},
+    {"comms", 3, 0, 0, 0},
+    /* 0xa */ {"graphics", 3, 0, 0, 0},
+    {"grb", 3, 0, 0, 0},
+    {"array;scc", 3, 0, 0, 0},
+    {"enc;ses", 3, 0, 0, 0},
+    {"simplified;rbc", 3, 0, 0, 0},
+    {"ocrw", 3, 0, 0, 0},
+    {/* 0x10 */ "bridge", 3, 0, 0, 0},
+    {"obs;object", 3, 0, 0, 0},
+    {"adc;adt", 3, 0, 0, 0},
+    {"security", 3, 0, 0, 0},
+    {"hostm;zone;zbc", 3, 0, 0, 0},
+    {"0x15", 4, 0, 0, 0},
+    {"0x16", 4, 0, 0, 0},
+    {"0x17", 4, 0, 0, 0},
+    {"0x18", 4, 0, 0, 0},
+    {"0x19", 4, 0, 0, 0},
+    {"0x1a", 4, 0, 0, 0},
+    {"0x1b", 4, 0, 0, 0},
+    {"0x1c", 4, 0, 0, 0},
+    {"0x1d", 4, 0, 0, 0},
+    {"wlun;well", 4, 0, 0, 0},
+    {"unknown", 3, 0, 0, 0},
+};
+
 const char * sg_lib_transport_proto_strs[] =
 {
     "Fibre Channel Protocol for SCSI (FCP-5)",  /* now at fcp5r01 */
@@ -1911,10 +1949,15 @@ struct sg_value_2names_t sg_exit_str_arr[] = {
     {10, "Copy aborted", "type: sense key"},
     {11, "Aborted command",
          "type: sense key, other than protection related (asc=0x10)"},
+    {12, "Device not ready, standby", "type: sense key + asc,ascq=0x4,0xb"},
+    {13, "Device not ready, unavailable", "type: sense key + asc,ascq=0x4,"
+         "0xc"},
     {14, "Miscompare", "type: sense key"},
     {15, "File error", NULL},
     {17, "Illegal request with Info field", NULL},
     {18, "Medium or hardware error with Info", NULL},
+    {19, "Illegal request, Invalid field in parameter list",
+         "type: sense key + asc,ascq=0x26,0"},
     {20, "No sense key", "type: probably additional sense code"},
     {21, "Recovered error (warning)", "type: sense key"},
          /* N.B. this is a warning not error */
@@ -1937,7 +1980,8 @@ struct sg_value_2names_t sg_exit_str_arr[] = {
     {48, "NVMe command with non-zero status", NULL},
     {50, "An OS error occurred", "(errno > 46 or negative)"},
     /* OS errors (errno in Unix) from 1 to 46 mapped into this range */
-    {97, "Malformed SCSI command", "trouble building command"},
+    {97, "Malformed SCSI command response",
+         "trouble building or decoding command or its response"},
     {98, "Some other sense error", "try '-v' option for more information"},
     {99, "Some other error", "possible transport of driver issue"},
     {100, "Parameter list length error", NULL}, /* these for ddpt, xcopy */

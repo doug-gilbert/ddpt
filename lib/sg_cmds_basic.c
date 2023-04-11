@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999-2022 Douglas Gilbert.
+ * Copyright (c) 1999-2023 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -42,7 +42,7 @@
 #endif
 
 
-static const char * const version_str = "2.00 20220118";
+static const char * const version_str = "2.02 20230311";
 
 
 #define SENSE_BUFF_LEN 64       /* Arbitrary, could be larger */
@@ -93,15 +93,14 @@ sg_cmds_close_device(int device_fd)
     return scsi_pt_close_device(device_fd);
 }
 
-static const char * const pass_through_s = "pass-through";
+static const char * const pt_s = "pass-through";
 
 static void
 sg_cmds_resid_print(const char * leadin, bool is_din, int num_req,
                     int num_got)
 {
-    pr2ws("    %s: %s requested %d bytes (data-%s  got %d "
-          "bytes%s\n", leadin, pass_through_s,num_req,
-          (is_din ? "in), got" : "out) but reported"), num_got,
+    pr2ws("    %s: %s requested %d bytes (data-%s %d bytes%s\n", leadin, pt_s,
+          num_req, (is_din ? "in), got" : "out) but reported"), num_got,
           (is_din ? "" : " sent"));
 }
 
@@ -110,15 +109,16 @@ sg_cmds_process_helper(const char * leadin, int req_din_x, int act_din_x,
                        int req_dout_x, int act_dout_x, const uint8_t * sbp,
                        int slen, bool noisy, int verbose, int * o_sense_cat)
 {
-    int scat;
     bool n = false;
     bool check_data_in = false;
+    int scat;
 
     scat = sg_err_category_sense(sbp, slen);
     switch (scat) {
     case SG_LIB_CAT_NOT_READY:
     case SG_LIB_CAT_INVALID_OP:
     case SG_LIB_CAT_ILLEGAL_REQ:
+    case SG_LIB_CAT_INVALID_PARAM:
     case SG_LIB_LBA_OUT_OF_RANGE:
     case SG_LIB_CAT_ABORTED_COMMAND:
     case SG_LIB_CAT_COPY_ABORTED:
@@ -126,6 +126,8 @@ sg_cmds_process_helper(const char * leadin, int req_din_x, int act_din_x,
     case SG_LIB_CAT_PROTECTION:
     case SG_LIB_CAT_NO_SENSE:
     case SG_LIB_CAT_MISCOMPARE:
+    case SG_LIB_CAT_STANDBY:
+    case SG_LIB_CAT_UNAVAILABLE:
         n = false;
         break;
     case SG_LIB_CAT_RECOVERED:
@@ -144,12 +146,16 @@ sg_cmds_process_helper(const char * leadin, int req_din_x, int act_din_x,
         break;
     }
     if (verbose || n) {
-        char b[512];
+        uint32_t pg_sz = sg_get_page_size();
+        char * b;
+        uint8_t *free_b;
 
+        b = (char *)sg_memalign(pg_sz, pg_sz, &free_b, false);
+        if (NULL == b)
+            return -2;
         if (leadin && (strlen(leadin) > 0))
             pr2ws("%s:\n", leadin);
-        sg_get_sense_str(NULL, sbp, slen, (verbose > 1),
-                         sizeof(b), b);
+        sg_get_sense_str(NULL, sbp, slen, (verbose > 1), pg_sz, b);
         pr2ws("%s", b);
         if (req_din_x > 0) {
             if (act_din_x != req_din_x) {
@@ -158,7 +164,7 @@ sg_cmds_process_helper(const char * leadin, int req_din_x, int act_din_x,
                 if (act_din_x < 0) {
                     if (verbose)
                         pr2ws("    %s: %s can't get negative bytes, say it "
-                              "got none\n", leadin, pass_through_s);
+                              "got none\n", leadin, pt_s);
                 }
             }
         }
@@ -169,10 +175,12 @@ sg_cmds_process_helper(const char * leadin, int req_din_x, int act_din_x,
                 if (act_dout_x < 0) {
                     if (verbose)
                         pr2ws("    %s: %s can't send negative bytes, say it "
-                              "sent none\n", leadin, pass_through_s);
+                              "sent none\n", leadin, pt_s);
                 }
             }
         }
+	if (free_b)
+	    free(free_b);
     }
     if (o_sense_cat)
         *o_sense_cat = scat;
@@ -195,14 +203,15 @@ sg_cmds_process_resp(struct sg_pt_base * ptvp, const char * leadin,
     int cat, slen, sstat, req_din_x, req_dout_x;
     int act_din_x, act_dout_x;
     const uint8_t * sbp;
-    char b[1024];
+    char d[256];
+    static const int dlen = sizeof(d);
 
     if (NULL == leadin)
         leadin = "";
     if (pt_res < 0) {
 #ifdef SG_LIB_LINUX
         if (verbose)
-            pr2ws("%s: %s os error: %s\n", leadin, pass_through_s,
+            pr2ws("%s: %s os error: %s\n", leadin, pt_s,
                   safe_strerror(-pt_res));
         if ((-ENXIO == pt_res) && o_sense_cat) {
             if (verbose > 2)
@@ -210,19 +219,19 @@ sg_cmds_process_resp(struct sg_pt_base * ptvp, const char * leadin,
             *o_sense_cat = SG_LIB_CAT_NOT_READY;
             return -2;
         } else if (noisy && (0 == verbose))
-            pr2ws("%s: %s os error: %s\n", leadin, pass_through_s,
+            pr2ws("%s: %s os error: %s\n", leadin, pt_s,
                   safe_strerror(-pt_res));
 #else
         if (noisy || verbose)
-            pr2ws("%s: %s os error: %s\n", leadin, pass_through_s,
+            pr2ws("%s: %s os error: %s\n", leadin, pt_s,
                   safe_strerror(-pt_res));
 #endif
         return -1;
     } else if (SCSI_PT_DO_BAD_PARAMS == pt_res) {
-        pr2ws("%s: bad %s setup\n", leadin, pass_through_s);
+        pr2ws("%s: bad %s setup\n", leadin, pt_s);
         return -1;
     } else if (SCSI_PT_DO_TIMEOUT == pt_res) {
-        pr2ws("%s: %s timeout\n", leadin, pass_through_s);
+        pr2ws("%s: %s timeout\n", leadin, pt_s);
         return -1;
     }
     if (verbose > 2) {
@@ -264,7 +273,7 @@ sg_cmds_process_resp(struct sg_pt_base * ptvp, const char * leadin,
                 if (act_din_x < 0) {
                     if (verbose)
                         pr2ws("    %s: %s can't get negative bytes, say it "
-                              "got none\n", leadin, pass_through_s);
+                              "got none\n", leadin, pt_s);
                     act_din_x = 0;
                 }
             }
@@ -276,7 +285,7 @@ sg_cmds_process_resp(struct sg_pt_base * ptvp, const char * leadin,
                 if (act_dout_x < 0) {
                     if (verbose)
                         pr2ws("    %s: %s can't send negative bytes, say it "
-                              "sent none\n", leadin, pass_through_s);
+                              "sent none\n", leadin, pt_s);
                     act_dout_x = 0;
                 }
             }
@@ -309,8 +318,8 @@ sg_cmds_process_resp(struct sg_pt_base * ptvp, const char * leadin,
             }
         }
         if (verbose || noisy) {
-            sg_get_scsi_status_str(sstat, sizeof(b), b);
-            pr2ws("%s: scsi status: %s\n", leadin, b);
+            sg_get_scsi_status_str(sstat, dlen, d);
+            pr2ws("%s: scsi status: %s\n", leadin, d);
         }
         return -1;
     case SCSI_PT_RESULT_SENSE:
@@ -319,8 +328,8 @@ sg_cmds_process_resp(struct sg_pt_base * ptvp, const char * leadin,
                                       noisy, verbose, o_sense_cat);
     case SCSI_PT_RESULT_TRANSPORT_ERR:
         if (verbose || noisy) {
-            get_scsi_pt_transport_err_str(ptvp, sizeof(b), b);
-            pr2ws("%s: transport: %s\n", leadin, b);
+            get_scsi_pt_transport_err_str(ptvp, dlen, d);
+            pr2ws("%s: transport: %s\n", leadin, d);
         }
 #ifdef SG_LIB_LINUX
         return -1;      /* DRIVER_SENSE is not passed through */
@@ -341,13 +350,12 @@ sg_cmds_process_resp(struct sg_pt_base * ptvp, const char * leadin,
 #endif
     case SCSI_PT_RESULT_OS_ERR:
         if (verbose || noisy) {
-            get_scsi_pt_os_err_str(ptvp, sizeof(b), b);
-            pr2ws("%s: os: %s\n", leadin, b);
+            get_scsi_pt_os_err_str(ptvp, dlen, d);
+            pr2ws("%s: os: %s\n", leadin, d);
         }
         return -1;
     default:
-        pr2ws("%s: unknown %s result category (%d)\n", leadin, pass_through_s,
-               cat);
+        pr2ws("%s: unknown %s result category (%d)\n", leadin, pt_s, cat);
         return -1;
     }
 }

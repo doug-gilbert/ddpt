@@ -28,6 +28,7 @@ lists)
 %setup -q
 
 %build
+./autogen.sh
 %configure
 
 %install
@@ -52,7 +53,7 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Sat Jan 29 2022 - dgilbert at interlog dot com
+* Sun Feb 12 2023 - dgilbert at interlog dot com
 - see ChangeLog
   * ddpt-0.98
 * Wed Apr 21 2021 - dgilbert at interlog dot com

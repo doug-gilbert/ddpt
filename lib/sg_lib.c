@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999-2022 Douglas Gilbert.
+ * Copyright (c) 1999-2023 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -98,11 +98,38 @@ sg_scnpr(char * cp, int cp_max_len, const char * fmt, ...)
 }
 
 /* Simple ASCII printable (does not use locale), includes space and excludes
- * DEL (0x7f). */
+ * DEL (0x7f). Note all UTF-8 encoding apart from <= 0x7f have top bit set. */
 static inline int
 my_isprint(int ch)
 {
     return ((ch >= ' ') && (ch < 0x7f));
+}
+
+void sg_rep_invocation(const char * util_name, const char * ver_str,
+                       int argc, char *argv[], FILE * fgp)
+{
+    int k;
+    FILE * fp = fgp ? fgp : stdout;
+
+    /* header line that is visually easy to spot */
+    fprintf(fp, "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
+            "vvvvvvvvvv\n");
+    if (util_name)
+        fprintf(fp, "utility_given=%s\n", util_name);
+    else
+        fprintf(fp, "utility_given=<not_given>\n");
+    if (ver_str)
+        fprintf(fp, "version_string=%s\n", ver_str);
+    else
+        fprintf(fp, "version_string=<not_given>\n");
+    if ((argc > 0) && argv) {
+        fprintf(fp, "invocation_arguments:\n");
+        for (k = 0; k < argc; ++k)
+            fprintf(fp, "  %s\n", argv[k]);
+    } else
+        fprintf(fp, "invocation_arguments:<none>\n");
+    fprintf(fp, "^^vv^^vv^^vv^^vv^^vv^^vv^^vv^^vv^^vv^^vv^^vv^^vv^^"
+            "vv^^vv^^vv\n");
 }
 
 /* DSENSE is 'descriptor sense' as opposed to the older 'fixed sense'.
@@ -277,6 +304,38 @@ sg_get_scsi_status_str(int scsi_status, int buff_len, char * buff)
         sg_scnpr(buff, buff_len, "%s", sstatus_p->name);
     else
         sg_scnpr(buff, buff_len, "Unknown status [0x%x]", scsi_status);
+}
+
+static const char * sg_lib_ansi_version_arr[16] = {
+    "no conformance claimed",
+    "SCSI-1",           /* obsolete, ANSI X3.131-1986 */
+    "SCSI-2",           /* obsolete, ANSI X3.131-1994 */
+    "SPC",              /* withdrawn, ANSI INCITS 301-1997 */
+    "SPC-2",            /* ANSI INCITS 351-2001, ISO/IEC 14776-452 */
+    "SPC-3",            /* ANSI INCITS 408-2005, ISO/IEC 14776-453 */
+    "SPC-4",            /* ANSI INCITS 513-2015 */
+    "SPC-5",            /* ANSI INCITS 502-2020 */
+    "obsolete, [8h]",
+    "obsolete, [9h]",
+    "obsolete, [Ah]",
+    "obsolete, [Bh]",
+    "obsolete, [Ch]",
+    "SPC-6",            /* T10/BSR INCITS 566, added in spc6r08 */
+    "reserved [Eh]",
+    "reserved [Fh]",
+};
+
+char *
+sg_get_scsi_ansi_version_str(uint8_t ansi_ver, int blen, char * b)
+{
+
+    if ((NULL == b) || (blen < 1))
+        return b;
+    if (ansi_ver < SG_ARRAY_SIZE(sg_lib_ansi_version_arr))
+        sg_scnpr(b, blen, "%s", sg_lib_ansi_version_arr[ansi_ver]);
+    else
+        sg_scnpr(b, blen, "%s", sg_lib_ansi_version_arr[0]);
+    return b;
 }
 
 void
@@ -591,6 +650,50 @@ sg_get_pdt_str(int pdt, int buff_len, char * buff)
     else
         sg_scnpr(buff, buff_len, "%s", sg_lib_pdt_strs[pdt]);
     return buff;
+}
+
+int
+sg_get_pdt_from_acronym(const char * acron)
+{
+    int k;
+    int len = strlen(acron);
+    struct sg_aux_info_t * aip;
+    const char * cc0p;
+    const char * ccp;
+    char b[32];
+    static const int blen = sizeof(b);
+
+    if (len >= blen)
+        len = blen - 1;
+    for (k = 0; k < len; ++k)
+        b[k] = tolower(acron[k]);
+    b[k] = '\0';
+    if (0 == memcmp("xxx", b, 3))
+        goto print_pdt_strs;
+    if (0 == memcmp("spc", b, 3))
+        return -1;
+
+    for (k = 0, aip = sg_lib_pdt_aux_a; k < 0x20; ++k, ++aip) {
+        if (len < aip->min_match_len)
+            continue;   /* acron too short to match this item */
+        cc0p = aip->acron;
+        while ((ccp = strchr(cc0p, ';'))) {
+            if (0 == memcmp(b, cc0p, aip->min_match_len))
+                return k;
+            cc0p = ccp + 1;
+        }
+        if (0 == memcmp(b, cc0p, aip->min_match_len))
+            return k;
+    }
+    return -2;
+
+print_pdt_strs:
+    pr2ws("List of peripheral device type (pdt) acronyms:\n");
+    for (k = 0, aip = sg_lib_pdt_aux_a; k < 0x20; ++k, ++aip)
+        pr2ws("  PDT 0x%x: %s [%d]\n", k, aip->acron, aip->min_match_len);
+    pr2ws("\nMultiple acronyms for a pdt are separated by semi-colons.\n");
+    pr2ws("The number in square brackets is the minimum match length.\n");
+    return -3;
 }
 
 /* Returns true if left argument is "equal" to the right argument. l_pdt_s
@@ -1667,7 +1770,7 @@ sg_get_sense_descriptors_str(const char * lip, const uint8_t * sbp,
                                   lip);
                     sg_get_sense_str(lip, descp + 4, add_d_len - 2, false,
                                      sizeof(c), c);
-                    n += sg_scnpr(b + n, blen - n, "%s", c);
+                    n += sg_scnpr(b + n, blen - n, "%s\n", c);
                     n += sg_scnpr(b + n, blen - n, "%s ^^^^^^^^^^^^^^^^\n",
                                   lip);
                 }
@@ -1802,7 +1905,7 @@ sg_get_sense_sat_pt_fixed_str(const char * lip, const uint8_t * sp,
                   sp[5], sp[6], (count_upper_nz ? '+' : ' '));
     n += sg_scnpr(b + n, blen - n, "%s  extend=%d, log_index=0x%x, "
                   "lba_high,mid,low(7:0)=0x%x,0x%x,0x%x%c\n", lip,
-                  (int)extend, (0xf & sp[8]), sp[9], sp[10], sp[11],
+                  (int)extend, (0xf & sp[8]), sp[11], sp[10], sp[9],
                   (lba_upper_nz ? '+' : ' '));
     return n;
 }
@@ -2048,7 +2151,7 @@ sg_print_sense(const char * leadin, const uint8_t * sbp, int sb_len,
     if (NULL == cp)
         return;
     sg_get_sense_str(leadin, sbp, sb_len, raw_sinfo, pg_sz, cp);
-    pr2ws("%s", cp);
+    pr2ws("%s\n", cp);
     free(free_cp);
 }
 
@@ -2244,6 +2347,10 @@ sg_err_category_sense(const uint8_t * sbp, int sb_len)
         case SPC_SK_RECOVERED_ERROR:
             return SG_LIB_CAT_RECOVERED;
         case SPC_SK_NOT_READY:
+            if ((0x04 == ssh.asc) && (0x0b == ssh.ascq))
+                return SG_LIB_CAT_STANDBY;
+            if ((0x04 == ssh.asc) && (0x0c == ssh.ascq))
+                return SG_LIB_CAT_UNAVAILABLE;
             return SG_LIB_CAT_NOT_READY;
         case SPC_SK_MEDIUM_ERROR:
         case SPC_SK_HARDWARE_ERROR:
@@ -2257,6 +2364,8 @@ sg_err_category_sense(const uint8_t * sbp, int sb_len)
                 return SG_LIB_CAT_INVALID_OP;
             else if ((0x21 == ssh.asc) && (0x0 == ssh.ascq))
                 return SG_LIB_LBA_OUT_OF_RANGE;
+            else if ((0x26 == ssh.asc) && (0x0 == ssh.ascq))
+                return SG_LIB_CAT_INVALID_PARAM;
             else
                 return SG_LIB_CAT_ILLEGAL_REQ;
             break;
@@ -3110,6 +3219,21 @@ sg_all_ffs(const uint8_t * bp, int b_len)
     return true;
 }
 
+/* If its all printable then return value equals b_len */
+int
+sg_first_non_printable(const uint8_t * bp, int b_len)
+{
+    int k;
+
+    if (NULL == bp)
+        return 0;
+    for (k = 0; k < b_len; ++k) {
+        if (!my_isprint(bp[k]))
+            return k;
+    }
+    return k;
+}
+
 static uint16_t
 swapb_uint16(uint16_t u)
 {
@@ -3120,18 +3244,9 @@ swapb_uint16(uint16_t u)
     return r;
 }
 
-/* Note the ASCII-hex output goes to stdout. [Most other output from functions
- * in this file go to sg_warnings_strm (default stderr).]
- * 'no_ascii' allows for 3 output types:
- *     > 0     each line has address then up to 8 ASCII-hex 16 bit words
- *     = 0     in addition, the ASCI bytes pairs are listed to the right
- *     = -1    only the ASCII-hex words are listed (i.e. without address)
- *     = -2    only the ASCII-hex words, formatted for "hdparm --Istdin"
- *     < -2    same as -1
- * If 'swapb' is true then bytes in each word swapped. Needs to be set
- * for ATA IDENTIFY DEVICE response on big-endian machines. */
-void
-dWordHex(const uint16_t* words, int num, int no_ascii, bool swapb)
+static void
+dWordHexFp(const uint16_t* words, int num, int no_ascii, bool swapb,
+           FILE * fp)
 {
     const uint16_t * p = words;
     uint16_t c;
@@ -3159,18 +3274,18 @@ dWordHex(const uint16_t* words, int num, int no_ascii, bool swapb)
             buff[bpos + 4] = ' ';
             if ((k > 0) && (0 == ((k + 1) % 8))) {
                 if (-2 == no_ascii)
-                    printf("%.39s\n", buff +8);
+                    fprintf(fp, "%.39s\n", buff +8);
                 else
-                    printf("%.47s\n", buff);
+                    fprintf(fp, "%.47s\n", buff);
                 bpos = bpstart;
                 memset(buff, ' ', 80);
             }
         }
         if (bpos > bpstart) {
             if (-2 == no_ascii)
-                printf("%.39s\n", buff +8);
+                fprintf(fp, "%.39s\n", buff +8);
             else
-                printf("%.47s\n", buff);
+                fprintf(fp, "%.47s\n", buff);
         }
         return;
     }
@@ -3201,7 +3316,7 @@ dWordHex(const uint16_t* words, int num, int no_ascii, bool swapb)
             buff[cpos++] = ' ';
         }
         if (cpos > (cpstart + 23)) {
-            printf("%.76s\n", buff);
+            fprintf(fp, "%.76s\n", buff);
             bpos = bpstart;
             cpos = cpstart;
             a += 8;
@@ -3211,7 +3326,23 @@ dWordHex(const uint16_t* words, int num, int no_ascii, bool swapb)
         }
     }
     if (cpos > cpstart)
-        printf("%.76s\n", buff);
+        fprintf(fp, "%.76s\n", buff);
+}
+
+/* Note the ASCII-hex output goes to stdout. [Most other output from functions
+ * in this file go to sg_warnings_strm (default stderr).]
+ * 'no_ascii' allows for 3 output types:
+ *     > 0     each line has address then up to 8 ASCII-hex 16 bit words
+ *     = 0     in addition, the ASCI bytes pairs are listed to the right
+ *     = -1    only the ASCII-hex words are listed (i.e. without address)
+ *     = -2    only the ASCII-hex words, formatted for "hdparm --Istdin"
+ *     < -2    same as -1
+ * If 'swapb' is true then bytes in each word swapped. Needs to be set
+ * for ATA IDENTIFY DEVICE response on big-endian machines. */
+void
+dWordHex(const uint16_t* words, int num, int no_ascii, bool swapb)
+{
+    dWordHexFp(words, num, no_ascii, swapb, stdout);
 }
 
 /* If the number in 'buf' can not be decoded or the multiplier is unknown
@@ -3684,7 +3815,8 @@ sg_f2hex_arr(const char * fname, bool as_binary, bool no_space,
                 if (1 == sscanf(carry_over, "%4x", &h)) {
                     if (off > 0) {
                         if (off > max_arr_len) {
-                            pr2ws("%s: array length exceeded\n", __func__);
+                            pr2ws("%s: array length [%d>%d] exceeded\n",
+                                  __func__, off, max_arr_len);
                             ret = SG_LIB_LBA_OUT_OF_RANGE;
                             *mp_arr_len = max_arr_len;
                             goto fini;
@@ -3729,7 +3861,8 @@ sg_f2hex_arr(const char * fname, bool as_binary, bool no_space,
                     goto fini;
                 }
                 if ((off + k) >= max_arr_len) {
-                    pr2ws("%s: array length exceeded\n", __func__);
+                    pr2ws("%s: array length [%d>=%d] exceeded\n",
+                          __func__, off + k, max_arr_len);
                     *mp_arr_len = max_arr_len;
                     ret = SG_LIB_LBA_OUT_OF_RANGE;
                     goto fini;
@@ -3755,7 +3888,8 @@ sg_f2hex_arr(const char * fname, bool as_binary, bool no_space,
                         carry_over[0] = *lcp;
                     }
                     if ((off + k) >= max_arr_len) {
-                        pr2ws("%s: array length exceeded\n", __func__);
+                        pr2ws("%s: array length [%d>=%d] exceeded\n",
+                              __func__, off + k, max_arr_len);
                         ret = SG_LIB_LBA_OUT_OF_RANGE;
                         *mp_arr_len = max_arr_len;
                         goto fini;
@@ -4037,6 +4171,22 @@ sg_set_big_endian(uint64_t val, uint8_t * to,
         num_bits -= sbit_o1;
         sbit_o1 = 8;
     }
+}
+
+/* Returns true and exits when a byte < 0x20 or DEL is detected. If no
+ * such byte is found by *(up + len - 1) then false is returned. */
+bool
+sg_has_control_char(const uint8_t * up, int len)
+{
+    int k;
+    uint8_t u;
+
+    for (k = 0; k < len; ++k) {
+        u = up[k];
+        if ((u < 0x20) || (0x7f == u))
+            return true;
+    }
+    return false;
 }
 
 const char *

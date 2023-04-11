@@ -2,7 +2,7 @@
 #define SG_LIB_H
 
 /*
- * Copyright (c) 2004-2022 Douglas Gilbert.
+ * Copyright (c) 2004-2023 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -150,7 +150,7 @@ extern "C" {
 #define SG_ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
 /* Doesn't seem to be a common C and C++ technique for clearing an
- * aggregrate (e.g. a struct instance) on the stack. Hence this hack: */
+ * aggregate (e.g. a struct instance) on the stack. Hence this hack: */
 #ifdef __cplusplus
 #define SG_C_CPP_ZERO_INIT {}
 #else
@@ -191,6 +191,11 @@ char * sg_get_nvme_opcode_name(uint8_t cmd_byte0, bool admin, int buff_len,
 
 /* Fetch scsi status string. */
 void sg_get_scsi_status_str(int scsi_status, int buff_len, char * buff);
+
+/* Fetch SCSI ANSI version string. It is usually a version of the SPC
+ * standard. This field is found in the SCSI standard INQUIRY command
+ * response (byte 2). */
+char * sg_get_scsi_ansi_version_str(uint8_t ansi_ver, int blen, char * b);
 
 /* This is a slightly stretched SCSI sense "descriptor" format header.
  * The addition is to allow the 0x70 and 0x71 response codes. The idea
@@ -424,6 +429,12 @@ void sg_build_sense_buffer(bool desc, uint8_t *sbp, uint8_t skey,
  * PDT_DISK (0) is _not_ the upper value in a compound pdt_s. */
 bool sg_pdt_s_eq(int l_pdt_s, int r_pdt_s);
 
+/* Attempts to match acronym or abbreviation in 'acron' to a pdt. If 'spc'
+ * given returns -1, if there is an other match returns 0 to 0x1f. If no
+ * match returns -2 . If acronym is "xxx" then output a list of accepted
+ * acronyms, for each pdt value, to stderr (and returns -3). */
+int sg_get_pdt_from_acronym(const char * acron);
+
 extern FILE * sg_warnings_strm;
 
 void sg_set_warnings_strm(FILE * warnings_strm);
@@ -488,8 +499,8 @@ bool sg_exit2str(int exit_status, bool longer, int b_len, char * b);
 #define SG_LIB_CAT_CLEAN 0      /* No errors or other information */
 #define SG_LIB_OK_TRUE SG_LIB_CAT_CLEAN  /* No error, reporting true */
 /* Value 1 left unused for utilities to use SG_LIB_SYNTAX_ERROR */
-#define SG_LIB_CAT_NOT_READY 2  /* sense key, unit stopped?
-                                 *       [sk,asc,ascq: 0x2,*,*] */
+#define SG_LIB_CAT_NOT_READY 2  /* sense key: not ready, see 12 and 13
+                                 *  [sk,asc,ascq: 0x2,<most>,<most>] */
 #define SG_LIB_CAT_MEDIUM_HARD 3 /* medium or hardware error, blank check
                                   *       [sk,asc,ascq: 0x3/0x4/0x8,*,*] */
 #define SG_LIB_CAT_ILLEGAL_REQ 5 /* Illegal request (other than invalid
@@ -505,10 +516,16 @@ bool sg_exit2str(int exit_status, bool longer, int b_len, char * b);
                                     *       [sk,asc,ascq: 0xa,*,*] */
 #define SG_LIB_CAT_ABORTED_COMMAND 11 /* interpreted from sense buffer
                                        *       [sk,asc,ascq: 0xb,! 0x10,*] */
+#define SG_LIB_CAT_STANDBY 12   /* sense key: not ready, special case
+                                 *      [sk,asc, ascq: 0x2, 0x4, 0xb] */
+#define SG_LIB_CAT_UNAVAILABLE 13 /* sense key: not ready, special case
+                                   *      [sk,asc, ascq: 0x2, 0x4, 0xc] */
 #define SG_LIB_CAT_MISCOMPARE 14 /* sense key, probably verify
                                   *       [sk,asc,ascq: 0xe,*,*] */
 #define SG_LIB_FILE_ERROR 15    /* device or other file problem */
 /* for 17 and 18, see below */
+#define SG_LIB_CAT_INVALID_PARAM 19 /* illegal req, invalid field in parameter
+                                     * list [sk,asc,ascq: 0x5,0x26,0x0] */
 #define SG_LIB_CAT_NO_SENSE 20  /* sense data with key of "no sense"
                                  *       [sk,asc,ascq: 0x0,*,*] */
 #define SG_LIB_CAT_RECOVERED 21 /* Successful command after recovered err
@@ -644,7 +661,7 @@ void dStrHexFp(const char* str, int len, int no_ascii, FILE * fp);
 /* Read 'len' bytes from 'str' and output as ASCII-Hex bytes (space separated)
  * to 'b' not to exceed 'b_len' characters. Each line starts with 'leadin'
  * (NULL for no leadin) and there are 16 bytes per line with an extra space
- * between the 8th and 9th bytes. 'oformat' is 0 for repeat in printable ASCII
+ * between the 8th and 9th bytes. 'oformat' is 0 for render in printable ASCII
  * ('.' for non printable chars) to right of each line; 1 don't (so just
  * output ASCII hex). If 'oformat' is 2 output same as 1 but any LFs are
  * replaced by space (and trailing spaces are trimmed). Note that an address
@@ -693,6 +710,14 @@ bool sg_is_big_endian();
  * otherwise returns false. If bp is NULL or b_len <= 0 returns false. */
 bool sg_all_zeros(const uint8_t * bp, int b_len);
 bool sg_all_ffs(const uint8_t * bp, int b_len);
+
+/* Returns true and exits when a byte < 0x20 or DEL is detected. If no
+ * such byte is found by *(up + len - 1) then false is returned. */
+bool sg_has_control_char(const uint8_t * up, int len);
+
+/* Returns index (origin 0) of first non printable (7 bit ASCII) character.
+ * If all printable returns b_len . */
+int sg_first_non_printable(const uint8_t * bp, int b_len);
 
 /* Extract character sequence from ATA words as in the model string
  * in a IDENTIFY DEVICE response. Returns number of characters
@@ -789,6 +814,11 @@ void sg_set_big_endian(uint64_t val, uint8_t * to, int start_bit /* 0 to 7 */,
  * SG_LIB_OS_BASE_ERR' otherwise SG_LIB_OS_BASE_ERR is returned. If
  * os_err_num is 0 then 0 is returned. */
 int sg_convert_errno(int os_err_num);
+
+/* Report utility name, version string and invocation arguments to the file
+ * pointed to be fp. If fp is NULL, outputs to stdout. */
+void sg_rep_invocation(const char * util_name, const char * ver_str,
+                       int argc, char *argv[], FILE * fp);
 
 
 /* <<< Architectural support functions [is there a better place?] >>> */

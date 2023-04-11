@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005-2021 Douglas Gilbert.
+ * Copyright (c) 2005-2023 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -7,7 +7,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-/* sg_pt_linux version 1.54 20210923 */
+/* sg_pt_linux version 1.55 20230102 */
 
 
 #include <stdio.h>
@@ -187,6 +187,7 @@ check_file_type(int dev_fd, struct stat * dev_statp, bool * is_bsg_p,
     bool is_nvme = false;
     bool is_sg = false;
     bool is_bsg = false;
+    bool is_char = false;
     bool is_block = false;
     int os_err = 0;
     int major_num;
@@ -202,6 +203,7 @@ check_file_type(int dev_fd, struct stat * dev_statp, bool * is_bsg_p,
         }
         major_num = (int)SG_DEV_MAJOR(dev_statp->st_rdev);
         if (S_ISCHR(dev_statp->st_mode)) {
+            is_char = true;
             if (SCSI_GENERIC_MAJOR == major_num)
                 is_sg = true;
             else if (sg_bsg_major == major_num)
@@ -242,6 +244,8 @@ skip_out:
                   ((uint32_t)-1 == nsid) ? -1LL : (long long)nsid);
         else if (is_block)
             pr2ws("block device\n");
+        else if (is_char)
+            pr2ws("character device\n");
         else
             pr2ws("undetermined device, could be regular file\n");
     }
@@ -485,20 +489,20 @@ clear_scsi_pt_obj(struct sg_pt_base * vp)
 void
 partial_clear_scsi_pt_obj(struct sg_pt_base * vp)
 {
-    struct sg_pt_linux_scsi * ptp = &vp->impl;
+    if (vp) {
+        struct sg_pt_linux_scsi * ptp = &vp->impl;
 
-    if (NULL == ptp)
-        return;
-    ptp->in_err = 0;
-    ptp->os_err = 0;
-    ptp->io_hdr.device_status = 0;
-    ptp->io_hdr.transport_status = 0;
-    ptp->io_hdr.driver_status = 0;
-    ptp->io_hdr.din_xferp = 0;
-    ptp->io_hdr.din_xfer_len = 0;
-    ptp->io_hdr.dout_xferp = 0;
-    ptp->io_hdr.dout_xfer_len = 0;
-    ptp->nvme_result = 0;
+        ptp->in_err = 0;
+        ptp->os_err = 0;
+        ptp->io_hdr.device_status = 0;
+        ptp->io_hdr.transport_status = 0;
+        ptp->io_hdr.driver_status = 0;
+        ptp->io_hdr.din_xferp = 0;
+        ptp->io_hdr.din_xfer_len = 0;
+        ptp->io_hdr.dout_xferp = 0;
+        ptp->io_hdr.dout_xfer_len = 0;
+        ptp->nvme_result = 0;
+    }
 }
 
 #ifndef SG_SET_GET_EXTENDED

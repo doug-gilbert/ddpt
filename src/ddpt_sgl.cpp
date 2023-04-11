@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2022, Douglas Gilbert
+ * Copyright (c) 2020-2023, Douglas Gilbert
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -66,7 +66,7 @@
 #endif
 
 
-static const char * ddpt_sgl_version_str = "0.98 20220825 [svn: r404]";
+static const char * ddpt_sgl_version_str = "0.98 20230410 [svn: r406]";
 
 #include "ddpt.h"
 #include "sg_lib.h"
@@ -1041,6 +1041,7 @@ fini:
     return ret;
 }
 
+// Parsing contents of FN from command line option --index=@FN
 static int
 file_index_parse(const char * fnp, bool got_stdin, bool in_hex,
                  struct sgl_opts_t * op)
@@ -1049,7 +1050,7 @@ file_index_parse(const char * fnp, bool got_stdin, bool in_hex,
     bool pre_addr1 = true;
     bool pre_hex_seen = false;
     int in_len, k, j, m, n, err;
-    int off = 0;
+    // int off = 0;
     int ret = 0;
     unsigned int u;
     char * lcp;
@@ -1164,7 +1165,7 @@ file_index_parse(const char * fnp, bool got_stdin, bool in_hex,
             if ('\0' == *lcp)
                 break;
         }       /* <<< end of for(k < 256) loop */
-        off += (k + 1);
+        // off += (k + 1);
     }   /* <<< end of for( ; ; ) loop, one iteration per line */
     clearerr(fp);    /* even EOF on first pass needs this before rescan */
     if (stdin != fp)
