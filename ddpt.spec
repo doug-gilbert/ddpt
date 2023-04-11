@@ -28,6 +28,7 @@ lists)
 %setup -q
 
 %build
+./autogen.sh
 %configure
 
 %install

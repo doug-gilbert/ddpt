@@ -786,7 +786,7 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
         } else {
             b = (double)op->ibs_hold * sp->in_full;
             if (sp->prev_valid)
-                db = (double)op->obs_lb * (sp->in_full - sp->prev_count);
+                db = (double)op->ibs_lb * (sp->in_full - sp->prev_count);
             sp->prev_count = sp->in_full;
         }
         pr2serr("%stime to %s data%s: %d.%06d secs", leadin,
@@ -797,7 +797,7 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
         if ((a > 0.00001) && (b > 511)) {
             r = b / (a * 1000000.0);
             if (r < 1.0)
-                pr2serr(" at %.1f KB/sec", r * 1000);
+                pr2serr(" at %.1f kB/sec", r * 1000);
             else
                 pr2serr(" at %.2f MB/sec", r);
         }
@@ -805,7 +805,7 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
             if ((da > 0.00001) && (db > 511)) {
                 dr = db / (da * 1000000.0);
                 if (dr < 1.0)
-                    pr2serr(" (delta %.1f KB/sec)", dr * 1000);
+                    pr2serr(" (delta %.1f kB/sec)", dr * 1000);
                 else
                     pr2serr(" (delta %.2f MB/sec)", dr);
             }
@@ -884,7 +884,7 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
         if ((a > 0.00001) && (b > 511)) {
             r = b / (a * 1000000.0);
             if (r < 1.0)
-                pr2serr(" at %.1f KB/sec", r * 1000);
+                pr2serr(" at %.1f kB/sec", r * 1000);
             else
                 pr2serr(" at %.2f MB/sec", r);
         }
@@ -892,7 +892,7 @@ calc_duration_throughput(const char * leadin, bool contin, struct opts_t * op)
             if ((da > 0.00001) && (db > 511)) {
                 dr = db / (da * 1000000.0);
                 if (dr < 1.0)
-                    pr2serr(" (delta %.1f KB/sec)", dr * 1000);
+                    pr2serr(" (delta %.1f kB/sec)", dr * 1000);
                 else
                     pr2serr(" (delta %.2f MB/sec)", dr);
             }
