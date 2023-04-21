@@ -93,14 +93,15 @@ primary_help:
             "             [rtf=RTF] [rtype=RTYPE] [seek=SEEK] [skip=SKIP] "
             "[status=STAT]\n"
             "             [to=TO] [verbose=VERB]\n"
-            "             [--dry-run] [--flexible] [--help] [--job=JF] "
-            "[--odx]\n"
-            "             [--prefetch] [--progress] [--quiet] [--verbose] "
-            "[--verify]\n"
+            "             [--compare] [--dry-run] [--flexible] [--help] "
+            "[--job=JF]\n"
+            "             [--odx] [--prefetch] [--progress] [--quiet] "
+            "[--verbose]\n"
 #ifdef SG_LIB_WIN32
-            "             [--version] [--wscan] [--xcopy] [ddpt] [JF]\n"
+            "             [--verify] [--version] [--wscan] [--xcopy] [ddpt] "
+            "[JF]\n"
 #else
-            "             [--version] [--xcopy] [ddpt] [JF]\n"
+            "             [--verify] [--version] [--xcopy] [ddpt] [JF]\n"
 #endif
            );
     pr2serr("  where the main operands are:\n"
@@ -145,6 +146,7 @@ primary_help:
             "                -1->quiet (same as --quiet option)\n\n"
            );
     pr2serr("  and the options are:\n"
+            "    --compare|-c    same as --verify, compares IFILE and OFILE\n"
             "    --dry-run|-d    do preparation, bypass copy\n"
             "    --flexible|-f    relax rule about hex sgl\n"
             "    --help|-h     print out this usage message then exit\n"
@@ -157,7 +159,7 @@ primary_help:
             "    --quiet|-q     suppresses messages (by redirecting them "
             "to /dev/null)\n"
             "    --verbose|-v    equivalent to verbose=1\n"
-            "    --verify|-X     does verify between IFILE and OFILE "
+            "    --verify|-X     compares/verifies IFILE and OFILE "
             "instead of copy\n"
             "    --version|-V    print version information then exit\n"
 #ifdef SG_LIB_WIN32
@@ -1620,7 +1622,9 @@ skip_name_eq_value:
             parsed_2 = false;
             goto bypass_options;
         /* look for long options that start with '--' */
-        } else if (0 == strncmp(key, "--dry-run", 9))
+        } else if (0 == strncmp(key, "--comp", 6))
+            op->verify_given = true;
+        else if (0 == strncmp(key, "--dry-run", 9))
             ++op->dry_run;
         else if (0 == strncmp(key, "--dry_run", 9))
             ++op->dry_run;
@@ -1671,6 +1675,10 @@ skip_name_eq_value:
          * concaternated (e.g. '-vvvx') */
         } else if ((keylen > 1) && ('-' == key[0]) && ('-' != key[1])) {
             res = 0;
+            n = num_chs_in_str(key + 1, keylen - 1, 'c');
+            if (n > 0)
+                op->verify_given = true;
+            res += n;
             n = num_chs_in_str(key + 1, keylen - 1, 'd');
             op->dry_run += n;
             res += n;
