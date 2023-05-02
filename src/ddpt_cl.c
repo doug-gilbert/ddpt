@@ -386,8 +386,8 @@ skip_seek(struct opts_t * op, const char * key, const char * buf,
         vb = 0;
     len = (int)strlen(buf);
     if ((('-' == buf[0]) && (1 == len)) || ((len > 1) && ('@' == buf[0])) ||
-        ((len > 2) && ('H' == toupper(buf[0])) && ('@' == buf[1]))) {
-        if ('H' == toupper(buf[0])) {
+        ((len > 2) && ('H' == toupper((uint8_t)buf[0])) && ('@' == buf[1]))) {
+        if ('H' == toupper((uint8_t)buf[0])) {
             cp = buf + 2;
             def_hex = true;
         } else if ('-' == buf[0])
@@ -1389,7 +1389,7 @@ cl_parse(struct opts_t * op, int argc, char * argv[],
             op->ibs_pi = n;
         } else if ((0 == strcmp(key, "id_usage")) ||
                    (0 == strcmp(key, "id-usage"))) {
-            if (isdigit(buf[0])) {
+            if (isdigit((uint8_t)buf[0])) {
                 n = sg_get_num(buf);
                 if (n < 0) {
                     pr2serr("bad numeric argument to 'id_usage='\n");

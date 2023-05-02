@@ -102,6 +102,14 @@
 #include <sys/filio.h>
 #endif
 
+#ifdef SG_LIB_NETBSD
+#include <sys/ioctl.h>
+#include <sys/ioccom.h>
+#include <sys/types.h>
+#include <sys/disklabel.h>
+#include <sys/disk.h>
+#endif
+
 #ifdef SG_LIB_SOLARIS
 #include <sys/ioctl.h>
 #include <sys/dkio.h>
@@ -603,7 +611,7 @@ lin_get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
 }
 #endif  /* BLKSSZGET */
 
-#ifdef SG_LIB_FREEBSD
+#if defined(SG_LIB_FREEBSD) || defined(SG_LIB_NETBSD)
 static int
 fbsd_get_blkdev_capacity(struct opts_t * op, int which_arg,
                          int64_t * num_blks, int * blk_sz)
@@ -678,7 +686,7 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
 {
 #ifdef SG_LIB_LINUX
     return lin_get_blkdev_capacity(op, which_arg, num_blks, blk_sz);
-#elif defined(SG_LIB_FREEBSD)
+#elif defined(SG_LIB_FREEBSD) || defined(SG_LIB_NETBSD)
     return fbsd_get_blkdev_capacity(op, which_arg, num_blks, blk_sz);
 #elif defined(SG_LIB_SOLARIS)
     return sol_get_blkdev_capacity(op, which_arg, num_blks, blk_sz);
@@ -1893,7 +1901,8 @@ cl2sgl(const char * inp, int * arr_elemsp, bool b_vb)
     bool split, full_pair;
     int in_len, k, j, n;
     const int max_nbs = INT32_MAX - 1;  /* 2**31 - 2; leaving headroom */
-    int64_t ll, large_num;
+    int64_t large_num = 0;
+    int64_t ll;
     uint64_t prev_lba;
     char * cp;
     char * c2p;
@@ -2063,8 +2072,9 @@ file2sgl_helper(FILE * fp, const char * fnp, bool def_hex, bool flexible,
             /* Accept lines with leading 'HEX' and ignore as long as there
              * is one _before_ any LBA,NUM lines in the file. This allows
              * HEX marked sgls to be concaternated together. */
-            if (('H' == toupper(lcp[0])) && ('E' == toupper(lcp[1])) &&
-                ('X' == toupper(lcp[2]))) {
+            if (('H' == toupper((uint8_t)lcp[0])) &&
+                ('E' == toupper((uint8_t)lcp[1])) &&
+                ('X' == toupper((uint8_t)lcp[2]))) {
                 pre_hex_seen = true;
                 if (def_hex)
                     continue; /* bypass 'HEX' marker line if expecting hex */
@@ -2626,8 +2636,10 @@ sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str, bool show_sgl,
     bool fragmented = false;
     int k;
     int elems = sgli_p->elems;
-    uint32_t prev_num, t_num;
-    uint64_t prev_lba, t_lba, sum, low, high, end;
+    uint32_t prev_num = 0;
+    uint32_t t_num;
+    uint64_t prev_lba = 0;
+    uint64_t t_lba, sum, low, high, end;
     const struct scat_gath_elem * sgep = sgli_p->sglp;
 
     for (k = 0, sum = 0, low = 0, high = 0; k < elems; ++k, ++sgep) {
