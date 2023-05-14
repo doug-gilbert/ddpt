@@ -69,7 +69,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.98 20230410 [svn: r406]";
+static const char * ddpt_version_str = "0.98 20230513 [svn: r410]";
 
 static const char * my_name = "ddpt: ";
 
@@ -985,6 +985,7 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
     int numbytes = req_blks * ibs;
     int vb = op->verbose;
     int64_t offset = csp->cur_in_lba * ibs;
+    static const char * ru_s = "read(unix)";
 
     if (dr || (vb > 5)) {
         if ((vb > 5) || (dr && (vb > 1)))
@@ -1020,22 +1021,22 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
 
     err = errno;
     if (vb > 2)
-        pr2serr("read(unix): requested bytes=%d, res=%d\n", numbytes, res);
+        pr2serr("%s: requested bytes=%d, res=%d\n", ru_s, numbytes, res);
     if ((op->iflagp->coe > 0) && (res < numbytes)) {
         res2 = (res >= 0) ? res : -err;
         if ((res < 0) && vb) {
-            pr2serr("skip/lba_in=%" PRId64 " : %s, attempt "
-                    "continue-on-error\n",
+            pr2serr("%s: skip/lba_in=%" PRId64 " : %s, attempt "
+                    "continue-on-error\n", ru_s,
                     csp->cur_in_lba, safe_strerror(err));
         } else if (vb)
-            pr2serr("skip/lba_in=%" PRId64 " : short read,  attempt "
-                    "continue-on-error\n", csp->cur_in_lba);
+            pr2serr("%s: skip/lba_in=%" PRId64 " : short read,  attempt "
+                    "continue-on-error\n", ru_s, csp->cur_in_lba);
         if (res2 > 0)
             csp->in_iter.filepos += res2;
         return coe_cp_read_block_reg(op, csp, bp, res2);
     }
     if (res < 0) {
-        pr2serr("skip/lba_in=%" PRId64 " : %s\n", csp->cur_in_lba,
+        pr2serr("%s: skip/lba_in=%" PRId64 " : %s\n", ru_s, csp->cur_in_lba,
                 safe_strerror(err));
         if ((EIO == err) || (EREMOTEIO == err))
             return SG_LIB_CAT_MEDIUM_HARD;
@@ -1048,12 +1049,12 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
             ++csp->stats.in_partial;
         if (vb > 1) {
             if (FT_BLOCK & id_type)
-                pr2serr("short read at lba=%" PRId64 ", requested "
-                        "%d blocks, got %d blocks\n", csp->cur_in_lba,
+                pr2serr("%s: short read at lba=%" PRId64 ", requested "
+                        "%d blocks, got %d blocks\n", ru_s, csp->cur_in_lba,
                         numbytes / ibs, csp->blks_xfer);
             else
-                pr2serr("short read, requested %d bytes, got %d bytes, "
-                        "from filepos=0x%" PRIx64 "\n", numbytes, res,
+                pr2serr("%s: short read, requested %d bytes, got %d bytes, "
+                        "from filepos=0x%" PRIx64 "\n", ru_s, numbytes, res,
                         offset);
         }
         res2 = 0;
@@ -1070,8 +1071,8 @@ cp_read_block_reg(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
                 } else
                     csp->leave_reason = sg_convert_errno(err);
                 if (vb)
-                    pr2serr("after short read, read at lba=%" PRId64
-                            ": %s\n", csp->cur_in_lba + csp->blks_xfer,
+                    pr2serr("%s: after short read, read at lba=%" PRId64
+                            ": %s\n", ru_s, csp->cur_in_lba + csp->blks_xfer,
                             safe_strerror(err));
             } else {    /* actually expect 0==res2 indicating EOF */
                 csp->in_iter.filepos += res2;   /* could have moved filepos */

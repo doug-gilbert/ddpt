@@ -66,7 +66,7 @@
 #endif
 
 
-static const char * ddpt_sgl_version_str = "0.98 20230410 [svn: r406]";
+static const char * ddpt_sgl_version_str = "0.98 20230513 [svn: r410]";
 
 #include "ddpt.h"
 #include "sg_lib.h"

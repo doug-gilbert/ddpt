@@ -102,6 +102,14 @@
 #include <sys/filio.h>
 #endif
 
+#ifdef SG_LIB_NETBSD
+#include <sys/ioctl.h>
+#include <sys/ioccom.h>
+#include <sys/types.h>
+#include <sys/disklabel.h>
+#include <sys/disk.h>
+#endif
+
 #ifdef SG_LIB_SOLARIS
 #include <sys/ioctl.h>
 #include <sys/dkio.h>
@@ -306,6 +314,8 @@ print_stats(const char * str, struct opts_t * op, int who, bool estimate)
 #ifdef SG_LIB_LINUX
 static bool bsg_major_checked = false;
 static int bsg_major = 0;
+static const char * proc_devices_s = "/proc/devices";
+static const char * pdevs_ch_s = "Character";
 
 /* In Linux search /proc/devices for bsg character driver in order to
  * find its major device number since it is allocated dynamically.  */
@@ -313,21 +323,20 @@ static void
 find_bsg_major(int verbose)
 {
     int n;
-    const char * proc_devices = "/proc/devices";
     FILE *fp;
     char a[128];
     char b[128];
     char * cp;
 
-    if (NULL == (fp = fopen(proc_devices, "r"))) {
+    if (NULL == (fp = fopen(proc_devices_s, "r"))) {
         if (verbose)
-            pr2serr("fopen %s failed: %s\n", proc_devices,
+            pr2serr("fopen %s failed: %s\n", proc_devices_s,
                     safe_strerror(errno));
         return;
     }
     while ((cp = fgets(b, sizeof(b), fp))) {
         if ((1 == sscanf(b, "%126s", a)) &&
-            (0 == memcmp(a, "Character", 9)))
+            (0 == memcmp(a, pdevs_ch_s, 9)))
             break;
     }
     while (cp && (cp = fgets(b, sizeof(b), fp))) {
@@ -343,7 +352,60 @@ find_bsg_major(int verbose)
         if (cp)
             pr2serr("found bsg_major=%d\n", bsg_major);
         else
-            pr2serr("found no bsg char device in %s\n", proc_devices);
+            pr2serr("found no bsg char device in %s\n", proc_devices_s);
+    }
+    fclose(fp);
+}
+
+static bool nvme_major_checked = false;
+static int nvme_major = 0;
+static int nvme_gen_major = 0;
+
+static void
+find_nvme_majors(int verbose)
+{
+    int n;
+    int num_found = 0;
+    char *cp;
+    FILE *fp;
+    char a[128];
+    char b[128];
+    static const int blen = sizeof(b);
+
+    if (NULL == (fp = fopen(proc_devices_s, "r"))) {
+        if (verbose)
+            pr2serr("fopen %s failed: %s\n", proc_devices_s, strerror(errno));
+        return;
+    }
+    while ((cp = fgets(b, blen, fp))) {
+        if ((1 == sscanf(b, "%126s", a)) &&
+            (0 == memcmp(a, pdevs_ch_s, 9)))
+            break;
+    }
+    while (cp && (cp = fgets(b, blen, fp))) {
+        if (2 == sscanf(b, "%d %126s", &n, a)) {
+            if (0 == memcmp("nvme", a, 4)) {
+                if (0 == strcmp("nvme-generic", a)) {
+                    nvme_gen_major = n;
+                    if (++num_found > 1)
+                        break;
+                } else {
+                    nvme_major = n;
+                    if (++num_found > 1)
+                        break;
+                }
+            }
+        } else
+            break;
+    }
+    if (verbose > 5) {
+        if (cp) {
+            if (nvme_major > 0)
+                pr2serr("found nvme_major=%d\n", nvme_major);
+            if (nvme_gen_major > 0)
+                pr2serr("found nvme_gen_major=%d\n", nvme_gen_major);
+        } else
+            pr2serr("found no nvme char device in %s\n", proc_devices_s);
     }
     fclose(fp);
 }
@@ -385,6 +447,14 @@ unix_dd_filetype(const char * filename, int verbose)
             find_bsg_major(verbose);
         }
         if (bsg_major == (int)major(st.st_rdev))
+            return FT_PT;
+        if (! nvme_major_checked) {
+            nvme_major_checked = true;
+            find_nvme_majors(verbose);
+        }
+        if (nvme_major == (int)major(st.st_rdev))
+            return FT_PT;
+        if (nvme_gen_major == (int)major(st.st_rdev))
             return FT_PT;
         return FT_CHAR; /* assume something like /dev/zero */
 #elif SG_LIB_FREEBSD
@@ -541,7 +611,7 @@ lin_get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
 }
 #endif  /* BLKSSZGET */
 
-#ifdef SG_LIB_FREEBSD
+#if defined(SG_LIB_FREEBSD) || defined(SG_LIB_NETBSD)
 static int
 fbsd_get_blkdev_capacity(struct opts_t * op, int which_arg,
                          int64_t * num_blks, int * blk_sz)
@@ -616,7 +686,7 @@ get_blkdev_capacity(struct opts_t * op, int which_arg, int64_t * num_blks,
 {
 #ifdef SG_LIB_LINUX
     return lin_get_blkdev_capacity(op, which_arg, num_blks, blk_sz);
-#elif defined(SG_LIB_FREEBSD)
+#elif defined(SG_LIB_FREEBSD) || defined(SG_LIB_NETBSD)
     return fbsd_get_blkdev_capacity(op, which_arg, num_blks, blk_sz);
 #elif defined(SG_LIB_SOLARIS)
     return sol_get_blkdev_capacity(op, which_arg, num_blks, blk_sz);
@@ -1831,7 +1901,8 @@ cl2sgl(const char * inp, int * arr_elemsp, bool b_vb)
     bool split, full_pair;
     int in_len, k, j, n;
     const int max_nbs = INT32_MAX - 1;  /* 2**31 - 2; leaving headroom */
-    int64_t ll, large_num;
+    int64_t large_num = 0;
+    int64_t ll;
     uint64_t prev_lba;
     char * cp;
     char * c2p;
@@ -2001,8 +2072,9 @@ file2sgl_helper(FILE * fp, const char * fnp, bool def_hex, bool flexible,
             /* Accept lines with leading 'HEX' and ignore as long as there
              * is one _before_ any LBA,NUM lines in the file. This allows
              * HEX marked sgls to be concaternated together. */
-            if (('H' == toupper(lcp[0])) && ('E' == toupper(lcp[1])) &&
-                ('X' == toupper(lcp[2]))) {
+            if (('H' == toupper((uint8_t)lcp[0])) &&
+                ('E' == toupper((uint8_t)lcp[1])) &&
+                ('X' == toupper((uint8_t)lcp[2]))) {
                 pre_hex_seen = true;
                 if (def_hex)
                     continue; /* bypass 'HEX' marker line if expecting hex */
@@ -2564,8 +2636,10 @@ sgl_sum_scan(struct sgl_info_t * sgli_p, const char * id_str, bool show_sgl,
     bool fragmented = false;
     int k;
     int elems = sgli_p->elems;
-    uint32_t prev_num, t_num;
-    uint64_t prev_lba, t_lba, sum, low, high, end;
+    uint32_t prev_num = 0;
+    uint32_t t_num;
+    uint64_t prev_lba = 0;
+    uint64_t t_lba, sum, low, high, end;
     const struct scat_gath_elem * sgep = sgli_p->sglp;
 
     for (k = 0, sum = 0, low = 0, high = 0; k < elems; ++k, ++sgep) {

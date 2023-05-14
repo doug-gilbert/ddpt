@@ -64,7 +64,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.98 20230410 [svn: r406]";
+const char * ddptctl_version_str = "0.98 20230513 [svn: r410]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -558,8 +558,8 @@ sgl_helper(struct opts_t * op, const char * opt, const char * buf,
 
     len = (int)strlen(buf);
     if ((('-' == buf[0]) && (1 == len)) || ((len > 1) && ('@' == buf[0])) ||
-        ((len > 2) && ('H' == toupper(buf[0])) && ('@' == buf[1]))) {
-        if ('H' == toupper(buf[0])) {
+        ((len > 2) && ('H' == toupper((int8_t)buf[0])) && ('@' == buf[1]))) {
+        if ('H' == toupper((int8_t)buf[0])) {
             cp = buf + 2;
             def_hex = true;
         } else if ('-' == buf[0])

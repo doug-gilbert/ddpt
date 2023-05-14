@@ -62,6 +62,9 @@ case "${host}" in
         *-*-solaris*)
                 AC_SUBST([os_deps], ['sg_pt_solaris.o'])
                 AC_DEFINE_UNQUOTED(SG_LIB_SOLARIS, 1, [ddpt on Solaris]);;
+        *-*-netbsd*)
+                AC_SUBST([os_deps], ['sg_pt_netbsd.o'])
+                AC_DEFINE_UNQUOTED(SG_LIB_NETBSD, 1, [sdparm on NetBSD]);;
         *-*-osf*)
                 AC_SUBST([os_deps], ['sg_pt_osf1.o'])
                 AC_DEFINE_UNQUOTED(SG_LIB_OSF1, 1, [ddpt on Tru64 UNIX]);;
@@ -88,6 +91,7 @@ esac
 # Define platform-specific symbol.
 AM_CONDITIONAL(OS_FREEBSD, [echo $host_os | grep 'freebsd' > /dev/null])
 AM_CONDITIONAL(OS_LINUX, [echo $host_os | grep '^linux' > /dev/null])
+AM_CONDITIONAL(OS_NETBSD, [echo $host_os | grep '^netbsd' > /dev/null])
 AM_CONDITIONAL(OS_SOLARIS, [echo $host_os | grep '^solaris' > /dev/null])
 AM_CONDITIONAL(OS_WIN32_MINGW, [echo $host_os | grep '^mingw' > /dev/null])
 AM_CONDITIONAL(OS_WIN32_CYGWIN, [echo $host_os | grep '^cygwin' > /dev/null])

@@ -26,12 +26,12 @@ endif
 
 # -std=<s> can be c99, c11, c14, gnu11, etc. Default is gnu89 (gnu90 is the same)
 AM_CPPFLAGS = -iquote ${top_srcdir}/include -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 $(DBG_CPPFLAGS)
-### AM_CFLAGS = -Wall -W $(DBG_CFLAGS)
+AM_CFLAGS = -Wall -W $(DBG_CFLAGS)
 AM_CXXFLAGS = -Wall -W $(DBG_CFLAGS_FOR_CXX) -std=c++11
 ## AM_CXXFLAGS = -Wall -W $(DBG_CFLAGS_FOR_CXX) -std=c++20
 # AM_CFLAGS = -Wall -W -Wextra -Wmisleading-indentation -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wnull-dereference -Wshadow -Wjump-misses-init
 # AM_CFLAGS = -Wall -W -Werror=misleading-indentation
-AM_CFLAGS = -Wall -W -pedantic -std=c99
+# AM_CFLAGS = -Wall -W -pedantic -std=c99
 # AM_CFLAGS = -Wall -W -pedantic -std=c11 --analyze
 # AM_CFLAGS = -Wall -W -pedantic -std=c++14
 # AM_CFLAGS = -Wall -W -pedantic -std=c++20
@@ -66,8 +66,6 @@ sglib_SOURCES =         ../lib/sg_lib.c \
                         ../include/sg_cmds_extra.h      \
                         ../lib/sg_pr2serr.c     \
                         ../include/sg_pr2serr.h \
-                        ../lib/sg_json_builder.c        \
-                        ../lib/sg_json_builder.h        \
                         ../include/sg_pt.h      \
                         ../include/sg_pt_nvme.h      \
                         ../lib/sg_pt_common.c
@@ -109,6 +107,7 @@ EXTRA_ddpt_SOURCES =	../lib/sg_pt_linux.c	\
 			../include/sg_pt_linux.h	\
 			../include/sg_linux_inc.h	\
 			../lib/sg_pt_freebsd.c	\
+			../lib/sg_pt_netbsd.c	\
 			../lib/sg_pt_osf1.c	\
 			../lib/sg_pt_solaris.c	\
 			../lib/sg_pt_win32.c	\
@@ -128,6 +127,7 @@ endif
 EXTRA_ddptctl_SOURCES =	../lib/sg_pt_linux.c	\
 			../include/sg_linux_inc.h	\
 			../lib/sg_pt_freebsd.c	\
+			../lib/sg_pt_netbsd.c	\
 			../lib/sg_pt_osf1.c	\
 			../lib/sg_pt_solaris.c	\
 			../lib/sg_pt_win32.c	\
@@ -147,6 +147,7 @@ endif
 EXTRA_ddpt_sgl_SOURCES = ../lib/sg_pt_linux.c	\
 			../include/sg_linux_inc.h	\
 			../lib/sg_pt_freebsd.c	\
+			../lib/sg_pt_netbsd.c	\
 			../lib/sg_pt_osf1.c	\
 			../lib/sg_pt_solaris.c	\
 			../lib/sg_pt_win32.c	\
