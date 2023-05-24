@@ -69,7 +69,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.98 20230513 [svn: r410]";
+static const char * ddpt_version_str = "0.98 20230520 [svn: r411]";
 
 static const char * my_name = "ddpt: ";
 
