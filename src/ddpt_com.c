@@ -1284,7 +1284,7 @@ static sig_atomic_t volatile interrupt_signal;
 /* A count of pending info(usr1) signals, decremented as processed */
 static sig_atomic_t volatile info_signals_pending;
 
-static struct val_str_t signum_name_arr[] = {
+static const struct val_str_t signum_name_arr[] = {
     {SIGINT, "SIGINT"},
     {SIGQUIT, "SIGQUIT"},
     {SIGPIPE, "SIGPIPE"},

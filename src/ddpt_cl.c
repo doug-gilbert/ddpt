@@ -1140,7 +1140,7 @@ jf_parse(struct opts_t * op, const char * jf_name, const char * version_str,
         argv[0] = bb;
         argc = argcargv(b + off, argv + 1, DDPT_MAX_JF_ARGS_PER_LINE - 1);
         ++argc;
-        ret = cl_parse(op, argc, argv, version_str, jf_depth);
+        ret = ddpt_cl_parse(op, argc, argv, version_str, jf_depth);
         if (ret) {
             pr2serr("failed parsing job file %s ", jf_name);
             if ((jf_depth > 1) || (vb > 3))
@@ -1169,8 +1169,8 @@ jf_parse(struct opts_t * op, const char * jf_name, const char * version_str,
 /* Process operands and options on the command line. Returns 0 if successful,
  * > 0 for (syntax) error and -1 for early exit (e.g. after '--help') */
 int
-cl_parse(struct opts_t * op, int argc, char * argv[],
-         const char * version_str, int jf_depth)
+ddpt_cl_parse(struct opts_t * op, int argc, char * argv[],
+              const char * version_str, int jf_depth)
 {
     bool parsed, parsed_2;
     bool no_more_options = false;

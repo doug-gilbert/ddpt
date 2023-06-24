@@ -95,7 +95,7 @@ static uint8_t local_rod_token[LOCAL_ROD_TOKEN_SIZE];
 static const char * rec_copy_op_params_str = "Receive copy operating "
                                              "parameters";
 
-static struct val_str_t xcopy4_cpy_op_status[] = {
+static const struct val_str_t xcopy4_cpy_op_status[] = {
     {0x1, "Operation completed without errors"},
     {0x2, "Operation completed with errors"},
     {0x3, "Operation completed without errors but with partial ROD token "
@@ -1034,7 +1034,7 @@ struct tpc_desc_type {
     const char * name;
 };
 
-static struct tpc_desc_type tpc_desc_arr[] = {
+static const struct tpc_desc_type tpc_desc_arr[] = {
     {0x0, "block -> stream"},
     {0x1, "stream -> block"},
     {0x2, "block -> block"},
@@ -1094,7 +1094,7 @@ struct tpc_rod_type {
     const char * name;
 };
 
-static struct tpc_rod_type tpc_rod_arr[] = {
+static const struct tpc_rod_type tpc_rod_arr[] = {
     {0x0, "copy manager internal"},
     {0x10000, "access upon reference"},
     {0x800000, "point in time copy - default"},

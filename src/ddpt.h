@@ -919,8 +919,8 @@ int process_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a);
 int do_odx(struct opts_t * op);
 
 /* defined in ddpt_cl.c */
-int cl_parse(struct opts_t * op, int argc, char * argv[],
-             const char * version_str, int jf_depth);
+int ddpt_cl_parse(struct opts_t * op, int argc, char * argv[],
+                  const char * version_str, int jf_depth);
 void ddpt_usage(int help);
 
 
