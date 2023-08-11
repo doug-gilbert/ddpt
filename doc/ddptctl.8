@@ -1,4 +1,4 @@
-.TH DDPTCTL "8" "May 2023" "ddpt\-0.98" DDPT
+.TH DDPTCTL "8" "June 2023" "ddpt\-0.98" DDPT
 .SH NAME
 ddptctl \- helper/auxiliary utility for ddpt
 .SH SYNOPSIS
@@ -12,7 +12,6 @@ ddptctl \- helper/auxiliary utility for ddpt
 [\fI\-\-wut=SL\fR] [\fIDEVICE\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
-.PP
 This utility is a helper/auxiliary for the ddpt utility which copies data
 between or within SCSI devices (logical units). While ddpt's command line
 syntax is modelled on that of the POSIX dd command, this utility has a more
@@ -263,7 +262,6 @@ First issue a PT command without the \fI\-\-immed\fR option so RRTI is
 called to complete the operation:
 .PP
   # ddptctl \-\-pt=0x0,10k,20k,5k \-\-rtf=aa.rt /dev/sdb
-.br
   PT completes with a transfer count of 15360 [0x3c00]
 .PP
 The transfer count (10k + 5k == 15360) indicates the operation was successful
@@ -271,35 +269,22 @@ and the ROD Token is in the aa.rt file. Now use that ROD Token to write to
 the same locations on /dev/sdc:
 .PP
   # ddptctl \-\-rtf=aa.rt \-\-wut=0x0,10k,20k,5k /dev/sdc
-.br
   WUT completes with a transfer count of 15360 [0x3c00]
 .PP
 So the copy was successful. Now taking a closer look at the ROD token:
 .PP
   # ddptctl \-\-info \-\-rtf=aa.rt
-.br
   Decoding information from ROD Token:
-.br
     ROD type: point in time copy \- default [0x800000]
-.br
     Copy manager ROD Token identifier: 0x520000710000000c
-.br
     Creator Logical Unit descriptor:
-.br
       Peripheral Device type: 0x0
-.br
       Relative initiator port identifier: 0x0
-.br
       designator_type: NAA,  code_set: Binary
-.br
       associated with the addressed logical unit
-.br
         0x60002ac0000000000000000c00009502
-.br
     Number of bytes represented: 0 [0x0]
-.br
     Device type specific data (for disk) has block size of 0; unlikely so skip
-.br
     Target device descriptor: unexpected designator type [0x0]
 .PP
 T10 does not require implementations to supply much of the above (only the
@@ -308,23 +293,14 @@ ROD type and the token length) so expect to see some empty fields.
 To see information about /dev/sdb relevant to ODX, try:
 .PP
   # ddptctl \-\-info /dev/sdb
-.br
     /dev/sdb [readcap]: num_blks=209715200 [0xc800000], blk_size=512, 107 GB
-.br
   3PC (third party copy) bit set in standard INQUIRY response
-.br
    Third Party Copy VPD page:
-.br
    Block Device ROD Token Limits:
-.br
     Maximum Range Descriptors: 8
-.br
     Maximum Inactivity Timeout: 60 seconds
-.br
     Default Inactivity Timeout: 30 seconds
-.br
     Maximum Token Transfer Size: 524288
-.br
     Optimal Transfer Count: 524288
 .PP
 That maximum token transfer size [524288 blocks each 512 bytes gives 256 MB]
@@ -332,21 +308,15 @@ is the largest size a ROD Token created by /dev/sdb can hold. Use that and
 show the \fI\-\-immed\fR option on the destination:
 .PP
   # ddptctl \-\-pt=0x0,0x80000 \-\-rtf=aa.rt /dev/sdb
-.br
   PT completes with a transfer count of 524288 [0x80000]
 .PP
   # ddptctl \-\-rtf=aa.rt \-\-wut=0x0,0x80000 \-\-immed /dev/sdc
-.br
   Started ODX Write Using Token command in immediate mode.
-.br
   User may need \-\-list_id=257 on following invocation with \-\-receive or
-.br
   \-\-poll for completion
 .PP
   # ddptctl \-\-poll \-\-rtf=aa.rt /dev/sdc
-.br
   RRTI for Write using token: Operation completed without errors
-.br
     transfer count of 524288 [0x80000]
 .PP
 To copy larger amounts and/or with a larger number of scatter gather

@@ -69,7 +69,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.98 20230513 [svn: r410]";
+static const char * ddpt_version_str = "0.98 20230808 [svn: r413]";
 
 static const char * my_name = "ddpt: ";
 
@@ -3505,7 +3505,7 @@ main(int argc, char * argv[])
     if (getenv("SG3_UTILS_INVOCATION"))
         sg_rep_invocation(my_name, ddpt_version_str, argc, argv, stderr);
 
-    ret = cl_parse(op, argc, argv, ddpt_version_str, jf_depth);
+    ret = ddpt_cl_parse(op, argc, argv, ddpt_version_str, jf_depth);
     if (op->do_help > 0) {
         ddpt_usage(op->do_help);
         return 0;

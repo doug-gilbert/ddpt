@@ -64,7 +64,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.98 20230513 [svn: r410]";
+const char * ddptctl_version_str = "0.98 20230808 [svn: r413]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -121,37 +121,37 @@ const char * ddptctl_version_str = "0.98 20230513 [svn: r410]";
 #define DEF_ROD_TOK_FILE "ddptctl_rod_tok.bin"
 
 
-static struct option long_options[] = {
-        {"abort", no_argument, 0, 'A'},
-        {"all-toks", no_argument, 0, 'a'},
-        {"all_toks", no_argument, 0, 'a'},
-        {"block", no_argument, 0, 'b'},
-        {"del-tkn", no_argument, 0, 'D'},
-        {"del_tkn", no_argument, 0, 'D'},
-        {"dry-run", no_argument, 0, 'd'},
-        {"dry_run", no_argument, 0, 'd'},
-        {"flexible", no_argument, 0, 'f'},
-        {"help", no_argument, 0, 'h'},
-        {"hex", no_argument, 0, 'H'},
-        {"info", no_argument, 0, 'i'},
-        {"immed", no_argument, 0, 'I'},
-        {"list-id", required_argument, 0, 'l'},
-        {"list_id", required_argument, 0, 'l'},
-        {"oir", required_argument, 0, 'O'},
-        {"poll", no_argument, 0, 'p'},
-        {"prefer-rcs", no_argument, 0, 'q'},
-        {"prefer_rcs", no_argument, 0, 'q'},
-        {"pt", required_argument, 0, 'P'},
-        {"readonly", no_argument, 0, 'y'},
-        {"receive", no_argument, 0, 'R'},
-        {"rtf", required_argument, 0, 'r'},
-        {"rtype", required_argument, 0, 't'},
-        {"timeout", required_argument, 0, 'T'},
-        {"size", no_argument, 0, 's'},
-        {"verbose", no_argument, 0, 'v'},
-        {"version", no_argument, 0, 'V'},
-        {"wut", required_argument, 0, 'w'},
-        {0, 0, 0, 0},
+static const struct option long_options[] = {
+    {"abort", no_argument, 0, 'A'},
+    {"all-toks", no_argument, 0, 'a'},
+    {"all_toks", no_argument, 0, 'a'},
+    {"block", no_argument, 0, 'b'},
+    {"del-tkn", no_argument, 0, 'D'},
+    {"del_tkn", no_argument, 0, 'D'},
+    {"dry-run", no_argument, 0, 'd'},
+    {"dry_run", no_argument, 0, 'd'},
+    {"flexible", no_argument, 0, 'f'},
+    {"help", no_argument, 0, 'h'},
+    {"hex", no_argument, 0, 'H'},
+    {"info", no_argument, 0, 'i'},
+    {"immed", no_argument, 0, 'I'},
+    {"list-id", required_argument, 0, 'l'},
+    {"list_id", required_argument, 0, 'l'},
+    {"oir", required_argument, 0, 'O'},
+    {"poll", no_argument, 0, 'p'},
+    {"prefer-rcs", no_argument, 0, 'q'},
+    {"prefer_rcs", no_argument, 0, 'q'},
+    {"pt", required_argument, 0, 'P'},
+    {"readonly", no_argument, 0, 'y'},
+    {"receive", no_argument, 0, 'R'},
+    {"rtf", required_argument, 0, 'r'},
+    {"rtype", required_argument, 0, 't'},
+    {"timeout", required_argument, 0, 'T'},
+    {"size", no_argument, 0, 's'},
+    {"verbose", no_argument, 0, 'v'},
+    {"version", no_argument, 0, 'V'},
+    {"wut", required_argument, 0, 'w'},
+    {0, 0, 0, 0},
 };
 
 

@@ -17,6 +17,7 @@
 
 #include "sg_pr2serr.h"
 #include "sg_json.h"
+/* Note: does not depend on sg_lib.h or its implementation */
 
 #include "sg_json_builder.h"
 
@@ -142,63 +143,55 @@ sgj_parse_opts(sgj_state * jsp, const char * j_optarg)
 char *
 sg_json_usage(int char_if_not_j, char * b, int blen)
 {
-    int n = 0;
+    int n;
     char short_opt = char_if_not_j ? char_if_not_j : 'j';
 
     if ((NULL == b) || (blen < 1))
         goto fini;
-    n +=  sg_scnpr(b + n, blen - n, "JSON option usage:\n");
-    n +=  sg_scnpr(b + n, blen - n,
-                   "     --json[=JO] | -%c[=JO]\n\n", short_opt);
-    n +=  sg_scnpr(b + n, blen - n, "  where JO is a string of one or more "
-                   "of:\n");
-    n +=  sg_scnpr(b + n, blen - n,
+    n =  sg_scnpr(b, blen, "JSON option usage:\n");
+    n += sg_scn3pr(b, blen, n, "     --json[=JO] | -%c[=JO]\n\n", short_opt);
+    n += sg_scn3pr(b, blen, n, "  where JO is a string of one or more of:\n");
+    n += sg_scn3pr(b, blen, n,
                    "      0 | 2    tab pretty output to 2 spaces\n");
-    n +=  sg_scnpr(b + n, blen - n,
+    n += sg_scn3pr(b, blen, n,
                    "      4    tab pretty output to 4 spaces (def)\n");
-    n +=  sg_scnpr(b + n, blen - n,
-                   "      8    tab pretty output to 8 spaces\n");
+    n += sg_scn3pr(b, blen, n, "      8    tab pretty output to 8 spaces\n");
     if (n >= (blen - 1))
         goto fini;
-    n +=  sg_scnpr(b + n, blen - n,
-                   "      e    show 'exit_status' field\n");
-    n +=  sg_scnpr(b + n, blen - n,
-                   "      h    show 'hex' fields\n");
-    n +=  sg_scnpr(b + n, blen - n,
+    n += sg_scn3pr(b, blen, n, "      e    show 'exit_status' field\n");
+    n += sg_scn3pr(b, blen, n, "      h    show 'hex' fields\n");
+    n += sg_scn3pr(b, blen, n,
                    "      k    packed, only non-pretty printed output\n");
-    n +=  sg_scnpr(b + n, blen - n,
-                   "      l    show lead-in fields (invocation "
+    n += sg_scn3pr(b, blen, n, "      l    show lead-in fields (invocation "
                    "information)\n");
-    n +=  sg_scnpr(b + n, blen - n,
+    n += sg_scn3pr(b, blen, n,
                    "      n    show 'name_extra' information fields\n");
-    n +=  sg_scnpr(b + n, blen - n,
+    n += sg_scn3pr(b, blen, n,
                    "      o    non-JSON output placed in 'plain_text_output' "
                    "array in lead-in\n");
     if (n >= (blen - 1))
         goto fini;
-    n +=  sg_scnpr(b + n, blen - n,
-                   "      p    pretty print the JSON output\n");
-    n +=  sg_scnpr(b + n, blen - n,
+    n += sg_scn3pr(b, blen, n, "      p    pretty print the JSON output\n");
+    n += sg_scn3pr(b, blen, n,
                    "      s    show string output (usually fields named "
                    "'meaning')\n");
-    n +=  sg_scnpr(b + n, blen - n,
-                   "      v    make JSON output more verbose\n");
-    n +=  sg_scnpr(b + n, blen - n,
+    n += sg_scn3pr(b, blen, n, "      v    make JSON output more verbose\n");
+    n += sg_scn3pr(b, blen, n,
                    "      - | ~ | !    toggle next letter setting\n");
 
-    sg_scnpr(b + n, blen - n, "\nIn the absence of the optional JO argument, "
-             "the following are set\non: 'elps' while the others are set "
-             "off, and tabs are set to 4.\nBefore command line JO options "
-             "are applied, the environment\nvariable: %s is applied (if "
-             "present). Note that\nno space is permitted between the short "
-             "option ('-%c') and its\nargument ('JO'). For more information "
-             "see 'man sg3_utils_json' or\n'man sdparm_json' .\n",
-             sgj_opts_ev, short_opt);
+    sg_scn3pr(b, blen, n, "\nIn the absence of the optional JO argument, "
+              "the following are set\non: 'elps' while the others are set "
+              "off, and tabs are set to 4.\nBefore command line JO options "
+              "are applied, the environment\nvariable: %s is applied (if "
+              "present). Note that\nno space is permitted between the short "
+              "option ('-%c') and its\nargument ('JO'). For more information "
+              "see 'man sg3_utils_json' or\n'man sdparm_json' .\n",
+              sgj_opts_ev, short_opt);
 fini:
     return b;
 }
 
-char *
+static char *
 sg_json_settings(sgj_state * jsp, char * b, int blen)
 {
     snprintf(b, blen, "%d%se%sh%sk%sl%sn%so%sp%ss%sv", jsp->pr_indent_size,
@@ -233,6 +226,8 @@ sgj_init_state(sgj_state * jsp, const char * j_optarg)
 {
     const char * cp;
 
+    if (NULL == jsp)
+        return false;
     sgj_def_opts(jsp);
     jsp->basep = NULL;
     jsp->out_hrp = NULL;
@@ -254,14 +249,16 @@ sgj_start_r(const char * util_name, const char * ver_str, int argc,
             char *argv[], sgj_state * jsp)
 {
     int k;
-    json_value * jvp = json_object_new(0);
+    json_value * jvp;
     json_value * jv2p = NULL;
     json_value * jap = NULL;
 
+
+    if (NULL == jsp)
+        return NULL;
+    jvp = json_object_new(0);
     if (NULL == jvp)
         return NULL;
-    if (NULL == jsp)
-        return jvp;
 
     jsp->basep = jvp;
     if (jsp->pr_leadin) {
@@ -329,33 +326,32 @@ sgj_start_r(const char * util_name, const char * ver_str, int argc,
 }
 
 void
-sgj_js2file(sgj_state * jsp, sgj_opaque_p jop, int exit_status, FILE * fp)
+sgj_js2file_estr(sgj_state * jsp, sgj_opaque_p jop, int exit_status,
+                 const char * estr, FILE * fp)
 {
     size_t len;
+    const char * ccp;
     char * b;
     json_value * jvp = (json_value *)(jop ? jop : jsp->basep);
     json_serialize_opts out_settings;
 
     if (NULL == jvp) {
-        fprintf(fp, "%s: all NULL pointers ??\n", __func__);
+        fprintf(fp, "%s: json NULL pointers ??\n", __func__);
         return;
     }
     if ((NULL == jop) && jsp->pr_exit_status) {
         char d[80];
 
-#if 0
-        if (sg_exit2str(exit_status, jsp->verbose, sizeof(d), d)) {
-            if (0 == strlen(d))
+        if (estr)
+            ccp = estr;
+        else {
+            if (0 == exit_status)
                 strncpy(d, "no errors", sizeof(d) - 1);
-        } else
-            strncpy(d, "not available", sizeof(d) - 1);
-#else
-        if (0 == exit_status)
-            strncpy(d, "no errors", sizeof(d) - 1);
-        else
-            snprintf(d, sizeof(d), "exit_status=%d", exit_status);
-#endif
-        sgj_js_nv_istr(jsp, jop, "exit_status", exit_status, NULL, d);
+            else
+                snprintf(d, sizeof(d), "exit_status=%d", exit_status);
+            ccp = d;
+        }
+        sgj_js_nv_istr(jsp, jop, "exit_status", exit_status, NULL, ccp);
     }
     memcpy(&out_settings, &def_out_settings, sizeof(out_settings));
     if (jsp->pr_indent_size != def_out_settings.indent_size)
@@ -608,7 +604,7 @@ sgj_js_nv_s_len(sgj_state * jsp, sgj_opaque_p jop, const char * sn_name,
         return NULL;
 }
 
-#if 1
+/* Local copy of sg_lib:sg_has_control_char() */
 static bool
 has_control_char(const uint8_t * up, int len)
 {
@@ -622,7 +618,6 @@ has_control_char(const uint8_t * up, int len)
     }
     return false;
 }
-#endif
 
 sgj_opaque_p
 sgj_js_nv_s_len_chk(sgj_state * jsp, sgj_opaque_p jop, const char * sn_name,
@@ -630,13 +625,8 @@ sgj_js_nv_s_len_chk(sgj_state * jsp, sgj_opaque_p jop, const char * sn_name,
 {
     sgj_opaque_p res = NULL;
 
-#if 0
-    if (value && (vlen > 0) &&
-        sg_has_control_char(value, vlen))
-#else
     if (value && (vlen > 0) &&
         has_control_char(value, vlen))
-#endif
     {
         const int n = vlen * 4 + 4;
         char * p = (char *)malloc(n);
@@ -825,14 +815,14 @@ sgj_js_nv_s_nex(sgj_state * jsp, sgj_opaque_p jop, const char * sn_name,
     }
 }
 
-#if 1
+/* Simplified version of sg_lib::hex2str() */
 static void
 h2str(const uint8_t * byte_arr, int num_bytes, char * bp, int blen)
 {
     int j, k, n;
 
     for (k = 0, n = 0; (k < num_bytes) && (n < blen); ) {
-        j = sg_scnpr(bp + n, blen - n, "%02x ", byte_arr[k]);
+        j = sg_scn3pr(bp, blen, n, "%02x ", byte_arr[k]);
         if (j < 2)
             break;
         n += j;
@@ -845,7 +835,6 @@ h2str(const uint8_t * byte_arr, int num_bytes, char * bp, int blen)
     if ((j > 0) && (' ' == bp[j - 1]))
         bp[j - 1] = '\0';    /* chop off trailing space */
 }
-#endif
 
 /* Add hex byte strings irrespective of jsp->pr_hex setting. */
 void
@@ -859,11 +848,7 @@ sgj_js_nv_hex_bytes(sgj_state * jsp, sgj_opaque_p jop, const char * sn_name,
         return;
     bp = (char *)calloc(blen + 4, 1);
     if (bp) {
-#if 0
-        hex2str(byte_arr, num_bytes, NULL, 2, blen, bp);
-#else
         h2str(byte_arr, num_bytes, bp, blen);
-#endif
         sgj_js_nv_s(jsp, jop, sn_name, bp);
         free(bp);
     }
@@ -1093,36 +1078,36 @@ sgj_haj_helper(char * b, int blen_max, const char * name,
     int n = 0;
 
     if (name) {
-        n += sg_scnpr(b + n, blen_max - n, "%s", name);
+        n += sg_scn3pr(b, blen_max, n, "%s", name);
         switch (sep) {
         case SGJ_SEP_NONE:
             break;
         case SGJ_SEP_SPACE_1:
-            n += sg_scnpr(b + n, blen_max - n, " ");
+            n += sg_scn3pr(b, blen_max, n, " ");
             break;
         case SGJ_SEP_SPACE_2:
-            n += sg_scnpr(b + n, blen_max - n, "  ");
+            n += sg_scn3pr(b, blen_max, n, "  ");
             break;
         case SGJ_SEP_SPACE_3:
-            n += sg_scnpr(b + n, blen_max - n, "   ");
+            n += sg_scn3pr(b, blen_max, n, "   ");
             break;
         case SGJ_SEP_SPACE_4:
-            n += sg_scnpr(b + n, blen_max - n, "    ");
+            n += sg_scn3pr(b, blen_max, n, "    ");
             break;
         case SGJ_SEP_EQUAL_NO_SPACE:
-            n += sg_scnpr(b + n, blen_max - n, "=");
+            n += sg_scn3pr(b, blen_max, n, "=");
             break;
         case SGJ_SEP_EQUAL_1_SPACE:
-            n += sg_scnpr(b + n, blen_max - n, "= ");
+            n += sg_scn3pr(b, blen_max, n, "= ");
             break;
         case SGJ_SEP_SPACE_EQUAL_SPACE:
-            n += sg_scnpr(b + n, blen_max - n, " = ");
+            n += sg_scn3pr(b, blen_max, n, " = ");
             break;
         case SGJ_SEP_COLON_NO_SPACE:
-            n += sg_scnpr(b + n, blen_max - n, ":");
+            n += sg_scn3pr(b, blen_max, n, ":");
             break;
         case SGJ_SEP_COLON_1_SPACE:
-            n += sg_scnpr(b + n, blen_max - n, ": ");
+            n += sg_scn3pr(b, blen_max, n, ": ");
             break;
         default:
             break;
@@ -1131,9 +1116,9 @@ sgj_haj_helper(char * b, int blen_max, const char * name,
     if (use_jvp)
         n += sgj_jtype_to_s(b + n, blen_max - n, jvp, as_hex);
     else if (as_hex)
-        n += sg_scnpr(b + n, blen_max - n, "0x%" PRIx64, val_instead);
+        n += sg_scn3pr(b, blen_max, n, "0x%" PRIx64, val_instead);
     else
-        n += sg_scnpr(b + n, blen_max - n, "%" PRIi64, val_instead);
+        n += sg_scn3pr(b, blen_max, n, "%" PRIi64, val_instead);
     return n;
 }
 
@@ -1322,7 +1307,7 @@ sgj_haj_subo_r(sgj_state * jsp, sgj_opaque_p jop, int leadin_sp,
     for (n = 0; n < leadin_sp; ++n)
         b[n] = ' ';
     b[n] = '\0';
-    if ((! as_json) || (jsp && jsp->pr_out_hr))
+    if ((! as_json) || jsp->pr_out_hr)
         sgj_haj_helper(b + n, blen - n, aname, sep, false, NULL, value,
                        hex_haj);
 
@@ -1402,4 +1387,3 @@ sgj_conv2json_string(const uint8_t * cup, int ulen, char * op, int olen_max)
     }
     return j;
 }
-

@@ -34,25 +34,70 @@ AC_CANONICAL_HOST
 AC_DEFINE_UNQUOTED(SG_LIB_BUILD_HOST, "${host}", [ddpt Build Host])
 
 check_for_getrandom() {
-        AC_CHECK_HEADERS([sys/random.h], [AC_DEFINE_UNQUOTED(HAVE_GETRANDOM, 1, [Found sys/random.h])], [], [])
+	AC_CHECK_HEADERS([sys/random.h])
+	AC_MSG_CHECKING([for getrandom()])
+	AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#ifdef HAVE_SYS_RANDOM_H
+#include <sys/random.h>
+#endif
+]], [[
+char buf[16];
+return getrandom(buf, sizeof(buf), 0);
+]])], [
+		AC_MSG_RESULT(yes)
+		AC_DEFINE_UNQUOTED(HAVE_GETRANDOM, 1, [Define to 1 if you have the `getrandom' function])], [
+		AC_MSG_RESULT(no)
+		])
 }
 
 check_for_linux_nvme_headers() {
-        AC_CHECK_HEADERS([linux/nvme_ioctl.h], [AC_DEFINE(HAVE_NVME, 1, [Found NVMe])], [], [])
-        AC_CHECK_HEADERS([linux/types.h linux/bsg.h linux/kdev_t.h], [], [],
-                        [[#ifdef HAVE_LINUX_TYPES_H
-                        # include <linux/types.h>
-                        #endif
-                        ]])
+	AC_CHECK_HEADERS([linux/nvme_ioctl.h], [AC_DEFINE_UNQUOTED(HAVE_NVME, 1, [Found NVMe])], [], [])
+	AC_CHECK_HEADERS([linux/types.h linux/bsg.h linux/kdev_t.h], [], [],
+		     [[#ifdef HAVE_LINUX_TYPES_H
+		     # include <linux/types.h>
+		     #endif
+		     ]])
+	AC_CHECK_HEADERS([linux/major.h], [AC_DEFINE_UNQUOTED(HAVE_LINUX_MAJOR_H, 1,
+		     [Found linux/major.h])], [], [])
+	AC_CHECK_HEADERS([linux/types.h], [AC_DEFINE_UNQUOTED(HAVE_LINUX_TYPES_H, 1,
+		     [Found linux/types.h])], [], [])
+}
+
+check_for_linux_sg_v4_hdr() {
+	AC_EGREP_CPP(found,
+		[ # include <scsi/sg.h>
+		  #ifdef SG_IOSUBMIT
+		   found
+		  #endif
+		],
+		[AC_DEFINE_UNQUOTED(HAVE_LINUX_SG_V4_HDR, 1, [Have Linux sg v4 header]) ])
+}
+
+check_for___u64() {
+	AC_MSG_CHECKING([for __u64])
+	AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+	#ifdef HAVE_LINUX_TYPES_H
+	#include <linux/types.h>
+	#endif
+	]],[[
+	__u64 var = 0;
+	return var;
+	]])],
+	[
+	AC_MSG_RESULT(yes)
+	AC_DEFINE(HAVE___U64, 1, [__u64 is defined in <linux/types.h>])
+	],
+	[AC_MSG_RESULT(no)])
 }
 
 case "${host}" in
-       *-*-android*)
-                AC_SUBST([os_deps], ['sg_pt_linux.o sg_pt_linux_nvme.o'])
-                AC_DEFINE_UNQUOTED(SG_LIB_ANDROID, 1, [ddpt on android])
-                AC_DEFINE_UNQUOTED(SG_LIB_LINUX, 1, [ddpt on linux])
-                check_for_getrandom;
-                check_for_linux_nvme_headers;;
+	*-*-android*)
+		AC_DEFINE_UNQUOTED(SG_LIB_ANDROID, 1, [sg3_utils on android])
+		AC_DEFINE_UNQUOTED(SG_LIB_LINUX, 1, [sg3_utils on linux])
+		check_for_linux_sg_v4_hdr
+		check_for_getrandom
+		check_for_linux_nvme_headers
+		check_for___u64;;
         *-*-freebsd*|*-*-kfreebsd*-gnu*)
                 AC_SUBST([os_deps], ['sg_pt_freebsd.o'])
                 AC_DEFINE_UNQUOTED(SG_LIB_FREEBSD, 1, [ddpt on FreeBSD])

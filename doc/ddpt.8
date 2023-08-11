@@ -1,4 +1,4 @@
-.TH DDPT "8" "May 2023" "ddpt\-0.98" DDPT
+.TH DDPT "8" "June 2023" "ddpt\-0.98" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -28,7 +28,6 @@ For comparison here is the synopsis for GNU's dd command:
 [\fIstatus=STAT\fR] [\fI\-\-help\fR] [\fI\-\-version\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
-.PP
 Copies data between files or simply reads data from a file. Alternatively
 if the \fI\-\-verify\fR option is given, the \fIIFILE\fR and \fIOFILE\fR
 contents are compared, stopping if an inequality is found. This utility is
@@ -152,7 +151,7 @@ bytes. \fIIO_CDBSZ\fR may be one number or two numbers separated by a comma.
 The acceptable numbers are 0, 6, 10, 12, 16 or 32. The default 0 will usually
 be set to 10 internally unless the (first and last) LBAs cannot fit in 32
 bits in which case the 16 byte variant of each command is used. If one number
-is given it applies both to the \fIIFILE\fR and \fOIFILE\fR. If two numbers
+is given it applies both to the \fIIFILE\fR and \fIOFILE\fR. If two numbers
 are given, the first applies to the \fIIFILE\fR (i.e. the READ command) and
 the second applies to the \fIOFILE\fR.
 .br
@@ -1271,13 +1270,9 @@ errors noting the absence of these then the device in question probably does
 not support ODX.
 .PP
 There a four variants of ODX supported by ddpt:
-.br
   \fBfull copy\fR : ddpt \-\-odx if=/dev/sg3 bs=512 of=/dev/sg4
-.br
   \fBzero output blocks\fR : ddpt if=/dev/null rtype=zero bs=512 of=/dev/sg4
-.br
   \fBread to tokens\fR : ddpt if=/dev/sg3 bs=512 skip=@gath.lst rtf=a.rt
-.br
   \fBwrite from tokens\fR : ddpt rtf=a.rt bs=512 of=/dev/sg4 seek=@scat.lst
 .PP
 The full copy will call PT and WUT commands repeatedly until the copy is
@@ -1547,7 +1542,6 @@ case of Linux, users should look at this link:
 https://linux\-mm.org/Drop_Caches
 .br
 This command sequence may be useful:
-.br
   sync; echo 3 > /proc/sys/vm/drop_caches
 .PP
 A partial write is a write to the \fIOFILE\fR of less than \fIOBS\fR
@@ -1558,9 +1552,7 @@ device or a pt device. When ddpt ignores a partial write, it sends a
 warning to the console (stderr).
 .PP
 At the end of the copy two lines are reported to the console:
-.br
    <in_full>+<in_partial> records in
-.br
    <out_full>+<out_partial> records out
 .PP
 The "records in" line is the number of full input blocks (each of
@@ -1579,7 +1571,6 @@ then the buffering and caching is bypassed (this is applicable to both SCSI
 devices and ATA disks). When 'iflag=pt' is given SCSI commands are sent to
 the device which bypasses most of the actions performed by the block layer.
 The same applies for block devices given for \fIOFILE\fR.
-.PP
 .PP
 All informative, warning and error reports are sent to stderr so that
 dd's output file can be stdout and remain unpolluted. If no options
@@ -1685,11 +1676,9 @@ previously\-selected block size.
 .PP
 The block size/mode can be set with the mt command prior to invoking ddpt.
 For example:
-.br
   # mt \-f /dev/nst0 setblk 0
 .br
 sets variable\-block mode, and
-.br
   # mt \-f /dev/nst0 setblk 32768
 .br
 sets fixed\-block mode with block size 32768 bytes.
@@ -1714,14 +1703,12 @@ data to the same file on tape. In that case it is probably desirable to
 write the filemark at the end of the sequence. So either omit 'oflag=nofm'
 on the last ddpt invocation, or manually write a filemark using mt after
 ddpt exits:
-.br
   # mt \-f /dev/nst0 weof 1
 .PP
 For reading from an unknown tape where the block size(s) is not known, read
 in variable\-block mode specifying a large \fIIBS\fR. The st driver returns
 a smaller amount of data if the size of the block read is smaller. Thus a
 command like:
-.br
   # ddpt if=/dev/nst0 of=output.bin bs=262144
 .br
 should read the file from tape regardless of the block size used (assuming
@@ -1989,7 +1976,6 @@ to make the copy more efficient. So these two invocations are roughly
 equivalent:
 .PP
    dd if=/dev/sda of=t bs=8k count=64
-.br
    ddpt if=/dev/sda of=t bs=512 bpt=16 count=1k
 .PP
 In both cases the total number of bytes moved is bs*count . And that will
@@ -2002,9 +1988,7 @@ read twice. For example, to copy data and take a md5sum of it without
 needing to re\-read the data:
 .PP
   mkfifo fif
-.br
   md5sum fif &
-.br
   ddpt if=/dev/sg3 iflag=coe of=sg3.img oflag=sparse of2=fif bs=512
 .PP
 This will image /dev/sg3 (e.g. an unmounted disk) and place the contents

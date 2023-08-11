@@ -526,34 +526,32 @@ dd_filetype_str(int ft, char * buff, int max_bufflen, const char * fname)
     int off = 0;
 
     if (FT_DEV_NULL & ft)
-        off += sg_scnpr(buff + off, max_bufflen - off, "null device ");
+        off += sg_scn3pr(buff, max_bufflen, off, "null device ");
     if (FT_PT & ft)
-        off += sg_scnpr(buff + off, max_bufflen - off,
-                        "pass-through [pt] device ");
+        off += sg_scn3pr(buff, max_bufflen, off, "pass-through [pt] device ");
     if (FT_TAPE & ft)
-        off += sg_scnpr(buff + off, max_bufflen - off, "SCSI tape device ");
+        off += sg_scn3pr(buff, max_bufflen, off, "SCSI tape device ");
     if (FT_BLOCK & ft)
-        off += sg_scnpr(buff + off, max_bufflen - off, "block device ");
+        off += sg_scn3pr(buff, max_bufflen, off, "block device ");
     if (FT_FIFO & ft)
-        off += sg_scnpr(buff + off, max_bufflen - off,
-                        "fifo [stdin, stdout, named pipe] ");
+        off += sg_scn3pr(buff, max_bufflen, off,
+                         "fifo [stdin, stdout, named pipe] ");
     if (FT_REG & ft)
-        off += sg_scnpr(buff + off, max_bufflen - off, "regular file ");
+        off += sg_scn3pr(buff, max_bufflen, off, "regular file ");
     if (FT_CHAR & ft)
-        off += sg_scnpr(buff + off, max_bufflen - off, "char device ");
+        off += sg_scn3pr(buff, max_bufflen, off, "char device ");
     if (FT_NVME & ft)
-        off += sg_scnpr(buff + off, max_bufflen - off, "NVMe device ");
+        off += sg_scn3pr(buff, max_bufflen, off, "NVMe device ");
     if (FT_ALL_FF & ft)
-        off += sg_scnpr(buff + off, max_bufflen - off,
-                        "null device full of 0xff bytes ");
+        off += sg_scn3pr(buff, max_bufflen, off,
+                         "null device full of 0xff bytes ");
     if (FT_RANDOM & ft)
-        off += sg_scnpr(buff + off, max_bufflen - off,
-                        "random bytes as input ");
+        off += sg_scn3pr(buff, max_bufflen, off, "random bytes as input ");
     if (FT_OTHER & ft)
-        off += sg_scnpr(buff + off, max_bufflen - off, "other file type ");
+        off += sg_scn3pr(buff, max_bufflen, off, "other file type ");
     if (FT_ERROR & ft)
-        /* off += */ sg_scnpr(buff + off, max_bufflen - off, "unable to "
-                              "'stat' %s ", (fname ? fname : "file"));
+        /* off += */ sg_scn3pr(buff, max_bufflen, off, "unable to 'stat' "
+                               "%s ", (fname ? fname : "file"));
     return buff;
 }
 
@@ -1286,7 +1284,7 @@ static sig_atomic_t volatile interrupt_signal;
 /* A count of pending info(usr1) signals, decremented as processed */
 static sig_atomic_t volatile info_signals_pending;
 
-static struct val_str_t signum_name_arr[] = {
+static const struct val_str_t signum_name_arr[] = {
     {SIGINT, "SIGINT"},
     {SIGQUIT, "SIGQUIT"},
     {SIGPIPE, "SIGPIPE"},
@@ -1701,11 +1699,9 @@ rt_cm_id_str(const uint8_t * rtp, int rt_len, char * b, int b_mlen)
 
     if (rt_len < 16)
         snprintf(b, b_mlen, "ROD Token too short (%d < 16)\n", rt_len);
-    num = 0;
-    num += sg_scnpr(b, b_mlen, "0x");
+    num = sg_scnpr(b, b_mlen, "0x");
     for (m = 0; ((m < 8) && (num < b_mlen)); ++m)
-        num += sg_scnpr(b + num, b_mlen - num, "%02x",
-                        (unsigned int)rtp[8 + m]);
+        num += sg_scn3pr(b, b_mlen, num, "%02x", (unsigned int)rtp[8 + m]);
     return b;
 }
 
