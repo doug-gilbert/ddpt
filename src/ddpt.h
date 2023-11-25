@@ -200,7 +200,7 @@ extern "C" {
 /* So ddpt does not hog all the CPU and IO resources, allow delays defined
  * by delay=MS[,W_MS] . Used in signals_process_delay(). */
 #define DELAY_COPY_SEGMENT 0    /* after each copy segment (prior to next) */
-#define DELAY_WRITE 1   /* prior to each write, may be muliple per segment */
+#define DELAY_WRITE 1   /* prior to each write, may be multiple per segment */
 
 /* cp_state_t::leave_reason indication */
 #define DDPT_REASON_UNKNOWN -1
