@@ -1,4 +1,4 @@
-.TH DDPT "8" "June 2023" "ddpt\-0.98" DDPT
+.TH DDPT "8" "October 2023" "ddpt\-0.98" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -83,7 +83,7 @@ EXTENDED COPY (XCOPY or xcopy) family of SCSI commands. The first uses the
 XCOPY(LID1) command to do a disk to disk copy. LID1 stands for List
 IDentifier length of 1 byte and the commands are described in the SPC\-4 and
 earlier SPC\-3 and SPC\-2 standards. The SPC\-4 standard (ANSI INCITS
-513-2015) added the XCOPY(LID4) sub\-family of copy offloaded commands. Now
+513\-2015) added the XCOPY(LID4) sub\-family of copy offloaded commands. Now
 SPC\-5 drafts have dropped the LID1 variants and removed the LID4 suffix on
 the remaining XCOPY family of commands. To differentiate, this man page will
 continue to use the LID1 and LID4 suffixes. There is a subset of
