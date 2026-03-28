@@ -1,7 +1,25 @@
 SUBDIRS =	src doc
 
-EXTRA_DIST=autogen.sh
+EXTRA_DIST = \
+	autogen.sh \
+	doc/ddpt.html
 
 distclean-local:
-	rm -rf autom4te.cache
+	rm -rf \
+	  ar-lib \
+	  autom4te.cache \
+	  aclocal.m4 \
+	  compile \
+	  configure \
+	  config.guess \
+	  config.guess.cdbs-orig \
+	  config.sub \
+	  config.sub.cdbs-orig \
+	  config.h.in \
+	  config.h \
+	  Makefile \
+	  Makefile.in \
+	  missing \
+	  install-sh \
+	  depcomp
 

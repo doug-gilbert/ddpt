@@ -1,27 +1,9 @@
 /*
- * Copyright (c) 2008-2023, Douglas Gilbert
+ * Copyright (c) 2008-2026, Douglas Gilbert
  * All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
+ * SPDX-License-Identifier: BSD-2-Clause
  *
- * 1. Redistributions of source code must retain the above copyright notice,
- *    this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
- * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 /* ddpt is a utility program for copying files. It broadly follows the syntax
@@ -69,7 +51,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.98 20231125 [svn: r415]";
+static const char * ddpt_version_str = "0.98 20260328 [svn: r416]";
 
 static const char * my_name = "ddpt: ";
 
@@ -3169,12 +3151,16 @@ static void
 sparse_sparing_check(struct opts_t * op)
 {
     if (op->iflagp->sparse && (! op->oflagp->sparse)) {
-        if (FT_DEV_NULL & op->odip->d_type) {
-            pr2serr("sparse flag usually ignored on input; set it "
-                    "on output in this case\n");
-            ++op->oflagp->sparse;
+        if (op->outf_given) {
+            if (FT_DEV_NULL & op->odip->d_type) {
+                if (op->verbose > 0)
+                    pr2serr("iflag=sparse usually ignored; will count "
+                            "sparse blocks in input\n");
+                ++op->oflagp->sparse;
+            } else
+                pr2serr("sparse flag ignored on input\n");
         } else
-            pr2serr("sparse flag ignored on input\n");
+            ++op->oflagp->sparse;
     }
     if (op->oflagp->sparse) {
         if ((FT_FIFO | FT_TAPE) & op->odip->d_type) {
@@ -3698,10 +3684,18 @@ main(int argc, char * argv[])
 
     op->read1_or_transfer = !! (FT_DEV_NULL & op->odip->d_type);
     op->stats.dd_count_start = op->dd_count;
-    if (op->read1_or_transfer && (! op->outf_given) &&
-        ((op->dd_count > 0) || op->reading_fifo))
-        pr2serr("Output file not specified so no copy, just reading input\n");
-
+    if ((op->dd_count > 0) || op->reading_fifo) {
+        if (op->outf_given && (! op->read1_or_transfer))
+            ;   /* normal output file */
+        else {
+            pr2serr("Output file ");
+            if (op->outf_given)
+                pr2serr("is a dummy");
+            else
+                pr2serr("not given");
+            pr2serr(" so no copy, just reading input\n");
+        }
+    }
     if (op->do_time)
         calc_duration_init(op);
 

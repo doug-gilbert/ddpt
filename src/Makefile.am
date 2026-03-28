@@ -57,6 +57,7 @@ ddpt_sgl_SOURCES =	ddpt_sgl.cpp \
 
 sglib_SOURCES =         ../lib/sg_lib.c \
                         ../include/sg_lib.h     \
+                        ../include/sg_unaligned.h     \
                         ../lib/sg_lib_data.c    \
                         ../include/sg_lib_data.h        \
                         ../lib/sg_cmds_basic.c  \
@@ -156,4 +157,6 @@ EXTRA_ddpt_sgl_SOURCES = ../lib/sg_pt_linux.c	\
 			../include/sg_pt_win32.h
 
 distclean-local:
-	rm -rf .deps
+	rm -rf \
+	  .deps \
+	  Makefile.in
