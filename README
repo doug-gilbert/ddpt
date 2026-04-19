@@ -48,7 +48,10 @@ directories include more files than ddpt uses. The excess files include
 directory does the main part of the build. When the tarball is generated
 for this utility, various files are "exported" out of the subversion
 repository and "svn:externals" redirection is no longer visible (but the
-unused files are visible).
+unused files are visible). The latest sg3_utils subversion revision
+(seen with 'svn info') can be used with this command:
+    svn propedit svn:externals .
+in the top level directory of this package.
 
 The ddpt executable may or may not be built depending on the libsgutils
 (shared) library. Currently the ./configure rules are looking for a library
@@ -148,4 +151,4 @@ See README.win32
 
 
 Douglas Gilbert
-3rd March 2020
+16th April 2026
