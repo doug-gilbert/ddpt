@@ -46,7 +46,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.98 20260328 [svn: r416]";
+const char * ddptctl_version_str = "0.98 20260425 [svn: r419]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -840,6 +840,7 @@ main(int argc, char * argv[])
 #endif
     if (version_given) {
         pr2serr("version: %s\n", ddptctl_version_str);
+	return 0;
     }
 
     if ('\0' == op->idip->fn[0]) {

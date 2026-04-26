@@ -1,3 +1,4 @@
+
 Introduction
 ------------
 ddpt is a utility for copying files like its namesake, the Unix dd command.
@@ -81,6 +82,8 @@ This package uses the automake and autoconf tools. The generating files
 autogen.sh .  The autogen.sh script only needs to be executed if one of the
 other generating files in the above list is changed.
 
+The is an experimental cmake based build described in the following section.
+
 There is a rpm "spec" file in the main directory: ddpt.spec . There are Debian
 build files in the "debian" directory and a script called build_debian.sh in
 the main directory. Amongst other things debian builds are sensitive to the
@@ -111,6 +114,34 @@ If that library is old then the link at the end of build can fail. One way
 to sidestep that problem is by using './configure --disable-libsgutils'.
 Another way is to remove the "dev" version of the libsgutils library package
 (e.g. 'libsgutils2-dev' on a Debian based distribution).
+
+Cmake build
+-----------
+The author is experimenting with cmake with a goal to support _both_
+cmake and autotools. This is a relatively simple project with one
+a feq source files (some C++ the rest C). It requires a C++20 or
+better compiler. There is also a manpage in nroff format. The
+sequence of commands to build and install is:
+    cmake .
+    cmake --build .
+    cmake --install .
+
+The last cmake invocation needs root permissions. 'make clean' does
+the same thing as it does in autotools. There is no 'make distclean'
+so the above sequence leaves a lot of garbage "on the floor".
+
+Rather than the last step (i.e. 'cmake --install . ') this invocation:
+    cpack .
+
+will build a "deb" package and place it in the current directory.
+Root permissions are not required. That package can be installed with:
+    dpkg -i <package>
+and that will require root permissions.
+
+There is no uninstall but after a successful install there is a
+install_manifest.txt file that can be used to remove the files
+installed like this:
+    xargs rm < install_manifest.txt
 
 License
 -------
@@ -151,4 +182,4 @@ See README.win32
 
 
 Douglas Gilbert
-16th April 2026
+22nd April 2026
