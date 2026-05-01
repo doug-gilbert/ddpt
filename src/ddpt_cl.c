@@ -223,7 +223,7 @@ secondary_help:
             "decides)\n"
             "    to          xcopy, odx: timeout in seconds (def: 600 "
             "(10 mins))\n\n");
-    pr2serr("FLAGS: (arguments to oflag= and oflag=; may be comma "
+    pr2serr("FLAGS: (arguments to iflag= and oflag=; may be comma "
             "separated)\n"
             "   00 (i)         input will be all 0x0 bytes\n"
             "   append (o)     append (part of) IFILE to end of OFILE\n"
@@ -1718,10 +1718,13 @@ skip_name_eq_value:
             parsed_2 = false;
 
 bypass_options:
+        n = (int)strlen(str);
         if (parsed_2)
             ; /* nothing more to do */
-        else if (('\0' == *buf) && (orig_strlen == (int)strlen(str))) {
-            if (0 == strcmp("ddpt", str)) {
+        else if (('\0' == *buf) && (orig_strlen == n)) {
+            if ((0 == n) || ((1 == n) && (' ' == str[0]))) {
+                ;       /* bypass empty or single space arguments */
+            } else if (0 == strcmp("ddpt", str)) {
                 if (0 == jf_depth) {
                     pr2serr("Don't expect 'ddpt' string on command line, if "
                             "<job_file> please rename.\n");

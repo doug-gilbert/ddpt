@@ -51,7 +51,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.98 20260427 [svn: r420]";
+static const char * ddpt_version_str = "0.98 20260430 [svn: r421]";
 
 static const char * my_name = "ddpt: ";
 
@@ -3575,7 +3575,7 @@ main(int argc, char * argv[])
         goto cleanup;
     }
 
-    if ((d_count < 0) && (! op->reading_fifo)) {
+    if ((d_count < 0) && (! op->reading_fifo) && (0 == op->dry_run)) {
         pr2serr("Couldn't calculate count, please give one\n");
         ret = SG_LIB_SYNTAX_ERROR;
         goto cleanup;

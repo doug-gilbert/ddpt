@@ -17,7 +17,7 @@
 # selects are actually the correct ones ...
 #
 # Environment variables that may be overridden by caller:
-#    DDPT         default: `which ddpt`
+#    DDPT         default: $( command -v ddpt )
 #    DDPT_OPTS    default: ""; command line options -d and -q appended
 #    DDPT_ARG     default: ""; command line option -a argument appended
 #
@@ -29,7 +29,7 @@
 # dpg 20180714
 
 VERBOSE="0"
-VERSION="1.02 20180714 [r361]"
+VERSION="1.03 20260430 [r421]"
 VB_ARG=""
 DDPT_OPTS=""
 
@@ -44,7 +44,7 @@ pr_exit_stat() {
 
 getopt --test > /dev/null
 if [[ $? -ne 4 ]]; then
-    echoerr "I’m sorry, `getopt --test` failed in this environment."
+    echoerr "I’m sorry, $(getopt --test) failed in this environment."
     exit 1
 fi
 
@@ -57,12 +57,12 @@ LONGOPTIONS=arg:,dry-run,force,help,quiet,run,verbose,version
 # -temporarily store output to be able to check for errors
 # -e.g. use “--options” parameter by name to activate quoting/enhanced mode
 # -pass arguments only via   -- "$@"   to separate them correctly
-PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTIONS --name "$0" -- "$@")
-if [[ $? -ne 0 ]]; then
+if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTIONS --name "$0" -- "$@") ; then
     # e.g. $? == 1
     #  then getopt has complained about wrong arguments to stdout
     exit 2
 fi
+
 # read getopt’s output this way to handle the quoting right:
 eval set -- "$PARSED"
 
@@ -70,11 +70,14 @@ eval set -- "$PARSED"
 while true; do
     case "$1" in
         -a|--arg)
-            DDPT_ARG="$2"
+            if [ "${DDPT_ARG}" ] ; then
+                DDPT_ARG="${DDPT_ARG} $2"
+            else
+                DDPT_ARG="$2"
+            fi
             shift 2
             ;;
         -d|--dry-run)
-            DRY_RUN=y
             DDPT_OPTS="${DDPT_OPTS} --dry-run"
             shift
             ;;
@@ -87,7 +90,6 @@ while true; do
             shift
             ;;
         -q|--quiet)
-            QUIET=y
             DDPT_OPTS="${DDPT_OPTS} --quiet"
             shift
             ;;
@@ -105,10 +107,9 @@ while true; do
             shift
             ;;
         -V|--version)
-	    echo "${VERSION}"
-	    exit
-	    shift
-	    ;;
+            echo "${VERSION}"
+            exit
+            ;;
         --)
             shift
             break
@@ -120,7 +121,7 @@ while true; do
     esac
 done
 
-if [ ${HELP} ] ; then
+if [ "${HELP}" ] ; then
     echo -n "prepare.sh  [--arg=DA] [--dry-run] [--force] [--help] "
     echo "[--quiet]"
     echo "               [--run] [--verbose] [--version]"
@@ -151,7 +152,7 @@ fi
 DDPT_OPTS="${DDPT_OPTS} ${VB_ARG}"
 
 # Just testing ....
-if [ ${VERBOSE} -gt 0 ] ; then
+if [ "${VERBOSE}" -gt 0 ] ; then
     echoerr "DDPT_OPTS=${DDPT_OPTS}"
     echoerr ""
 fi
@@ -161,17 +162,17 @@ if [[ $EUID -ne 0 ]]; then
    echoerr ""
 fi
 
-LSSCSI=`which lsscsi`
+LSSCSI=$(command -v lsscsi)
 PREP_TMP="/tmp/ddpt_prep.tmp"
 PREP_BIN="/tmp/ddpt_prep.bin"
 PREP2_BIN="/tmp/ddpt_prep2.bin"
 
-if [ ! -x ${LSSCSI} ] ; then
+if [ ! -x "${LSSCSI}" ] ; then
     echoerr "Can't find lsscsi utility, is the package loaded?"
     echoerr "Recent version at https://sg.danny.cz/scsi/lsscsi.html "
     exit 1
 else
-    LSSCSI_VSTR=`lsscsi -VV`
+    LSSCSI_VSTR=$(lsscsi -VV)
     if [ -z "${LSSCSI_VSTR}" ] ; then
         echoerr "lsscsi version is too old, not before 0.30 [rev 149]"
         echoerr "Recent version at https://sg.danny.cz/scsi/lsscsi.html "
@@ -183,7 +184,7 @@ ${LSSCSI} --hosts --brief > ${PREP_TMP}
 
 if grep "scsi_debug" ${PREP_TMP} > /dev/null 2>&1 ; then
     echoerr "found scsi_debug host, good, now checking it ..."
-    SCSI_DEBUG_HOST=`grep "scsi_debug" ${PREP_TMP}`
+    SCSI_DEBUG_HOST=$(grep "scsi_debug" ${PREP_TMP})
 else
     echoerr "Did not find scsi_debug host, need to load scsi_debug module."
     echoerr "Try this (as root):"
@@ -193,7 +194,7 @@ else
 fi
 
 unset a
-a=( ${SCSI_DEBUG_HOST} )
+a=( "${SCSI_DEBUG_HOST}" )
 # Remove leading [ and trailing ]
 HOST_NUM=${a[0]:1}
 HOST_NUM=${HOST_NUM::1}
@@ -208,19 +209,22 @@ else
     exit 1
 fi
 
-${LSSCSI} --generic --brief ${HOST_NUM} > ${PREP_TMP}
+${LSSCSI} --generic --brief "${HOST_NUM}" > "${PREP_TMP}"
 
 unset a
 k=0
 while read -r line
 do
+echo "while read r line: ${line}"
+    # want word splitting of ${line} and tell shellcheck to shut up
+    # shellcheck disable=SC2206
     a=( ${line} )
 
-    SG_DEV[${k}]=${a[2]}
-    SG_BLK_DEV[${k}]=${a[1]}
-    if [ $VERBOSE -gt 0 ] ; then
-        echoerr "sg dev name ${k}: " ${SG_DEV[${k}]}
-        echoerr "  corresponding block dev name ${k}: " ${SG_BLK_DEV[${k}]}
+    SG_DEV[ "${k}" ]="${a[2]}"
+    SG_BLK_DEV[ "${k}" ]="${a[1]}"
+    if [ "$VERBOSE" -gt 0 ] ; then
+        echoerr "sg dev name ${k}: ${SG_DEV[${k}]}"
+        echoerr "  corresponding block dev name ${k}: ${SG_BLK_DEV[${k}]} "
     fi
     k=$(( k + 1 ))
 done < "${PREP_TMP}"
@@ -250,32 +254,31 @@ if df | grep "ram[01]"
 then
     echoerr "Looks like /dev/ram0 or 1 in use (according to df)"
     echoerr "this script want to write to them, so exit unless --force given"
-    if [ ${FORCE} ] ; then
-	echoerr "continuing ..."
+    if [ "${FORCE}" ] ; then
+        echoerr "continuing ..."
     else
         exit 1
     fi
 fi
 
-if [ -b /dev/ram0 -a -b /dev/ram1 ] ; then
-    if [ $VERBOSE -gt 0 ] ; then
+if [ -b /dev/ram0 ] && [ -b /dev/ram1 ] ; then
+    if [ "$VERBOSE" -gt 0 ] ; then
         echoerr "Detected /dev/ram0 and /dev/ram1 block devices"
     fi
 else
     echoerr "Need 2 scratch block devices: /dev/ram0 and /dev/ram1 but not"
-    echoerr "found. As root try 'mknod -m 660 /dev/ram b 1 1' or if that "
-    echoerr "doesn't create them try:"
+    echoerr "found. As root try this to create them:"
     echoerr "    mknod -m 660 /dev/ram0 b 1 0 ; mknod -m 660 /dev/ram1 b 1 1"
     exit 1
 fi
 
-if [ ${DDPT} ] ; then
+if [ "${DDPT}" ] ; then
     echoerr "Instead of ddpt using DDPT=${DDPT}"
 else
-    DDPT=`which ddpt`
+    DDPT=$( command -v ddpt )
 fi
 
-if [ ! ${RUN} ] ; then
+if [ ! "${RUN}" ] ; then
     echoerr ""
     echoerr "Since --run option not given will exit now with preparation done"
     exit 0
@@ -283,158 +286,165 @@ fi
 echoerr ""
 
 rm -f /tmp/sg_a_dev
-ln -s ${SG_DEV[0]} /tmp/sg_a_dev
+if ! ln -s "${SG_DEV[0]}" /tmp/sg_a_dev ; then
+    echo "ln -s ${SG_DEV[0]} /tmp/sg_a_dev ; failed on line: $LINENO"
+    exit 1
+fi
 rm -f /tmp/sg_b_dev
-ln -s ${SG_DEV[1]} /tmp/sg_b_dev
+ln -s "${SG_DEV[1]}" /tmp/sg_b_dev
 rm -f /tmp/sd_sg_a_dev
-ln -s ${SG_BLK_DEV[0]} /tmp/sd_sg_a_dev
+ln -s "${SG_BLK_DEV[0]}" /tmp/sd_sg_a_dev
 rm -f /tmp/sd_sg_b_dev
-ln -s ${SG_BLK_DEV[1]} /tmp/sd_sg_b_dev
+ln -s "${SG_BLK_DEV[1]}" /tmp/sd_sg_b_dev
+
+# Form arrays of ddpt options and arguments
+read -ra opts <<< "${DDPT_OPTS}"
+read -ra args <<< "${DDPT_ARG}"
 
 # >>> RUN section start here
 
 echoerr "${DDPT} ${DDPT_OPTS} if=/dev/ram0  bs=512 ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} if=/dev/ram0  bs=512 ${DDPT_ARG}
+"${DDPT}" "${opts[@]}" if=/dev/ram0  bs=512 "${args[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 echoerr "${DDPT} ${DDPT_OPTS} if=/dev/ram1  bs=512 ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} if=/dev/ram1  bs=512 ${DDPT_ARG}
+${DDPT} "${opts[@]}" if=/dev/ram1  bs=512 "${args[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 echoerr "${DDPT} ${DDPT_OPTS} if=/tmp/sg_a_dev bs=4096 ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} if=/tmp/sg_a_dev bs=4096 ${DDPT_ARG}
+${DDPT} "${opts[@]}" if=/tmp/sg_a_dev bs=4096 "${args[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 echoerr "${DDPT} ${DDPT_OPTS} if=/tmp/sg_b_dev  bs=4096 ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} if=/tmp/sg_b_dev  bs=4096 ${DDPT_ARG}
+${DDPT} "${opts[@]}" if=/tmp/sg_b_dev bs=4096 "${args[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 echoerr "${DDPT} ${DDPT_OPTS} if=/tmp/sd_sg_a_dev bs=4096 ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} if=/tmp/sd_sg_a_dev bs=4096 ${DDPT_ARG}
+${DDPT} "${opts[@]}" if=/tmp/sd_sg_a_dev bs=4096 "${args[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 echoerr "${DDPT} ${DDPT_OPTS} if=/tmp/sd_sg_b_dev  bs=4096 ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} if=/tmp/sd_sg_b_dev  bs=4096 ${DDPT_ARG}
+${DDPT} "${opts[@]}" if=/tmp/sd_sg_b_dev bs=4096 "${args[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 # Pick 16,999,999 since its a prime and noticeable
 echoerr "${DDPT} ${DDPT_OPTS} if=/dev/urandom bs=1 of=${PREP_BIN} count=16999999 ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} if=/dev/urandom bs=1 of=${PREP_BIN} count=16999999 ${DDPT_ARG}
+${DDPT} "${opts[@]}" if=/dev/urandom bs=1 of=${PREP_BIN} count=16999999 "${opts[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 echoerr "${DDPT} ${DDPT_OPTS} if=${PREP_BIN} bs=512 ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} if=${PREP_BIN} bs=512 ${DDPT_ARG}
+${DDPT} "${opts[@]}" if=${PREP_BIN} bs=512 "${args[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 echoerr "${DDPT} ${DDPT_OPTS} if=${PREP_BIN} bs=512 of=${PREP2_BIN} ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} if=${PREP_BIN} of=${PREP2_BIN} bs=512 ${DDPT_ARG}
+${DDPT} "${opts[@]}" if=${PREP_BIN} of=${PREP2_BIN} bs=512 "${args[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 echoerr "${DDPT} ${DDPT_OPTS} if=${PREP_BIN} bs=1 of=${PREP2_BIN} ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} if=${PREP_BIN} of=${PREP2_BIN} bs=1 ${DDPT_ARG}
+${DDPT} "${opts[@]}" if=${PREP_BIN} of=${PREP2_BIN} bs=1 "${args[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 echoerr "${DDPT} ${DDPT_OPTS} urand_ram0.jf ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} urand_ram0.jf ${DDPT_ARG}
+${DDPT} "${opts[@]}" urand_ram0.jf "${args[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 echoerr "${DDPT} ${DDPT_OPTS} ram0_2_ram1.jf ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} ram0_2_ram1.jf ${DDPT_ARG}
+${DDPT} "${opts[@]}" ram0_2_ram1.jf "${args[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 echoerr "${DDPT} ${DDPT_OPTS} ram1_2_sg_a.jf ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} ram1_2_sg_a.jf ${DDPT_ARG}
+${DDPT} "${opts[@]}" ram1_2_sg_a.jf "${args[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 echoerr "${DDPT} ${DDPT_OPTS} sg_a_2_sg_b.jf ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} sg_a_2_sg_b.jf ${DDPT_ARG}
+${DDPT} "${opts[@]}" sg_a_2_sg_b.jf "${args[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 echoerr "${DDPT} ${DDPT_OPTS} sd_b_2_sd_a.jf ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} sd_b_2_sd_a.jf ${DDPT_ARG}
+${DDPT} "${opts[@]}" sd_b_2_sd_a.jf "${args[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 rm ${PREP2_BIN}
 echoerr "${DDPT} ${DDPT_OPTS} sgl_1.jf of=${PREP2_BIN} ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} sgl_1.jf of=${PREP2_BIN} ${DDPT_ARG}
+${DDPT} "${opts[@]}" sgl_1.jf of=${PREP2_BIN} "${args[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
@@ -442,20 +452,20 @@ echoerr ""
 # generate ascending pattern, 512 bytes long, wraps every 256 bytes
 rm ${PREP2_BIN}
 echoerr "${DDPT} ${DDPT_OPTS} iflag=00,ff of=${PREP2_BIN} bs=512 count=1 ${DDPT_ARG}"
-${DDPT} ${DDPT_OPTS} iflag=00,ff of=${PREP2_BIN} bs=512 count=1 ${DDPT_ARG}
+${DDPT} "${opts[@]}" iflag=00,ff of=${PREP2_BIN} bs=512 count=1 "${args[@]}"
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 rm ${PREP_BIN}
 echoerr "${DDPT} ${DDPT_OPTS} if=${PREP2_BIN} of=- bs=1 bpt=7 seek=64 ${DDPT_ARG} > ${PREP_BIN}"
-${DDPT} ${DDPT_OPTS} if=${PREP2_BIN} of=- bs=1 seek=64 ${DDPT_ARG} > ${PREP_BIN}
+${DDPT} "${opts[@]}" if=${PREP2_BIN} of=- bs=1 seek=64 "${args[@]}" > ${PREP_BIN}
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT} ${RES}
+    pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
 echoerr ""

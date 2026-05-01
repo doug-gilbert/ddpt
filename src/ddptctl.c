@@ -46,7 +46,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.98 20260427 [svn: r420]";
+const char * ddptctl_version_str = "0.98 20260430 [svn: r421]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -178,13 +178,13 @@ usage()
             "    --poll|-p             call RRTI periodically until "
             "completed\n"
             "    --prefer-rcs|-q       prefer RCS over RRTI (def: RRTI)\n"
-            "    --pt=GL|-P GL         call PT with gather list GL. GL's "
+            "    --pt=GL|-P GL         call PT with Gather List GL. GL's "
             "format is\n"
             "                          LBA1,NUM1[,LBA2,NUM2...]\n"
             "    --readonly|-y         open DEVICE read-only (def: "
             "read-write)\n"
             "    --receive|-R          call RRTI (or RCS) once\n"
-            "    --rtf=RTF|-r RTF      ROD Token file for analysis (--info); "
+            "    --rtf=RTF|-r RTF      ROD Token File for analysis (--info); "
             "output by\n"
             "                          -pt=, --poll or --receive; input to "
             "--wut=\n"
@@ -193,7 +193,7 @@ usage()
             "    --size|-s             get size of DEVICE (def: with SCSI "
             "commands)\n"
             "    --timeout=ITO[,CMD] | -T ITO[,CMD]\n"
-            "                          ITO is inactivity timeout (def: 0), "
+            "                          ITO is Inactivity TimeOut (def: 0), "
             "CMD is\n"
             "                          command timeout (def: 600); units: "
             "seconds\n"
@@ -206,9 +206,10 @@ usage()
             "xcopy(LID4).\nPT refers to the POPULATE TOKEN command, WUT to "
             "the WRITE USING TOKEN\ncommand, RRTI to the RECEIVE ROD TOKEN "
             "INFORMATION command and RCS to\nthe RECEIVE COPY STATUS "
-            "command. If the ODX_RTF_LEN environment\nvariable is present, "
-            "the ROD's size is appended to the ROD Token placed\nin the RTF "
-            "file.\n"
+            "command. If the ODX_RTF_LEN environment variable\nis present, "
+            "the ROD's size is appended to the ROD Token placed in the\nROD "
+            "Token File (RTF). RTV (ROD Type Valid) is a bit in the PT "
+            "command\nparameter list.\n"
             );
 }
 

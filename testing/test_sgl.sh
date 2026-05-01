@@ -8,13 +8,14 @@
 #    DDPT_SGL_OPTS   default: "";
 #
 #
-# dpg 20180801
+# dpg 20260429
 
 VERBOSE="0"
-VERSION="1.00 20180715 [r361]"
+VERSION="1.01 20260429 [r421]"
 VB_ARG=""
 DDPT_SGL_OPTS=""
 SGL_OUT="/tmp/ddpt"
+
 
 echoerr() { printf "%s\n" "$*" >&2; }
 echoerr_n() { printf "%s" "$*" >&2; }
@@ -40,20 +41,23 @@ LONGOPTIONS=arg:,help,quiet,verbose,version
 # -temporarily store output to be able to check for errors
 # -e.g. use “--options” parameter by name to activate quoting/enhanced mode
 # -pass arguments only via   -- "$@"   to separate them correctly
-PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTIONS --name "$0" -- "$@")
-if [[ $? -ne 0 ]]; then
+if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTIONS --name "$0" -- "$@") ; then
     # e.g. $? == 1
     #  then getopt has complained about wrong arguments to stdout
     exit 2
 fi
 # read getopt’s output this way to handle the quoting right:
-eval set -- "$PARSED"
+eval set -- "${PARSED}"
 
 # now enjoy the options in order and nicely split until we see --
 while true; do
     case "$1" in
         -a|--arg)
-            DDPT_SGL_OPTS="$2"
+            if [ "${DDPT_SGL_OPTS}" ] ; then
+                DDPT_SGL_OPTS="${DDPT_SGL_OPTS} $2"
+            else
+                DDPT_SGL_OPTS="$2"
+            fi
             shift 2
             ;;
         -h|--help)
@@ -61,12 +65,11 @@ while true; do
             shift
             ;;
         -q|--quiet)
-            QUIET=y
             DDPT_SGL_OPTS="${DDPT_SGL_OPTS} --quiet"
             shift
             ;;
         -v|--verbose)
-            if [ ${VERBOSE} -eq 0 ] ; then
+            if [ "${VERBOSE}" -eq 0 ] ; then
                 VB_ARG="-v"
             else
                 VB_ARG="${VB_ARG}v"
@@ -77,7 +80,6 @@ while true; do
         -V|--version)
             echo "${VERSION}"
             exit
-            shift
             ;;
         --)
             shift
@@ -90,11 +92,12 @@ while true; do
     esac
 done
 
-if [ ${HELP} ] ; then
+if [ "${HELP}" ] ; then
     echo -n "test_sgl.sh  [--arg=DA] [--help] [--quiet] [--verbose] "
     echo "[--version]"
     echo "where:"
     echo "  --arg=DA|-a DA    DA arbitrary argument passed to ddpt calls"
+    echo "                    (e.g. '-a iflag=coe' )"
     echo "  --help|-h       outputs this usage message then exits"
     echo "  --quiet|-q      suppress output from ddpt calls"
     echo -n "  --verbose|-v    increase verbosity in this scripts and ddpt "
@@ -125,30 +128,30 @@ if [[ $EUID -eq 0 ]]; then
    echoerr ""
 fi
 
-if [ ${DDPT_SGL} ] ; then
+if [ "${DDPT_SGL}" ] ; then
     echoerr "Instead of ddpt using DDPT_SGL=${DDPT_SGL}"
 else
-    DDPT_SGL=`which ddpt_sgl`
+    DDPT_SGL=$( command -v ddpt_sgl )
 fi
 
 # >>> RUN section start here
 
 # Copy command line sgl {{1,100k},} to /tmp/ddpt00.sgl
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A 1,100k --out=${SGL_OUT}00 --extension=sgl"
-${DDPT_SGL} ${DDPT_SGL_OPTS} -A 1,100k --out=${SGL_OUT}00 --extension=sgl
+"${DDPT_SGL}" "${DDPT_SGL_OPTS}" -A 1,100k --out=${SGL_OUT}00 --extension=sgl
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT_SGL} ${RES}
+    pr_exit_stat "${DDPT_SGL}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 # Split sgl in /tmp/ddpt00.sgl into 4 sgls with 3k interleave, output to /tmp/ddpt[1-4].sgl
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}00.sgl -i 3k --out=${SGL_OUT} --extension=sgl --action=split_4"
-${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}00.sgl -i 3k --out=${SGL_OUT} --extension=sgl --action=split_4
+${DDPT_SGL} "${DDPT_SGL_OPTS}" -A @${SGL_OUT}00.sgl -i 3k --out=${SGL_OUT} --extension=sgl --action=split_4
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT_SGL} ${RES}
+    pr_exit_stat "${DDPT_SGL}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
@@ -158,142 +161,142 @@ echoerr "cat ${SGL_OUT}1.sgl ${SGL_OUT}2.sgl ${SGL_OUT}3.sgl > ${SGL_OUT}1_2_3.s
 cat ${SGL_OUT}1.sgl ${SGL_OUT}2.sgl ${SGL_OUT}3.sgl > ${SGL_OUT}1_2_3.sgl
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT_SGL} ${RES}
+    pr_exit_stat "${DDPT_SGL}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 # Use --action=append to append last split file
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}1_2_3.sgl -B @${SGL_OUT}4.sgl --out=${SGL_OUT}1234 --extension=sgl --action=append"
-${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}1_2_3.sgl -B @${SGL_OUT}4.sgl --out=${SGL_OUT}1234 --extension=sgl --action=append
+${DDPT_SGL} "${DDPT_SGL_OPTS}" -A @${SGL_OUT}1_2_3.sgl -B @${SGL_OUT}4.sgl --out=${SGL_OUT}1234 --extension=sgl --action=append
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT_SGL} ${RES}
+    pr_exit_stat "${DDPT_SGL}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 # Now check if reconstructed file is non-overlapping (it should be)
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}1234.sgl --non-overlap"
-${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}1234.sgl --non-overlap
+${DDPT_SGL} "${DDPT_SGL_OPTS}" -A @${SGL_OUT}1234.sgl --non-overlap
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT_SGL} ${RES}
+    pr_exit_stat "${DDPT_SGL}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 # Now check if original sgl is equal to reconstructed sgl (it shouldn't be)
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}00.sgl -B @${SGL_OUT}1234.sgl --action=equal"
-${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}00.sgl -B @${SGL_OUT}1234.sgl --action=equal
+${DDPT_SGL} "${DDPT_SGL_OPTS}" -A @${SGL_OUT}00.sgl -B @${SGL_OUT}1234.sgl --action=equal
 RES=$?
 if [ ${RES} -eq 36 ] ; then
     echoerr "Expected false exit status (36) and got it"
 else
     echoerr "Expected false exit status (36) but did _not_ get it"
-    pr_exit_stat ${DDPT_SGL} ${RES}
+    pr_exit_stat "${DDPT_SGL}" "${RES}"
 fi
 echoerr ""
 
 # Now check if original sgl is the same as reconstructed sgl (it should be)
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}00.sgl -B @${SGL_OUT}1234.sgl --action=same"
-${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}00.sgl -B @${SGL_OUT}1234.sgl --action=same
+${DDPT_SGL} "${DDPT_SGL_OPTS}" -A @${SGL_OUT}00.sgl -B @${SGL_OUT}1234.sgl --action=same
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT_SGL} ${RES}
+    pr_exit_stat "${DDPT_SGL}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 # Now sort reconstructed sgl
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}1234.sgl --out=${SGL_OUT}_sort --extension=sgl --action=sort"
-${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}1234.sgl --out=${SGL_OUT}_sort --extension=sgl --action=sort
+${DDPT_SGL} "${DDPT_SGL_OPTS}" -A @${SGL_OUT}1234.sgl --out=${SGL_OUT}_sort --extension=sgl --action=sort
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT_SGL} ${RES}
+    pr_exit_stat "${DDPT_SGL}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 # Now check if original sgl is equal to sorted sgl (it should be)
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}00.sgl -B @${SGL_OUT}_sort.sgl --action=equal"
-${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}00.sgl -B @${SGL_OUT}_sort.sgl --action=equal
+${DDPT_SGL} "${DDPT_SGL_OPTS}" -A @${SGL_OUT}00.sgl -B @${SGL_OUT}_sort.sgl --action=equal
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT_SGL} ${RES}
+    pr_exit_stat "${DDPT_SGL}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 # Now try out to-chs (to cylinders/heads/sectors)
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A 0,10k --out=${SGL_OUT}_chs -e sgl --chs=768,16,255 -a to-chs"
-${DDPT_SGL} ${DDPT_SGL_OPTS} -A 0,10k --out=${SGL_OUT}_chs -e sgl --chs=768,16,255 -a to-chs
+${DDPT_SGL} "${DDPT_SGL_OPTS}" -A 0,10k --out=${SGL_OUT}_chs -e sgl --chs=768,16,255 -a to-chs
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT_SGL} ${RES}
+    pr_exit_stat "${DDPT_SGL}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 # Since to-chs mapping doesn't maintain ascending order, do a twin sort
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_chs.sgl -B 0,10k -o ${SGL_OUT}_chs_sort -e sgl -a tsort"
-${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_chs.sgl -B 0,10k -o ${SGL_OUT}_chs_sort -e sgl -a tsort
+${DDPT_SGL} "${DDPT_SGL_OPTS}" -A @${SGL_OUT}_chs.sgl -B 0,10k -o ${SGL_OUT}_chs_sort -e sgl -a tsort
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT_SGL} ${RES}
+    pr_exit_stat "${DDPT_SGL}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 # Now use --elem=-1,0 to reverse that sort (with no --action)
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_chs_sort.sgl -o ${SGL_OUT}_chs_sort_rev -e sgl --elem=-1,0"
-${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_chs_sort.sgl -o ${SGL_OUT}_chs_sort_rev -e sgl --elem=-1,0
+${DDPT_SGL} "${DDPT_SGL_OPTS}" -A @${SGL_OUT}_chs_sort.sgl -o ${SGL_OUT}_chs_sort_rev -e sgl --elem=-1,0
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT_SGL} ${RES}
+    pr_exit_stat "${DDPT_SGL}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 # Do another twin sort, this time by NUM, ascending
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_chs.sgl -B 0,10k -o ${SGL_OUT}_chs_sort_n -e sgl -a tsort -S 2"
-${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_chs.sgl -B 0,10k -o ${SGL_OUT}_chs_sort_n -e sgl -a tsort -S 2
+${DDPT_SGL} "${DDPT_SGL_OPTS}" -A @${SGL_OUT}_chs.sgl -B 0,10k -o ${SGL_OUT}_chs_sort_n -e sgl -a tsort -S 2
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT_SGL} ${RES}
+    pr_exit_stat "${DDPT_SGL}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 # Do a scale test, assume 4096 byte sectors, going to 512; scale by x8
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A 1,2,3,3,6,4 -o ${SGL_OUT}_scale_8 -e sgl -a scale_8"
-${DDPT_SGL} ${DDPT_SGL_OPTS} -A 1,2,3,3,6,4 -o ${SGL_OUT}_scale_8 -e sgl -a scale_8
+${DDPT_SGL} "${DDPT_SGL_OPTS}" -A 1,2,3,3,6,4 -o ${SGL_OUT}_scale_8 -e sgl -a scale_8
 RES=$?
 if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT_SGL} ${RES}
+    pr_exit_stat "${DDPT_SGL}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 # Do a scale test, assume 512 byte sectors, going to 4096; scale by /8
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_scale_8.sgl -o ${SGL_OUT}_scale_back -e sgl -a scale_-8"
-${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_scale_8.sgl -o ${SGL_OUT}_scale_back -e sgl -a scale_-8
+${DDPT_SGL} "${DDPT_SGL_OPTS}" -A @${SGL_OUT}_scale_8.sgl -o ${SGL_OUT}_scale_back -e sgl -a scale_-8
 RES=$?
-if [ ${RES} -ne 0 ] ; then
-    pr_exit_stat ${DDPT_SGL} ${RES}
+if [ "${RES}" -ne 0 ] ; then
+    pr_exit_stat "${DDPT_SGL}" "${RES}"
     exit ${RES}
 fi
 echoerr ""
 
 # Do a divisible test, expect failure (36 ==> false) ; divisible by 8
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_scale_back.sgl -a divisible_8"
-${DDPT_SGL} ${DDPT_SGL_OPTS} ${DDPT_SGL_OPTS} -A @${SGL_OUT}_scale_back.sgl -a divisible_8
+${DDPT_SGL} "${DDPT_SGL_OPTS}" -A @${SGL_OUT}_scale_back.sgl -a divisible_8
 RES=$?
-if [ ${RES} -eq 36 ] ; then
+if [ "${RES}" -eq 36 ] ; then
     echoerr "Expected false exit status (36) and got it"
 else
     echoerr "Expected false exit status (36) but did _not_ get it"
-    pr_exit_stat ${DDPT_SGL} ${RES}
+    pr_exit_stat "${DDPT_SGL}" "${RES}"
 fi
 echoerr ""
 

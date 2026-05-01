@@ -1056,6 +1056,9 @@ line. For example '\-v' on the command line followed by a job file
 containing '\-vv' will result in a verbosity level of '\-vvv' during the
 copy phase. Empty lines, lines only containing whitespace(s) and anything
 from and including a '#' in a job file line are ignored.
+.PP
+Some examples of job files can be found in the testing directory of the
+ddpt source with the filename extension ".jf".
 .SH SCATTER GATHER LISTS
 Each element of a scatter gather list (sgl, plural: sgl_s) is made up of a
 starting logical block address (LBA, plural: LBAs), and a number of
@@ -1091,7 +1094,7 @@ whitespace may also be used (but needs to be escaped because the shell
 usually interprets whitespace as an option separator). In a file (or read
 from stdin or file redirection) more flexibility is permitted in the format.
 The LBA,NUM pairs could all appear on one line in a file but the line
-length is limited to 1024 characters (with a maximum of 256 parseable items
+length is limited to 1024 characters (with a maximum of 256 parse\-able items
 on it). So for longer sgl_s one pair per line is recommended in file format.
 Also in file format everything from and including '#' to the end of that
 line is ignored as are lines that are empty or only contain whitespace(s).
@@ -1152,7 +1155,7 @@ element (regardless of whether it is degenerate or not).
 The rules in the above paragraph make a one item skip or seek argument (e.g.
 skip=0x123) in this utility first become a one element sgl (e.g. containing
 the pair [0x123, 0x0]). Since this is the last element, it is a soft sgl
-and the transfer will start from the given lba (i.e. 0x123) and continues
+and the transfer will start from the given LBA (i.e. 0x123) and continues
 for the number of blocks indicated by some other mechanism (e.g.  an option
 such as \fIcount=COUNT\fR or the length of \fIIFILE\fR). This mirrors what
 the classic
@@ -2038,6 +2041,43 @@ https://doug\-gilbert.github.io/ddpt.html . There is a text file containing
 examples called ddpt_examples.txt in the "doc" directory of this package's
 distribution tarball. The ddpt_examples.txt file contains some examples of
 using job files.
+.SH EXAMPLE OF REMOTE COPY
+As a general rule ddpt is a superset of dd and one useful thing that dd can
+do is copy between machines securely, using a ssh pipe. The general form is:
+    dd if=/dev/sda bs=5M | ssh user@oth_mach dd of=sda.img bs=5M
+.br
+This is "pushing" data from /dev/sda on the local machine to a file called
+sda.img on the oth_mach machine. The data is not compressed but is encrypted.
+With dd if "of=" is missing then data goes to stdout and if "if=" is
+missing data comes from stdin. It is important that dd (and ddpt) send error,
+warning and informational messages to stderr, and never stdout. If dd or ddpt
+ever sent a message to stdout it would potentially corrupt such a transfer.
+.PP
+ddpt takes a slightly different approach in that it doesn't default if= and
+of= to stdin and stdout respectively. To get that outcome if=\- and/or
+of=\- must be used. [With dd forgetting "of=" in simple cases can result in
+a lot of raw data being "spilt" on the screen, usually undesirable.] Also
+using ddpt's bpt= can result in more fine control over the individual chunks
+sent over "the wire". So an equivalent of the above piped copy using ddpt:
+    ddpt if=/dev/sda bs=512 of=\- | ssh user@oth_mach 'ddpt if=\- bs=512 of=sda.img'
+.br
+Since bpt= is not given it will default to 128, so 64KiB will be sent in each
+chunk across the wire. Note that bs=512 is the assumed sector/block size of
+/dev/sda (and should be changed to 4096 if that is the sector size). Various
+options can be added, mainly on the first ddpt: 'coe=1' for continue on error,
+substituting zeros id a bad sector is encountered; '\-p' is a less verbose of
+asking for a progress report (as noted, sent to stderr); 'bpt=' for finer
+control of the size of chunks. And on the output side, if sda.img isn't being
+overwritten 'oflag=sparse'; that could save gigabytes of storage is /dev/sda
+is a newish disk (assumed to be filled with zeros when manufactured).
+.PP
+Performance tweaks may drastically reduce the "time to copy" depending on
+where (or if) there is a bottle neck. With fast Ethernet (e.g. >= 1 Gbps)
+the bottle neck is probably writing to sda.img (so oflag=spare or
+oflag=sparing if overwriting sda.img may help). If the link between the
+machines is the bottle neck (e.g. its the internet) the compressing the
+data may help (e.g. pipe through 'gzip \-c \-9 ' on the input side
+and 'gzip \-d' on the output side).
 .SH AUTHORS
 Written by Doug Gilbert
 .SH "REPORTING BUGS"

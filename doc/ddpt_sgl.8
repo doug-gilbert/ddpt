@@ -1,4 +1,4 @@
-.TH DDPT_SGL "8" "March 2026" "ddpt\-0.98" DDPT
+.TH DDPT_SGL "8" "April 2026" "ddpt\-0.98" DDPT
 .SH NAME
 ddpt_sgl \- helper for ddpt utility's scatter gather lists
 .SH SYNOPSIS
@@ -12,7 +12,6 @@ ddpt_sgl \- helper for ddpt utility's scatter gather lists
 [\fI\-\-stats\fR] [\fI\-\-verbose\fR] [\fI\-\-version\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
-.PP
 This utility is a scatter gather list helper for the ddpt utility which
 copies data between or within SCSI devices (logical units). While ddpt's
 command line syntax is modelled on that of the POSIX dd command, this
@@ -107,7 +106,6 @@ then a range of sgl elements are output starting at index \fISE\fR to index
 \fILE\fR inclusive. If a "twin" operation is being performed then this
 option only applies to the "a" side output, not the "twin" side. This
 option is ignored by the output of the split_n and tsplit_n actions.
-
 .br
 Negative values for either \fISE\fR or \fILE\fR count from the end of
 sgl. For example \fI\-\-elem=0,\-1\fR refers to the whole of the list.
@@ -447,7 +445,7 @@ also ignored.
 .PP
 If large sgl_s or index arrays are being used it is better to have one
 element per line in the file to be read. This is because a line is not
-expected to be over 1024 bytes long with more than 254 parsable items on
+expected to be over 1024 bytes long with more than 254 parse\-able items on
 it.  This utility imposes no limit on the number of lines a file to be
 parsed may have.
 .PP

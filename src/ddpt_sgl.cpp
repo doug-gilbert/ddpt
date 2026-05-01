@@ -48,7 +48,7 @@
 #endif
 
 
-static const char * ddpt_sgl_version_str = "0.98 20260427 [svn: r420]";
+static const char * ddpt_sgl_version_str = "0.98 20260430 [svn: r421]";
 
 #include "ddpt.h"
 #include "sg_lib.h"
@@ -1867,6 +1867,9 @@ missing_comma:
             bool first = true;
 
             for (; optind < argc; ++optind) {
+                n = strlen(argv[optind]);
+                if ((0 == n) || ((1 == n) && (' ' == argv[optind][0])))
+                    continue;	/* skip empty and single space arguments */
                 if (first)
                     pr2serr("ddpt_sgl takes no arguments\n");
                 pr2serr("  Unrecognized argument: %s\n", argv[optind]);
@@ -2097,7 +2100,7 @@ main(int argc, char * argv[])
             if (ret_bool)
                 pr2serr("all %s are divisible by %d\n", cp, n);
             else
-                pr2serr("at least one %s is indivisible by %d\n", cp, n);
+                pr2serr("at least one %s is not divisible by %d\n", cp, n);
             if (vb && (false == ret_bool))
                 pr2serr("  first false: sgl elem=%d (origin 0) %s\n",
                         k, (lba_side ? "LBA" : "NUM"));

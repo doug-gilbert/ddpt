@@ -1,7 +1,11 @@
 ddpt
 
-# xxx
+# Copy from urandom device to /dev/ram0, count determined by /dev/ram0
 if=/dev/urandom
 of=/dev/ram0
 bs=512
 # -vvvvv
+
+# For information on urandom see 'man 7 random' .
+# After this transfer the command 'ent /dev/ram0' could report how
+# random the contents of /dev/ram0 seems to be
