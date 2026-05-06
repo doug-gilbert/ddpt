@@ -129,3 +129,4 @@ SET(CPACK_RPM_PACKAGE_LICENSE "BSD-2-clause")
 SET(CPACK_RPM_PACKAGE_VENDOR "Douglas Gilbert")
 
 include(CPack)
+include(CTest)

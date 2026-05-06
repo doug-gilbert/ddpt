@@ -29,7 +29,7 @@
 # dpg 20180714
 
 VERBOSE="0"
-VERSION="1.03 20260430 [r421]"
+VERSION="1.04 20260504 [r421]"
 VB_ARG=""
 DDPT_OPTS=""
 
@@ -121,7 +121,7 @@ while true; do
     esac
 done
 
-if [ "${HELP}" ] ; then
+if [[ "${HELP}" ]] ; then
     echo -n "prepare.sh  [--arg=DA] [--dry-run] [--force] [--help] "
     echo "[--quiet]"
     echo "               [--run] [--verbose] [--version]"
@@ -152,7 +152,7 @@ fi
 DDPT_OPTS="${DDPT_OPTS} ${VB_ARG}"
 
 # Just testing ....
-if [ "${VERBOSE}" -gt 0 ] ; then
+if [[ "${VERBOSE}" -gt 0 ]] ; then
     echoerr "DDPT_OPTS=${DDPT_OPTS}"
     echoerr ""
 fi
@@ -167,7 +167,7 @@ PREP_TMP="/tmp/ddpt_prep.tmp"
 PREP_BIN="/tmp/ddpt_prep.bin"
 PREP2_BIN="/tmp/ddpt_prep2.bin"
 
-if [ ! -x "${LSSCSI}" ] ; then
+if [[ ! -x "${LSSCSI}" ]] ; then
     echoerr "Can't find lsscsi utility, is the package loaded?"
     echoerr "Recent version at https://sg.danny.cz/scsi/lsscsi.html "
     exit 1
@@ -199,7 +199,7 @@ a=( "${SCSI_DEBUG_HOST}" )
 HOST_NUM=${a[0]:1}
 HOST_NUM=${HOST_NUM::1}
 
-if [ "$HOST_NUM" -eq "$HOST_NUM" ] 2>/dev/null
+if [[ "$HOST_NUM" -eq "$HOST_NUM" ]] 2>/dev/null
 then
     if [ $VERBOSE -gt 0 ] ; then
         echoerr "scsi_debug driver is host number $HOST_NUM"
@@ -232,26 +232,25 @@ done < "${PREP_TMP}"
 # Remove a temporary, symlinks still left in /tmp
 rm -f ${PREP_TMP}
 
-if [ ${k} -eq 0 ] ; then
+if [[ ${k} -eq 0 ]] ; then
     echoerr "Strange, no sg devices found (by lsscsi)"
     exit
 fi
 
-if [ ${#SG_DEV[@]} -lt 2 ] ; then
+if [[ ${#SG_DEV[@]} -lt 2 ]] ; then
     echoerr "Need at least 2 sg devices, looks like only one. Try removing "
     echoerr "the scsi_debug module (with rmmod) and re-attach it (with "
     echoerr "modprobe) and add 'max_luns=2' argument"
     exit 1
 fi
 
-if [ ${#SG_BLK_DEV[@]} -lt 2 ] ; then
+if [[ ${#SG_BLK_DEV[@]} -lt 2 ]] ; then
     echoerr "Something is wrong, should have at least 2 blocks devices "
     echoerr "corresponding to the sg devices just found."
     exit 1
 fi
 
-if df | grep "ram[01]"
-then
+if df | grep "ram[01]" ; then
     echoerr "Looks like /dev/ram0 or 1 in use (according to df)"
     echoerr "this script want to write to them, so exit unless --force given"
     if [ "${FORCE}" ] ; then
@@ -261,7 +260,7 @@ then
     fi
 fi
 
-if [ -b /dev/ram0 ] && [ -b /dev/ram1 ] ; then
+if [[ -b /dev/ram0 ]] && [[ -b /dev/ram1 ]] ; then
     if [ "$VERBOSE" -gt 0 ] ; then
         echoerr "Detected /dev/ram0 and /dev/ram1 block devices"
     fi
@@ -272,13 +271,13 @@ else
     exit 1
 fi
 
-if [ "${DDPT}" ] ; then
+if [[ "${DDPT}" ]] ; then
     echoerr "Instead of ddpt using DDPT=${DDPT}"
 else
     DDPT=$( command -v ddpt )
 fi
 
-if [ ! "${RUN}" ] ; then
+if [[ ! "${RUN}" ]] ; then
     echoerr ""
     echoerr "Since --run option not given will exit now with preparation done"
     exit 0
@@ -306,7 +305,7 @@ read -ra args <<< "${DDPT_ARG}"
 echoerr "${DDPT} ${DDPT_OPTS} if=/dev/ram0  bs=512 ${DDPT_ARG}"
 "${DDPT}" "${opts[@]}" if=/dev/ram0  bs=512 "${args[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -315,7 +314,7 @@ echoerr ""
 echoerr "${DDPT} ${DDPT_OPTS} if=/dev/ram1  bs=512 ${DDPT_ARG}"
 ${DDPT} "${opts[@]}" if=/dev/ram1  bs=512 "${args[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -324,7 +323,7 @@ echoerr ""
 echoerr "${DDPT} ${DDPT_OPTS} if=/tmp/sg_a_dev bs=4096 ${DDPT_ARG}"
 ${DDPT} "${opts[@]}" if=/tmp/sg_a_dev bs=4096 "${args[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -333,7 +332,7 @@ echoerr ""
 echoerr "${DDPT} ${DDPT_OPTS} if=/tmp/sg_b_dev  bs=4096 ${DDPT_ARG}"
 ${DDPT} "${opts[@]}" if=/tmp/sg_b_dev bs=4096 "${args[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -342,7 +341,7 @@ echoerr ""
 echoerr "${DDPT} ${DDPT_OPTS} if=/tmp/sd_sg_a_dev bs=4096 ${DDPT_ARG}"
 ${DDPT} "${opts[@]}" if=/tmp/sd_sg_a_dev bs=4096 "${args[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -351,7 +350,7 @@ echoerr ""
 echoerr "${DDPT} ${DDPT_OPTS} if=/tmp/sd_sg_b_dev  bs=4096 ${DDPT_ARG}"
 ${DDPT} "${opts[@]}" if=/tmp/sd_sg_b_dev bs=4096 "${args[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -361,7 +360,7 @@ echoerr ""
 echoerr "${DDPT} ${DDPT_OPTS} if=/dev/urandom bs=1 of=${PREP_BIN} count=16999999 ${DDPT_ARG}"
 ${DDPT} "${opts[@]}" if=/dev/urandom bs=1 of=${PREP_BIN} count=16999999 "${opts[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -370,7 +369,7 @@ echoerr ""
 echoerr "${DDPT} ${DDPT_OPTS} if=${PREP_BIN} bs=512 ${DDPT_ARG}"
 ${DDPT} "${opts[@]}" if=${PREP_BIN} bs=512 "${args[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -379,7 +378,7 @@ echoerr ""
 echoerr "${DDPT} ${DDPT_OPTS} if=${PREP_BIN} bs=512 of=${PREP2_BIN} ${DDPT_ARG}"
 ${DDPT} "${opts[@]}" if=${PREP_BIN} of=${PREP2_BIN} bs=512 "${args[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -388,7 +387,7 @@ echoerr ""
 echoerr "${DDPT} ${DDPT_OPTS} if=${PREP_BIN} bs=1 of=${PREP2_BIN} ${DDPT_ARG}"
 ${DDPT} "${opts[@]}" if=${PREP_BIN} of=${PREP2_BIN} bs=1 "${args[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -397,7 +396,7 @@ echoerr ""
 echoerr "${DDPT} ${DDPT_OPTS} urand_ram0.jf ${DDPT_ARG}"
 ${DDPT} "${opts[@]}" urand_ram0.jf "${args[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -406,7 +405,7 @@ echoerr ""
 echoerr "${DDPT} ${DDPT_OPTS} ram0_2_ram1.jf ${DDPT_ARG}"
 ${DDPT} "${opts[@]}" ram0_2_ram1.jf "${args[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -415,7 +414,7 @@ echoerr ""
 echoerr "${DDPT} ${DDPT_OPTS} ram1_2_sg_a.jf ${DDPT_ARG}"
 ${DDPT} "${opts[@]}" ram1_2_sg_a.jf "${args[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -424,7 +423,7 @@ echoerr ""
 echoerr "${DDPT} ${DDPT_OPTS} sg_a_2_sg_b.jf ${DDPT_ARG}"
 ${DDPT} "${opts[@]}" sg_a_2_sg_b.jf "${args[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -433,7 +432,7 @@ echoerr ""
 echoerr "${DDPT} ${DDPT_OPTS} sd_b_2_sd_a.jf ${DDPT_ARG}"
 ${DDPT} "${opts[@]}" sd_b_2_sd_a.jf "${args[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -443,7 +442,7 @@ rm ${PREP2_BIN}
 echoerr "${DDPT} ${DDPT_OPTS} sgl_1.jf of=${PREP2_BIN} ${DDPT_ARG}"
 ${DDPT} "${opts[@]}" sgl_1.jf of=${PREP2_BIN} "${args[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -454,7 +453,7 @@ rm ${PREP2_BIN}
 echoerr "${DDPT} ${DDPT_OPTS} iflag=00,ff of=${PREP2_BIN} bs=512 count=1 ${DDPT_ARG}"
 ${DDPT} "${opts[@]}" iflag=00,ff of=${PREP2_BIN} bs=512 count=1 "${args[@]}"
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
@@ -464,7 +463,7 @@ rm ${PREP_BIN}
 echoerr "${DDPT} ${DDPT_OPTS} if=${PREP2_BIN} of=- bs=1 bpt=7 seek=64 ${DDPT_ARG} > ${PREP_BIN}"
 ${DDPT} "${opts[@]}" if=${PREP2_BIN} of=- bs=1 seek=64 "${args[@]}" > ${PREP_BIN}
 RES=$?
-if [ ${RES} -ne 0 ] ; then
+if [[ ${RES} -ne 0 ]] ; then
     pr_exit_stat "${DDPT}" "${RES}"
     exit ${RES}
 fi
