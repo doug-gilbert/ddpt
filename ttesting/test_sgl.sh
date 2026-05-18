@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# This script assumes Linux (Android ?) and is for testing ddpt_sgl which
-# is a helper for ddpt, a dd clone.
+# This script assumes a Linux (Android ?) platform and is for testing
+# ddpt_sgl which is a helper for ddpt, itself a dd clone.
 #
 # Environment variables that may be overridden by caller:
 #    DDPT_SGL        default: `which ddpt`

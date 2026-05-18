@@ -1,0 +1,2368 @@
+Content-type: text/html; charset=UTF-8
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML><HEAD><TITLE>Man page of DDPT</TITLE>
+</HEAD><BODY>
+<H1>DDPT</H1>
+Section: DDPT (8)<BR>Updated: May 2026<BR><A HREF="#index">Index</A>
+<A HREF="../index.html">Return to Main Contents</A><HR>
+
+<A NAME="lbAB">&nbsp;</A>
+<H2>NAME</H2>
+
+ddpt - copies data between files and storage devices. Support for
+devices that understand the SCSI command set.
+<A NAME="lbAC">&nbsp;</A>
+<H2>SYNOPSIS</H2>
+
+<B>ddpt</B>
+
+[<I>bpt=BPT[,OBPC]</I>] [<I>bs=BS</I>] [<I>cdbsz=</I>IO_CDBSZ] [<I>cdl=CDL</I>]
+[<I>coe=</I>{0|1|2}] [<I>coe_limit=CL</I>] [<I>conv=CONVS</I>]
+[<I>count=COUNT</I>] [<I>ddpt=VERS</I>] [<I>delay=MS[,W_MS]</I>] [<I>ibs=IBS</I>]
+[<I>id_usage=LIU</I>] <I>if=IFILE</I> [<I>iflag=FLAGS</I>] [<I>intio=</I>{0|1}]
+[<I>iseek=SKIP</I>] [<I>ito=ITO</I>] [<I>list_id=LID</I>] [<I>obs=OBS</I>]
+[<I>of=OFILE</I>] [<I>of2=OFILE2</I>] [<I>oflag=FLAGS</I>] [<I>oseek=SEEK</I>]
+[<I>prio=PRIO</I>] [<I>protect=RDP[,WRP]</I>] [<I>retries=RETR</I>]
+[<I>rtf=RTF</I>] [<I>rtype=RTYPE</I>] [<I>seek=SEEK</I>] [<I>skip=SKIP</I>]
+[<I>status=STAT</I>] [<I>to=TO</I>] [<I>verbose=VERB</I>] [<I>--dry-run</I>]
+[<I>--flexible</I>] [<I>--help</I>] [<I>--job=JF</I>] [<I>--odx</I>]
+[<I>--prefetch</I>] [<I>--progress</I>] [<I>--quiet</I>]
+[<I>--verbose</I>] [<I>--verify</I>] [<I>--version</I>] [<I>--wscan</I>]
+[<I>--xcopy</I>]
+[<I>ddpt</I>] [<I>JF</I>]
+<P>
+
+For comparison here is the synopsis for GNU's dd command:
+<P>
+
+<B>dd</B>
+
+[<I>bs=BS</I>] [<I>cbs=CBS</I>] [<I>conv=CONVS</I>] [<I>count=COUNT</I>]
+[<I>ibs=IBS</I>] [<I>if=IFILE</I>] [<I>iflag=FLAGS</I>] [<I>obs=OBS</I>]
+[<I>of=OFILE</I>] [<I>oflag=FLAGS</I>] [<I>seek=SEEK</I>] [<I>skip=SKIP</I>]
+[<I>status=STAT</I>] [<I>--help</I>] [<I>--version</I>]
+<A NAME="lbAD">&nbsp;</A>
+<H2>DESCRIPTION</H2>
+
+
+Copies data between files or simply reads data from a file. Alternatively
+if the <I>--verify</I> option is given, the <I>IFILE</I> and <I>OFILE</I>
+contents are compared, stopping if an inequality is found. This utility is
+specialized for &quot;files&quot; that are storage devices, especially those that can
+use the SCSI command sets (e.g. SATA and SAS disks). It can issue SCSI
+commands in pass-through (&quot;pt&quot;) mode. Similar syntax and semantics to the
+Unix
+<B><A HREF="../man1/dd.1.html">dd</A>(1)</B>
+
+command.
+<P>
+
+For comparison, the SYNOPSIS section above shows both the
+<B>ddpt</B>
+
+command line operands and options followed by GNU's
+<B><A HREF="../man1/dd.1.html">dd</A>(1)</B>
+
+command line operands and options. Broadly speaking ddpt can be considered
+a super-set of dd. See the section on DD DIFFERENCES for significant
+differences between ddpt and dd.
+<P>
+
+This utility either does direct copies, based on read-write sequences,
+or offloaded copies. In an offloaded copy the data being copied does not
+necessarily pass through the memory of the the machine originating the copy
+operation; this can save a significant amount of time and lessen CPU usage.
+<P>
+
+When doing a direct copy, this utility breaks the copy into segments since
+computer RAM is typically a scarce resource. First it reads in <I>BPT*IBS</I>
+bytes from <I>IFILE</I> (or less if near the end of the copy) into a copy
+buffer. In the absence of the various operand and flags that bypass
+the write operation, the copy buffer is then written out to <I>OFILE</I>.
+The copy process continues working its way along <I>IFILE</I> and <I>OFILE</I>
+until either <I>COUNT</I> is exhausted, an end of file is detected, or an
+error occurs. If <I>IBS</I> and <I>OBS</I> are different, ddpt restricts the
+value of <I>OBS</I> such that the copy buffer is an integral number of output
+blocks (i.e. (((<I>IBS * BPT</I>) % <I>OBS</I>) == 0) ). In the following
+descriptions, &quot;segment&quot; refers to all or part of a copy buffer.
+<P>
+
+The term &quot;pt device&quot; is used for a pass-through device to which SCSI
+commands like READ(10), WRITE(10) or POPULATE TOKEN may be sent. A pt device
+may only be able to process SCSI commands in which case the &quot;pt&quot; flag is
+assumed. The ability to recognize such a pt only device may vary depending
+on the operating system (e.g. in Linux /dev/sg2 and /dev/bsg/3:0:1:0 are
+recognized). However if a device can process either normal UNIX read()/
+write() calls or pass-through SCSI commands then the default is to use
+UNIX read()/write() calls. That default can be overridden by using the &quot;pt&quot;
+flag (e.g. &quot;if=/dev/sdc iflag=pt&quot;). When pt access is specified any
+partition information is
+<B>ignored.</B>
+
+So &quot;if=/dev/sdc2 iflag=pt skip=3&quot; will start at logical block address 3
+of '/dev/sdc'. As a protection measure ddpt will only accept that if the
+force flag is also given (i.e. 'iflag=pt,force').
+<P>
+
+This utility supports two types of offloaded copies. Both are based on the
+EXTENDED COPY (XCOPY or xcopy) family of SCSI commands. The first uses the
+XCOPY(LID1) command to do a disk to disk copy. LID1 stands for List
+IDentifier length of 1 byte and the commands are described in the SPC-4 and
+earlier SPC-3 and SPC-2 standards. The SPC-4 standard (ANSI INCITS
+513-2015) added the XCOPY(LID4) sub-family of copy offloaded commands. Now
+SPC-5 drafts have dropped the LID1 variants and removed the LID4 suffix on
+the remaining XCOPY family of commands. To differentiate, this man page will
+continue to use the LID1 and LID4 suffixes. There is a subset of
+XCOPY(LID4), specialized for offloaded disk to disk copies, that is known by
+the market name: ODX. In the descriptions below &quot;xcopy&quot; refers to copies
+based on XCOPY(LID1) while &quot;odx&quot; refers to either full or partial ODX copies.
+See the XCOPY and ODX sections below for more information.
+<P>
+
+The syntax of the dd command is somewhat unique in Unix and ddpt follows in
+a similar fashion. Operands (i.e. those with the &lt;name&gt;=&lt;something&gt;
+structure) are shown in OPERANDS section. The more familiar Unix
+options (i.e. those starting with one or two hyphens) are shown in the
+OPTIONS section. Then there are a few arguments which are command line
+entities that are neither operands nor options, see the ARGUMENTS section.
+<P>
+
+Long man pages like this one are useful for reference but not necessarily
+for learning what a utility can do. This web page may help in that regard:
+<A HREF="https://sg.danny.cz/sg/ddpt.html">https://sg.danny.cz/sg/ddpt.html</A>
+or at this alternate location: <A HREF="https://doug-gilbert.github.io/ddpt.html">https://doug-gilbert.github.io/ddpt.html</A> .
+<A NAME="lbAE">&nbsp;</A>
+<H2>OPERANDS</H2>
+
+The operands are listed alphabetically (by &lt;name&gt;) below. The &lt;name&gt; is
+the part that is to the left of the equal sign. All &lt;names&gt; start with
+a lower case alphabetical character.
+<DL COMPACT>
+<DT><B>bpt</B>=<I>BPT[,OBPC]</I><DD>
+where <I>BPT</I> is Blocks Per Transfer. A direct copy is made up of multiple
+transfers, each first reading <I>BPT</I> input blocks (i.e. <I>BPT * IBS</I>
+bytes) from <I>IFILE</I> into the copy buffer and then from that copy buffer
+writing <I>(BPT * IBS) / OBS</I> output blocks to <I>OFILE</I>. This continues
+until the copy is finished, with the last transfer being potentially
+shorter. The default <I>BPT</I> value varies depending on <I>IBS</I>. When
+<I>IBS</I> &lt; 8, <I>BPT</I> is 8192; when <I>IBS</I> &lt; 64, <I>BPT</I> is 1024;
+when <I>IBS</I> &lt; 1024, <I>BPT</I> is 128; when <I>IBS</I> &lt; 8192, <I>BPT</I>
+is 16; when <I>IBS</I> &lt; 32768, <I>BPT</I> is 4; else <I>BPT</I> defaults
+to 1. If <I>BPT</I> is given as 0 it is treated as the default value.
+For &quot;bs=512&quot;, <I>BPT</I> defaults to 128 so that 64 KiB (or less) is read
+from <I>IFILE</I> into the copy buffer. This operand is treated differently
+in ODX and is typically only needed for testing; see ODX section.
+<BR>
+
+The optional <I>OBPC</I> (Output Blocks Per Check) argument controls the
+granularity of sparse writes, write sparing and trim checks. The default
+granularity is the size of the copy buffer (i.e. <I>BPT * IBS</I> bytes). That
+can be reduced by specifying <I>OBPC</I>. The finest granularity is when
+<I>OBPC</I> is 1 which implies the unit of each check is <I>OBS</I> bytes.
+When <I>OBPC</I> is 0, or not given, the default granularity is used. Large
+<I>OBPC</I> values are rounded down so that <I>OBPC*OBS</I> does not exceed
+the size of the copy buffer.
+<BR>
+
+odx: may be used to limit the data represented by each ROD. Mainly for
+testing.
+<BR>
+
+If <I>BPT</I> is too large on Linux, the obscure &quot;Invalid argument&quot; error
+value (EINVAL) is returned.
+<DT><B>bs</B>=<I>BS</I><DD>
+where <I>BS</I> is the <I>IFILE</I> and <I>OFILE</I> block size in bytes.
+Conflicts with either the &quot;ibs=&quot; or &quot;obs=&quot; operands. The value of <I>BS</I>
+is placed in <I>IBS</I> and <I>OBS</I>.
+If <I>IFILE</I> or <I>OFILE</I> is a &quot;pt&quot; device then <I>BS</I>
+<B>must</B>
+
+be the logical block size of the device. See the DD DIFFERENCES section
+below. The default is 512 bytes unless overridden by the DDPT_DEF_BS
+environment variable. Note that newer disks use 4096 byte blocks
+with perhaps larger block sizes coming in the future. CD/DVD/BD media use
+a logical block size of 2048 bytes.
+<DT><B>cdbsz</B>=<I>IO_CDBSZ</I><DD>
+size of SCSI READ and/or WRITE (VERIFY) command descriptor blocks (cdb) in
+bytes. <I>IO_CDBSZ</I> may be one number or two numbers separated by a comma.
+The acceptable numbers are 0, 6, 10, 12, 16 or 32. The default 0 will usually
+be set to 10 internally unless the (first and last) LBAs cannot fit in 32
+bits in which case the 16 byte variant of each command is used. If one number
+is given it applies both to the <I>IFILE</I> and <I>OFILE</I>. If two numbers
+are given, the first applies to the <I>IFILE</I> (i.e. the READ command) and
+the second applies to the <I>OFILE</I>.
+<BR>
+
+If <I>IFILE</I> or <I>OFILE</I> is not a SCSI pass-through device then the
+corresponding <I>IO_CDBSZ</I> value is ignored.
+<DT><B>cdl</B>=<I>CDL</I><DD>
+allows setting of command duration limits. <I>CDL</I> is either a single value
+or two values separated by a comma. If one value is given, it applies to both
+<I>IFILE</I> and <I>OFILE</I> (if they are pass-through devices). If two
+values are given, the first applies to <I>IFILE</I> while the second applies
+to <I>OFILE</I>. The value may be from 0 to 7 where 0 is the default and means
+there are no command duration limits. Command duration limits are only
+supported by 16 and 32 byte READ and WRITE commands (and the WRITE SCATTERED
+command which is not used by this utility). If the cdbsz operand is not given
+and would have a value less than 16, then if <I>CDL</I> is greater than 0, the
+cdbsz is increased to 16.
+<BR>
+
+Command duration limits can be accesses and changed in the Command duration
+limit A and B mode pages, plus the Command duration limit T2A and T2B mode
+pages. The sdparm utility may be used to access and change these mode pages.
+<DT><B>coe</B>={0|1|2}<DD>
+set to 1 or 2 for continue on error. Applies to errors on input and output for
+pt devices but only on input from block devices or regular files. Errors on
+other files will stop ddpt. Default is 0 which implies stop on any error. See
+the 'coe' flag for more information.
+<DT><B>coe_limit</B>=<I>CL</I><DD>
+where <I>CL</I> is the maximum number of consecutive bad blocks stepped over
+due to &quot;coe=1&quot; on reads before the copy terminates. The default is 0 which is
+implies no limit. This operand is meant to stop the copy soon after
+unrecorded media is detected while still offering &quot;continue on error&quot;
+capability for infrequent, randomly distributed errors.
+<DT><B>conv</B>=<I>CONVS</I><DD>
+see the CONVERSIONS section below.
+<DT><B>count</B>=<I>COUNT</I><DD>
+copy <I>COUNT</I> input blocks from <I>IFILE</I> to <I>OFILE</I>. If this
+operand is not given (or <I>COUNT</I> is '-1') then the <I>COUNT</I> may be
+deduced from either <I>IFILE</I> or <I>OFILE</I>. See the COUNT section below.
+<BR>
+
+If a 'hard' gather list is given to <I>skip=SKIP</I> or a 'hard' scatter list
+is given to <I>seek=SEEK</I> then typically <I>count=COUNT</I> should not be
+supplied. This is because a 'hard' scatter gather list implies a transfer
+count. If both are given then ddpt will exit if they are unequal, the force
+flag can be used to override this action. See the SCATTER GATHER LISTS
+section below for a discussion of 'hard' and 'soft' scatter gather lists.
+<DT><B>ddpt</B>=<I>VERS</I><DD>
+causes a syntax error while parsing the command line if the current version
+of the ddpt utility is less than <I>VERS</I>. <I>VERS</I> can take one of two
+forms: starting with a digit in which case is should have the
+form &quot;&lt;major_vn&gt;.&lt;minor_vn&gt;&quot; or starting with the letter &quot;r&quot; followed
+by &quot;&lt;svn.rev&gt;&quot;. The latter case is the subversion revision number. Both
+numbers can be found in the output of the <I>--version</I> option. The
+purpose of this operand is to be placed in job files so that they are not
+run on older versions of this utility
+<DT><B>delay</B>=<I>MS[,W_MS]</I><DD>
+after each segment is copied (typically every (<I>IBS</I> * <I>BPT</I>) bytes)
+a delay (sleep) of <I>MS</I> milliseconds is performed. The default value for
+<I>MS</I> is 0 which implies no delay. If <I>W_MS</I> is given and greater than
+0 (its default value) then there is an additional delay of <I>W_MS</I>
+milliseconds associated with each actual write operation that is performed.
+If <I>MS</I> is greater than 0 then there is not a delay before the first copy
+segment (or after the last); if <I>W_MS</I> is greater than 0 then there is
+not a delay before the first write segment. These delays can be used for a
+bandwidth limiting.
+<BR>
+
+odx: the <I>MS</I> delay is implemented in the same fashion after each ROD is
+copied, apart from the last. If <I>W_MS</I> is greater than 0 then that delay
+occurs before each WUT command, apart from the first.
+<DT><B>ibs</B>=<I>IBS</I><DD>
+where <I>IBS</I> is the <I>IFILE</I> block size in bytes. The default value
+is <I>BS</I> or its default (512). Conflicts the &quot;bs=&quot; operand (i.e. giving
+both &quot;bs=512 ibs=512&quot; is considered a syntax error).
+<DT><B>id_usage</B>=<I>LIU</I><DD>
+xcopy: SCSI EXTENDED COPY parameter list LIST ID USAGE field is set to
+<I>LIU</I>. The default value is 0 or 2 . <I>LIU</I> can be a number between
+0 and 3 inclusive or a string. The strings can be either: 'hold' for
+0, 'discard' for 2 or 'disable' for 3.
+<DT><B>if</B>=<I>IFILE</I><DD>
+read from <I>IFILE</I>. If <I>IFILE</I> is '-' then stdin is read. Starts
+reading at the beginning of <I>IFILE</I> unless <I>SKIP</I> is given.
+<BR>
+
+This operand must be given (apart from one odx case and when <I>iflag=00</I>
+or <I>iflag=ff</I> is given).
+<BR>
+
+odx: the <I>rtf=RTF</I> operand may replace the <I>if=IFILE</I> operand as
+input. See the ODX section.
+<DT><B>iflag</B>=<I>FLAGS</I><DD>
+where <I>FLAGS</I> is a comma separated list of one or more flags outlined
+in the FLAGS section below.  These flags are associated with <I>IFILE</I> and
+are mostly ignored when <I>IFILE</I> is stdin.
+<DT><B>intio</B>={0|1}<DD>
+set to 1 for allow signals (SIGINT, SIGPIPE and SIGUSR1 (or SIGINFO)) to be
+received during IO from <I>IFILE</I> or IO to <I>OFILE</I> or <I>OFILE2</I>.
+Default is 0 which causes these signals to be masked during IO operations
+with a check for signals prior each IO. As long as IO operations don't lock
+up (e.g. SCSI READ and WRITE commands) the default is the safer option. Even
+if IO operations do lock up it is best to let the kernel take care of that.
+<DT><B>iseek</B>=<I>SKIP</I><DD>
+in its simplest form, <I>SKIP</I> is a single number: start reading after
+<I>SKIP</I> blocks (each of <I>IBS</I> bytes) from the start of <I>IFILE</I>.
+Default is block 0 (i.e. start of file). This operand is a synonym for
+<I>skip=SKIP</I>, see its description.
+<DT><B>ito</B>=<I>ITO</I><DD>
+odx: <I>ITO</I> is the inactivity timeout whose units are seconds. The default
+value is 0 which means the copy manager will take the default inactivity
+timeout value from the Block Device ROD Token Limits descriptor in the
+Third Party Copy VPD page. <I>ITO</I> is ignored if it it exceeds the maximum
+inactivity timeout value in the same descriptor (unless the force flag is
+given).
+<DT><B>list_id</B>=<I>LID</I><DD>
+<I>LID</I> is the xcopy LIST IDENTIFIER field or the STR_ID field for the
+WRITE STREAM command. For xcopy it is used to associate an originating xcopy
+command with follow-up commands such as RECEIVE ROD TOKEN INFORMATION. If
+given, the <I>LID</I> should not clash with any other xcopy <I>LID</I>
+currently in use on this I_T nexus.
+<BR>
+
+xcopy: <I>LID</I> is a 1 byte (8 bit) value whose default value is 1 or,
+if id_usage=disable, 0 . <I>LID</I> must not exceed 255.
+<BR>
+
+odx: <I>LID</I> is a 4 byte (32 bit) value whose default value is 257 (i.e.
+0x101) and, if a second default is needed, 258 (0x102) is used. If a
+clash is detected on the default list identifier value then the next higher
+value is tried (stopping after 10 attempts).
+<BR>
+
+oflag=wstream: <I>LID</I> is a 2 byte (16 bit) value whose default value is
+0. It is the Stream Identifier (STR_ID field) for the WRITE STREAM(16)
+command. Valid Stream identifiers are 0x1 to 0xffff (65535) inclusive, so
+the default value of 0 is invalid.
+<DT><B>obs</B>=<I>OBS</I><DD>
+where <I>OBS</I> is the <I>OFILE</I> block size in bytes. The default value
+is <I>BS</I> or its default (512). Conflicts the &quot;bs=&quot; operand (e.g. giving
+both &quot;bs=512 obs=512&quot; is considered a syntax error).
+If <I>OBS</I> is given then it has the following restriction: the integer
+expression (((<I>IBS</I> * <I>BPT</I>) % <I>OBS</I>) == 0) must be true.
+Stated another way: the copy buffer size must be an integral multiple of
+<I>OBS</I>. If <I>of2=OFILE2</I> is given then <I>OBS</I> is its block size
+as well.
+<DT><B>of</B>=<I>OFILE</I><DD>
+write to <I>OFILE</I>. The default value is /dev/null . If <I>OFILE</I> is '-'
+then writes to stdout. If <I>OFILE</I> is /dev/null then no actual writes are
+performed. If <I>OFILE</I> is '.' (period) then it is treated the same way as
+/dev/null . If <I>OFILE</I> exists then it is _not_ truncated
+unless &quot;oflag=trunc&quot; is given. See section on DD DIFFERENCES.
+<BR>
+
+odx: if this operand (<I>of=OFILE</I>) is not given and the <I>rtf=RTF</I>
+operand is given then the <I>RTF</I> file may be thought of as receiving the
+output in the form of one or more ROD Tokens. See the ODX section.
+<DT><B>of2</B>=<I>OFILE2</I><DD>
+write output to <I>OFILE2</I>. The default action is not to do this additional
+write (i.e. when this operand is not given). <I>OFILE2</I> is assumed to be
+a regular file or a fifo (i.e. a named pipe). <I>OFILE2</I> is opened for
+writing and is created if necessary. If <I>OFILE2</I> is a fifo (named pipe)
+then some other command should be consuming that data (e.g. 'md5sum OFILE2'),
+otherwise this utility will block. The write to <I>OFILE2</I> occurs before
+the write to <I>OFILE</I> and prior to sparse writing and write sparing
+logic. So everything read is written to <I>OFILE2</I>.
+<BR>
+
+<I>OFILE2</I> is not truncated before writing. Assuming that the <I>OFILE2</I>
+length is shorter than what is written (or it is created) then its contents
+should be the concatenation of all segments (each of ibs*bpt bytes long,
+with the last segment being possibly shorter). The gather list given to
+<I>skip=SKIP</I> effects what is read into each segment so it indirectly
+effects what is written to <I>OFILE2</I>. However the scatter list given to
+<I>seek=SEEK</I> has no effect on what is written to <I>OFILE2</I>.
+<DT><B>oflag</B>=<I>FLAGS</I><DD>
+where <I>FLAGS</I> is a comma separated list of one or more flags outlined
+in the FLAGS section. These flags are associated with <I>OFILE</I> and are
+ignored when <I>OFILE</I> is /dev/null, '.' (period), or stdout.
+<DT><B>oseek</B>=<I>SEEK</I><DD>
+start writing <I>SEEK</I> blocks (each of <I>OBS</I> bytes) from the start of
+<I>OFILE</I>. Default is block 0 (i.e. start of file). This operand is a
+synonym for <I>seek=SEEK</I>, see its description.
+<DT><B>prio</B>=<I>PRIO</I><DD>
+xcopy: SCSI EXTENDED COPY parameter list PRIORITY field is set to <I>PRIO</I>.
+The default value is 1 .
+<DT><B>protect</B>=<I>RDP[,WRP]</I><DD>
+where <I>RDP</I> is the RDPROTECT field in SCSI READ commands and <I>WRP</I>
+is the WRPROTECT field in SCSI WRITE commands. The default value for both
+is 0 which implies no additional protection information will be transferred.
+Both <I>RDP</I> and <I>WRP</I> can be from 0 to 7. If <I>RDP</I> is greater
+than 0 then <I>IFILE</I> must be a pt device. If <I>WRP</I> is greater than 0
+then <I>OFILE</I> must be a pt device.
+<BR>
+
+When copying data plus protection information from one disk to another
+then 'protect=3,3' will give the least number of problems as that combination
+then of PI checking on both the read and write side. See the PROTECTIO
+INFORMATION section below.
+<DT><B>retries</B>=<I>RETR</I><DD>
+sometimes retries at the host are useful, for example when there is a
+transport error. When <I>RETR</I> is greater than zero then SCSI READs and
+WRITEs are retried on error, <I>RETR</I> times. Default value is zero.
+Only applies to errors on pt devices.
+<DT><B>rtf</B>=<I>RTF</I><DD>
+odx: where <I>RTF</I> is a filename. One or more ROD tokens are written to
+<I>RTF</I> during a read to tokens variant or a full copy variant. One or
+more ROD tokens are read from <I>RTF</I> during a write from token variant.
+This operand is not required on a full copy variant. ROD Tokens are 512
+bytes long and an extra 8 byte (big-endian) integer containing the 'number
+of bytes represented' is placed after each ROD Token if rtf_len is given.
+<DT><B>rtype</B>=<I>RTYPE</I><DD>
+odx: where <I>RTYPE</I> is the ROD Type. The default value (0) indicates that
+the copy manager (in the source) decides. <I>RTYPE</I> can be a decimal number,
+a hex number (prefixed by 0x or with a &quot;h&quot; appended) or one
+of &quot;pit-def&quot;, &quot;pit-vuln&quot;, &quot;pit-pers&quot;, &quot;pit-cow&quot;, &quot;pit-any&quot; or &quot;zero&quot;.
+The final truncated word can be spelt out (e.g. &quot;pit-vulnerable&quot;).
+The &quot;pit-&quot; prefix is a shortening of &quot;point in time&quot; copy. The &quot;zero&quot;
+causes a special Block device zero Token to be created.
+<DT><B>seek</B>=<I>SEEK</I><DD>
+start writing <I>SEEK</I> blocks (each of <I>OBS</I> bytes) from the start of
+<I>OFILE</I>. Default is block 0 (i.e. start of file). The <I>SEEK</I> value
+may exceed the number of <I>OBS</I>-sized blocks in <I>OFILE</I>.
+<BR>
+
+<I>SEEK</I> can be a scatter (gather) list: see the  SCATTER GATHER LISTS
+section below.
+<DT><B>skip</B>=<I>SKIP</I><DD>
+start reading <I>SKIP</I> blocks (each of <I>IBS</I> bytes) from the start of
+<I>IFILE</I>. Default is block 0 (i.e. start of file). The <I>SKIP</I> value
+must be less than the number of <I>IBS</I>-sized blocks in <I>IFILE</I>.
+<BR>
+
+<I>SKIP</I> can be a (scatter) gather list: see the SCATTER GATHER LISTS
+section below.
+<DT><B>status</B>=<I>STAT</I><DD>
+the <I>STAT</I> value of 'noxfer' suppresses the throughput speed and the
+copy time reporting at the end of the copy. A <I>STAT</I> value of 'none'
+additionally suppresses the records in and out reporting after the copy.
+So 'status=none' makes ddpt act like a traditional Unix command in which &quot;no
+news is good news&quot;.  The default action of ddpt is to show the throughput (in
+megabytes per second) and the time taken to do the copy after the &quot;records
+in&quot; and &quot;records out&quot; lines at the end of the copy. A <I>STAT</I> value
+of 'sgl' together with '-vv' option will print internally generated scatter
+gather lists before the copy begins. When the '-vv' options is given alone
+then internal scatter lists headers are printed, but not individual elements.
+In most cases these scatter gather lists will be the same lists given to the
+<I>seek=SEEK</I> and <I>skip=SKIP</I> operands.  As a convenience the
+value 'null' is accepted for <I>STAT</I> and does nothing.
+<BR>
+
+A <I>STAT</I> value of 'progress' prints a progress report (to stderr) every
+two minutes. If 'progress' is used twice, either by repeating
+the 'status=progress' operand or by entering 'status=progress,progress',
+then a progress report is printed every minute. If it is used thrice, the
+a progress report is printed every 30 seconds. Note that care is taken not
+to flood the OS with calls to check the time which would slow down the copy
+process. The amount of data output by the progress reports can modified at
+runtime (e.g. during a long copy). If the verbose flag is 0 or 1 (but not
+higher and not if the <I>--quiet</I> option is given) then sending a
+SIG_USR1 (or SIGINFO in FreeBSD) signal to the running ddpt process will
+toggle the verbose flag between 0 and 1. Note there is now a shorter
+form, the command line option: <I>--progress</I> or simply '-p'.
+<BR>
+
+Note that GNU's dd supports 'noxfer', 'none' and 'progress' with similar
+semantics.
+<DT><B>to</B>=<I>TO</I><DD>
+odx, xcopy: where <I>TO</I> is am xcopy originating command timeout in seconds.
+The default value is 0 which is converted internally to 600 seconds (10
+minutes). Best to set this timeout value well above the expected copy time.
+In a odx full copy this timeout is applied to both the POPULATE TOKEN
+and WRITE USING TOKEN commands.
+<DT><B>verbose</B>=<I>VERB</I><DD>
+as <I>VERB</I> increases so does the amount of debug reporting sent to stderr.
+Default value is zero which yields the minimum amount of debug reporting.
+A value of 1 reports extra information that is not repetitive. A value
+2 reports cdbs and responses for SCSI commands that are not repetitive
+(i.e. other that READ and WRITE). Error processing is not considered
+repetitive. Values of 3 and 4 yield reporting for all SCSI commands, plus
+Unix read() and write() calls, so there can be a lot of output.
+<BR>
+
+If <I>VERB</I> is &quot;-1&quot; then reporting that would have been sent to stderr
+is redirected to /dev/null essentially throwing it away. It has the same
+action as the <I>--quiet</I> option.
+<BR>
+
+In some cases the position of <I>verbose=VERB</I> (or <I>--verbose</I>)
+on the command line is significant. For example to debug (or at least
+list out) a scatter gather list given to <I>skip=SKIP</I> or
+<I>seek=SEEK</I> the <I>verbose=VERB</I> operand (or <I>--verbose</I>)
+should appear before skip and/or seek.
+</DL>
+<A NAME="lbAF">&nbsp;</A>
+<H2>OPTIONS</H2>
+
+Options are listed in alphabetical order, sorted by their long name.
+<DL COMPACT>
+<DT><B>-d</B>, <B>--dry-run</B><DD>
+does all the operand and option processing, opens given file and devices but
+bypasses the copy stage. For complex command line invocations or for testing
+invocations to be placed in script files, this option may be useful to check
+for syntax and related errors.
+<BR>
+
+When used once the logic bypasses the copy just before it would normally
+start copying. When used twice (or more) it goes deeper into the copy to the
+IO call level before bypassing the calls. To see (on stderr) information
+for each IO this option combination may be useful: '-ddvv'.
+<DT><B>-f</B>, <B>--flexible</B><DD>
+this option currently only effects the parsing of sgl_s in files that are in
+hexadecimal plus they have a leading line with 'HEX' in them. Without this
+option any such line must be invoked with 'H@' before the filename; in other
+words the 'H' in the invocation needs to match the HEX in the file. With
+this option a sgl in a file can be invoked with '@' and if a line with HEX
+is parsed before any LBA,NUM pairs then it switches to hexadecimal mode; so
+all the parsed LBA,NUM pairs are assumed to be in hexadecimal.
+<DT><B>-h</B>, <B>--help</B><DD>
+reports usage message then exits.
+<DT><B>--job</B>=<I>JF</I><DD>
+where <I>JF</I> is a file name. That file can contain operands and options
+listed in this and the previous sections. See the JOB FILES section below.
+<DT><B>-o</B>, <B>--odx</B><DD>
+indicates to this utility that one of the four odx variants is requested.
+See ODX section.
+<DT><B>-P</B>, <B>--prefetch</B><DD>
+this option is only active when the <I>--verify</I> option is also given.
+It causes the SCSI PRE-FETCH(OFILE, IMMED) command to be sent at the start
+of each copy segment. See the VERIFY section below.
+<DT><B>-p</B>, <B>--progress</B><DD>
+this option has the same effect as status=progress but is shorter to type
+and easier to remember. When given once, the default reporting period is
+two minutes, if given twice (e.g. '-pp') that period is shortened to
+one minute.
+<DT><B>-q</B>, <B>--quiet</B><DD>
+redirects the messages (sent to stderr) to /dev/null which is essentially
+throwing them away. That redirect takes place after the command line
+operands and options are parsed and associated sanity checks performed.
+<DT><B>-v</B>, <B>--verbose</B><DD>
+equivalent of <I>verbose=1</I>. If <I>--verbose</I> appears twice then
+that is equivalent to <I>verbose=2</I>. Also <I>-vv</I> is equivalent to
+<I>verbose=2</I>.
+<DT><B>-X</B>, <B>--verify</B><DD>
+rather than copy, a comparison is done between <I>IFILE</I> and <I>OFILE</I>.
+The compare continues until an inequality is found at which point the
+operation stops. This is only available if <I>OFILE</I> is a pass-through
+device that implements VERIFY(10 or 16) with BYTCHK set to 1. See the
+VERIFY section below.
+<BR>
+
+If both are regular files then the Unix command 'cmp' can be used.
+<DT><B>-V</B>, <B>--version</B><DD>
+reports version number information then exits.
+<DT><B>-w</B>, <B>--wscan</B><DD>
+this option is available in Windows only. It lists storage device names
+and the corresponding volumes, if any. When used twice it adds the &quot;bus
+type&quot; of the closest transport (e.g. a SATA disk in a USB connected
+enclosure has bus type USB). When used three times a SCSI adapter scan
+is added. When used four times only a SCSI adapter scan is shown.
+See EXAMPLES section below and the README.win32 file.
+<DT><B>-x</B>, <B>--xcopy</B><DD>
+this option will attempt to call the SCSI EXTENDED COPY(LID1) command. In
+the absence of another indication the xcopy command will be sent to the
+destination (i.e. <I>OFILE</I>). See the section on ENVIRONMENT VARIABLES
+below.
+</DL>
+<A NAME="lbAG">&nbsp;</A>
+<H2>ARGUMENTS</H2>
+
+Arguments do not start with hyphen nor contain a &quot;=&quot;.
+<DL COMPACT>
+<DT><B>ddpt</B><DD>
+this string is just a marker. It must not appear in the command line and
+it must appear in the contents of a job file that isn't part of a
+comment (i.e. following a &quot;#&quot; on a line). A syntax error is generated (and
+no copy occurs) if these rules are violated.
+<DT><B>JF</B><DD>
+a command line element that does not contain a '=' (i.e. a ddpt operand)
+and does not start with '-', apart from the string &quot;ddpt&quot; is treated as a
+job file (i.e. <I>JF</I>). See the JOB FILES section below.
+</DL>
+<A NAME="lbAH">&nbsp;</A>
+<H2>CONVERSIONS</H2>
+
+One or more conversions can be given to the &quot;conv=&quot; option. If more than
+one is given, they should be comma separated. ddpt does not perform the
+traditional dd conversions (e.g. ASCII to EBCDIC). Recently added
+conversions inherited from GNU's dd overlap somewhat with the some of ddpt
+flags.
+<DL COMPACT>
+<DT>fdatasync<DD>
+equivalent to &quot;oflag=fdatasync&quot;. Flushes data associated with the
+<I>OFILE</I> to storage at the end of the copy. This conversion is
+for compatibility with GNU's dd.
+<DT>fsync<DD>
+equivalent to &quot;oflag=fsync&quot;. Flushes data and meta-data associated
+with the <I>OFILE</I> to storage at the end of the copy. This conversion
+<DT>no_del_tkn<DD>
+equivalent to &quot;oflag=no_del_tkn&quot;.
+<DT>nocreat<DD>
+<I>OFILE</I> will not be created if it doesn't exist. The default action
+if <I>OFILE</I> does not exist is to create a regular file (then write
+into it). The default action can be surprising if writing to a device
+node in /dev and due to some external action (e.g. a USB key being
+removed) that device node name disappears.
+<DT>noerror<DD>
+this conversion is very close to &quot;iflag=coe&quot; and is treated as such. See
+the &quot;coe&quot; flag. Note that an error on a block device or regular file
+<I>OFILE</I> will stop the copy.
+<DT>notrunc<DD>
+this conversion is accepted for compatibility with dd and ignored since
+the default action of this utility is not to truncate <I>OFILE</I>.
+<DT>null<DD>
+has no affect, just a placeholder.
+<DT>prefer_rcs<DD>
+equivalent to &quot;oflag=prefer_rcs&quot;.
+<DT>resume<DD>
+See &quot;resume&quot; in the FLAGS sections for more information.
+<DT>rtf_len<DD>
+equivalent to &quot;oflag=rtf_len&quot;.
+<DT>sparing<DD>
+See &quot;sparing&quot; in the FLAGS sections for more information.
+<DT>sparse<DD>
+FreeBSD's dd supports &quot;conv=sparse&quot; and now GNU's dd does as well so the
+same syntax is supported in ddpt. See &quot;sparse&quot; in the FLAGS sections for
+more information.
+<DT>sync<DD>
+is ignored by ddpt. With dd it means supply zero fill (rather than skip)
+and is typically used like this &quot;conv=noerror,sync&quot; to have the same
+functionality as ddpt's &quot;iflag=coe&quot;.
+<DT>trunc<DD>
+if <I>OFILE</I> is a regular file then truncate it prior to starting the
+copy. See &quot;trunc&quot; in the FLAGS section.
+</DL>
+<A NAME="lbAI">&nbsp;</A>
+<H2>FLAGS</H2>
+
+A list of flags and their meanings follow. The flag name is followed
+by one or two indications in square brackets. The first indication is
+either &quot;[i]&quot;, &quot;[o]&quot; or &quot;[io]&quot; indicating this flag is active for the
+<I>IFILE</I>, <I>OFILE</I> or both the <I>IFILE</I> and the <I>OFILE</I>. The
+second indication contains some combination of &quot;reg&quot;, &quot;blk&quot; &quot;pt&quot;, &quot;odx&quot;,
+or &quot;xcopy&quot;. These indicate whether the flag applies to a regular file, a
+block device (accessed via Unix read() and write() commands, a pass-through
+device, an ODX offloaded copy or a XCOPY(LID1) offloaded copy respectively.
+Other special file types that are sometimes referred to are &quot;fifo&quot;
+and &quot;tape&quot;.
+<DL COMPACT>
+<DT>00 [i]<DD>
+This flag may replace <I>IFILE</I> with a source of zero (0x0) bytes. If
+<I>IFILE</I> is given and is shorter than <I>OFILE</I> then it continues
+to copy after <I>IFILE</I> is exhausted supplying zero fill bytes. Can
+only be used on input. Zeros can also be generated by
+using &quot;if=/dev/zero&quot; or an equivalent.
+<BR>
+
+If both '00' and 'ff' flags are given then a marching byte pattern is placed
+in the segment prior to writing it out. It starts at 0x0 and wraps after
+0xff (if the segment is large enough, as it usually is).
+<DT>append [o] [reg], [io] [odx]<DD>
+causes the O_APPEND flag to be added to the open of <I>OFILE</I>. For regular
+files this will lead to data being appended to the end of any existing
+data. Conflicts the <I>seek=SEEK</I> option. The default action of this
+utility is to overwrite any existing data from the beginning of <I>OFILE</I>
+or, if <I>SEEK</I> is given, starting at block <I>SEEK</I>. Note that
+attempting to 'append' to a device file (e.g. a disk) will usually be
+ignored or may cause an error to be reported.
+<BR>
+
+odx: if the <I>rtf=RTF</I> option is given, <I>RTF</I> exists, is a regular
+file and this utility wants to write to <I>RTF</I> then new ROD Tokens are
+appended to <I>RTF</I>. The default action is to truncate <I>RTF</I> before
+new ROD Tokens are written to it.
+<DT>atomic [o] [pt]<DD>
+this flag changes the pass-through SCSI WRITE command to the SCSI WRITE
+ATOMIC(16) command on <I>OFILE</I> (and the <I>cdbsz=</I>{6|10|12|16|32}
+option is ignored for <I>OFILE</I>). If this flag is applied to <I>IFILE</I>
+or to a non pass-through file then it is ignored.
+<DT>block [io] [pt]<DD>
+pass-through file opens are non-blocking by default and may report the
+pt device is busy. Use this flag to open blocking so utility may wait until
+another process locking (or with an exclusive open) is complete before
+continuing.
+<DT>bytchk [o] [pt]<DD>
+only active when used together with oflag=wverify. Sets the BYTCHK field in
+the SCSI WRITE AND VERIFY command. Since that field is two bits wide, this
+flag can be specified multiple times (up to three) to place the corresponding
+value in the field.
+<DT>cat [io] [xcopy]<DD>
+xcopy: set CAT (residual data handling) bit in EXTENDED COPY(LID1) parameter
+list segment descriptor header. May appear in either flag list when xcopy is
+being used. Works with the PAD bit for handling residual data on the
+destination side. See the XCOPY section below.
+<DT>coe [io] [pt], [i] [reg,blk]<DD>
+continue on error. 'iflag=coe oflag=coe' and 'coe=1' are equivalent.
+Errors occurring on output regular or block files will stop ddpt.
+Error messages are sent to stderr. This flag is similar
+to 'conv=noerror,sync' in the
+<B><A HREF="../man1/dd.1.html">dd</A>(1)</B>
+
+utility. Unrecovered errors are counted and reported in the summary at
+the end of the copy.
+<DT><DD>
+This paragraph concerns coe on pt devices. A medium, hardware or blank
+check error during a read operation will will cause the following: first
+re-read blocks prior to the bad block, then try to recover the bad
+block (supplying zeros if that fails), and finally re-read the blocks
+after the bad block. A medium, hardware or blank check error while writing
+is reported but otherwise ignored. SCSI disks may automatically try and
+remap faulty sectors (see the AWRE and ARRE in the read write error
+recovery mode page (the sdparm utility can access these attributes)). If
+bad LBAs are reported by the pass-through then the LBA of the lowest and
+highest bad block is also reported.
+<DT><DD>
+This paragraph concerns coe on input regular files and block devices.
+When a EIO or EREMOTEIO error is detected on a normal segment read then
+the segment is re-read one block (i.e. <I>IBS</I> bytes) at a time. Any
+block that yields a EIO or EREMOTEIO error is replaced by zeros. Any
+other error, a short read or an end of file will terminate the copy,
+usually after the data that has been read is written to the output file.
+<DT>dc [io] [blk,pt]<DD>
+xcopy: set DC (destination counter) bit in EXTENDED COPY(LID1) parameter
+list segment descriptor header. May appear in either flag list when xcopy is
+being used.
+<DT>direct [io] [reg,blk]<DD>
+causes the O_DIRECT flag to be added to the open of <I>IFILE</I> and/or
+<I>OFILE</I>. This flag requires some memory alignment on IO. Hence user
+memory buffers are aligned to the page size. May have no effect on pt
+devices or cause an error (e.g. Linux seems to dis-allow O_DIRECT on
+character devices (like sg devices) yielding EINVAL). This flag will
+bypass caching/buffering normally done by block layer. Beware of data
+coherency issues if the same locations have been recently accessed via the
+block layer in its normal mode (i.e. non-direct). See <A HREF="../man2/open.2.html">open</A>(2) man page.
+<DT>dpo [io] [pt]<DD>
+set the DPO bit (disable page out) in SCSI READ and WRITE commands. Not
+supported for 6 byte cdb variants of READ and WRITE. Indicates that
+data is unlikely to be required to stay in device (e.g. disk) cache.
+May speed media copy and/or cause a media copy to have less impact
+on other device users.
+<DT>errblk [i] [pt] [experimental]<DD>
+attempts to create or append to a file called &quot;errblk.txt&quot; in the current
+directory the logical block addresses of blocks that cannot be read. The
+first (appended) line is &quot;# start &lt;timestamp&gt;&quot;. That is followed by the
+LBAs in hex (and prefixed with &quot;0x&quot;) of any block that cannot be read,
+one LBA per line. If the sense data does not correctly identify the LBA of
+the first error in the range it was asked to read then a LBA range is
+reported in the form of the lowest and the highest LBA in the range
+separated by a &quot;-&quot;. At the end of the copy a line with &quot;# stop &lt;timestamp&gt;&quot;
+is appended to &quot;errblk.txt&quot;. Typically used with &quot;coe&quot;.
+<DT>excl [io] [reg,blk]<DD>
+causes the O_EXCL flag to be added to the open of <I>IFILE</I> and/or
+<I>OFILE</I>. See <A HREF="../man2/open.2.html">open</A>(2) man page.
+<DT>fdatasync [o] [reg,blk]<DD>
+Flushes data associated with the <I>OFILE</I> to storage at the end of the
+copy.
+<DT>ff [i]<DD>
+This flag may replace <I>IFILE</I> with a source of 0xff bytes. If
+<I>IFILE</I> is given and is shorter than <I>OFILE</I> then it continues to
+copy after <I>IFILE</I> is exhausted supplying 0xff fill bytes. Can only be
+used on input.
+<BR>
+
+If both '00' and 'ff' flags are given then a marching byte pattern is placed
+in the segment prior to writing it out. It starts at 0x0 and wraps after
+0xff (if the segment is large enough, as it usually is).
+<DT>flock [io] [reg,blk,pt]<DD>
+after opening the associated file (i.e. <I>IFILE</I> and/or <I>OFILE</I>)
+an attempt is made to get an advisory exclusive lock with the flock()
+system call. The flock arguments are &quot;FLOCK_EX | FLOCK_NB&quot; which will
+cause the lock to be taken if available else a &quot;temporarily unavailable&quot;
+error is generated. An exit status of 90 is produced in the latter case
+and no copy is done. See <A HREF="../man2/flock.2.html">flock</A>(2) man page.
+<DT>force [io] [pt] [xcopy,odx]<DD>
+override difference between given block size and the block size found
+by the SCSI READ CAPACITY command. Use the given block size. Without
+this flag the copy would not be performed. pt access to what appears
+to be a block partition is aborted in version 0.92; that can be overridden
+by the force flag. For related reasons the 'norcap' flag requires this
+flag when applied to a block device accessed via pt.
+<BR>
+
+xcopy and odx: various limits imposed by associated VPD pages or the RECEIVE
+COPY OPERATING PARAMETERS command can be overridden (i.e.  exceeded) if this
+flag is given. Note that the copy manager will probably object.
+<DT>fsync [o] [reg,blk]<DD>
+Flushes data and metadata (describing the file) associated with the
+<I>OFILE</I> to storage at the end of the copy.
+<DT>fua [io] [pt]<DD>
+causes the FUA (force unit access) bit to be set in SCSI READ and/or WRITE
+commands. The 6 byte variants of the SCSI READ and WRITE commands do not
+support the FUA bit.
+<DT>fua_nv [io] [pt]<DD>
+causes the FUA_NV (force unit access non-volatile cache) bit to be set in
+SCSI READ and/or WRITE commands. This only has an effect with pt devices.
+The 6 byte variants of the SCSI READ and WRITE commands do not support the
+FUA_NV bit. The FUA_NV bit was made obsolete in SBC-3 revision 35d.
+<DT>ignoreew [o] [tape]<DD>
+ignore the early warning indication (of end of tape) when writing to tape.
+See TAPE section.
+<DT>immed [io] [odx]<DD>
+sets the IMMED bit in the POPULATE TOKEN (when [i]) or WRITE USING
+TOKEN (when [o]) command. That command should return status promptly after
+starting the data transfer. The RECEIVE ROD TOKEN INFORMATION command is then
+used to poll for completion. SCSI command timeouts should not be exceeded,
+even for very large RODs, if this flag is used.
+<DT>nocache [io] [reg,blk]<DD>
+use posix_fadvise(POSIX_FADV_DONTNEED) to advise corresponding file there is
+no need to fill the file buffer with recently read or written blocks. If
+used with &quot;iflag=&quot; it will increase the read ahead on <I>IFILE</I>.
+<DT>no_del_tkn [o] [odx]<DD>
+will clear the DEL_TKN bit on the last WRITE USING TOKEN command of each ROD
+Token in a odx full copy. In a large odx full copy several ROD Tokens may
+be used (one after the other). The default action is to set the DEL_TKN bit
+on the last WUT command of each ROD. Either way it should not make much
+difference because the copy manager deletes a ROD Token when its inactivity
+time-out occurs.
+<DT>nocreat [o]<DD>
+if <I>OFILE</I> does not exist then an error will be generated rather than
+creating an empty regular file. This flag has the same action
+as &quot;conv=nocreat&quot;.
+<DT>nofm [o] [tape]<DD>
+no File Mark (FM) on close when writing to tape. See TAPE section.
+<DT>nopad [o] [tape]<DD>
+when the block to be written to a tape drive contains less than <I>OBS</I>
+bytes, then this option causes the partial block to be written as is. The
+default action for a tape in this case is to pad the block. See TAPE section.
+<DT>norcap [io] [pt]<DD>
+do not perform SCSI READ CAPACITY command on the corresponding pt device.
+If used on block device accessed via pt then 'force' flag is also
+required. This is to warn about using pt access on what may be a block
+device partition.
+<DT>nowrite [o] [reg,blk,pt]<DD>
+bypass writes to <I>OFILE</I>. The &quot;records out&quot; count is not incremented.
+<I>OFILE</I> is still opened but &quot;oflag=trunc&quot; if given is ignored. Also
+the ftruncate call associated with the sparse flag is ignored (i.e.
+bypassed). Commands such as trim and SCSI SYNCHRONIZE CACHE are still sent.
+<DT>null [io]<DD>
+has no affect, just a placeholder.
+<DT>odx [io] [odx]<DD>
+indicates to this utility that one of the four variants of an odx copy is
+requested. Using any of the <I>--odx</I>, <I>rtf=RTF</I> or <I>rtype=RTYPE</I>
+options also indicates that odx is requested. See the ODX section.
+<DT>pad [o] [reg,blk,pt], [io] [xcopy]<DD>
+when the block to be written (typically the last block) contains less than
+<I>OBS</I> bytes, then this option causes the block to be padded with
+zeros (i.e. bytes of binary zero). The default action for a regular file
+and a fifo is to do a partial write. The default action of a block
+and a pt device is to ignore the partial write. The default action of
+a tape is to pad, so this flag is not needed (see the nopad flag).
+<BR>
+
+xcopy: sets the PAD bit in the CSCD descriptor of the associated <I>IFILE</I>
+or <I>OFILE</I>. Is associated with residual data handling and works
+together with the cat flag. See the XCOPY section below.
+<DT>prealloc [o] [reg]<DD>
+use the fallocate() call prior to starting a copy to set <I>OFILE</I> to its
+expected size.
+<DT>prefer_rcs [o] [odx]<DD>
+prefer RECEIVE COPY STATUS (RCS) command to the RECEIVE ROD TOKEN
+INFORMATION (RRTI) command which is the default. This only is active when
+polling after a WUT command (since polling after a PT command needs
+to fetch the ROD Token so it needs the RRTI command).
+<DT>pt [io] [blk,pt]<DD>
+causes a device to be accessed in &quot;pt&quot; mode. In &quot;pt&quot; mode SCSI READ and
+WRITE commands are sent to access blocks rather than standard UNIX read()
+and write() commands. The &quot;pt&quot; mode may be implicit if the device is only
+capable of passing through SCSI commands (e.g. the /dev/sg* and
+some /dev/bsg/* devices in Linux). This flag is needed for device nodes
+that can be accessed both via standard UNIX read() and write() commands
+as well as SCSI commands. Such devices default standard UNIX read()
+and write() commands in the absence of this flag.
+<DT>random [i]<DD>
+this flag is only active with <I>iflag=</I> and when given replaces
+<I>if=IFILE</I>. If both are given an error is generated. The input will
+be a stream of pseudo random bytes. The Linux <A HREF="../man2/getrandom.2.html">getrandom</A>(2) system call is
+used to create a seed and there after <A HREF="../man3/mrand48.3.html">mrand48</A>(3) is used to generate a
+pseudo random sequence, 4 bytes at a time. The quality of the randomness
+can be viewed with the <A HREF="../man1/ent.1.html">ent</A>(1) utility. This is not a high quality random
+number generator, it is built for speed, not quality. One application is
+checking the correctness of the copy and verify operations of this utility.
+<DT>rarc [i] [pt]<DD>
+bit set in READ(10, 12, 16 and 32) to suppress RAID rebuild functions
+when a bad (or recovered after difficulties) block is detected.
+<DT>resume [o] [reg]<DD>
+when a copy is interrupted (e.g. with Control-C from the keyboard)
+then using the same invocation again with the addition of &quot;oflag=resume&quot;
+will attempt to restart the copy from the point of the interrupt (or
+just before that point). It is harmless to use &quot;oflag=resume&quot; when
+<I>OFILE</I> doesn't exist or is zero length. If the length of <I>OFILE</I>
+is greater than or equal to the length implied by a ddpt invocation that
+includes &quot;oflag=resume&quot; then no further data is copied.
+<DT>self [io] [pt]<DD>
+used together with trim flag to do a self trim (trim of segments of a
+pt device that contain all zeros). If <I>OFILE</I> is not given, then
+it is set to the same as <I>IFILE</I>. If <I>SEEK</I> is not given it
+set to the same value as <I>SKIP</I> (possibly adjusted if <I>IBS</I>
+and <I>OBS</I> are different). Implicitly sets &quot;nowrite&quot; flag.
+<DT>sparing [o] [reg,blk,pt]<DD>
+during the copy each <I>IBS</I> * <I>BPT</I> byte segment is read from
+<I>IFILE</I> into a buffer. Then, instead of writing that buffer to
+<I>OFILE</I>, the corresponding segment is read from <I>OFILE</I> into another
+buffer. If the two buffers are different, the former buffer is written to
+the <I>OFILE</I>. If the two buffers compare equal then the write to
+<I>OFILE</I> is not performed. Write sparing is useful when a write operation
+is significantly slower than a read. Under some conditions flash memory
+devices have slow writes plus an upper limit on the number of times the same
+cell can be rewritten. The granularity of the comparison can be reduced from
+the default <I>IBS</I> * <I>BPT</I> byte segment with the the <I>OBPC</I> value
+given to the &quot;bpt=&quot; option. The finest granularity is when <I>OBPC</I> is 1
+which implies <I>OBS</I> bytes.
+<DT>sparse [io] [reg,blk,pt]<DD>
+after each <I>IBS</I> * <I>BPT</I> byte segment is read from <I>IFILE</I>, it
+is checked to see if it is all zeros. If so, that segment is not written to
+<I>OFILE</I>. See the section on SPARSE WRITES below for the difference
+between using this flag once or twice. The granularity of the zero comparison
+can be reduced from the default <I>IBS</I> * <I>BPT</I> byte segment with the
+<I>OBPC</I> value given to the &quot;bpt=&quot; option.
+<BR>
+
+The sparse flag may be used on input when a file is only being read (e.g.
+when <I>of=OFILE</I> is not given or <I>OFILE</I> is /dev/null) to determine
+how many blocks are contained in sparse segments of <I>IFILE</I>.
+<DT>ssync [o] [pt]<DD>
+if <I>OFILE</I> is in &quot;pt&quot; mode then the SCSI SYNCHRONIZE CACHE command is
+sent to <I>OFILE</I> at the end of the copy.
+<DT>strunc [o] [reg]<DD>
+perform a sparse copy with a ftruncate system call to extend the length
+of the <I>OFILE</I> if required. Sets the sparse flag internally if this
+has not been specified on the command line. See the sparse flag and the
+section on SPARSE WRITES below.
+<DT>sync [io] [reg,blk]<DD>
+causes the O_SYNC flag to be added to the open of <I>IFILE</I> and/or
+<I>OFILE</I>. See <A HREF="../man2/open.2.html">open</A>(2) man page.
+<DT>rtf_len [io] [odx]<DD>
+odx: with the 'read to tokens' variant, after 512 bytes of each ROD Token
+are written to <I>RTF</I> an additional 8 byte (big endian) integer is
+written. That integer is the number of bytes that the associated ROD
+represents. The draft standards say for standard ROD types the ROD Token
+contains this value. However vendor specific ROD types may be used or
+vendors may choose not to comply. Either way the 'write from tokens'
+variant needs to know the data size associated with the ROD it is writing
+from.
+<DT>trim [io] [pt] [experimental]<DD>
+similar logic to the &quot;sparse&quot; option. However instead of skipping segments
+that are full of zeros a &quot;trim&quot; command is sent to <I>OFILE</I>. Usually set
+as an oflag argument but for self trim can be used as an iflag
+argument (e.g. &quot;iflag=self,trim&quot;). Depending on the usage this may require
+the device to support &quot;deterministic read zero after trim&quot;. See the
+TRIM, UNMAP AND WRITE SAME section below.
+<DT>trunc [o] [reg]<DD>
+if <I>OFILE</I> is a regular file then it is truncated prior to starting the
+copy. If <I>SEEK</I> is not given or 0 then <I>OFILE</I> is truncated to zero
+length; when <I>SEEK</I> is larger than zero the truncation takes place at
+file byte pointer <I>SEEK*OBS</I>.  Ignored if &quot;oflag=append&quot;. Conflicts
+with &quot;oflag=sparing&quot;.
+<DT>unmap [io] [pt]<DD>
+same as the trim flag.
+<DT>wverify [o] [pt]<DD>
+this causes SCSI WRITE AND VERIFY commands to be sent to <I>OFILE</I> (instead
+of SCSI WRITE (or WRITE ATOMIC) commands). Note that the fua flag is ignored
+when this flag is given. The BYTCHK field in the SCSI WRITE AND VERIFY
+commands is set to zero unless the bytchk flag is also given.
+<DT>wstream [o] [pt]<DD>
+this causes SCSI WRITE STREAM(16) command to be sent to <I>OFILE</I> (instead
+of SCSI WRITE. The Stream Identify (valid range: 1 to 0xffff (65535)) should
+be given via the <I>list_id=LID</I> operand (note that it defaults to 0 which
+is invalid). The stream can be created (closed (for write) or its status
+checked) with the sg_stream_ctl utility. It is the user's responsibility
+to open a stream before calling &quot;ddpt ... oflag=wstream list_id=&lt;strm_id&gt;&quot;
+and close it after, if required.
+<DT>xcopy [io] [pt]<DD>
+invoke SCSI XCOPY(LID1) logic and send the XCOPY command to the either
+<I>IFILE</I> or <I>OFILE</I> depending on which flag this called. If both are
+given (i.e. an invocation including 'iflag=xcopy  oflag=xcopy') then send
+the XCOPY(LID1) to <I>OFILE</I>.
+</DL>
+<A NAME="lbAJ">&nbsp;</A>
+<H2>COUNT</H2>
+
+When the <I>count=COUNT</I> option is not given (or <I>COUNT</I> is '-1')
+then an attempt is made to deduce <I>COUNT</I> as follows.
+<P>
+
+When both or either <I>IFILE</I> and <I>OFILE</I> are block devices, then
+the minimum size, expressed in units of input blocks, is used. When both
+or either <I>IFILE</I> and <I>OFILE</I> are pass-through devices, then the
+minimum size, expressed in units of input blocks, is used.
+<P>
+
+If a regular file is used as input, its size, expressed in units of input
+blocks (and rounded up if necessary) is used. Note that the rounding up
+of the deduced <I>COUNT</I> may result in a partial read of the last input
+block and a corresponding partial write to <I>OFILE</I> if it is a regular
+file. After a regular file to regular file copy the length of <I>OFILE</I>
+will be the same as <I>IFILE</I> unless <I>OFILE</I> existed and its length
+was already greater than that of <I>IFILE</I>. To get a copy like the
+standard Unix cp command, use oflag=trunc with ddpt.
+<P>
+
+The size of pt devices is deduced from the SCSI READ CAPACITY command.
+Block device sizes (or their partition sizes) are obtained from the
+operating system, if available.
+<P>
+
+If <I>skip=SKIP</I> or <I>seek=SEEK</I> are given and the <I>COUNT</I> is
+deduced (i.e. not explicitly given) then that size is scaled back so
+that the copy will not overrun the file or device.
+<P>
+
+If <I>COUNT</I> is not given and <I>IFILE</I> is a fifo (and stdin is
+treated as a fifo) then <I>IFILE</I> is read until an EOF is detected.
+If <I>COUNT</I> is not given and <I>IFILE</I> is a /dev/zero (or
+equivalent) then zeros are read until an error occurs (e.g. file
+system full).
+<P>
+
+If <I>COUNT</I> is not given and cannot be deduced then an error message
+is issued and no copy takes place.
+<A NAME="lbAK">&nbsp;</A>
+<H2>JOB FILES</H2>
+
+Some operands can have long arguments (e.g. <I>skip=SKIP</I> and
+<I>iflag=FLAGS</I>) so that the command line can become quite long. Also
+scatter gather lists can be arbitrarily long and may be generated by a
+program; then it would be tiresome and error-prone to re-type them
+on the command line. So the job file was introduced to hold this utility's
+operands and options.
+<P>
+
+A job file is invoked by either the <I>--job=JF</I> option or by placing
+the job filename (<I>JF</I>) unadorned on the command line. The job filename
+cannot contain a &quot;=&quot;, start with a hyphen nor be called &quot;ddpt&quot;. It is parsed
+when it is detected, in a left to right scan of the command line. The
+<I>JF</I> file must contain the string &quot;ddpt&quot; and may invoke other job
+files (to a maximum depth of 4). A job file should not invoke itself. Also
+the first line of the job file should not contain any characters (bytes)
+with their top bit set; in other words it should be restricted to 7 bit
+ASCII (otherwise sanity checks might think it is a binary file and reject it).
+<P>
+
+The operands and options within a job file are processed in the order
+they are found (i.e. parsing lines left to right, top (of file) to bottom).
+The operands and options may contradict (and cause a syntax error), override
+or accumulate with earlier ones, the same as if they appeared on the command
+line. For example '-v' on the command line followed by a job file
+containing '-vv' will result in a verbosity level of '-vvv' during the
+copy phase. Empty lines, lines only containing whitespace(s) and anything
+from and including a '#' in a job file line are ignored.
+<P>
+
+Some examples of job files can be found in the testing directory of the
+ddpt source with the filename extension &quot;.jf&quot;.
+<A NAME="lbAL">&nbsp;</A>
+<H2>SCATTER GATHER LISTS</H2>
+
+Each element of a scatter gather list (sgl, plural: sgl_s) is made up of a
+starting logical block address (LBA, plural: LBAs), and a number of
+blocks (NUM) to be accessed from that starting LBA.
+<P>
+
+The <I>skip=SKIP</I> and <I>seek=SEEK</I> options (and their aliases) can take
+scatter gather lists. These can be explicit on the command line, fed in
+through stdin or in a file whose name is prefixed by &quot;@&quot; or &quot;H@&quot; on the
+command line. For large scatter gather lists, placing them in a file is the
+most practical as command lines are limited in length. Scatter gather
+list (sgl) is a collective term for either a scatter list or a gather list.
+The actual implementation of each sgl is an array. Syntactically a scatter
+list and a gather list are the same.
+<P>
+
+Conceptually these sgl_s refer to what happens at the &quot;far end&quot; (e.g. within
+a hard disk or SSD), not what happens in the computer's memory. So a gather
+list is associated with the read part of a copy (i.e. the first half) where
+a list of Logical Blocks (LBs, identified by their addresses, hence LBAs) and
+a number of consecutive, following blocks are &quot;gathered&quot; from the
+medium (e.g. a SSD). They are formed into a linear sequence of bytes that is
+transferred into a segment in the computer's RAM. The second half of the
+copy, the write part, may use a scatter list. A scatter list starts with a
+linear sequence of bytes, taken from the segment, that is transferred to the
+device and then &quot;scattered&quot; on the medium as indicated by the list of
+LBA,NUM pairs.
+<P>
+
+In the simplest case a sgl is given on the command line and has the form:
+LBA1,NUM1[,LBA2,NUM2[,LBA3,NUM3...]]. There must be an even number of
+items (i.e. for every LBAn there should be a following NUMn) with one
+exception: when LBA1 alone is given, in which case the value 0 is assumed
+for NUM1. Comma is the simplest separator for the command line, but
+whitespace may also be used (but needs to be escaped because the shell
+usually interprets whitespace as an option separator). In a file (or read
+from stdin or file redirection) more flexibility is permitted in the format.
+The LBA,NUM pairs could all appear on one line in a file but the line
+length is limited to 1024 characters (with a maximum of 256 parse-able items
+on it). So for longer sgl_s one pair per line is recommended in file format.
+Also in file format everything from and including '#' to the end of that
+line is ignored as are lines that are empty or only contain whitespace(s).
+<P>
+
+Each pair becomes one element (or more, see below) of the sgl. By default
+all numbers given for LBA and NUM items are in decimal with optional suffix
+multipliers. Hex numbers use either a &quot;0x&quot; prefix or a 'h' suffix (hex
+notation and suffix multipliers cannot be mixed). In the case of a 'H@'
+lead-in to the filename on the command line, all numbers are interpreted
+as hex with no suffix multipliers permitted. Further, with the 'H@'
+lead-in the file may contain the string 'HEX' before any numbers are
+given. The 'HEX' is ignored. The point of this is to catch when a sgl
+file with default hexadecimal numbers is given without the 'H@' lead-in;
+in this case this utility will exit saying that file is in the wrong format.
+This &quot;wrong format&quot; action can be bypassed with the <I>--flexible</I>
+option.
+<P>
+
+Allowing sgl_s brings lots of flexibility (including the possibility to use
+the SCSI WRITE SCATTERED command) but with that comes complexity. Every sgl
+is scanned to determine if it is monotonic and whether it has overlapping
+elements. The term monotonic is used to indicate whether each LBA is in
+ascending order, with each LBA greater than the previous element's LBA.
+Overlapping refers to the situation when any element's LBA range intersects
+with any other element's range. Elements that have zero number of
+blocks (described here as &quot;degenerate&quot;) are ignored for determining
+monotonic and overlapping (and the lowest LBA). Overlapping elements are not
+ideal (but not necessarily fatal). The above mentioned WRITE SCATTERED
+command allows the medium's logic to write elements in any order it prefers.
+That means if elements overlap, then the user doesn't know which one gets
+written last (overwriting the one written to the same LBA earlier).
+Determining whether element ranges overlap is difficult in the general
+case (so this utility doesn't do it) but easy in the case of a monotonic
+sgl (so this utility does do it). Warnings are issued in dangerous
+situations, with the force flag allowing the warning to be overridden.
+<P>
+
+A degenerate sgl element is one that has zero in its NUM field.
+Normally degenerate elements are ignored with some exceptions. The
+definition of the SCSI WRITE SCATTERED command clearly states that degenerate
+elements are valid, thus do not cause an error, but cause no associated
+action. This utility uses the concept of a 'hard' and 'soft' sgl: a 'soft'
+sgl is one in which the last element's NUM is zero (i.e.
+its last element is degenerate). A sgl with a non-zero NUM in
+its last element is considered 'hard'. In a 'soft' sgl the LBA of the last
+element should be greater than or equal to any LBA+NUM of earlier elements.
+Because this is hard to check it is not enforced, so the decision is made
+on whether a sgl is hard or soft simply by checking the NUM of that last
+element. The difference between a hard and soft sgl is the way the sum of
+NUM of all elements is used by this utility.  For a 'hard' sgl
+that sum is used for <I>COUNT</I> when the <I>count=COUNT</I> option is not
+given; and if <I>count=COUNT</I> is given and the counts differ then those
+two values are output and this utility exits with a syntax error. For
+a 'soft' sgl the degenerate last element is interpreted as &quot;from the
+highest LBA in the list to the end of the copy&quot; where the <I>COUNT</I> is
+determined some other way. The &quot;highest LBA&quot; is calculated from all
+elements that have a non-zero number of blocks plus the LBA of the last
+element (regardless of whether it is degenerate or not).
+<P>
+
+The rules in the above paragraph make a one item skip or seek argument (e.g.
+skip=0x123) in this utility first become a one element sgl (e.g. containing
+the pair [0x123, 0x0]). Since this is the last element, it is a soft sgl
+and the transfer will start from the given LBA (i.e. 0x123) and continues
+for the number of blocks indicated by some other mechanism (e.g.  an option
+such as <I>count=COUNT</I> or the length of <I>IFILE</I>). This mirrors what
+the classic
+<B>dd</B>
+
+command does with its skip= and seek= options.
+<P>
+
+Some sgl implementation details: LBAs are stored in 64 bit integers which
+is more than sufficient to span even the largest disk array behind a logical
+device, even if the block size is one byte, which is unlikely. The NUM field
+is a 32 bit integer and this is more problematic. The reason is that SCSI
+WRITE commands (and their variants) only allocate at most a 32 bit integer
+for this value. Further, modern operating systems do not allow any driver
+to get large amounts of contiguous system RAM, even if the machine has it
+available. A 32 bit integer for NUM with each block at 512 bytes is around
+2 TB of storage. Unix system calls (in Linux) also limit each <A HREF="../man2/read.2.html">read</A>(2) and
+<A HREF="../man2/write.2.html">write</A>(2) system call to 32 bits of single bytes which is 4 GB. The problem
+for this utility is that the NUM can easily exceed 32 bits when a single
+scatter gather list element refers to the whole device. The action taken
+by this utility is to allow larger than 32 bit NUM values to be given on
+the command line (or in a scatter gather list file). However such a large
+element will be split into multiple elements internally. This will be
+visible to the user when the <I>verbose=VERB</I> option (or one of its
+variants) is used with an elevated value.
+<P>
+
+There is a helper utility called ddpt_sgl in this package for generating,
+manipulating and checking scatter gather lists. See its manpage.
+<A NAME="lbAM">&nbsp;</A>
+<H2>SANITY CHECKS</H2>
+
+With powerful data tools, the ability to accidentally overwrite and hence
+lose important data is ever present. So a significant portion of the code
+is dedicated to checking the input arguments for duplications and
+contradictions. Still nothing is better than re-reading the command
+line (which can be quite long) before hitting the enter key.
+<P>
+
+Other useful possibilities are to use job files (see the <I>JF</I> argument
+and the <I>--job=JF</I> option) and the <I>--dry-run</I> option.
+The &quot;dry run&quot; option is becoming popular in modern command line utilities
+and more or less does what the user would expect. Firstly it parses all
+the command line arguments then opens <I>IFILE</I>, <I>OFILE</I> and
+<I>OFILE2</I> as directed by the command line and does any meta-data
+operations that it would typically do (e.g. check a pass-though or
+block device's logical block size and object if it differs from
+<I>BS</I>, <I>IBS</I> or <I>OBS</I> (whichever applies)). Then just at the
+point where the code would commence the actual copy (or read) it does a
+premature exit. If the <I>--dry-run</I> option is given twice, the code
+continues into the copy logic and bypasses the low level read and write
+calls (and file repositioning). That inner level of &quot;dry run&quot; is useful
+for debugging and can be used with multiple <I>verbose=VERB</I> options.
+<P>
+
+The <I>verbose=VERB</I> option sends diagnostic messages to stderr. The higher
+value of <I>VERB</I> (in <I>verbose=VERB</I>) or the more times that <I>-v</I>
+is used, the greater the volume of diagnostic messages. When use three or
+more times then diagnostic messages are generated for each read to, and write
+from, the working copy buffer; so the volume of messages is proportional to
+the number of reads and writes that are done; this can easily be in the
+megabyte range. If used less than three times, the reads and writes
+associated with the copy do not generate diagnostic messages (unless abnormal
+situations are encountered). These diagnostic messages are mainly associated
+with command line parsing and fetching meta-data about the given files, plus
+messages from the cleanup at the end of the copy.
+<P>
+
+The following command line arguments are checked that they don't appear
+more than once: <I>bpt=BPT[,OBPC]</I>, <I>bs=BS</I>, <I>count=COUNT</I>,
+<I>ibs=IBS</I>, <I>if=IFILE</I>, <I>iseek=SKIP</I>, <I>obs=OBS</I>,
+<I>of=OFILE</I>, <I>of2=OFILE2</I>, <I>oseek=SEEK</I>, <I>seek=SEEK</I> and
+<I>skip=SKIP</I>. On the other hand, some arguments are additive, for example
+<I>iflag=FLAGS</I>, <I>oflag=FLAGS</I>, <I>status=STAT</I> and
+<I>--verbose</I> and may appear as many times as required.
+<A NAME="lbAN">&nbsp;</A>
+<H2>XCOPY</H2>
+
+This section describes XCOPY(LID1) support with this utility. For ODX
+support (XCOPY(LID4) subset) see the ODX section.
+<P>
+
+A device (logical unit (LU)) that supports XCOPY operations should set
+the 3PC field (3PC stands for Third Party Copy) in its standard INQUIRY
+response. That is not checked when this utility does an xcopy operation
+but if it fails, that is one thing that the user may want to check.
+<P>
+
+If the xcopy starts and fails while underway, then 'sg_copy_results -s'
+may be useful to view the copy status. It might also be used from a
+different process with the same I_T nexus (i.e. the same machine)
+to check status during an xcopy operation.
+<P>
+
+The <I>pad</I> and <I>cat</I> flags control the handling of residual
+data. As the data can be specified either in terms of source or target
+block size and both might have different block sizes residual data is
+likely to happen in these cases.
+If both block sizes are identical these bits have no effect as
+residual data will not occur.
+<P>
+
+If neither of these flags are set, the EXTENDED COPY command will be
+aborted with additional sense 'UNEXPECTED INEXACT SEGMENT'.
+<P>
+
+If only the <I>cat</I> flag is set the residual data will be retained
+and made available for subsequent segment descriptors. Residual data
+will be discarded for the last segment descriptor.
+<P>
+
+If the <I>pad</I> flag is set for the source descriptor only, any
+residual data for both source or destination will be discarded.
+<P>
+
+If the <I>pad</I> flag is set for the target descriptor only any
+residual source data will be handled as if the <I>cat</I> flag is set,
+but any residual destination data will be padded to make a whole block
+transfer.
+<P>
+
+If the <I>pad</I> flag is set for both source and target any residual
+source data will be discarded, and any residual destination data will
+be padded.
+<P>
+
+There is a web page discussing ddpt, XCOPY and ODX at
+<A HREF="https://sg.danny.cz/sg/ddpt_xcopy_odx.html">https://sg.danny.cz/sg/ddpt_xcopy_odx.html</A>
+<A NAME="lbAO">&nbsp;</A>
+<H2>ODX</H2>
+
+This section describes ODX support (an XCOPY(LID4) subset) for this utility.
+ODX descriptions use the following command name abbreviations: PT for
+the POPULATE TOKEN command, RRTI for the READ ROD TOKEN INFORMATION command,
+and WUT for the WRITE USING TOKEN command.
+<P>
+
+A device (logical unit (LU)) that supports ODX operations is required to set
+the 3PC field (3PC stands for Third Party Copy) in its standard INQUIRY
+response and support the Third Party Copy VPD page. If this utility generates
+errors noting the absence of these then the device in question probably does
+not support ODX.
+<P>
+
+There a four variants of ODX supported by ddpt:
+<BR>&nbsp;&nbsp;<B>full&nbsp;copy</B>&nbsp;:&nbsp;ddpt&nbsp;--odx&nbsp;if=/dev/sg3&nbsp;bs=512&nbsp;of=/dev/sg4
+<BR>&nbsp;&nbsp;<B>zero&nbsp;output&nbsp;blocks</B>&nbsp;:&nbsp;ddpt&nbsp;if=/dev/null&nbsp;rtype=zero&nbsp;bs=512&nbsp;of=/dev/sg4
+<BR>&nbsp;&nbsp;<B>read&nbsp;to&nbsp;tokens</B>&nbsp;:&nbsp;ddpt&nbsp;if=/dev/sg3&nbsp;bs=512&nbsp;skip=@gath.lst&nbsp;rtf=a.rt
+<BR>&nbsp;&nbsp;<B>write&nbsp;from&nbsp;tokens</B>&nbsp;:&nbsp;ddpt&nbsp;rtf=a.rt&nbsp;bs=512&nbsp;of=/dev/sg4&nbsp;seek=@scat.lst
+<P>
+
+The full copy will call PT and WUT commands repeatedly until the copy is
+complete. More precisely the full copy will make the largest single call
+to PT allowed by the input's Third Party Copy VPD page (and, if given,
+allowed by the <I>BPT</I> argument in the <I>bpt=BPT[,OBPC]</I> option). Then
+one or more WUT calls are made to write out from the ROD created by the PT
+step. The largest single WUT call is constrained by the output's Third Party
+Copy VPD page (and, if given, allowed by the <I>OBPC</I> argument in the
+<I>bpt=BPT[,OBPC]</I> option). This sequence continues until the requested
+copy is complete.
+<P>
+
+The zero output blocks variant is a special case of the full copy in
+which only WUT calls are made. ODX defines a special ROD Token to
+zero blocks. That special ROD Token has a fixed pattern (shown in SBC-3)
+and does not need to be created by a PT command like normal ROD Tokens.
+<P>
+
+The read to tokens and the write from tokens variants are designed to be
+the read (input) and write (output) sides respectively of a network copy.
+Each can run on different machines by sending the <I>RTF</I> file from
+the machine doing the read to the machine doing the write. The read to
+tokens will make one or more PT calls and output the resulting ROD Tokens
+to the <I>RTF</I> file. <I>RTF</I> might be a regular file or a named pipe.
+<P>
+
+All four variants can have the immed flag set. Then the PT and/or WUT
+commands are issued with the IMMED bit set and the RRTI command is used to
+poll for completion. The delay between the polls is as suggested by the
+RRTI command (or if no suggestion is made, 500 milliseconds). Either
+iflag=immed, oflag=immed or both can be given but are only effective if
+the corresponding <I>IFILE</I> or <I>OFILE</I> sends a PT or WUT command.
+<P>
+
+Typically there is no need to give the <I>list_id=LID</I> option. If this
+option is not given then 257 is chosen. If that is busy then 258 is tried.
+That continues until a usable <I>LID</I> is found or 10 <I>LID</I>s have been
+tried. In the latter case ddpt exits with status of 55 (operation in
+progress). If the user gives <I>list_id=LID</I> option and <I>LID</I> is
+busy then ddpt exits with exit status 55.
+<P>
+
+If the block size of the input and output are different (i.e. <I>IBS</I>
+is not equal to <I>OBS</I>) then one must be a multiple of the other. So
+an input block size of 512 bytes and an output block size of 4096
+bytes (or vice versa) is acceptable.
+<P>
+
+The four ODX variants are distinguished as follows: if <I>OFILE</I> is a
+pass-through device, if=/dev/null (or equivalent) and rtype=zero then the
+zero output blocks variant is selected. If both <I>IFILE</I> and <I>OFILE</I>
+are pass-through devices and there is some indication of an ODX request (e.g.
+the <I>--odx</I> option), then the full copy variant is selected. The read
+to tokens and the write from token variants are indicated by the absence
+of either a <I>of=OFILE</I> or a <I>if=IFILE</I> option, respectively, plus
+the presence of a <I>rtf=RTF</I> option.
+<P>
+
+The helper utility ddptctl contains options to issue a single PT, RRTI,
+WUT or COPY OPERATION ABORT command. It can also issue a series of
+polling RRTI commands. It can decode information in ROD Tokens (which is
+not as informative as it should be) and print the number of blocks and block
+size of a disk, plus protection information if available. See ddptctl.
+<P>
+
+There is a web page discussing ddpt, XCOPY and ODX at
+<A HREF="https://sg.danny.cz/sg/ddpt_xcopy_odx.html">https://sg.danny.cz/sg/ddpt_xcopy_odx.html</A>
+<A NAME="lbAP">&nbsp;</A>
+<H2>SPARSE WRITES</H2>
+
+Bypassing writes of blocks full of zeros can save a lot of IO. However
+with regular files, bypassed writes at the end of the copy can lead
+to an <I>OFILE</I> which is shorter than it would have been without
+sparse writes. This can lead to integrity checking programs like md5sum
+and sha1sum generating different values.
+<P>
+
+This utility has two ways of handling this file length problem: writing
+the last block (even if it is full of zeros) or using the ftruncate
+system call. A third approach is to ignore the problem (i.e. leaving
+<I>OFILE</I> shorter). The ftruncate approach is used when &quot;oflag=strunc&quot;
+while the last block is written when &quot;oflag=sparse&quot;. To ignore the
+file length issue use &quot;oflag=sparse,sparse&quot;. Note that if <I>OFILE</I>'s
+length is already correct or longer than required, no action is taken.
+<P>
+
+The support for sparse writing of regular files may depend on the OS, the
+file system and the settings of <I>OFILE</I>. POSIX makes few guarantees
+when the ftruncate system call is used to extend a file's length, as may
+occur when &quot;oflag=strunc&quot;. Further, primitive file systems like VFAT may not
+accept sparse writes or simulate the effect by writing blocks of zeros. The
+latter approach will defeat any sparse writing performance gain.
+<A NAME="lbAQ">&nbsp;</A>
+<H2>TRIM, UNMAP AND WRITE SAME</H2>
+
+This is a new storage feature often associated with Solid State
+Disks (SSDs) or disk arrays with &quot;thin provisioning&quot;. In the ATA command
+set (ACS-2) the relevant command is DATA SET MANAGEMENT with the TRIM
+bit set. In the SCSI command set (SBC-3) it is either the UNMAP or
+WRITE SAME command. Note there is no TRIM command however the term is
+frequently used in the technical press.
+<P>
+
+Trim is a way of telling a storage device that blocks are no longer needed.
+Keeping the pool of unwritten blocks large is important for the write
+performance of SSDs and the thrifty use of real storage in thin provisioned
+arrays. Currently file systems in recent OSes may issue trims associated
+with file deletes. The trim option in ddpt may be useful when a partition
+or a whole SSD is to be &quot;deleted&quot;. Note that ddpt is bypassing file
+systems in that it only offers trim on pass-through (pt) devices.
+<P>
+
+This utility issues SCSI commands to pt devices and for &quot;trim&quot; currently
+issues a SCSI WRITE SAME(16) command with the UNMAP bit set. If the pt
+device is a SSD with a ATA interface then recent versions of Linux
+will translate the SCSI WRITE SAME to the ATA DATA SET MANAGEMENT command
+with the TRIM bit set. The maximum size of each &quot;trim&quot; command sent
+is the size of the copy buffer (i.e. <I>IBS</I> * <I>BPT</I> bytes). And
+that maximum can be reduced with the <I>OBPC</I> argument of the &quot;bpt=&quot;
+option.
+<P>
+
+The trim can be used various ways. One way is a copy where the copy
+buffer (or some part of it) is checked for zeros as is done by the
+sparse oflag. When a zero segment is found, a trim &quot;command&quot; is
+sent to the <I>OFILE</I>. For example:
+<P>
+
+<BR>&nbsp;&nbsp;&nbsp;ddpt&nbsp;if=dsk.img&nbsp;bs=512&nbsp;of=/dev/sdc&nbsp;oflag=pt,trim
+<P>
+
+The copy buffer is 64 KiB (since <I>BPT</I> and <I>OBPC</I> default to 128
+when &quot;bs=512&quot;) and it is checked for all zeros. If it is all zeros then
+a trim command is sent to the corresponding location of /dev/sdc
+which is accessed via the pt interface. If it is not all zeros
+then a SCSI WRITE command is sent. Another way is to trim all or
+part of a disk. To trim a whole disk (i.e. deleting all its data):
+<P>
+
+<BR>&nbsp;&nbsp;&nbsp;ddpt&nbsp;if=/dev/zero&nbsp;bs=512&nbsp;of=/dev/sdc&nbsp;oflag=pt,trim
+<P>
+
+A third way is to &quot;self-trim&quot; which is to only trim those parts
+of a disk that contain segments full of zeros:
+<P>
+
+<BR>&nbsp;&nbsp;&nbsp;ddpt&nbsp;if=/dev/sdc&nbsp;skip=0x2300&nbsp;bs=512&nbsp;iflag=pt,self,trim&nbsp;count=0x1234f0
+<P>
+
+The &quot;self&quot; oflag automatically sets up the output side of the copy
+to send trim commands (if required) back the the same device (i.e. /dev/sdc).
+If this example was self-trimming a partition then the partition would
+start at LBA 0x2300 and be 0x1234f0 blocks long.
+<P>
+
+Some random product examples: the Intel X25-M G2 SSDs have trim with
+recent firmware and they do deterministic read zero after trim. The
+Seagate Pulsar SSD has an ATA interface which supports the deterministic
+reads of zero after the DATA SET MANAGEMENT command with the TRIM option.
+<A NAME="lbAR">&nbsp;</A>
+<H2>NVME SUPPORT</H2>
+
+The following information is Linux specific at this time. NVMe devices in
+Linux have names like /dev/nvme0, /dev/nvme0n1 and /dev/nvme0n1p3. The first
+device name is a character device and some &quot;Admin&quot; commands can be sent to
+it (e.g. Identify) but no media access commands (which the NVMe
+specification calls the &quot;NVM&quot; Command set). The number given is a controller
+identifier. Storage in NVMe is associated with namespaces which are numbered
+within a controller, starting at 1 (e.g. /dev/nvme0n1 is controller 0,
+namespace 1). These device nodes are block devices and can be given as
+<I>IFILE</I> and/or <I>OFILE</I>. The third type of NVMe device node
+selects a partition (within a namespace, within a controller). Partition
+numbers also start with 1.
+<P>
+
+By default ddpt will treat the second and third form (of NVMe device nodes)
+as standard Linux block devices. So ddpt will act in the same as the
+dd utility would. In a similar fashion to accessing SCSI block devices (e.g.
+/dev/sdc3) get access NVMe block devices the &quot;pt&quot; flag is required, either
+with <I>iflag=FLAGS</I> and/or <I>oflag=FLAGS</I>. There is a SCSI to NVMe
+Translation Layer (SNTL) in the sg3_utils library which underpins this
+utility.
+<A NAME="lbAS">&nbsp;</A>
+<H2>DD DIFFERENCES</H2>
+
+dd defaults &quot;if=&quot; and &quot;of=&quot; to stdin and stdout respectively. This follows
+Unix filter conventions. However since dd and ddpt are often used to read
+binary data for timing purposes, having to supply &quot;of=/dev/null&quot; can
+be easily forgotten. Without it dd will typically spew binary data on the
+console. So ddpt has changed its defaults: the &quot;if=<I>IFILE</I>&quot; is now
+mandatory for direct copies and to read from stdin &quot;if=-&quot; can be
+used; &quot;of=<I>OFILE</I>&quot; remains optional but its default changes
+to &quot;/dev/null&quot; (or &quot;NUL&quot; in Windows). To send output to stdout ddpt
+accepts &quot;of=-&quot;.
+<P>
+
+dd truncates <I>OFILE</I> unless &quot;conv=notrunc&quot; is given. When dd truncates,
+it truncates to zero length unless <I>SEEK</I> is greater than zero. ddpt
+does not truncate <I>OFILE</I> by default. If <I>OFILE</I> exists it will be
+overwritten. The overwrite starts at block zero unless <I>SEEK</I>
+or &quot;oflag=append&quot; is given. If <I>OFILE</I> is a regular file
+then &quot;oflag=trunc&quot; (or &quot;conv=trunc&quot;) will truncate <I>OFILE</I> prior to the
+copy.
+<P>
+
+Numeric arguments to ddpt can be given in hexadecimal, either with a
+leading &quot;0x&quot; or &quot;0X&quot; or with a trailing &quot;h&quot;. Note that dd accepts &quot;0x123&quot;
+but interprets it as &quot;0 * 123&quot; (i.e. zero). ddpt will also interpret &quot;x&quot;
+as multiplies unless the left operand is zero (e.g. &quot;0x123&quot;). So both
+dd and ddpt will interpret &quot;skip=2x123&quot; as &quot;skip=246&quot;.
+<P>
+
+Terabyte size disks make it impractical to copy all the data into a single
+buffer of 512 bytes length before writing it out. Therefore both dd and ddpt
+read a relatively small amount of data into a copy (or transfer) buffer then
+write it out to the destination, repeating this process until the
+<I>COUNT</I> is exhausted.
+<P>
+
+A major difference in ddpt is the addition of <I>BPT</I> (Blocks Per Transfer)
+to control the size of the copy buffer. With dd, <I>IBS</I> is the size of the
+copy buffer and the unit of <I>SKIP</I> and <I>COUNT</I>. With ddpt,
+<I>IBS</I> * <I>BPT</I> is the size of the copy buffer and <I>IBS</I> is the
+unit of <I>SKIP</I> and <I>COUNT</I>. This allows ddpt to have its <I>IBS</I>
+set to the logical block size of <I>IFILE</I> without unduly restricting the
+size of the copy buffer. And setting <I>IBS</I> (and <I>OBS</I> for
+<I>OFILE</I>) accurately is required when the pass-through interface is used
+since with the SCSI READ and WRITE commands the logical block size is
+implicit.
+<P>
+
+The way dd handles its copy buffer (outlined in SUSv4 description of dd)
+is relatively complex, especially when <I>IBS</I> and <I>OBS</I> are different
+sizes. The restriction that ddpt places on <I>IBS</I> and <I>OBS</I> (
+i.e. (((<I>IBS * BPT</I>) % <I>OBS</I>) == 0) ) means that a single
+copy buffer can be used since its size is a multiple of both <I>IBS</I> and
+<I>OBS</I>. Being able to precisely define the copy buffer size in ddpt
+makes sparse writing, write sparing and trim operations simpler to
+define and the user to control.
+<P>
+
+ddpt does not support dd's &quot;cbs=&quot; option (conversion block size). If
+the &quot;cbs=&quot; option is given to ddpt then it is ignored.
+<P>
+
+ddpt adds two types of disk to disk, offloaded copies: XCOPY(LID1) first
+introduced in SPC-2 (standardized in 2001), and ODX which is a subset of
+XCOPY(LID4) first introduced in SPC-4 draft (revision 34, 2012).
+<A NAME="lbAT">&nbsp;</A>
+<H2>PROTECTION INFORMATION</H2>
+
+This section is about protection information which is typically an extra 8
+bytes associated with each logical block. Those 8 byte are divided into 3
+fields: logical block guard (16 bit (2 byte) CRC), logical block application
+tag (2 bytes) and the logical block reference tag (4 bytes). The acronym
+DIF is sometimes used for protection information.
+<P>
+
+The feature to read and/or write protection information by using the
+<I>protect=RDP[,WRP]</I> option is currently experimental. It should be used
+with care and may not &quot;play well&quot; with some other features such as write
+sparing and sparse writing. It should be used to copy user data plus the
+associated protection information to or from a regular file. It could also
+be used for a device to device copy assuming the &quot;pt&quot; interface is used
+for both. Also only modern SCSI disks support protection information.
+<P>
+
+When <I>RDP</I> or <I>WRP</I> is greater than 0 then a copy with associated
+protection information is active. In this state <I>IBS</I> and <I>OBS</I>
+must be the same and equal to the logical block size of the device(s)
+formatted with protection information. If a SCSI disk with 512 byte logical
+block size has protection information then the actual number of bytes
+transferred for each logical block is typically 520 bytes. For such a disk
+<I>BS=512</I> is required even when additional protection information is
+being transferred.
+<P>
+
+When protection type 2 is used, the &quot;normal&quot; READ, WRITE and VERIFY SCSI
+commands are disallowed. In this context &quot;normal&quot; means the 6, 10, 12, and
+16 byte variants. Only READ(32) and WRITE(32) can be used. The 32 byte
+variants can be selected in this utility by using the operand 'cdbsz=32'.
+<A NAME="lbAU">&nbsp;</A>
+<H2>MULTIPLIERS</H2>
+
+By default numeric arguments to options are assumed to be decimal. Almost
+all numeric arguments to options (e.g. <I>COUNT</I> in the <I>count=COUNT</I>
+option) may include one of these multiplicative suffixes:
+c C *1; w W *2; b B *512; k K KiB *1,024; KB *1,000; m M MiB *1,048,576;
+MB *1,000,000 . This pattern continues for &quot;G&quot;, &quot;T&quot; and &quot;P&quot;. The latter two
+suffixes can only be used for 64 bit values. Some numeric arguments are
+limited to 32 bit values (e.g. <I>BS</I>in the <I>bs=BS</I> option).
+Also a suffix of the form &quot;x&lt;n&gt;&quot; multiplies the leading number by &lt;n&gt;;
+however the combinations &quot;0x&quot; and &quot;0X&quot; are treated differently, see the
+next paragraph. These multiplicative suffixes are compatible with GNU's
+dd command (since 2002) which claims compliance with the SI and with
+IEC 60027-2 standards.
+<P>
+
+Alternatively numerical values can be given in hexadecimal indicated by
+either a leading &quot;0x&quot; or &quot;0X&quot;, or by a trailing &quot;h&quot; or &quot;H&quot;. When hex numbers
+are given, suffix multipliers cannot be used.
+<P>
+
+If a numeric argument is required to fit in 32 bits and is too large then
+an error is reported. Usually negative numbers are not permitted
+but &quot;count=-1&quot; is a special case and means &quot;all available&quot;; &quot;verbose=-1&quot;
+is another special case.
+<A NAME="lbAV">&nbsp;</A>
+<H2>NOTES</H2>
+
+Copying data behind an Operating System's back can cause problems. In the
+case of Linux, users should look at this link:
+<A HREF="https://linux-mm.org/Drop_Caches">https://linux-mm.org/Drop_Caches</A>
+<BR>
+
+This command sequence may be useful:
+<BR>&nbsp;&nbsp;sync;&nbsp;echo&nbsp;3&nbsp;&gt;&nbsp;/proc/sys/vm/drop_caches
+<P>
+
+A partial write is a write to the <I>OFILE</I> of less than <I>OBS</I>
+bytes. This typically occurs at the end of a copy. dd can do partial
+writes. ddpt does partial writes to regular files and fifos (including
+stdout). However ddpt ignores partial writes when <I>OFILE</I> is a block
+device or a pt device. When ddpt ignores a partial write, it sends a
+warning to the console (stderr).
+<P>
+
+At the end of the copy two lines are reported to the console:
+<BR>&nbsp;&nbsp;&nbsp;&lt;in_full&gt;+&lt;in_partial&gt;&nbsp;records&nbsp;in
+<BR>&nbsp;&nbsp;&nbsp;&lt;out_full&gt;+&lt;out_partial&gt;&nbsp;records&nbsp;out
+<P>
+
+The &quot;records in&quot; line is the number of full input blocks (each of
+<I>IBS</I> bytes) that have been read plus the number of partial blocks (
+usually less than <I>IBS</I> bytes) that have been read. Following the lead
+of dd when 'iflag=coe' is active a block that cannot be read (and has zeros
+substituted for its output) is regarded as a partial read. The &quot;records out&quot;
+line is the number of full output blocks (each of <I>OBS</I> bytes) that
+have been written plus the number of partial blocks (usually less than
+<I>OBS</I> bytes) that have been written.
+<P>
+
+Block devices (e.g. /dev/sda and /dev/hda) can be given for <I>IFILE</I>.
+If neither 'iflag=direct' nor 'iflag=pt' is given then normal block IO
+involving buffering and caching is performed. If 'iflag=direct' is given
+then the buffering and caching is bypassed (this is applicable to both SCSI
+devices and ATA disks). When 'iflag=pt' is given SCSI commands are sent to
+the device which bypasses most of the actions performed by the block layer.
+The same applies for block devices given for <I>OFILE</I>.
+<P>
+
+All informative, warning and error reports are sent to stderr so that
+dd's output file can be stdout and remain unpolluted. If no options
+are given, then no copying (nor reading) takes place and a brief message
+is sent to stderr inviting the user to invoke ddpt again but with '--help'
+option to get the usage message.
+<P>
+
+Disk partition information can often be found with
+<B><A HREF="../man8/fdisk.8.html">fdisk</A>(8)</B>
+
+[the &quot;-ul&quot; argument is useful in this respect]. Also
+<B><A HREF="../man8/parted.8.html">parted</A>(8)</B>
+
+can be used like this: 'parted /dev/sda unit s print' .
+<P>
+
+For pt devices this utility issues SCSI READ and WRITE (SBC) commands which
+are appropriate for disks and reading from CD/DVD/BD drives. Those
+commands are not formatted correctly for tape drives so ddpt cannot be
+used on tape drives via a pt device. If the largest block address of the
+requested transfer exceeds a 32 bit block number (i.e 0xffffffff) then a
+warning is issued and the pt device is accessed via SCSI READ(16) and
+WRITE(16) commands.
+<P>
+
+<B>The attributes of a block device (e.g. partitions) are ignored when the</B>
+
+<B>pt flag is used.</B>
+
+Hence the whole device is read (rather than just the second partition) by
+this invocation:
+<P>
+
+<BR>&nbsp;&nbsp;&nbsp;ddpt&nbsp;if=/dev/sdb2&nbsp;iflag=pt&nbsp;of=t&nbsp;bs=512
+<P>
+
+Assuming /dev/sdb and /dev/sg2 refer to the same device, then after the
+following two invocations, the contents of the files &quot;t&quot;, &quot;tt&quot; and &quot;ttt&quot;
+should be same:
+<P>
+
+<BR>&nbsp;&nbsp;&nbsp;ddpt&nbsp;if=/dev/sdb&nbsp;of=tt&nbsp;bs=512
+<P>
+
+<BR>&nbsp;&nbsp;&nbsp;ddpt&nbsp;if=/dev/sg2&nbsp;of=ttt&nbsp;bs=512
+<P>
+
+The SCSI READ(32) and WRITE(32) commands are restricted to media that is
+formatted with protection type 2. This is a T10 restriction.
+<A NAME="lbAW">&nbsp;</A>
+<H2>SIGNALS</H2>
+
+The signal handling has been borrowed from GNU's dd: SIGINT, SIGQUIT and
+SIGPIPE report the number of remaining blocks to be transferred and the
+records in + out counts; then they have their default action. SIGUSR1 (or
+SIGINFO) causes the same information to be output and the copy continues.
+All output caused by signals is sent to stderr.
+<P>
+
+Like GNU's dd, ddpt respects the signal disposition of &quot;ignored&quot; (SIG_IGN)
+set by the shell, script or other program that invokes ddpt. So in that
+case it will ignore such signals. Further dd ignores SIGUSR1 if the
+environment variable POSIXLY_CORRECT is set because POSIX defines dd will
+only act on SIGINFO (and Linux has no such signal); ddpt ignores the
+POSIXLY_CORRECT environment variable. As recommended by Susv3, ddpt does
+not expect the signal (blocking) mask to be blocking SIGUSR1 (SIGINFO),
+SIGINT or SIGPIPE on entry.
+<P>
+
+Unix system calls that do IO can be interrupted by signal processing,
+typically returning an EINTR error number. The dd utility (and many other
+Unix utilities) restart the IO operation that was interrupted. While
+this will work most of the time for disk IO it is problematic for tape
+drives because the implicit position pointer on the tape may have moved.
+So the default (i.e. &quot;intio=0&quot;) in this utility is to mask those signals
+during IO operations and only check them prior to starting an IO operation.
+Most low level IO (e.g. using SCSI command to write to a disk) will
+timeout if there is a low level error. However NFS (the Network File
+System) will potentially wait for a long time (e.g. expecting a network
+problem will soon be fixed) and in this case using &quot;intio=1&quot; may be
+best.
+<A NAME="lbAX">&nbsp;</A>
+<H2>VERIFY</H2>
+
+The usual way to check the two disks (or part of the disks) are the same
+is to move through the segments to be compared, reading from both and
+comparing the returned buffers, stopping if there is an in equality.
+<P>
+
+This utility takes a different approach that relies on the <I>OFILE</I>
+being a pass through device. That pass-through device needs to support
+the SCSI VERIFY command with the BYTCHK field set to 1. Optionally, for
+the <I>--prefetch</I> option to improve performance that pass-through
+device needs to support the SCSI PRE-FETCH command with its IMMED bit
+set.
+<P>
+
+When the <I>--verify</I> option is given, instead of reading both
+<I>IFILE</I> and <I>OFILE</I>, only the <I>IFILE</I> is read. Then the result
+of that read is sent to the <I>OFILE</I> device as the data-out buffer
+of a VERIFY(BYTCHK=1) command. So the comparison is actually done on the
+<I>OFILE</I> device rather than the host computer's main memory.
+<P>
+
+If the <I>--prefetch</I> option is also given, then before the <I>IFILE</I>
+read, a PRE-FETCH(OFILE, IMMED) is sent. The IMMED bit will make it return
+more or less immediately. The effect of the PRE-FETCH should be to bring
+the contents of the data to be used for the <I>OFILE</I> side of the
+comparison, into the <I>OFILE</I> device's cache. And that should make the
+later VERIFY(BYTCHK=1) command faster.
+<A NAME="lbAY">&nbsp;</A>
+<H2>TAPE</H2>
+
+There is support for copies to and from tape drives in Linux. Only the st
+driver device names can be used (e.g. /dev/st0 and /dev/nst2). Hence use of
+Linux pass-through device names (e.g. /dev/sg2) for tape drives is not
+supported. On Debian-based distributions, it is suggested that the mt-st
+package is installed as it provides a more fully-featured version of
+the &quot;mt&quot; tape control program.
+<P>
+
+Tape drives can operate in fixed- or variable-length block modes. In
+variable-block mode, each write to the tape writes a single block of that
+size. In fixed-block mode, each write to the tape must be a multiple of the
+previously-selected block size.
+<P>
+
+The block size/mode can be set with the mt command prior to invoking ddpt.
+For example:
+<BR>&nbsp;&nbsp;#&nbsp;mt&nbsp;-f&nbsp;/dev/nst0&nbsp;setblk&nbsp;0
+<BR>
+
+sets variable-block mode, and
+<BR>&nbsp;&nbsp;#&nbsp;mt&nbsp;-f&nbsp;/dev/nst0&nbsp;setblk&nbsp;32768
+<BR>
+
+sets fixed-block mode with block size 32768 bytes.
+<P>
+
+Note that some tape drives support only fixed-block mode, and possibly
+even only one block size. (For example, QIC-150 tapes use a fixed block
+size of 512 bytes.) There may also be restrictions on the block size, e.g.
+it may have to be even.
+<P>
+
+When using ddpt to write to tape, if the final read from the input is less
+than <I>OBS</I>, it is padded to <I>OBS</I> bytes before writing to tape to
+ensure that all blocks of the tape file are the same length. Having a
+shorter final block would fail if the drive is in fixed-block mode, and
+could create interchange problems. It is common to expect all blocks in a
+file on tape to be the same length. However, to tell ddpt to not pad the
+final block, use 'oflag=nopad'.
+<P>
+
+The st tape driver normally writes a filemark when the file (e.g. /dev/nst0)
+is closed. To not have the filemark written, use 'oflag=nofm'. One use case
+for that might be if using ddpt several times in succession to append more
+data to the same file on tape. In that case it is probably desirable to
+write the filemark at the end of the sequence. So either omit 'oflag=nofm'
+on the last ddpt invocation, or manually write a filemark using mt after
+ddpt exits:
+<BR>&nbsp;&nbsp;#&nbsp;mt&nbsp;-f&nbsp;/dev/nst0&nbsp;weof&nbsp;1
+<P>
+
+For reading from an unknown tape where the block size(s) is not known, read
+in variable-block mode specifying a large <I>IBS</I>. The st driver returns
+a smaller amount of data if the size of the block read is smaller. Thus a
+command like:
+<BR>&nbsp;&nbsp;#&nbsp;ddpt&nbsp;if=/dev/nst0&nbsp;of=output.bin&nbsp;bs=262144
+<BR>
+
+should read the file from tape regardless of the block size used (assuming
+no blocks are larger than 256KB). ddpt's verbose option will display what
+the actual block size(s) is.
+<A NAME="lbAZ">&nbsp;</A>
+<H2>ENVIRONMENT VARIABLES</H2>
+
+If the command line invocation of an xcopy does not explicitly (and
+unambiguously) indicate whether the XCOPY SCSI command should be sent
+to <I>IFILE</I> (i.e.  the source) or <I>OFILE</I> (i.e. the destination)
+then a check is made for the presence of the XCOPY_TO_SRC and
+XCOPY_TO_DST environment variables. If either one exists (but not both)
+then it indicates where the SCSI XCOPY command will be sent. By default
+the XCOPY command is sent to <I>OFILE</I>.
+<P>
+
+The ODX write from tokens variant is very complex to implement if the amount
+of data held in each ROD is not known. The value should be found in
+the &quot;number of bytes represented&quot; field in the ROD Token but that is not well
+supported yet by vendors. So for such cases, that number can be appended as a
+big endian 8 byte integer following each ROD Token in the <I>RTF</I> file. The
+<I>conv=rtf_len</I> will cause that length to be appended. Specifying that
+option on each read to tokens and write from tokens invocation can be a
+nuisance. Setting the environment variable ODX_RTF_LEN will cause this
+utility to act as if the <I>conv=rtf_len</I> option has been given.
+<P>
+
+Sometimes the default block size of 512 can be a nuisance. This can be
+overridden by the value associated with the DDPT_DEF_BS environment
+variable. If the environment variable is not found, the value cannot
+be decoded or is zero or less, then the default block size remains
+at 512 bytes.
+<A NAME="lbBA">&nbsp;</A>
+<H2>EXIT STATUS</H2>
+
+To aid scripts that call ddpt, the exit status is set to indicate
+success (0) or failure (1 or more). Note that some of the lower values
+correspond to the SCSI sense key values. The exit status values are:
+<DL COMPACT>
+<DT><B>0</B>
+
+<DD>
+success. Also conveys boolean true for actions that result in true or
+false (e.g. sgl equality tests)
+<DT><B>1</B>
+
+<DD>
+syntax error. Either illegal command line options, options with bad
+arguments or a combination of options that is not permitted.
+<DT><B>2</B>
+
+<DD>
+the device reports that it is not ready for the operation requested.
+The device may be in the process of becoming ready (e.g.  spinning up but
+not at speed) so the utility may work after a wait.
+<DT><B>3</B>
+
+<DD>
+the device reports a medium or hardware error (or a blank check). For example
+an attempt to read a corrupted block on a disk will yield this value.
+<DT><B>5</B>
+
+<DD>
+the device reports an &quot;illegal request&quot; with an additional sense code other
+than &quot;invalid operation code&quot;. This is often a supported command with a
+field set requesting an unsupported capability.
+<DT><B>6</B>
+
+<DD>
+the device reports a &quot;unit attention&quot; condition. This usually indicates
+that something unrelated to the requested command has occurred (e.g. a
+device reset) potentially before the current SCSI command was sent. The
+requested command has not been executed by the device. Note that unit
+attention conditions are usually only reported once by a device.
+<DT><B>7</B>
+
+<DD>
+the device reports a &quot;data protect&quot; sense key. This implies some
+mechanism has blocked writes (or possibly all access to the media).
+<DT><B>9</B>
+
+<DD>
+the device reports an illegal request with an additional sense code
+of &quot;invalid operation code&quot; which means that it doesn't support the
+requested command.
+<DT><B>10</B>
+
+<DD>
+the device reports a &quot;copy aborted&quot;. This implies another command or
+device problem has stopped and copy operation. The EXTENDED COPY family of
+commands (including WRITE USING TOKEN) may return this sense key.
+<DT><B>11</B>
+
+<DD>
+the device reports an aborted command. In some cases aborted commands can
+be retried immediately (e.g. if the transport aborted the command due to
+congestion).
+<DT><B>14</B>
+
+<DD>
+the <I>DEVICE</I> reports a miscompare sense key. VERIFY and COMPARE AND
+WRITE commands may report this.
+<DT><B>15</B>
+
+<DD>
+the utility is unable to open, close or use the given <I>IFILE</I>,
+<I>OFILE</I> or other file. The given file name could be incorrect or there
+may be permission problems. Adding the <I>-v</I> option may give more
+information.
+<DT><B>20</B>
+
+<DD>
+the device reports it has a check condition but &quot;no sense&quot;.
+It is unlikely that this value will occur as an exit status.
+<DT><B>21</B>
+
+<DD>
+the device reports a &quot;recovered error&quot;. The requested command was successful.
+Most likely a utility will report a recovered error to stderr and continue,
+probably leaving the utility with an exit status of 0 .
+<DT><B>24</B>
+
+<DD>
+the device reports a SCSI status of &quot;reservation conflict&quot;. This
+means access to the device with the current command has been blocked
+because another machine (HBA or SCSI &quot;initiator&quot;) holds a reservation on
+this device. On modern SCSI systems this is related to the use of
+the PERSISTENT RESERVATION family of commands.
+<DT><B>25</B>
+
+<DD>
+the <I>DEVICE</I> reports a SCSI status of &quot;condition met&quot;. Currently only
+the PRE-FETCH command (see SBC-4) yields this status.
+<DT><B>26</B>
+
+<DD>
+the <I>DEVICE</I> reports a SCSI status of &quot;busy&quot;. SAM-5 defines this
+status as the logical unit is temporarily unable to process a command.
+It is recommended to re-issue the command.
+<DT><B>27</B>
+
+<DD>
+the <I>DEVICE</I> reports a SCSI status of &quot;task set full&quot;.
+<DT><B>28</B>
+
+<DD>
+the <I>DEVICE</I> reports a SCSI status of &quot;ACA active&quot;. ACA is &quot;auto
+contingent allegiance&quot; and is seldom used.
+<DT><B>29</B>
+
+<DD>
+the <I>DEVICE</I> reports a SCSI status of &quot;task aborted&quot;. SAM-5 says:
+&quot;This status shall be returned if a command is aborted by a command or task
+management function on another I_T nexus and the Control mode page TAS bit
+is set to one&quot;.
+<DT><B>31</B>
+
+<DD>
+error involving two or more command line options. Either they contradict
+or select an unsupported mode.
+<DT><B>32</B>
+
+<DD>
+the is a logic error in the utility. It corresponds to code comments
+like &quot;shouldn't/can't get here&quot;. Perhaps the author should be contacted.
+<DT><B>33</B>
+
+<DD>
+the command sent to device has timed out. This occurs in Linux only; in
+other ports a command timeout will appear as a transport (or OS) error.
+<DT><B>35</B>
+
+<DD>
+a transport error has been detected. This is an error from the low level
+driver (e.g. HBA driver) or from the interconnect between the host (initiator)
+and the device (target). For example a SAS expander may not be able to
+find a free path to return the user data from a READ command.
+<DT><B>36</B>
+
+<DD>
+no error has occurred. For actions that result in a boolean, this exit
+status indicates false.
+<DT><B>40</B>
+
+<DD>
+the command sent to a device has received an &quot;aborted command&quot; sense
+key with an additional sense code of 0x10. This value is related to
+problems with protection information (PI or DIF). For example this error
+may occur when reading a block on a drive that has never been written (or
+is unmapped) if that drive was formatted with type 1, 2 or 3 protection.
+<DT><B>48</B>
+
+<DD>
+this is an internal message indicating a NVMe status field (SF) is other
+than zero after a command has been executed (i.e. something went wrong).
+Work in this area is currently experimental.
+<DT><B>49</B>
+
+<DD>
+low level driver reports a response's residual count (i.e. number of bytes
+actually received by HBA is 'requested_bytes - residual_count') that is
+too high. So no useful processing can be done with that response.
+<DT><B>50 + &lt;os_error_number&gt;</B>
+
+<DD>
+OS system calls that fail often return a small integer number to help
+indicate what the error is. For example in Unix the inability of a system
+call to allocate memory returns (in 'errno') ENOMEM which often is
+associated with the integer 12. So 62 (i.e. '50 + 12') may be returned
+by a utility in this case.
+<DT><B>90</B>
+
+<DD>
+the flock flag has been given on a device and some other process holds the
+advisory exclusive lock.
+<DT><B>97</B>
+
+<DD>
+the response to a SCSI command failed sanity checks.
+<DT><B>98</B>
+
+<DD>
+the device reports it has a check condition but the error doesn't fit into
+any of the above categories.
+<DT><B>99</B>
+
+<DD>
+any errors that can't be categorized into values 1 to 98 may yield
+this value. This includes transport and operating system errors
+after the command has been sent to the device.
+<DT><B>100</B>
+
+<DD>
+a command received a 'parameter list length error'.
+<DT><B>101</B>
+
+<DD>
+a command received 'illegal field in parameter list'. This may occur with an
+odx copy if some combination of parameters is illegal or not supported (e.g.
+iflag=immed).
+<DT><B>105</B>
+
+<DD>
+a command received 'operation in progress'. This may occur with an odx copy
+when the given <I>LID</I> is already being used by another process (e.g. also
+using odx) on the same machine. Choose another <I>LID</I>.
+<DT><B>110</B>
+
+<DD>
+a command received 'invalid token operation, cause not reportable'. This may
+occur with an odx operation when the given ROD Token is invalid. One reason
+for that may be the inactivity timeout has been reached and the copy manager
+has cancelled the ROD Token.
+<DT><B>110 + &lt;asc_23h_ascq_code&gt;</B>
+
+<DD>
+these status values provide more information than exit status 110. See SPC-5
+ASC and ASCQ assignments (currently in Annex F.2), specifically the entries
+for asc=23h . For example exit status 112 corresponds to asc=23h, ascq=2h
+which implies the odx copy manager does not support copies between LUs in
+different targets. That is optional; an odx copy manager is required to
+support copies between LUs (that are block devices) in the same target.
+<DT><B>126</B>
+
+<DD>
+the utility was found but could not be executed. That might occur if the
+executable does not have execute permissions.
+<DT><B>127</B>
+
+<DD>
+This is the exit status for utility not found. That might occur when a
+script calls a utility in this package but the PATH environment variable
+has not been properly set up, so the script cannot find the executable.
+<DT><B>128 + &lt;signum&gt;</B>
+
+<DD>
+If a signal kills a utility then the exit status is 128 plus the signal
+number. For example if a segmentation fault occurs then a utility is
+typically killed by SIGSEGV which according to 'man 7 signal' has an
+associated signal number of 11; so the exit status will be 139 .
+<DT><B>255</B>
+
+<DD>
+the utility tried to yield an exit status of 255 or larger. That should
+not happen; given here for completeness.
+</DL>
+<A NAME="lbBB">&nbsp;</A>
+<H2>EXAMPLES</H2>
+
+The examples in this page use Linux device names. For suitable device
+names in other supported Operating Systems see this web page:
+<A HREF="https://sg.danny.cz/sg/device_name.html">https://sg.danny.cz/sg/device_name.html</A> . The <A HREF="../man8/sg3_utils.8.html">sg3_utils</A>(8) man page
+in the sg3_utils package also covers device naming.
+<P>
+
+ddpt usage looks quite similar to dd:
+<P>
+
+<BR>&nbsp;&nbsp;&nbsp;ddpt&nbsp;if=/dev/sg0&nbsp;of=t&nbsp;bs=512&nbsp;count=1MB
+<P>
+
+This will copy 1 million 512 byte blocks from the device associated with
+/dev/sg0 (which should have 512 byte blocks) to a file called t.
+Assuming /dev/sda and /dev/sg0 are the same device then the above is
+equivalent to:
+<P>
+
+<BR>&nbsp;&nbsp;&nbsp;dd&nbsp;if=/dev/sda&nbsp;iflag=direct&nbsp;of=t&nbsp;bs=512&nbsp;count=1000000
+<P>
+
+although dd's speed may improve if bs was larger and count was suitably
+reduced. The use of the 'iflag=direct' option bypasses the buffering and
+caching that is usually done on a block device.
+<P>
+
+The dd command's bs argument can be thought of as roughly equivalent to
+ddpt's bs*bpt . dd almost assumes buffering on a block device and will
+work as long as bs is a multiple of the actual logical block size.
+Since ddpt can work at a lower level in some cases the bs argument must be
+a disk's actual logical block size. Thus the bpt argument was introduced
+to make the copy more efficient. So these two invocations are roughly
+equivalent:
+<P>
+
+<BR>&nbsp;&nbsp;&nbsp;dd&nbsp;if=/dev/sda&nbsp;of=t&nbsp;bs=8k&nbsp;count=64
+<BR>&nbsp;&nbsp;&nbsp;ddpt&nbsp;if=/dev/sda&nbsp;of=t&nbsp;bs=512&nbsp;bpt=16&nbsp;count=1k
+<P>
+
+In both cases the total number of bytes moved is bs*count . And that will
+be done by reading 8k (8192 bytes) into a buffer then writing out that
+buffer to the file t. The read write sequence continues until the
+count is complete or an error occurs.
+<P>
+
+The 'of2=' option can save time when the input would otherwise need to be
+read twice. For example, to copy data and take a md5sum of it without
+needing to re-read the data:
+<P>
+
+<BR>&nbsp;&nbsp;mkfifo&nbsp;fif
+<BR>&nbsp;&nbsp;md5sum&nbsp;fif&nbsp;&amp;
+<BR>&nbsp;&nbsp;ddpt&nbsp;if=/dev/sg3&nbsp;iflag=coe&nbsp;of=sg3.img&nbsp;oflag=sparse&nbsp;of2=fif&nbsp;bs=512
+<P>
+
+This will image /dev/sg3 (e.g. an unmounted disk) and place the contents
+in the (sparse) file sg3.img . Without re-reading the data it will also
+perform a md5sum calculation on the image.
+<P>
+
+Now we use sparse writing logic to get some idea of how many blocks
+on a disk are full of zeros. After a SCSI FORMAT UNIT command or an ATA
+SECURITY ERASE command a disk may be all zeros.
+<P>
+
+<BR>&nbsp;&nbsp;&nbsp;ddpt&nbsp;if=/dev/sdc&nbsp;bs=512&nbsp;oflag=sparse
+<P>
+
+Since no &quot;of=&quot; option is given, output goes to /dev/null so nothing
+is actually written so the &quot;records out&quot; will be zero. However there
+will be a count of &quot;records in&quot; and &quot;bypassed records out&quot;. If /dev/sdc is
+full of zeros then &quot;records in&quot; and &quot;bypassed records out&quot; will be
+the same. Since the &quot;bpt=&quot; option is not given it defaults to &quot;bpt=128,128&quot;
+so the copy buffer will be 64 KiB and the sparse check for zeros will
+be done with 64 KiB (128 block) granularity.
+<P>
+
+For examples of the trim and self,trim options see the section above
+on TRIM, UNMAP AND WRITE SAME.
+<P>
+
+Following is an example run on a Windows OS using the '--wscan' option
+which shows the available device names (e.g. PD1) and the associated volume
+name(s):
+<P>
+
+<BR>&nbsp;&nbsp;&nbsp;ddpt&nbsp;-w
+<BR>
+
+PD0     [C]     FUJITSU   MHY2160BH         0000
+<BR>
+
+PD1     [DF]    WD        2500BEV External  1.05  WD-WXE90
+<BR>
+
+CDROM0  [E]     MATSHITA DVD/CDRW UJDA775  CB03
+<P>
+
+So, for example, volumes D: and F: reside on PhysicalDisk1 (abbreviated to
+&quot;PD1&quot;) which is manufactured by WD (Western Digital).
+<P>
+
+Further examples can be found on this web page:
+<A HREF="https://sg.danny.cz/sg/ddpt.html">https://sg.danny.cz/sg/ddpt.html</A> . That web page is also found at:
+<A HREF="https://doug-gilbert.github.io/ddpt.html">https://doug-gilbert.github.io/ddpt.html</A> . There is a text file containing
+examples called ddpt_examples.txt in the &quot;doc&quot; directory of this package's
+distribution tarball. The ddpt_examples.txt file contains some examples of
+using job files.
+<A NAME="lbBC">&nbsp;</A>
+<H2>EXAMPLE OF REMOTE COPY</H2>
+
+As a general rule ddpt is a superset of dd and one useful thing that dd can
+do is copy between machines securely, using a ssh pipe. The general form is:
+<BR>&nbsp;&nbsp;&nbsp;&nbsp;dd&nbsp;if=/dev/sda&nbsp;bs=5M&nbsp;|&nbsp;ssh&nbsp;<A HREF="mailto:user@oth_mach">user@oth_mach</A>&nbsp;dd&nbsp;of=sda.img&nbsp;bs=5M
+<BR>
+
+This is &quot;pushing&quot; data from /dev/sda on the local machine to a file called
+sda.img on the oth_mach machine. The data is not compressed but is encrypted.
+With dd if &quot;of=&quot; is missing then data goes to stdout and if &quot;if=&quot; is
+missing data comes from stdin. It is important that dd (and ddpt) send error,
+warning and informational messages to stderr, and never stdout. If dd or ddpt
+ever sent a message to stdout it would potentially corrupt such a transfer.
+<P>
+
+ddpt takes a slightly different approach in that it doesn't default if= and
+of= to stdin and stdout respectively. To get that outcome if=- and/or
+of=- must be used. [With dd forgetting &quot;of=&quot; in simple cases can result in
+a lot of raw data being &quot;spilt&quot; on the screen, usually undesirable.] Also
+using ddpt's bpt= can result in more fine control over the individual chunks
+sent over &quot;the wire&quot;. So an equivalent of the above piped copy using ddpt:
+<BR>&nbsp;&nbsp;&nbsp;&nbsp;ddpt&nbsp;if=/dev/sda&nbsp;bs=512&nbsp;of=-&nbsp;|&nbsp;ssh&nbsp;<A HREF="mailto:user@oth_mach">user@oth_mach</A>&nbsp;'ddpt&nbsp;if=-
+bs=512 of=sda.img'
+<P>
+
+Since bpt= is not given it will default to 128, so 64KiB will be sent in each
+chunk across the wire. Note that bs=512 is the assumed sector/block size of
+/dev/sda (and should be changed to 4096 if that is the sector size). Various
+options can be added, mainly on the first ddpt: 'coe=1' for continue on error,
+substituting zeros if a bad sector is encountered; '-p' is a less verbose way
+of asking for a progress report (as noted, sent to stderr); 'bpt=' for finer
+control of the size of chunks. And on the output side, if sda.img isn't being
+overwritten 'oflag=sparse'; that could save gigabytes of storage is /dev/sda
+is a newish disk (assumed to be filled with zeros when manufactured).
+<P>
+
+Performance tweaks may drastically reduce the &quot;time to copy&quot; depending on
+where (or if) there is a bottle neck. With fast Ethernet (e.g. &gt;= 1 Gbps)
+the bottle neck is probably writing to sda.img (so oflag=sparse or
+oflag=sparing if overwriting sda.img may help). If the link between the
+machines is the bottle neck (e.g. its the internet) the compressing the
+data may help (e.g. pipe through 'gzip -c -9 ' on the input side
+and 'gzip -d' on the output side):
+<BR>&nbsp;&nbsp;&nbsp;&nbsp;ddpt&nbsp;if=/dev/sda&nbsp;bs=512&nbsp;count=2m&nbsp;coe=1&nbsp;of=-&nbsp;|&nbsp;gzip&nbsp;-c&nbsp;-9&nbsp;&nbsp;|
+ssh <A HREF="mailto:user@oth_mach">user@oth_mach</A> 'gzip -d | ddpt if=- bs=512 of=/tmp/sda_1g.img '
+<P>
+
+The single quotes around the remote pipe are important to stop the local
+shell acting on the second half of that remote pipe.
+<A NAME="lbBD">&nbsp;</A>
+<H2>AUTHORS</H2>
+
+Written by Doug Gilbert
+<A NAME="lbBE">&nbsp;</A>
+<H2>REPORTING BUGS</H2>
+
+Report bugs to &lt;dgilbert at interlog dot com&gt;.
+<A NAME="lbBF">&nbsp;</A>
+<H2>COPYRIGHT</H2>
+
+Copyright &#169; 2008-2026 Douglas Gilbert
+<BR>
+
+This software is distributed under the GPL version 2. There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+<A NAME="lbBG">&nbsp;</A>
+<H2>SEE ALSO</H2>
+
+This utility has companion/helper utilities
+<B><A HREF="../man8/ddptctl.8.html">ddptctl</A>(8), <A HREF="../man8/ddpt_sgl.8.html">ddpt_sgl</A>(8)</B>
+
+<BR>
+
+There is a web page discussing ddpt at <A HREF="https://sg.danny.cz/sg/ddpt.html">https://sg.danny.cz/sg/ddpt.html</A>
+<P>
+
+The lmbench package contains
+<B>lmdd</B>
+
+which is also interesting. For moving data to and from tapes see
+<B>dt</B>
+
+which is found at <A HREF="http://www.scsifaq.org/RMiller_Tools/index.html">http://www.scsifaq.org/RMiller_Tools/index.html</A>
+<P>
+
+To change mode parameters that effect a SCSI device's caching and error
+recovery see
+<B>sdparm(sdparm)</B>
+
+<P>
+
+To verify the data on the media is readable see:
+<B>sg_verify(sg3_utils)</B>
+
+<P>
+
+To scan and repair disk partitions see TestDisk (testdisk).
+<P>
+
+Additional references:
+<B><A HREF="../man1/dd.1.html">dd</A>(1), <A HREF="../man1/cmp.1.html">cmp</A>(1), <A HREF="../man2/open.2.html">open</A>(2), <A HREF="../man2/flock.2.html">flock</A>(2), sg_xcopy,sg_copy_results,</B>
+
+<B>sg_dd(sg3_utils)</B>
+
+<P>
+
+<HR>
+<A NAME="index">&nbsp;</A><H2>Index</H2>
+<DL>
+<DT><A HREF="#lbAB">NAME</A><DD>
+<DT><A HREF="#lbAC">SYNOPSIS</A><DD>
+<DT><A HREF="#lbAD">DESCRIPTION</A><DD>
+<DT><A HREF="#lbAE">OPERANDS</A><DD>
+<DT><A HREF="#lbAF">OPTIONS</A><DD>
+<DT><A HREF="#lbAG">ARGUMENTS</A><DD>
+<DT><A HREF="#lbAH">CONVERSIONS</A><DD>
+<DT><A HREF="#lbAI">FLAGS</A><DD>
+<DT><A HREF="#lbAJ">COUNT</A><DD>
+<DT><A HREF="#lbAK">JOB FILES</A><DD>
+<DT><A HREF="#lbAL">SCATTER GATHER LISTS</A><DD>
+<DT><A HREF="#lbAM">SANITY CHECKS</A><DD>
+<DT><A HREF="#lbAN">XCOPY</A><DD>
+<DT><A HREF="#lbAO">ODX</A><DD>
+<DT><A HREF="#lbAP">SPARSE WRITES</A><DD>
+<DT><A HREF="#lbAQ">TRIM, UNMAP AND WRITE SAME</A><DD>
+<DT><A HREF="#lbAR">NVME SUPPORT</A><DD>
+<DT><A HREF="#lbAS">DD DIFFERENCES</A><DD>
+<DT><A HREF="#lbAT">PROTECTION INFORMATION</A><DD>
+<DT><A HREF="#lbAU">MULTIPLIERS</A><DD>
+<DT><A HREF="#lbAV">NOTES</A><DD>
+<DT><A HREF="#lbAW">SIGNALS</A><DD>
+<DT><A HREF="#lbAX">VERIFY</A><DD>
+<DT><A HREF="#lbAY">TAPE</A><DD>
+<DT><A HREF="#lbAZ">ENVIRONMENT VARIABLES</A><DD>
+<DT><A HREF="#lbBA">EXIT STATUS</A><DD>
+<DT><A HREF="#lbBB">EXAMPLES</A><DD>
+<DT><A HREF="#lbBC">EXAMPLE OF REMOTE COPY</A><DD>
+<DT><A HREF="#lbBD">AUTHORS</A><DD>
+<DT><A HREF="#lbBE">REPORTING BUGS</A><DD>
+<DT><A HREF="#lbBF">COPYRIGHT</A><DD>
+<DT><A HREF="#lbBG">SEE ALSO</A><DD>
+</DL>
+<HR>
+This document was created by
+<A HREF="/cgi-bin/man/man2html">man2html</A>,
+using the manual pages.<BR>
+Time: 02:19:21 GMT, May 18, 2026
+</BODY>
+</HTML>

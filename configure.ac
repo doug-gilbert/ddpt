@@ -2,7 +2,7 @@ AC_INIT(ddpt, 0.98, dgilbert@interlog.com)
 
 AM_INIT_AUTOMAKE([foreign])
 AM_MAINTAINER_MODE
-AM_CONFIG_HEADER(config.h)
+AC_CONFIG_HEADERS([config.h])
 
 AC_PROG_CC
 AC_PROG_CXX
@@ -12,7 +12,6 @@ AC_PROG_INSTALL
 ifdef([AM_PROG_AR], [AM_PROG_AR], [])
 
 # check for headers
-AC_HEADER_STDC
 AC_CHECK_HEADERS([byteswap.h], [], [], [])
 
 AC_CHECK_FUNCS(posix_fadvise)

@@ -46,7 +46,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.98 20260504 [svn: r422]";
+const char * ddptctl_version_str = "0.98 20260517 [svn: r423]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -555,16 +555,24 @@ sgl_helper(struct opts_t * op, const char * opt, const char * buf,
             pr2serr("bad argument to '%s=' [err=%d]\n", opt, err);
             return err;
         }
-        if (vb > 1)
-            pr2serr("%s: file, %d sgl elements\n", opt, *num_elems_p);
+        if (vb > 1) {
+            int nn = *num_elems_p;
+
+            pr2serr("%s: file, %d sgl element%s\n", opt, nn,
+                    (nn == 1 ? "" : "s"));
+        }
     } else if (num_either_ch_in_str(buf, len, ',', ' ') > 0) {
         *sgl_pp = cl2sgl(buf, num_elems_p, vb > 0);
         if (NULL == *sgl_pp) {
             pr2serr("bad command line argument to '%s='\n", opt);
             return SG_LIB_SYNTAX_ERROR;
         }
-        if (vb > 1)
-            pr2serr("%s: cl2sgl, %d sgl elements\n", opt, *num_elems_p);
+        if (vb > 1) {
+            int nn = *num_elems_p;
+
+            pr2serr("%s: cl2sgl, %d sgl element%s\n", opt, nn,
+                    (nn == 1 ? "" : "s"));
+        }
     } else {
         *sgl_pp = (struct scat_gath_elem *)
                         calloc(1, sizeof(struct scat_gath_elem));
@@ -597,7 +605,8 @@ do_sgl(struct opts_t * op, const char * opt, const char * buf)
     op->o_sgli.sglp = op->i_sgli.sglp;
     op->o_sgli.elems = got;
     if (op->verbose > 3) {
-        pr2serr("%s: scatter-gather list (%d elements):\n", opt, got);
+        pr2serr("%s: scatter-gather list (%d element%s):\n", opt, got,
+                (got == 1 ? "" : "s"));
         for (k = 0; k < got; ++k)
             pr2serr("  lba: 0x%" PRIx64 ", number: 0x%" PRIx32 "\n",
                     op->i_sgli.sglp[k].lba, op->i_sgli.sglp[k].num);

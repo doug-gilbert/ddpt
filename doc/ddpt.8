@@ -522,6 +522,8 @@ The compare continues until an inequality is found at which point the
 operation stops. This is only available if \fIOFILE\fR is a pass\-through
 device that implements VERIFY(10 or 16) with BYTCHK set to 1. See the
 VERIFY section below.
+.br
+If both are regular files then the Unix command 'cmp' can be used.
 .TP
 \fB\-V\fR, \fB\-\-version\fR
 reports version number information then exits.
@@ -1057,7 +1059,7 @@ containing '\-vv' will result in a verbosity level of '\-vvv' during the
 copy phase. Empty lines, lines only containing whitespace(s) and anything
 from and including a '#' in a job file line are ignored.
 .PP
-Some examples of job files can be found in the testing directory of the
+Some examples of job files can be found in the ttesting directory of the
 ddpt source with the filename extension ".jf".
 .SH SCATTER GATHER LISTS
 Each element of a scatter gather list (sgl, plural: sgl_s) is made up of a
@@ -2059,25 +2061,31 @@ of=\- must be used. [With dd forgetting "of=" in simple cases can result in
 a lot of raw data being "spilt" on the screen, usually undesirable.] Also
 using ddpt's bpt= can result in more fine control over the individual chunks
 sent over "the wire". So an equivalent of the above piped copy using ddpt:
-    ddpt if=/dev/sda bs=512 of=\- | ssh user@oth_mach 'ddpt if=\- bs=512 of=sda.img'
-.br
+    ddpt if=/dev/sda bs=512 of=\- | ssh user@oth_mach 'ddpt if=\-
+bs=512 of=sda.img'
+.PP
 Since bpt= is not given it will default to 128, so 64KiB will be sent in each
 chunk across the wire. Note that bs=512 is the assumed sector/block size of
 /dev/sda (and should be changed to 4096 if that is the sector size). Various
 options can be added, mainly on the first ddpt: 'coe=1' for continue on error,
-substituting zeros id a bad sector is encountered; '\-p' is a less verbose of
-asking for a progress report (as noted, sent to stderr); 'bpt=' for finer
+substituting zeros if a bad sector is encountered; '\-p' is a less verbose way
+of asking for a progress report (as noted, sent to stderr); 'bpt=' for finer
 control of the size of chunks. And on the output side, if sda.img isn't being
 overwritten 'oflag=sparse'; that could save gigabytes of storage is /dev/sda
 is a newish disk (assumed to be filled with zeros when manufactured).
 .PP
 Performance tweaks may drastically reduce the "time to copy" depending on
 where (or if) there is a bottle neck. With fast Ethernet (e.g. >= 1 Gbps)
-the bottle neck is probably writing to sda.img (so oflag=spare or
+the bottle neck is probably writing to sda.img (so oflag=sparse or
 oflag=sparing if overwriting sda.img may help). If the link between the
 machines is the bottle neck (e.g. its the internet) the compressing the
 data may help (e.g. pipe through 'gzip \-c \-9 ' on the input side
-and 'gzip \-d' on the output side).
+and 'gzip \-d' on the output side):
+    ddpt if=/dev/sda bs=512 count=2m coe=1 of=\- | gzip \-c \-9  |
+ssh user@oth_mach 'gzip \-d | ddpt if=\- bs=512 of=/tmp/sda_1g.img '
+.PP
+The single quotes around the remote pipe are important to stop the local
+shell acting on the second half of that remote pipe.
 .SH AUTHORS
 Written by Doug Gilbert
 .SH "REPORTING BUGS"
@@ -2109,5 +2117,5 @@ To verify the data on the media is readable see:
 To scan and repair disk partitions see TestDisk (testdisk).
 .PP
 Additional references:
-.B dd(1), open(2), flock(2), sg_xcopy,sg_copy_results,
+.B dd(1), cmp(1), open(2), flock(2), sg_xcopy,sg_copy_results,
 .B sg_dd(sg3_utils)

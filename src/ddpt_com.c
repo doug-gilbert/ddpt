@@ -1930,8 +1930,8 @@ cl2sgl(const char * inp, int * arr_elemsp, bool b_vb)
                     sge_p->num = (uint32_t)large_num;
                     split = false;
                     if (b_vb)
-                        pr2serr("%s: split large sg elem into %d elements\n",
-                                __func__, j);
+                        pr2serr("%s: split large sg elem into %d element%s\n",
+                                __func__, j, (j == 1 ? "" : "s"));
                     goto check_for_next;
                 }
                 continue;
@@ -2126,8 +2126,8 @@ file2sgl_helper(FILE * fp, const char * fnp, bool def_hex, bool flexible,
                             ll -= max_nbs;
                         } while (ll > max_nbs);
                         if (b_vb && real_scan)
-                            pr2serr("%s: split large sg elem into %d "
-                                    "elements\n", __func__, h);
+                            pr2serr("%s: split large sg elem into %d element"
+                                    "%s\n", __func__, h, (h == 1 ? "" : "s"));
                     }
                     if (real_scan) {
                         sge_p->num = (uint32_t)ll;
@@ -2571,8 +2571,8 @@ sgl_print(struct sgl_info_t * sgli_p, bool skip_meta, const char * id_str,
                 (sgli_p->sum_hard ? "true" : "false"),
                 (sgli_p->fragmented ? "true" : "false"));
     }
-    fprintf(fp, "  >> %s scatter gather list (%d elements):\n", caller,
-            elems);
+    fprintf(fp, "  >> %s scatter gather list (%d element%s):\n", caller,
+            elems, (elems == 1 ? "" : "s"));
     if (sgli_p->sglp && show_sgl) {
         for (k = 0, sgep = sgli_p->sglp; k < elems; ++k, ++sgep) {
             fprintf(fp, "    lba: 0x%" PRIx64 ", number: 0x%" PRIx32,

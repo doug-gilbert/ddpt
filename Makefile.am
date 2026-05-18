@@ -2,7 +2,7 @@ SUBDIRS =	src doc
 
 EXTRA_DIST = \
 	autogen.sh \
-	doc/ddpt.html
+	doc/ddpt.8.html
 
 distclean-local:
 	rm -rf \

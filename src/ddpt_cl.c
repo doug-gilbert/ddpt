@@ -302,7 +302,9 @@ tertiary_help:
             "   unmap (pt)     same as trim flag\n"
             "   wverify (o,pt)    turns WRITE into WRITE AND VERIFY\n"
             "   xcopy (pt)     invoke SCSI XCOPY; send to IFILE or OFILE.\n\n"
-            "CONVS:\n"
+           );
+
+    pr2serr("CONVS:\n"
             "   fdatasync      same as oflag=fdatasync\n"
             "   fsync          same as oflag=fsync\n"
             "   no_del_tkn     same as oflag=no_del_tkn\n"
@@ -382,16 +384,24 @@ skip_seek(struct opts_t * op, const char * key, const char * buf,
             pr2serr("bad argument to '%s=' [err=%d]\n", key, err);
             return err ? err : SG_LIB_SYNTAX_ERROR;
         }
-        if (vb > 1)
-            pr2serr("%s: file, %d sgl elements\n", key, *num_elems_p);
+        if (vb > 1) {
+            int nn = *num_elems_p;
+
+            pr2serr("%s: file, %d sgl element%s\n", key, nn,
+                    (nn == 1 ? "" : "s"));
+        }
     } else if (num_either_ch_in_str(buf, len, ',', ' ') > 0) {
         *sgl_pp = cl2sgl(buf, num_elems_p, vb > 0);
         if (NULL == *sgl_pp) {
             pr2serr("bad command line argument to '%s='\n", key);
             return SG_LIB_SYNTAX_ERROR;
         }
-        if (vb > 1)
-            pr2serr("%s: cli, %d sgl elements\n", key, *num_elems_p);
+        if (vb > 1) {
+            int nn = *num_elems_p;
+
+            pr2serr("%s: cli, %d sgl element%s\n", key, nn,
+                    (nn == 1 ? "" : "s"));
+        }
     } else {    /* single number on command line (e.g. skip=1234) */
         *sgl_pp = (struct scat_gath_elem *)
                                 calloc(1, sizeof(struct scat_gath_elem));
