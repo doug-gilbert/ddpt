@@ -2,14 +2,14 @@ The version number is hard-coded into src/ddpt.c (in a C string);
 the rpm spec file: ddpt.spec ; the debian/changelog file;
 and the configure.ac file (in the AC_INIT item).
 
-Changelog for pre-release ddpt-0.95 [20260517] [svn: r423]
+Changelog for pre-release ddpt-0.95 [20260526] [svn: r424]
   - add coe=2 for skip and zero output of rest of segment;
     useful for flash that has elements (e.g. 16 KB long) of
     sequential bad blocks. Retrying 1 at a time is tiresome
   - support iflag=random
   - xcopy: tweak CSCD identification descriptor
   - improve final summary when iflag=sparse and no ofile
-  - point svn:externals to sg3_utils revision 1103
+  - point svn:externals to sg3_utils revision 1115
   - netbsd: experimental port, scsi only
   - cmake: experimental build alternative
     - can build deb and rpm packages with 'cpack .'
@@ -23,6 +23,7 @@ Changelog for pre-release ddpt-0.95 [20260517] [svn: r423]
   - switch debian build from cdbs to debhelper
   - rename testing directory to ttesting (to avoid cmake
     ctest artifact directory called Testing)
+  - rename build_debian.sh to debian_build.sh
 
 Changelog for released ddpt-0.97 [20210421] [svn: r388]
   - ddpt: add cdl operand for command duration limits

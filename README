@@ -75,7 +75,7 @@ directory with "man doc/ddpt.8".
 There is a web page at https://sg.danny.cz/sg/ddpt.html and a copy of that
 html file is placed in the "doc" directory.
 
-Build infrastructure
+Build with Autotools
 --------------------
 This package uses the automake and autoconf tools. The generating files
 (scripts) are configure.ac, Makefile.am, doc/Makefile.am, src/Makefile.am and
@@ -85,7 +85,7 @@ other generating files in the above list is changed.
 The is an experimental cmake based build described in the following section.
 
 There is a rpm "spec" file in the main directory: ddpt.spec . There are Debian
-build files in the "debian" directory and a script called build_debian.sh in
+build files in the "debian" directory and a script called debian_build.sh in
 the main directory. Amongst other things debian builds are sensitive to the
 value in the debian/compat file. If it contains "7" then it works on lenny and
 gives warning on squeeze (but fails on the earlier etch).
@@ -133,6 +133,11 @@ The ./cmake_del_artifacts.sh.sh script cleans up most of that.
 To build static executable(s) instead of 'cmake .' use
     cmake . -DBUILD_SHARED_LIBS=OFF
 
+The following places the executable in the /usr/bin directory, the man
+pages in the /usr/share/man/man8 directory, and other documentation in
+the /usr/share/doc/ddpt directory.
+ $ sudo cmake  --install . --prefix=/usr
+
 Rather than the last step (i.e. 'cmake --install . ') this invocation:
     cpack .
 
@@ -149,10 +154,19 @@ install_manifest.txt file that can be used to remove the files
 installed like this:
     xargs rm < install_manifest.txt
 
+Options can be requested like this in the first step of a cmake build:
+    # cmake . -DENABLE_DEBUG=ON
 
-A _cleaner_ approach, because cmake generates lots of files (artifacts), is
-to create a build sub-directory off the top level source directory, then get
-cmake to put all its generated files under that sub-directory.
+[The available options can be viewed with 'cmake -LH .' . for this
+ package it can be seen that ENABLE_DEBUG is default OFF .]
+
+
+A _cleaner_ build approach, is to use an "out-of-tree" build. This is
+particularly useful with cmake because it generates so many intermediate
+files (sometimes called artifacts). In this case the first invocation of
+cmake in the sequence below generates a 'build' sub-directory below the
+top level source directory, it then moves to the 'build' sub-directory.
+Now cmake will put all its generated files under that sub-directory:
     # cd <src_top_level_dir>
     #
     # cmake -S . -B build
@@ -208,4 +222,4 @@ See README.win32
 
 
 Douglas Gilbert
-17th May 2026
+19th May 2026

@@ -1,5 +1,7 @@
 #!/bin/sh
 
+echo "Entering doc/cmake_del_artifacts.sh"
+
 rm -rf \
 	CMakeCache.txt \
 	CMakeFiles \

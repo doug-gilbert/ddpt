@@ -5,7 +5,7 @@ To check the syntax of these manpages:
     mandoc -W style ddpt_sgl.8 > /dev/null
 
 Turn a man page into html:
-    man2html -r ddpt.8 > ddpt.html
+    man2html -r ddpt.8 > ddpt.8.html
 
 Douglas Gilbert
-17 May 2026
+18 May 2026

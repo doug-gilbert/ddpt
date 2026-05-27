@@ -17,8 +17,8 @@ so bpt*ibs is less than or equal to 32 KB since there is pt overhead
 (over 700 bytes).
 
 ddpt can be built into a Debian package for kFreeBSD using the
-./build_debian.sh script in the top level directory. This has been tested
+./debian_debian.sh script in the top level directory. This has been tested
 with Debian 6.0 release.
 
 Doug Gilbert
-26th February 2011
+19th May 2026

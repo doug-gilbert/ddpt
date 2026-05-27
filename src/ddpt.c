@@ -44,6 +44,10 @@
 /* N.B. config.h must precede anything that depends on HAVE_*  */
 #ifdef HAVE_CONFIG_H
 #include "config.h"
+#else
+#ifdef DEBUG
+#warning "config.h file NOT found"
+#endif
 #endif
 
 #ifdef HAVE_GETRANDOM

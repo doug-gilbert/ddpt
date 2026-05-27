@@ -21,3 +21,8 @@ foreach(util ${DDPT_MP})
     )
 
 endforeach()
+
+install(FILES ddpt.html DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+install(FILES ddpt.8.html DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+install(FILES ddpt_examples.txt DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+install(FILES scatter_file.txt DESTINATION "${CMAKE_INSTALL_DOCDIR}")
