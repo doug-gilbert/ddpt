@@ -55,7 +55,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.98 20260517 [svn: r423]";
+static const char * ddpt_version_str = "0.98 20260608 [svn: r425]";
 
 static const char * my_name = "ddpt: ";
 
@@ -3324,6 +3324,8 @@ do_falloc(struct opts_t * op)
         pr2serr("Pre-allocated %" PRId64 " bytes at offset %" PRId64 "\n",
                 o_count, oseek);
 
+#else   /* do not HAVE_FALLOCATE */
+    if (op) { ; }
 #endif  /* HAVE_FALLOCATE */
 #else   /* other than SG_LIB_LINUX */
 #ifdef HAVE_POSIX_FALLOCATE
