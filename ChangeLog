@@ -4,7 +4,7 @@ and the configure.ac file (in the AC_INIT item). There are also
 ddpt, ddptctl and ddpt_sgl man pages. References to github are
 to https://github.com/doug-gilbert/ddpt
 
-Changelog for pre-release ddpt-0.95 [20260608] [svn: r425]
+Changelog for pre-release ddpt-0.95 [20260610] [svn: r426]
   - add coe=2 for skip and zero output of rest of segment;
     useful for flash that has elements (e.g. 16 KB long) of
     sequential bad blocks. Retrying 1 at a time is tiresome
