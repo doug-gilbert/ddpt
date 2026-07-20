@@ -1,22 +1,29 @@
 /*
- * Copyright (c) 2008-2026, Douglas Gilbert
+ * Copyright (c) 2026, Douglas Gilbert
  * All rights reserved.
  *
  * SPDX-License-Identifier: BSD-2-Clause
  *
  */
 
-/* ddpt is a utility program for copying files. It broadly follows the syntax
- * and semantics of the "dd" program found in Unix. ddpt is specialised for
- * "files" that represent storage devices, especially those that understand
- * the SCSI command set accessed via a pass-through.
+/* ddpt_sparse is a utility program for copying files. It broadly follows
+ * the syntax and semantics of the "dd" program found in Unix. ddpt_sparse
+ * is specialised for "files" that represent storage devices, especially
+ * those that understand the SCSI command set accessed via a pass-through,
+ * hence the "pt" part of the utility name.
+ *
+ * Furthermore ddpt_sparse looks for "holes" in the input file/device and
+ * conveys any found to the output (saving read and write time, and space
+ * required in the output side). For any data actually read, it checks for
+ * segment-sized sections full of zeros and produces additional 'holes' in
+ * the output for any such segments found. A segment is an aligned sequence
+ * of BS * BPT bytes, aligned to the first block read. The "devices" handled
+ * are SCSI (including USB attached), (S)ATA and NVMe disks.
  */
 
 /*
- * The ddpt utility is a rewritten and extended version of the sg_dd utility
- * found in the sg3_utils package. sg_dd has a GPL (version 2) which has been
- * changed to a somewhat freer FreeBSD style license in ddpt.
- * Both licenses are considered "open source".
+ * The ddpt_sparse utility is a written in such a way as to be as portable
+ * as practical (rather than being Linux specific).
  *
  * Windows "block" devices, when _not_ accessed via the pass-through, don't
  * seem to work when POSIX/Unix like IO calls are used (e.g. write()).
@@ -28,11 +35,30 @@
 #define _GNU_SOURCE 1
 #endif
 
+#include <iostream>
+#include <vector>
+#include <iterator>
+// #include <map>
+// #include <list>
+#include <algorithm>
+#include <system_error>
+// #include <thread>
+// #include <mutex>
+// #include <chrono>
+// #include <atomic>
+#include <random>       /* iota() needs this */
+
+/* Need _GNU_SOURCE for O_DIRECT */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <getopt.h>
 #include <errno.h>
 #include <limits.h>
 #include <fcntl.h>
@@ -40,6 +66,10 @@
 #define __STDC_FORMAT_MACROS 1
 #include <inttypes.h>
 #include <sys/stat.h>
+
+static const char * ddpt_sparse_version_str = "0.98 20260719 [svn: r427]";
+
+static const char * my_name = "ddpt_sparse: ";
 
 /* N.B. config.h must precede anything that depends on HAVE_*  */
 #ifdef HAVE_CONFIG_H
@@ -54,10 +84,6 @@
 #include <sys/random.h>         /* for getrandom() system call */
 #endif
 
-
-static const char * ddpt_version_str = "0.98 20260719 [svn: r427]";
-
-static const char * my_name = "ddpt: ";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -102,6 +128,7 @@ static const char * my_name = "ddpt: ";
 #endif
 
 #include "ddpt.h"
+#include "ddpt_sgl.hpp"
 #include "sg_lib.h"
 #include "sg_pr2serr.h"
 
@@ -111,6 +138,11 @@ static const char * my_name = "ddpt: ";
 
 /* Used for outputting diagnostic messages for oflag=prealloc */
 #define PREALLOC_DEBUG 1
+
+static const uint8_t EXTENT_TYPE_UNKN { };   /* unknown, probably mapped */
+static const uint8_t EXTENT_TYPE_MAPPED { };
+static const uint8_t EXTENT_TYPE_UNMAPPED { };
+static const uint8_t EXTENT_TYPE_ANCHORED { };
 
 
 static int cp_read_of_pt(struct opts_t * op, struct cp_state_t * csp,
@@ -3069,9 +3101,8 @@ open_files_devices(struct opts_t * op)
     } else if (op->prefetch_given && (vb > 0))
             pr2serr("warning: --prefetch ignored in the absence of "
                     "--verify\n");
-    /* treat no 'of=OFILE' operand as /dev/null */
     if ('\0' == odip->fn[0])
-        sg_strscpy(odip->fn, ".", INOUTF_SZ);
+        strcpy(odip->fn, "."); /* treat no 'of=OFILE' operand as /dev/null */
     if (('-' == odip->fn[0]) && ('\0' == odip->fn[1])) {
         fd = STDOUT_FILENO;
         odip->d_type = FT_FIFO;
@@ -3493,11 +3524,12 @@ main(int argc, char * argv[])
     struct opts_t * op;
 
     op = &ops;
-    com_state_init(UTIL_DDPT, op, &iflag, &oflag, &ids, &ods, &o2ds);
+    com_state_init(UTIL_DDPT_SPARSE, op, &iflag, &oflag, &ids, &ods, &o2ds);
     if (getenv("SG3_UTILS_INVOCATION"))
-        sg_rep_invocation(my_name, ddpt_version_str, argc, argv, stderr);
+        sg_rep_invocation(my_name, ddpt_sparse_version_str, argc, argv,
+                          stderr);
 
-    ret = ddpt_cl_parse(op, argc, argv, ddpt_version_str, jf_depth);
+    ret = ddpt_cl_parse(op, argc, argv, ddpt_sparse_version_str, jf_depth);
     if (op->do_help > 0) {
         ddpt_usage(op->do_help);
         return 0;
@@ -3520,7 +3552,7 @@ main(int argc, char * argv[])
         pr2serr("Not in DEBUG mode, so '-vV' has no special action\n");
 #endif
     if (op->version_given) {
-        pr2serr("version: %s\n", ddpt_version_str);
+        pr2serr("version: %s\n", ddpt_sparse_version_str);
         return 0;
     }
 

@@ -9,8 +9,10 @@
 #ifndef DDPT_H
 #define DDPT_H
 
-/* This is a C header file for the ddpt utility. See ddpt.c and ddpt.8
- * for more information.
+/* This is a C/C++ header file for the ddpt, ddptctl, ddpt_sgl and
+ * ddpt_sparse utilities. It also acts as the header file for common
+ * functions implemented in ddpt_com.c .
+ * See ddpt.c and ddpt.8 for more information.
  */
 
 #ifndef _XOPEN_SOURCE
@@ -21,6 +23,8 @@
 #define _GNU_SOURCE 1
 #endif
 
+/* Note that C++ headers (e.g.  '#include <vector>') placed towards the end
+ * of this file */
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,6 +37,7 @@
 #include "config.h"
 #endif
 
+/* make sure function declarations use C passing conventions */
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -79,6 +84,12 @@ extern "C" {
 /* end of borrow from dd signal handling defines */
 
 
+/* one of following placed in ops_t::util_enum_val */
+#define UTIL_DDPT 1
+#define UTIL_DDPTCTL 2
+#define UTIL_DDPT_SPARSE 3
+#define UTIL_DDPT_OTHER 4
+
 #define STR_SZ 1024
 #define INOUTF_SZ (STR_SZ + 2)
 #define EBUFF_SZ 512
@@ -98,8 +109,31 @@ extern "C" {
 #define DDPT_MAX_JF_DEPTH 4
 #define DDPT_MAX_JF_LINES 1000
 #define DDPT_MAX_JF_ARGS_PER_LINE 16
+
 #define DDPT_COUNT_INDEFINITE (-1)
 #define DDPT_LBA_INVALID DDPT_COUNT_INDEFINITE
+
+/* LBAE: Logical Block Address Extent is a tuple: [LBA,NUM] both unsigned,
+ * LBA is 64 bits, NUM is 56 bits (less 2). NUM=0 is degenerate,
+ * NUM_max=(2^56 - 3). Specials: NUM=(2^56 - 1) means "the rest" so count=1
+ * maps to this; NUM=(2^56 - 2) is reserved for later use.
+ * Assumption: (2^56 - 3) logical blocks is "big enough" as the largest
+ * storage devices currently are less than 40 TB. With 512 byte logical
+ * blocks, the maximum NUM would allow for a storage device 900,000 times
+ * larger (than 40 TB). The reason for NUM being 8 bits less than 64 bits
+ * (i.e. 7 bytes rather than 8 bytes) is to allow and LBAE type (byte) field
+ * to fit on each LBAE objects (16 bytes: 8 LBA bytes, 7 NUM bytes and 1
+ * type bytes).
+ * On the other hand, a single READ or WRITE SCSI command or single scatter
+ * gather list element NUM is a 32 bit (unsigned) integer. Similar limits
+ * for NVMe, ATA and native Unix IO commands. Typically much smaller NUM
+ * values are used, for example the OPTIMAL TRANSFER LENGTH in the Block
+ * limits VPD page [0xb0].
+ */
+#define DDPT_LBAE_NUM_MASK 0x00ffffffffffffffUL  /* 2^56 - 1 */
+#define DDPT_LBAE_NUM_THE_REST DDPT_LBAE_NUM_MASK /* count=-1 maps to this */
+#define DDPT_LBAE_NUM_SPARE 0x00fffffffffffffeUL  /* 2^56 - 2 */
+#define DDPT_LBAE_NUM_MAX 0x00fffffffffffffdUL  /* 2^56 - 3 */
 
 #define VPD_DEVICE_ID 0x83
 #define VPD_3PARTY_COPY 0x8f
@@ -250,8 +284,28 @@ struct val_str_t {
  * read(2)s and write(2)s. User can give larger than 31 bit 'num's but they
  * are split into several consecutive elements. */
 struct scat_gath_elem {
+#if 0
     uint64_t lba;       /* of start block */
+#if 0
     uint32_t num;       /* number of blocks from and including start block */
+#else
+    uint64_t num;       /* number of blocks from and including start block */
+#endif
+#else
+    uint64_t lba;       /* of start block */
+    union {
+        uint64_t com_num_typ;
+        struct {
+#if defined(__BIG_ENDIAN__) || (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+            uint64_t  lbae_typ : 8;
+            uint64_t  num : 56;
+#else   /* else assume LITTLE_ENDIAN */
+            uint64_t  num : 56;
+            uint64_t  lbae_typ : 8;
+#endif
+#endif
+        };
+    };
 };
 
 /* Old cylinder/head/sector addressing than can be manipulated by ddpt_sgl.
@@ -395,8 +449,8 @@ struct cp_state_t {
     int rem_seg_bytes;  /* remaining valid bytes in buffer (after short) */
     int partial_write_bytes;
     int last_seg_wbytes; /* when ofile sz is limit; 0: no reduction */
-    uint32_t cur_in_num;   /* current in number of blocks */
-    uint32_t cur_out_num;  /* current out number of blocks */
+    uint64_t cur_in_num;   /* current in number of blocks */
+    uint64_t cur_out_num;  /* current out number of blocks */
     uint64_t cur_in_lba;   /* current in starts at this logical block */
     uint64_t prev_in_lba;  /* previous in leaves file "pointer" here */
     uint64_t cur_out_lba;  /* current out starts at this logical block */
@@ -507,7 +561,8 @@ struct flags_t {
 
 /* Command line options plus some other state variables.
  * The _given fields indicate whether option was given or if true, the
- * corresponding value takes its default value when false. */
+ * corresponding value takes its default value when false.
+ * Both ddpt and ddpt_sparse utilities use this struct. */
 struct opts_t {
     bool bpt_given;     /* true when bpt= given, BPT --> bpt_i */
     bool bs_given;      /* bs=BS given, check if ibs= or obs= also given */
@@ -525,13 +580,12 @@ struct opts_t {
     bool jf_given;      /* at least 1 level of job file given */
     bool list_id_given;
     bool obs_given;
-    bool o_readonly;	/* can only be set in ddptctl options */
+    bool o_readonly;    /* can only be set in ddptctl options */
     bool out_sparing_active;
     bool out_sparse_active;
     bool out_trim_active;
     bool outf_given;
     bool prefetch_given;/* only active with --verify */
-    bool primary_ddpt;  /* true if ddpt, false if helper utility */
     bool quiet;         /* set true when verbose=-1 (or any negative int) */
     bool reading_fifo;  /* true when if=- (read stdin) or if=PIPE */
     bool read1_or_transfer;     /* true when of=/dev/null or similar */
@@ -546,6 +600,7 @@ struct opts_t {
     bool version_given;
     bool xc_cat;
     bool xc_dc;
+    int util_enum_val;  /* UTIL_DDPT, _DDPTCTL, _DDPT_SPARSE or _OTHER */
     /* command line related variables */
     int ddpt_strs;      /* number of times 'ddpt' appears in job_file(s) */
     int delay;          /* intra copy segment delay in milliseconds */
@@ -602,6 +657,7 @@ struct opts_t {
     uint8_t * free_wrkPos2;
     uint8_t * zeros_buff;
     uint8_t * free_zeros_buff;
+    const char * util_name; /* "ddpt", "ddpt_sparse", "ddpt_other" or err */
     struct cp_statistics_t * stp;  /* NULL or points to cp_state_t's copy */
     struct cp_statistics_t stats;  /* copied here after internal copy done */
     struct sgl_info_t i_sgli; /* in scatter gather list info including list */
@@ -664,9 +720,10 @@ static inline int x_mult_rem(int x, int mult, int rem)
 /* defined in ddpt_com.c */
 const char * get_ddpt_arg_str(int ddpt_arg);
 void sleep_ms(int millisecs);
-void state_init(struct opts_t * op, struct flags_t * ifp,
-                struct flags_t * ofp, struct dev_info_t * idip,
-                struct dev_info_t * odip, struct dev_info_t * o2dip);
+void com_state_init(int my_util_enum_val, struct opts_t * op,
+                    struct flags_t * ifp, struct flags_t * ofp,
+                    struct dev_info_t * idip, struct dev_info_t * odip,
+                    struct dev_info_t * o2dip);
 void print_stats(const char * str, struct opts_t * op, int who,
                  bool estimate);
 int dd_filetype(const char * filename, int verbose);
@@ -682,7 +739,7 @@ int get_blkdev_capacity(struct opts_t * op, int which_arg,
                         int64_t * num_blks, int * blk_sz);
 void errblk_open(struct opts_t * op);
 void errblk_put(uint64_t lba, struct opts_t * op);
-void errblk_put_range(uint64_t lba, int num, struct opts_t * op);
+void errblk_put_extent(uint64_t lba, uint64_t num, struct opts_t * op);
 void errblk_close(struct opts_t * op);
 #ifdef SG_LIB_LINUX
 void print_tape_summary(struct opts_t * op, int res, const char * str);
@@ -734,7 +791,7 @@ void sge_print(const struct scat_gath_elem * sgep, const char * id_str,
  * to the start of the sgl; while num_blks and max_descriptors are relative
  * to the sgl+blk_off . */
 uint64_t count_sgl_blocks_from(const struct scat_gath_elem * sglp, int elems,
-                               uint64_t blk_off, uint32_t num_blks,
+                               uint64_t blk_off, uint64_t num_blks,
                                uint32_t max_descriptors /* from blk_off */);
 
 /* Points to start of sgl after init, sets extend_last bit */
@@ -886,7 +943,7 @@ int open_rtf(struct opts_t * op);
 const char * cpy_op_status_str(int cos, char * b, int blen);
 int print_3pc_vpd(struct opts_t * op, bool to_stderr);
 int do_xcopy_lid1(struct opts_t * op);
-int do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
+int do_pop_tok(struct opts_t * op, uint64_t blk_off, uint64_t num_blks,
                bool walk_list_id, int vb_a);
 int do_rrti(struct opts_t * op, bool in0_out1, struct rrti_resp_t * rrp,
             int verb);
@@ -895,7 +952,7 @@ int do_rcs(struct opts_t * op, bool in0_out1, struct rrti_resp_t * rrp,
 void get_local_rod_tok(uint8_t * tokp, int max_tok_len);
 int process_after_poptok(struct opts_t * op, uint64_t * tcp, int vb_a);
 int do_wut(struct opts_t * op, uint8_t * tokp, uint64_t blk_off,
-           uint32_t num_blks, uint64_t oir, bool more_left, bool walk_list_id,
+           uint64_t num_blks, uint64_t oir, bool more_left, bool walk_list_id,
            int vb_a);
 int process_after_wut(struct opts_t * op, uint64_t * tcp, int vb_a);
 int do_odx(struct opts_t * op);
@@ -932,60 +989,7 @@ size_t win32_pagesize(void);
 #endif          /* SG_LIB_WIN32 */
 
 #ifdef __cplusplus
-}       /* trailing brace for 'extern "C" { ' at top of this file */
-
-#include <string>
-#include <vector>
-
-/* Following only compiled to C++, bypassed for C */
-struct split_fn_fp {
-    // constructor
-    split_fn_fp(const char * fn, FILE * a_fp) : out_fn(fn), fp(a_fp) {}
-public:
-    std::string out_fn;
-    FILE * fp;
-};
-
-struct sgl_opts_t {
-    bool append2iaf;
-    bool append2out_f;
-    bool chs_given;
-    bool div_lba_only;
-    bool div_num_only;
-    bool elem_given;
-    bool flexible;
-    bool iaf2stdout;
-    bool index_given;
-    bool out2stdout;
-    bool non_overlap_chk;
-    bool pr_stats;
-    bool quiet;
-    int act_val;
-    int degen_mask;
-    int div_scale_n;
-    int document;       /* Add comment(s) to O_SGL(s), >1 add cmdline */
-    int do_hex;
-    int help;
-    int interleave;     /* when splitting a sgl, max number of blocks before
-                         * moving to next sgl; def=0 --> no interleave */
-    int last_elem;      /* init to -1 which makes start_elem a singleton */
-    int round_blks;
-    int sort_cmp_val;
-    int split_n;
-    int start_elem;     /* init to -1 which means write out whole O_SGL */
-    int verbose;
-    const char * b_sgl_arg;
-    const char * iaf;   /* index array filename */
-    const char * out_fn;
-    const char * fne;
-    struct chs_t chs;
-    struct cl_sgl_stats ab_sgl_stats;
-    std::string cmd_line;
-    std::vector<int> index_arr; /* input from --index=IA */
-    std::vector<struct split_fn_fp> split_out_fns;
-    std::vector<struct split_fn_fp> b_split_out_fns; /* 'b' side for tsplit */
-};
-
-#endif  /* end of __cplusplus block */
+}       /* trailing brace for 'extern "C" { ' near top of this file */
+#endif
 
 #endif  /* DDPT_H guard against multiple includes */

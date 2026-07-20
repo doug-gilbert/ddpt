@@ -124,6 +124,8 @@ case "${host}" in
                 AC_DEFINE_UNQUOTED(SG_LIB_MINGW, 1, [also MinGW environment])
                 AC_DEFINE_UNQUOTED(HAVE_NVME, 1, [Found NVMe])
                 check_for_getrandom;
+		AC_CHECK_FUNCS(setmode)
+		AC_CHECK_FUNCS(_setmode)
 		CFLAGS="$CFLAGS -D__USE_MINGW_ANSI_STDIO";;
         *-*-linux-gnu* | *-*-linux* | *)
                 AC_SUBST([os_deps], ['sg_pt_linux.o sg_pt_linux_nvme.o'])

@@ -49,6 +49,93 @@
 #include "sg_pr2serr.h"
 
 
+static void
+ddpt_usage_flags1()
+{
+    pr2serr("FLAGS: (arguments to iflag= and oflag=; may be comma "
+            "separated)\n"
+            "   00 (i)         input will be all 0x0 bytes\n"
+            "   append (o)     append (part of) IFILE to end of OFILE\n"
+            "   atomic (o,pt)  use WRITE ATOMIC(16) on OFILE\n"
+            "   block (pt)     pt opens are non blocking by default\n"
+            "   cat (xcopy)    set CAT bit in segment descriptor header\n"
+            "   coe            continue on (read) error, see coe option\n"
+            "   dc (xcopy)     set DC bit in segment descriptor header\n"
+            "   direct         set O_DIRECT flag in open() of IFILE and/or "
+            "OFILE\n"
+            "   dpo            set disable page out (DPO) on pt READs and "
+            "WRITES\n"
+            "   errblk (i,pt)  write errored LBAs to errblk.txt file\n"
+            "   excl           set O_EXCL flag in open() of IFILE and/or "
+            "OFILE\n"
+            "   fdatasync (o)  flushes data to OFILE at the end of copy\n"
+            "   ff (i)         input will be all 0xff bytes\n"
+            "   flock          use advisory exclusive lock [flock()] on "
+            "IFILE/OFILE\n"
+            "   force          override inconsistent information that would "
+            "stop copy\n"
+            "   fsync (o)      like fdatasync but flushes meta-data as well\n"
+            "   fua (pt)       force unit access on IFILE or OFILE\n"
+            "   fua_nv (pt)    force unit access, non-volatile (obsoleted by "
+            "T10)\n"
+            "   ignoreew (o)   ignore early warning (end of tape)\n"
+            "   immed (odx)    commands poll until complete, report "
+            "progress\n"
+           );
+}
+
+static void
+ddpt_usage_flags2()
+{
+    pr2serr("   nocache        use posix_fadvise(POSIX_FADV_DONTNEED)\n"
+            "   nocreat (o)    OFILE must exist, it will not be created\n"
+            "   no_del_tkn (odx)  do not set DEL_TKN on last write from "
+            "ROD\n"
+            "   nofm (o)       no File Mark (FM) on close when writing to "
+            "tape\n"
+            "   nopad          inhibits tapes blocks less than OBS being "
+            "padded\n"
+            "   norcap (pt)    do not invoke SCSI READ CAPACITY command\n"
+            "   nowrite (o)    bypass all writes to OFILE\n"
+            "   null           does nothing, place holder\n"
+            "   odx            request xcopy(LID4) based on POPULATE TOKEN "
+            "(disk->ROD)\n"
+            "                  and/or WRITE USING TOKEN (ROD->disk) "
+            "commands\n"
+            "   pad (o)        pad blocks shorter than OBS with zeros\n"
+            "   pre-alloc (o)  use fallocate() before copy to set OFILE to "
+            "its\n"
+            "                  expected size\n"
+            "   prefer_rts (odx)  prefer RCS over RRTI command (def: RRTI)\n"
+            "   pt             instruct pass-through interface to be used\n"
+            "   random (i)     instead of if=IFILE, input is random bytes\n"
+            "   rarc (i,pt)    set RARC (rebuild assist) bit in SCSI READs\n"
+            "   resume (o)     attempt to restart an interrupted copy\n"
+            "   rtf_len        place ROD size after each ROD token in RTF\n"
+            "   self (pt)      used with trim; IFILE=OFILE; trim zero "
+            "segments\n"
+            "   sparing (o)    read OFILE prior to a write; don't write if "
+            "same\n"
+            "   sparse (o)     don't write blocks of zeros; move file "
+            "pointer\n"
+            "                  or if OFILE is pt assume it contains zeros "
+            "already\n"
+            "   ssync (o,pt)   at end of copy do SCSI SYNCHRONIZE CACHE\n"
+            "   strunc (o)     sparse copy using ftruncate to extend OFILE "
+            "as needed\n"
+            "   sync           set O_SYNC flag in open() of IFILE and/or "
+            "OFILE\n"
+            "   trim (pt)      use SCSI UNMAP (trim) on zero segments "
+            "instead of\n"
+            "                  writing them to OFILE\n"
+            "   trunc (o)      truncate a regular OFILE prior to copy (def: "
+            "overwrite)\n"
+            "   unmap (pt)     same as trim flag\n"
+            "   wverify (o,pt)    turns WRITE into WRITE AND VERIFY\n"
+            "   xcopy (pt)     invoke SCSI XCOPY; send to IFILE or OFILE.\n\n"
+           );
+}
+
 void
 ddpt_usage(int help)
 {
@@ -60,6 +147,11 @@ ddpt_usage(int help)
         goto tertiary_help;
 
 primary_help:
+#ifdef DDPT_SPARSE
+    pr2serr("Usage: "
+            "ddpt_sparse  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=IO_CDBSZ] "
+            "[cdl=CDL]\n");
+#else
     pr2serr("Usage: "
             "ddpt  [bpt=BPT[,OBPC]] [bs=BS] [cdbsz=IO_CDBSZ] [cdl=CDL]\n"
             "             [coe=0|1|2] [coe_limit=CL] [conv=CONVS] "
@@ -86,6 +178,7 @@ primary_help:
             "             [--verify] [--version] [--xcopy] [ddpt] [JF]\n"
 #endif
            );
+#endif  // not DDPT_SPARSE
     pr2serr("  where the main operands are:\n"
             "    bpt         input Blocks Per Transfer (BPT) (def: 128 when "
             "IBS is 512)\n"
@@ -223,86 +316,12 @@ secondary_help:
             "decides)\n"
             "    to          xcopy, odx: timeout in seconds (def: 600 "
             "(10 mins))\n\n");
-    pr2serr("FLAGS: (arguments to iflag= and oflag=; may be comma "
-            "separated)\n"
-            "   00 (i)         input will be all 0x0 bytes\n"
-            "   append (o)     append (part of) IFILE to end of OFILE\n"
-            "   atomic (o,pt)  use WRITE ATOMIC(16) on OFILE\n"
-            "   block (pt)     pt opens are non blocking by default\n"
-            "   cat (xcopy)    set CAT bit in segment descriptor header\n"
-            "   coe            continue on (read) error, see coe option\n"
-            "   dc (xcopy)     set DC bit in segment descriptor header\n"
-            "   direct         set O_DIRECT flag in open() of IFILE and/or "
-            "OFILE\n"
-            "   dpo            set disable page out (DPO) on pt READs and "
-            "WRITES\n"
-            "   errblk (i,pt)  write errored LBAs to errblk.txt file\n"
-            "   excl           set O_EXCL flag in open() of IFILE and/or "
-            "OFILE\n"
-            "   fdatasync (o)  flushes data to OFILE at the end of copy\n"
-            "   ff (i)         input will be all 0xff bytes\n"
-            "   flock          use advisory exclusive lock [flock()] on "
-            "IFILE/OFILE\n"
-            "   force          override inconsistent information that would "
-            "stop copy\n"
-            "   fsync (o)      like fdatasync but flushes meta-data as well\n"
-            "   fua (pt)       force unit access on IFILE or OFILE\n"
-            "   fua_nv (pt)    force unit access, non-volatile (obsoleted by "
-            "T10)\n"
-            "   ignoreew (o)   ignore early warning (end of tape)\n"
-            "   immed (odx)    commands poll until complete, report "
-            "progress\n"
-            "... continued on next page (use '-hhh')\n");
+    ddpt_usage_flags1();
+    pr2serr("... continued on next page (use '-hhh')\n");
     return;
 tertiary_help:
-    pr2serr("FLAGS: (continued)\n"
-            "   nocache        use posix_fadvise(POSIX_FADV_DONTNEED)\n"
-            "   nocreat (o)    OFILE must exist, it will not be created\n"
-            "   no_del_tkn (odx)  do not set DEL_TKN on last write from "
-            "ROD\n"
-            "   nofm (o)       no File Mark (FM) on close when writing to "
-            "tape\n"
-            "   nopad          inhibits tapes blocks less than OBS being "
-            "padded\n"
-            "   norcap (pt)    do not invoke SCSI READ CAPACITY command\n"
-            "   nowrite (o)    bypass all writes to OFILE\n"
-            "   null           does nothing, place holder\n"
-            "   odx            request xcopy(LID4) based on POPULATE TOKEN "
-            "(disk->ROD)\n"
-            "                  and/or WRITE USING TOKEN (ROD->disk) "
-            "commands\n"
-            "   pad (o)        pad blocks shorter than OBS with zeros\n"
-            "   pre-alloc (o)  use fallocate() before copy to set OFILE to "
-            "its\n"
-            "                  expected size\n"
-            "   prefer_rts (odx)  prefer RCS over RRTI command (def: RRTI)\n"
-            "   pt             instruct pass-through interface to be used\n"
-            "   random (i)     instead of if=IFILE, input is random bytes\n"
-            "   rarc (i,pt)    set RARC (rebuild assist) bit in SCSI READs\n"
-            "   resume (o)     attempt to restart an interrupted copy\n"
-            "   rtf_len        place ROD size after each ROD token in RTF\n"
-            "   self (pt)      used with trim; IFILE=OFILE; trim zero "
-            "segments\n"
-            "   sparing (o)    read OFILE prior to a write; don't write if "
-            "same\n"
-            "   sparse (o)     don't write blocks of zeros; move file "
-            "pointer\n"
-            "                  or if OFILE is pt assume it contains zeros "
-            "already\n"
-            "   ssync (o,pt)   at end of copy do SCSI SYNCHRONIZE CACHE\n"
-            "   strunc (o)     sparse copy using ftruncate to extend OFILE "
-            "as needed\n"
-            "   sync           set O_SYNC flag in open() of IFILE and/or "
-            "OFILE\n"
-            "   trim (pt)      use SCSI UNMAP (trim) on zero segments "
-            "instead of\n"
-            "                  writing them to OFILE\n"
-            "   trunc (o)      truncate a regular OFILE prior to copy (def: "
-            "overwrite)\n"
-            "   unmap (pt)     same as trim flag\n"
-            "   wverify (o,pt)    turns WRITE into WRITE AND VERIFY\n"
-            "   xcopy (pt)     invoke SCSI XCOPY; send to IFILE or OFILE.\n\n"
-           );
+    pr2serr("FLAGS: (continued)\n");
+    ddpt_usage_flags2();
 
     pr2serr("CONVS:\n"
             "   fdatasync      same as oflag=fdatasync\n"
@@ -461,8 +480,7 @@ conv_process(const char * arg, struct flags_t * ifp, struct flags_t * ofp)
     char * cp;
     char * np;
 
-    strncpy(buff, arg, sizeof(buff));
-    buff[sizeof(buff) - 1] = '\0';
+    sg_strscpy(buff, arg, sizeof(buff));
     if ('\0' == buff[0]) {
         pr2serr("no conversions found\n");
         return false;
@@ -521,8 +539,7 @@ flags_process(const char * arg, struct flags_t * fp)
     char * cp;
     char * np;
 
-    strncpy(buff, arg, sizeof(buff));
-    buff[sizeof(buff) - 1] = '\0';
+    sg_strscpy(buff, arg, sizeof(buff));
     if ('\0' == buff[0]) {
         pr2serr("no flag found\n");
         return false;
@@ -634,9 +651,15 @@ flags_process(const char * arg, struct flags_t * fp)
             fp->wverify = true;
         else if (0 == strcmp(cp, "xcopy"))
             fp->xcopy = true;
+        else if (0 == strcmp(cp, "zero"))
+            fp->zero = true;
         else if (0 == strcmp(cp, "00"))
             fp->zero = true;
-        else {
+        else if (0 == strcmp(cp, "?")) {
+            ddpt_usage_flags1();
+            ddpt_usage_flags2();
+            return false;
+        } else {
             pr2serr("unrecognised flag: %s\n", cp);
             return false;
         }
@@ -654,8 +677,7 @@ status_process(const char * arg, struct opts_t * op)
     char * cp;
     char * np;
 
-    strncpy(buff, arg, sizeof(buff));
-    buff[sizeof(buff) - 1] = '\0';
+    sg_strscpy(buff, arg, sizeof(buff));
     if ('\0' == buff[0]) {
         pr2serr("no status strings found\n");
         return false;
@@ -840,7 +862,7 @@ cl_sanity_defaults(struct opts_t * op)
         }
 
         if ('\0' == op->odip->fn[0])
-            strcpy(op->odip->fn, op->idip->fn);
+            sg_strscpy(op->odip->fn, op->idip->fn, INOUTF_SZ);
         if (sgl_empty(o_sglip->sglp, o_sglip->elems) &&
             (! sgl_empty(i_sglip->sglp, i_sglip->elems))) {
             /* move in sgl to out sgl */
@@ -1178,10 +1200,9 @@ ddpt_cl_parse(struct opts_t * op, int argc, char * argv[],
     struct flags_t * ofp = op->oflagp;
 
     for (k = 1; k < argc; ++k) {
-        if (argv[k]) {
-            strncpy(str, argv[k], STR_SZ);
-            str[STR_SZ - 1] = '\0';
-        } else
+        if (argv[k])
+            sg_strscpy(str, argv[k], STR_SZ);
+        else
             continue;
         orig_strlen = strlen(str);
         /* replace '=' with null and set buf pointer to following char */
@@ -1406,7 +1427,7 @@ ddpt_cl_parse(struct opts_t * op, int argc, char * argv[],
                 pr2serr("expected if=IFILE but no IFILE argument\n");
                 return SG_LIB_CONTRADICT;
             } else
-                strncpy(op->idip->fn, buf, INOUTF_SZ - 1);
+                sg_strscpy(op->idip->fn, buf, INOUTF_SZ);
         } else if (0 == strcmp(key, "iflag")) {
             if (! flags_process(buf, ifp)) {
                 pr2serr("bad argument to 'iflag='\n");
@@ -1465,14 +1486,14 @@ ddpt_cl_parse(struct opts_t * op, int argc, char * argv[],
                 pr2serr("expected of=OFILE but no OFILE argument\n");
                 return SG_LIB_CONTRADICT;
             }
-            strncpy(op->odip->fn, buf, INOUTF_SZ - 1);
+            sg_strscpy(op->odip->fn, buf, INOUTF_SZ);
             op->outf_given = true;
         } else if (strcmp(key, "of2") == 0) {
             if ('\0' != op->o2dip->fn[0]) {
                 pr2serr("Second OFILE2 argument??\n");
                 return SG_LIB_CONTRADICT;
             } else
-                strncpy(op->o2dip->fn, buf, INOUTF_SZ - 1);
+                sg_strscpy(op->o2dip->fn, buf, INOUTF_SZ);
         } else if (0 == strcmp(key, "oflag")) {
             if (! flags_process(buf, ofp)) {
                 pr2serr("bad argument to 'oflag='\n");
@@ -1528,7 +1549,7 @@ ddpt_cl_parse(struct opts_t * op, int argc, char * argv[],
                 pr2serr("rtf=RTF requires an non-empty filename for RTF\n");
                 return SG_LIB_CONTRADICT;
             }
-            strncpy(op->rtf, buf, INOUTF_SZ - 1);
+            sg_strscpy(op->rtf, buf, INOUTF_SZ);
         } else if (0 == strcmp(key, "rtype")) {
             if ((0 == strncmp("pit-def", buf, 7)) ||
                 (0 == strncmp("pit_def", buf, 7)))

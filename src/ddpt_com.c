@@ -149,11 +149,24 @@ ddpt_arg_str(int ddpt_arg)
 }
 
 void
-state_init(struct opts_t * op, struct flags_t * ifp, struct flags_t * ofp,
-           struct dev_info_t * idip, struct dev_info_t * odip,
-           struct dev_info_t * o2dip)
+com_state_init(int my_util_enum_val, struct opts_t * op, struct flags_t * ifp,
+               struct flags_t * ofp, struct dev_info_t * idip,
+               struct dev_info_t * odip, struct dev_info_t * o2dip)
 {
     memset(op, 0, sizeof(struct opts_t));       /* sets bools to false */
+    op->util_enum_val = my_util_enum_val;
+    if (UTIL_DDPT == my_util_enum_val)
+        op->util_name = "ddpt";
+    else if (UTIL_DDPTCTL == my_util_enum_val)
+        op->util_name = "ddptctl";
+    else if (UTIL_DDPT_SPARSE == my_util_enum_val)
+        op->util_name = "ddpt_sparse";
+    else if (UTIL_DDPT_OTHER == my_util_enum_val)
+        op->util_name = "ddpt_other";
+    else {
+        op->util_name = "ddpt ??";
+        op->util_enum_val = UTIL_DDPT_OTHER;
+    }
     op->bs_same = true;                         /* most likely case */
     op->dd_count = DDPT_COUNT_INDEFINITE;       /* -1 */
     op->highest_unrecovered = -1;
@@ -450,7 +463,7 @@ unix_dd_filetype(const char * filename, int verbose)
             char * bname;
             char s[STR_SZ];
 
-            strcpy(s, filename);
+            sg_strscpy(s, filename, INOUTF_SZ);
             bname = basename(s);
             if (0 == strcmp("null", bname))
                 return FT_DEV_NULL;
@@ -1141,7 +1154,7 @@ errblk_put(uint64_t lba, struct opts_t * op)
 }
 
 void    /* Global function, used by ddpt_pt.c */
-errblk_put_range(uint64_t lba, int num, struct opts_t * op)
+errblk_put_extent(uint64_t lba, uint64_t num, struct opts_t * op)
 {
     if (op->errblk_fp) {
         if (1 == num)
@@ -1302,7 +1315,7 @@ get_signal_name(int signum, char * b, int blen)
         return b;
     b[blen - 1] = '\0';
     if (sp->num)
-        strncpy(b, sp->name, blen - 1);
+        sg_strscpy(b, sp->name, blen);
     else
         snprintf(b, blen, "%d", signum);
     return b;
@@ -1738,7 +1751,7 @@ print_exit_status_msg(const char * prefix, int exit_stat, bool to_stderr)
  * to the sgl+skip_blks . */
 uint64_t
 count_sgl_blocks_from(const struct scat_gath_elem * sglp, int elems,
-                      uint64_t skip_blks, uint32_t num_blks,
+                      uint64_t skip_blks, uint64_t num_blks,
                       uint32_t max_descriptors /* from skip_blks */)
 {
     int k, j, md;
@@ -1762,11 +1775,11 @@ count_sgl_blocks_from(const struct scat_gath_elem * sglp, int elems,
          (k < elems) && (j < md) && (res < (uint64_t)num_blks);
          ++k, ++j, ++sglp) {
         if (0 == j)
-            res = (uint64_t)sglp->num - skip_blks;  /* will be positive */
+            res = sglp->num - skip_blks;  /* will be positive */
         else
-            res += (uint64_t)sglp->num;
+            res += sglp->num;
     }
-    return (res < (uint64_t)num_blks) ? res : (uint64_t)num_blks;
+    return (res < num_blks) ? res : num_blks;
 }
 
 /* Points to start of sgl after init, sets extend_last bit */
@@ -1796,7 +1809,7 @@ sgl_iter_add(struct sgl_iter_t * iter_p, uint64_t blk_count, bool relative)
     bool first, extend_last;
     int k = relative ? iter_p->it_e_ind : 0;
     int elems = iter_p->elems;
-    uint32_t num;
+    uint64_t num;
     uint64_t bc = 0;
     const struct scat_gath_elem * sglp = iter_p->sglp + k;
 
@@ -1856,7 +1869,7 @@ sgl_iter_sub(struct sgl_iter_t * iter_p, uint64_t blk_count)
             first = false;
         } else {
             bc = blk_count;
-            if (bc > (uint64_t)sglp->num)
+            if (bc > sglp->num)
                 blk_count -= sglp->num;
             else {
                 bc = sglp->num - bc;
@@ -1876,7 +1889,7 @@ sgl_iter_sub(struct sgl_iter_t * iter_p, uint64_t blk_count)
  * (single) space **) separated list). Assumed decimal unless prefixed
  * by '0x', '0X' or contains trailing 'h' or 'H' (which indicate hex).
  * Returns 0 if ok, or 1 if error. Assumed to be LBA (64 bit) and
- * number_of_block (32 bit) pairs. ** Space on command line needs to
+ * number_of_block (56 bit) pairs. ** Space on command line needs to
  * be escaped, otherwise it is an operand/option separator. */
 struct scat_gath_elem *
 cl2sgl(const char * inp, int * arr_elemsp, bool b_vb)
@@ -2575,11 +2588,12 @@ sgl_print(struct sgl_info_t * sgli_p, bool skip_meta, const char * id_str,
             elems, (elems == 1 ? "" : "s"));
     if (sgli_p->sglp && show_sgl) {
         for (k = 0, sgep = sgli_p->sglp; k < elems; ++k, ++sgep) {
-            fprintf(fp, "    lba: 0x%" PRIx64 ", number: 0x%" PRIx32,
-                    sgep->lba, sgep->num);
+            uint64_t lnum = sgep->num;    /* sgep->num is 56 bits wide */
+
+            fprintf(fp, "    lba: 0x%" PRIx64 ", number: 0x%" PRIx64,
+                    sgep->lba, lnum);
             if (sgep->lba > 0)
-                fprintf(fp, " [next lba: 0x%" PRIx64 "]",
-                        sgep->lba + sgep->num);
+                fprintf(fp, " [next lba: 0x%" PRIx64 "]", sgep->lba + lnum);
             fprintf(fp, "\n");
         }
     }
@@ -2590,11 +2604,13 @@ void
 sge_print(const struct scat_gath_elem * sgep, const char * id_str,
           bool to_stdout)
 {
+    uint64_t lnum = sgep->num;    /* sgep->num is 56 bits wide */
+
     const char * caller = id_str ? id_str : "unknown";
     FILE * fp = to_stdout ? stdout : stderr;
 
-    fprintf(fp, "%s    lba: 0x%" PRIx64 ", number: 0x%" PRIx32 "\n", caller,
-            sgep->lba, sgep->num);
+    fprintf(fp, "%s    lba: 0x%" PRIx64 ", number: 0x%" PRIx64 "\n", caller,
+            sgep->lba, lnum);
 }
 
 /* Assumes sgli_p->elems and sgli_p->slp are setup and the other fields
@@ -3008,8 +3024,7 @@ iter_add_process(struct sgl_iter_t * ip, uint64_t blk_count,
     bool extend_last, on_last;
     int k, it_off, elems;
     int res = 0;
-    uint32_t num;
-    uint64_t lba;
+    uint64_t lba, num;
     struct scat_gath_elem * sgep;
     struct scat_gath_elem a_sge;
 
@@ -3055,10 +3070,11 @@ iter_add_process(struct sgl_iter_t * ip, uint64_t blk_count,
             if ((rblks + blk_count) >= num) {
                 if ((vb > 3) && (blk_count != num))
                     pr2serr("%s: ((rblks+blk_count)>= num), blk_count=%"
-                            PRIu64 ", num=%u\n", __func__, blk_count, num);
+                            PRIu64 ", num=%" PRIu64 "\n", __func__,
+                            blk_count, num);
                 blk_count = num;
             }
-            a_sge.num = (uint32_t)blk_count;
+            a_sge.num = blk_count;
             if (vb > 3)
                 sge_print(&a_sge, "final  ", false);
             res = (*a_fp)(fp, &a_sge, hex, vb);
@@ -3094,12 +3110,14 @@ iter_add_process(struct sgl_iter_t * ip, uint64_t blk_count,
 int
 output_sge_f(FILE * fp, const struct scat_gath_elem * sgep, int hex, int vb)
 {
+    uint64_t lnum = sgep->num;  /* sgep->num is 56 bits wide */
+
     if (0 == hex)
-        fprintf(fp, "%" PRIu64 ",%u\n", sgep->lba, sgep->num);
+        fprintf(fp, "%" PRIu64 ",%" PRIu64 "\n", sgep->lba, lnum);
     else if (1 == hex)
-        fprintf(fp, "0x%" PRIx64 ",0x%x\n", sgep->lba, sgep->num);
+        fprintf(fp, "0x%" PRIx64 ",0x%" PRIx64 "\n", sgep->lba, lnum);
     else if (hex > 1)
-        fprintf(fp, "%" PRIx64 ",%x\n", sgep->lba, sgep->num);
+        fprintf(fp, "%" PRIx64 ",%" PRIx64 "\n", sgep->lba, lnum);
     if (ferror(fp)) {
         if (vb)
             pr2serr("%s: failed during formatted write to output sgl\n",

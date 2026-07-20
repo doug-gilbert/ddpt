@@ -46,7 +46,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.98 20260610 [svn: r426]";
+const char * ddptctl_version_str = "0.98 20260719 [svn: r427]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
@@ -505,7 +505,7 @@ write_to_rtf(struct opts_t * op, const struct rrti_resp_t * rp)
 
     if (op->rtf_fd < 0) {
         cp = DEF_ROD_TOK_FILE;
-        strncpy(op->rtf, cp, INOUTF_SZ - 1);
+        sg_strscpy(op->rtf, cp, INOUTF_SZ);
         pr2serr("no --rtf=RTF given (or RTF broken) so writing ROD Token "
                 "to %s\n", cp);
         res = open_rtf(op);
@@ -608,8 +608,9 @@ do_sgl(struct opts_t * op, const char * opt, const char * buf)
         pr2serr("%s: scatter-gather list (%d element%s):\n", opt, got,
                 (got == 1 ? "" : "s"));
         for (k = 0; k < got; ++k)
-            pr2serr("  lba: 0x%" PRIx64 ", number: 0x%" PRIx32 "\n",
-                    op->i_sgli.sglp[k].lba, op->i_sgli.sglp[k].num);
+            pr2serr("  lba: 0x%" PRIx64 ", number: 0x%" PRIx64 "\n",
+                    op->i_sgli.sglp[k].lba,
+                    (uint64_t)op->i_sgli.sglp[k].num);
     }
     return 0;
 }
@@ -650,9 +651,8 @@ main(int argc, char * argv[])
     char bb[80];
     uint8_t rt[512];
 
-    state_init(&ops, &iflag, &oflag, &ids, &ods, &o2ds);
+    com_state_init(UTIL_DDPTCTL, &ops, &iflag, &oflag, &ids, &ods, &o2ds);
     op = &ops;
-    op->primary_ddpt = false;
     memset(&sir, 0, sizeof(sir));
     memset(&rrti_rsp, 0, sizeof(rrti_rsp));
 
@@ -741,7 +741,7 @@ main(int argc, char * argv[])
                 pr2serr("--rtf= needs a non-blank argument (a filename)\n");
                 return SG_LIB_SYNTAX_ERROR;
             }
-            strncpy(op->rtf, optarg, INOUTF_SZ - 1);
+            sg_strscpy(op->rtf, optarg, INOUTF_SZ);
             break;
         case 'R':
             do_receive = true;
@@ -820,8 +820,8 @@ main(int argc, char * argv[])
     }
     if (optind < argc) {
         if ('\0' == op->idip->fn[0]) {
-            strncpy(op->idip->fn, argv[optind], INOUTF_SZ - 1);
-            strncpy(op->odip->fn, argv[optind], INOUTF_SZ - 1);
+            sg_strscpy(op->idip->fn, argv[optind], INOUTF_SZ);
+            sg_strscpy(op->odip->fn, argv[optind], INOUTF_SZ);
             ++optind;
         }
         if (optind < argc) {

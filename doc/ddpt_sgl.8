@@ -1,4 +1,4 @@
-.TH DDPT_SGL "8" "June 2026" "ddpt\-0.98" DDPT
+.TH DDPT_SGL "8" "2026-06-01" "ddpt\-0.98" DDPT
 .SH NAME
 ddpt_sgl \- helper for ddpt utility's scatter gather lists
 .SH SYNOPSIS
@@ -18,16 +18,16 @@ command line syntax is modelled on that of the POSIX dd command, this
 utility has a more standard Unix command line syntax with both short and
 long variants of each option.
 .PP
-Scatter gather lists (sgl_s) are made up of scatter gather elements. Each
-element is made up a starting logical block address (LBA) and a number of
-blocks (NUM) from and including that LBA.
+Scatter gather lists (sgl_s) are made up of scatter gather elements (sge_s).
+Each element is made up a starting logical block address (LBA) and a number
+of blocks (NUM) from and including that LBA.
 .PP
-The scatter gather lists can also be viewed as arrays in which elements can
-be accessed by an index. Multiple sgl elements can be accessed with an
-array of indexes, hence index arrays. Indexes in this utility start at 0
-and run to (n \- 1) where n is the number of elements in the sgl. Also
-negative indexes are permitted where \-1 is the index of the last sgl
-element, \-2 is the index of the second last sgl element, etc.
+The scatter gather lists can also be viewed as arrays in which scatter
+gather elements can be accessed by an index. Multiple scatter gather elements
+can be accessed with an array of indexes, hence index arrays. Indexes in this
+utility start at 0 and run to (n \- 1) where n is the number of elements in
+the sgl. Also negative indexes are permitted where \-1 is the index of the
+last sgl element, \-2 is the index of the second last sgl element, etc.
 .PP
 For "twin" actions there is an assumed relationship between a\-sgl and
 b\-sgl as there is between two sgl_s used as the gather list (e.g. skip=)
@@ -79,6 +79,8 @@ from 1 to 0xffff are accepted (the cylinder can be one more: 0x10000 (or
 number of heads (limited to 16), and the final value is the number
 of sectors per track (limited to 255). Sectors are counted origin 1 according
 to CHS conventions (cf. normal LBAs which nearly always count from 0).
+.br
+See the \fBto\-chs\fR entry in the ACTIONS section.
 .TP
 \fB\-D\fR, \fB\-\-degen\fR=\fIDV\fR
 \fIDV\fR of 0 (the default) means that all degenerate elements (apart from
@@ -150,7 +152,7 @@ leading '0x' nor 'h' suffix).
 \fB\-I\fR, \fB\-\-iaf\fR=\fIIAF\fR
 where \fIIAF\fR is a filename (or '\-' for stdout) to write an index array
 to. The only action that generates an index array currently is
-\fI\-\-action=sort\fR (and tsort). This option can be together used with, or
+\fI\-\-action=sort\fR (and tsort). This option can be used together with, or
 in place of, the \fI\-\-out=O_SGL\fR option.
 .br
 The \fI\-\-document\fR, \fI\-\-elem=SE[,LE]\fR and \fI\-\-hex\fR options
@@ -415,13 +417,13 @@ sgl. In the simplest case the 'B' side sgl can be just '0' which gets
 expanded to '0,0' (i.e. degenerate list starting at LBA 0); this will use
 the overall block count from the 'A' side.
 .SH FILE FORMATS
-Both sgl_s and index arrays can be read from, or written to, files.
-The options that supply sgl_s or index arrays to be read (e.g.
-\fI\-\-a\-sgl=SGL\fR, \fI\-\-b\-sgl=SGL\fR and \fI\-\-index=IA\fR) by
-default allow them to be given directly on the command line. These
-will typically be comma separated lists (although space and tab could be
-used as separators if they were appropriately escaped). So with these
-options when reading sgl_s and index arrays, a leading "@" or "H@" is
+Both sgl_s and index arrays can be read from, or written to, files. The
+options that provide sgl_s or index arrays (e.g. \fI\-\-a\-sgl=SGL\fR,
+\fI\-\-b\-sgl=SGL\fR and \fI\-\-index=IA\fR) by default allow them to be
+given directly on the command line. These will typically be comma separated
+lists (although space and tab could be used as separators if they were
+appropriately escaped). In order to read these sgl_s and index arrays from
+files, rather than directly on the command line, a leading "@" or "H@" is
 needed to indicate that a file name follows.
 .PP
 By default, numbers given in this utility and other utilities in this

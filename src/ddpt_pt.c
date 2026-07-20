@@ -759,7 +759,7 @@ pt_read(struct opts_t * op, bool in0_out1, uint8_t * buff, int blocks,
             may_coe = true;
             /* No VALID+INFO field but we know the range of lba_s */
             if (0 == retries_tmp)
-                errblk_put_range(lba, blks, op);
+                errblk_put_extent(lba, blks, op);
             /* fall through */
         default:
             if (retries_tmp > 0) {

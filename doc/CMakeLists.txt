@@ -3,8 +3,9 @@ MESSAGE( STATUS ">> Entering doc/CMakeLists.txt" )
 
 set(DDPT_MP
 	ddpt
-	ddpt_sgl
 	ddptctl
+	ddpt_sgl
+	ddpt_sparse
 )
 
 foreach(util ${DDPT_MP})

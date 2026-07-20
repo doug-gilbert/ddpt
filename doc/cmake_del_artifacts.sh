@@ -10,6 +10,7 @@ rm -rf \
 	ddpt.8.gz \
 	ddptctl.8.gz \
 	ddpt_sgl.8.gz \
+	ddpt_sparse.8.gz \
 	_CPack_Packages \
 	Makefile
 

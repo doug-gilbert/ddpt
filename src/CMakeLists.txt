@@ -18,23 +18,69 @@ set ( sourcefiles_ddptctl
 
 set ( sourcefiles_ddpt_sgl
 	ddpt_sgl.cpp
+	ddpt_cpp_com.cpp
 	ddpt_com.c
 	ddpt_pt.c
 	ddpt_xcopy.c
 )
 
-set ( src_nolib_ddpt
+set ( sourcefiles_ddpt_sparse
+	ddpt_sparse.cpp
+	ddpt_cpp_com.cpp
+	ddpt_cl.c
+	ddpt_com.c
+	ddpt_pt.c
+	ddpt_xcopy.c
+)
+
+set ( src_nolib_ddpt_com
 	${CMAKE_SOURCE_DIR}/lib/sg_lib.c
 	${CMAKE_SOURCE_DIR}/lib/sg_lib_data.c
 	${CMAKE_SOURCE_DIR}/lib/sg_cmds_basic.c
 	${CMAKE_SOURCE_DIR}/lib/sg_cmds_basic2.c
 	${CMAKE_SOURCE_DIR}/lib/sg_pr2serr.c
 	${CMAKE_SOURCE_DIR}/lib/sg_pt_common.c
-	${CMAKE_SOURCE_DIR}/lib/sg_pt_linux.c
-	${CMAKE_SOURCE_DIR}/lib/sg_pt_linux_nvme.c
 	${CMAKE_SOURCE_DIR}/lib/sg_cmds_extra.c
 	${CMAKE_SOURCE_DIR}/lib/sg_snt.c
 )
+
+# Select Hardware Abstraction Layer (HAL)
+if ( PT_DUMMY )
+    set ( ddpt_lib_hal
+        ${CMAKE_SOURCE_DIR}/lib/sg_pt_dummy.c
+    )
+    MESSAGE( STATUS "<<>> PT_DUMMY configured, no HAL")
+elseif ( SG_LIB_LINUX )
+    set ( ddpt_lib_hal
+        ${CMAKE_SOURCE_DIR}/lib/sg_pt_linux.c
+        ${CMAKE_SOURCE_DIR}/lib/sg_pt_linux_nvme.c
+    )
+elseif ( SG_LIB_FREEBSD )
+    set ( ddpt_lib_hal
+        ${CMAKE_SOURCE_DIR}/lib/sg_pt_freebsd.c
+    )
+elseif ( SG_LIB_WIN32 )
+    set ( ddpt_lib_hal
+        ${CMAKE_SOURCE_DIR}/lib/sg_pt_win32.c
+    )
+elseif ( SG_LIB_HAIKU )
+    set ( ddpt_lib_hal
+        ${CMAKE_SOURCE_DIR}/lib/sg_pt_haiku.c
+    )
+elseif ( SG_LIB_NETBSD )
+    set ( ddpt_lib_hal
+        ${CMAKE_SOURCE_DIR}/lib/sg_pt_netbsd.c
+    )
+elseif ( SG_LIB_SOLARIS )
+    set ( ddpt_lib_hal
+        ${CMAKE_SOURCE_DIR}/lib/sg_pt_solaris.c
+    )
+else ( )
+    MESSAGE( STATUS "<<>> PT_DUMMY set due to fall through, no HAL")
+    set ( ddpt_lib_hal
+        ${CMAKE_SOURCE_DIR}/lib/sg_pt_dummy.c
+    )
+endif ( PT_DUMMY )
 
 function(common_inc_lib util_name)
     target_include_directories(${util_name} PRIVATE ${CMAKE_BINARY_DIR})
@@ -65,35 +111,44 @@ if ( BUILD_SHARED_LIBS )
         add_executable ( ddpt ${sourcefiles_ddpt} )
         add_executable ( ddptctl ${sourcefiles_ddptctl} )
         add_executable ( ddpt_sgl ${sourcefiles_ddpt_sgl} )
+        add_executable ( ddpt_sparse ${sourcefiles_ddpt_sparse} )
 	common_inc_lib(ddpt)
 	common_inc_lib(ddptctl)
 	common_inc_lib(ddpt_sgl)
+	common_inc_lib(ddpt_sparse)
 	# get following includes via svn:externals of sg3_utils include dir
 	# target_include_directories(ddpt PRIVATE ${SGUTILS_INCLUDE_DIRS})
 	target_link_libraries(ddpt PRIVATE ${SGUTILS_LIBRARIES})
 	target_link_libraries(ddptctl PRIVATE ${SGUTILS_LIBRARIES})
 	target_link_libraries(ddpt_sgl PRIVATE ${SGUTILS_LIBRARIES})
+	target_link_libraries(ddpt_sparse PRIVATE ${SGUTILS_LIBRARIES})
+        target_compile_definitions(ddpt_sparse PRIVATE DDPT_SPARSE=1)
     else ( LIBSGUTILS )
         MESSAGE( ">> Did not find shared library: ${LIBSGUTILS}" )
-        add_executable ( ddpt ${sourcefiles_ddpt} ${src_nolib_ddpt} )
-        add_executable ( ddptctl ${sourcefiles_ddptctl} ${src_nolib_ddpt} )
-        add_executable ( ddpt_sgl ${sourcefiles_ddpt_sgl} ${src_nolib_ddpt} )
+        add_executable ( ddpt ${sourcefiles_ddpt} ${src_nolib_ddpt_com} ${ddpt_lib_hal} )
+        add_executable ( ddptctl ${sourcefiles_ddptctl} ${src_nolib_ddpt_com} ${ddpt_lib_hal} )
+        add_executable ( ddpt_sgl ${sourcefiles_ddpt_sgl} ${src_nolib_ddpt_com} ${ddpt_lib_hal} )
+        add_executable ( ddpt_sparse ${sourcefiles_ddpt_sparse} ${src_nolib_ddpt_com} ${ddpt_lib_hal} )
 	common_inc_lib(ddpt)
 	common_inc_lib(ddptctl)
 	common_inc_lib(ddpt_sgl)
+	common_inc_lib(ddpt_sparse)
         target_link_libraries(ddpt)
         target_link_libraries(ddptctl)
         target_link_libraries(ddpt_sgl)
+        target_link_libraries(ddpt_sparse)
     endif ( LIBSGUTILS )
 else ( BUILD_SHARED_LIBS )
     MESSAGE( ">> Trying to build a static executable" )
-    add_executable ( ddpt ${sourcefiles_ddpt} ${src_nolib_ddpt} )
-    add_executable ( ddptctl ${sourcefiles_ddptctl} ${src_nolib_ddpt} )
-    add_executable ( ddpt_sgl ${sourcefiles_ddpt_sgl} ${src_nolib_ddpt} )
+    add_executable ( ddpt ${sourcefiles_ddpt} ${src_nolib_ddpt_com} ${ddpt_lib_hal} )
+    add_executable ( ddptctl ${sourcefiles_ddptctl} ${src_nolib_ddpt_com} ${ddpt_lib_hal} )
+    add_executable ( ddpt_sgl ${sourcefiles_ddpt_sgl} ${src_nolib_ddpt_com} ${ddpt_lib_hal} )
+    add_executable ( ddpt_sparse ${sourcefiles_ddpt_sparse} ${src_nolib_ddpt_com} ${ddpt_lib_hal} )
     add_definitions ( -static )
     common_inc_lib(ddpt)
     common_inc_lib(ddptctl)
-    common_inc_lib(ddptsgl)
+    common_inc_lib(ddpt_sgl)
+    common_inc_lib(ddpt_sparse)
     target_link_libraries(ddpt -static)
     target_link_libraries(ddptctl -static)
 
@@ -109,8 +164,33 @@ else ( BUILD_SHARED_LIBS )
         -static-libgcc
     )
     target_link_libraries(ddpt_sgl)
+    target_link_options(ddpt_sparse PRIVATE
+        -static-libstdc++
+        -static-libgcc
+    )
+    target_link_libraries(ddpt_sparse)
 
 endif ( BUILD_SHARED_LIBS )
 
-install(TARGETS ddpt ddptctl ddpt_sgl RUNTIME DESTINATION bin)
+function(util_extras util_name)
+    ## For testing it can be useful to compile C code with a C++ compiler.
+    ## That can be done by uncommenting the following line:
+    set_source_files_properties( ${util_name} PROPERTIES LANGUAGE CXX )
+
+    if ( ENABLE_DEBUG )
+        target_compile_definitions(${util_name} PRIVATE DEBUG)
+        target_compile_options(${util_name} PRIVATE
+            -Wextra -Wmisleading-indentation -Wduplicated-cond -Wlogical-op
+            -Wnull-dereference -Wshadow -Wunused -Wsizeof-array-argument
+            -Wduplicated-branches -Wjump-misses-init -Wparentheses)
+    endif ( ENABLE_DEBUG )
+
+endfunction ()
+
+util_extras(ddpt)
+util_extras(ddptctl)
+util_extras(ddpt_sgl)
+util_extras(ddpt_sparse)
+
+install(TARGETS ddpt ddptctl ddpt_sgl ddpt_sparse RUNTIME DESTINATION bin)
 

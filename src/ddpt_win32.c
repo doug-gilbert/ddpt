@@ -117,9 +117,9 @@ win32_errmsg(int errnum, char * b, int blen)
         if (len < 1)
             b[0] = '\0';
         else if (len < blen)
-            strcpy(b, err_txt);
+            sg_strscpy(b, err_txt, blen);
         else {
-            strncpy(b, err_txt, blen);
+            sg_strscpy(b, err_txt, blen);
             if (blen > 0)
                 b[blen - 1] = '\0';
         }
@@ -214,11 +214,11 @@ win32_adjust_fns_pt(struct opts_t * op)
         b[len] = '\0';
         if (is_win_blk_dev(b)) {
             if (0 == strncmp(b, "PD", 2)) {
-                strcpy(cp, "\\\\.\\PHYSICALDRIVE");
+                sg_strscpy(cp, "\\\\.\\PHYSICALDRIVE", INOUTF_SZ);
                 if (b[2])
                     strncat(cp, b + 2, len - 2);
             } else {
-                strcpy(cp, "\\\\.\\");
+                sg_strscpy(cp, "\\\\.\\", INOUTF_SZ);
                 strncat(cp, b, len);
             }
         }

@@ -2,19 +2,20 @@
 
 # This script assumes a Linux (Android ?) platform and is for testing
 # ddpt_sgl which is a helper for ddpt, itself a dd clone.
+# This script does _not_ need root permissions.
 #
 # Environment variables that may be overridden by caller:
-#    DDPT_SGL        default: `which ddpt`
+#    DDPT_SGL        default: `which ddpt_sgl`
 #    DDPT_SGL_OPTS   default: "";
 #
 #
 # dpg 20260429
 
 VERBOSE="0"
-VERSION="1.02 20260504 [r422]"
+VERSION="1.03 20260611 [r426]"
 VB_ARG=""
 DDPT_SGL_OPTS=""
-SGL_OUT="/tmp/ddpt"
+SGL_OUT="/tmp/ddpt_sgl"
 
 
 echoerr() { printf "%s\n" "$*" >&2; }
@@ -96,16 +97,17 @@ if [[ "${HELP}" ]] ; then
     echo -n "test_sgl.sh  [--arg=DA] [--help] [--quiet] [--verbose] "
     echo "[--version]"
     echo "where:"
-    echo "  --arg=DA|-a DA    DA arbitrary argument passed to ddpt calls"
+    echo "  --arg=DA|-a DA    DA arbitrary argument passed to ddpt_sgl calls"
     echo "                    (e.g. '-a iflag=coe' )"
     echo "  --help|-h       outputs this usage message then exits"
-    echo "  --quiet|-q      suppress output from ddpt calls"
-    echo -n "  --verbose|-v    increase verbosity in this scripts and ddpt "
-    echo "calls"
+    echo "  --quiet|-q      suppress output from ddpt_sgl calls"
+    echo -n "  --verbose|-v    increase verbosity in this script and"
+    echo "ddpt_sgl calls"
     echo "  --version|-V    print out version number then exit"
     echo ""
     echo "Script for testing scatter gather list (sgl) manipulations using"
-    echo "the the ddpt_sgl helper. Uses '/tmp/ddpt*.sgl' for temporary storage."
+    echo "the the ddpt_sgl helper. Uses '/tmp/ddpt_sgl*.sgl' for temporary"
+    echo "storage."
     exit 0
 fi
 
@@ -129,14 +131,14 @@ if [[ $EUID -eq 0 ]]; then
 fi
 
 if [[ "${DDPT_SGL}" ]] ; then
-    echoerr "Instead of ddpt using DDPT_SGL=${DDPT_SGL}"
+    echoerr "Instead of ddpt_sgl using DDPT_SGL=${DDPT_SGL}"
 else
     DDPT_SGL=$( command -v ddpt_sgl )
 fi
 
 # >>> RUN section start here
 
-# Copy command line sgl {{1,100k},} to /tmp/ddpt00.sgl
+# Copy command line sgl {{1,100k},} to /tmp/ddpt_sgl00.sgl
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A 1,100k --out=${SGL_OUT}00 --extension=sgl"
 "${DDPT_SGL}" "${DDPT_SGL_OPTS}" -A 1,100k --out=${SGL_OUT}00 --extension=sgl
 RES=$?
@@ -146,7 +148,8 @@ if [[ ${RES} -ne 0 ]] ; then
 fi
 echoerr ""
 
-# Split sgl in /tmp/ddpt00.sgl into 4 sgls with 3k interleave, output to /tmp/ddpt[1-4].sgl
+# Split sgl in /tmp/ddpt_sgl00.sgl into 4 sgls with 3k interleave, output to
+# /tmp/ddpt_sgl[1-4].sgl
 echoerr "${DDPT_SGL} ${DDPT_SGL_OPTS} -A @${SGL_OUT}00.sgl -i 3k --out=${SGL_OUT} --extension=sgl --action=split_4"
 ${DDPT_SGL} "${DDPT_SGL_OPTS}" -A @${SGL_OUT}00.sgl -i 3k --out=${SGL_OUT} --extension=sgl --action=split_4
 RES=$?

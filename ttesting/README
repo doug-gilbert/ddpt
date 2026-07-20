@@ -1,0 +1,17 @@
+
+This directory contains two executable scripts and associated files for
+testing the ddpt and ddpt_sgl utilities.
+
+Files:
+    prepare.sh             test script for ddpt. With no arguments checks if
+                           (dummy) storage is in place to run various copies.
+                           The copies are done if --run option is given
+    ram0_2_ram1.jf	   job file use by prepare.sh
+    ram1_2_sg_a.jf	   job file use by prepare.sh
+    sd_b_2_sd_a.jf         job file use by prepare.sh
+    sg_a_2_sg_b.jf         job file use by prepare.sh
+    sgl_1.jf               job file use by prepare.sh
+    sgl_ls10_cont.txt      scatter gather list invoked by sgl_1.jf skip=
+    sgl_ls10_cont_hex.txt  scatter gather list invoked by sgl_1.jf seek=
+    test_sgl.sh            test script for ddpt_sgl
+    urand_ram0.jf          job file use by prepare.sh

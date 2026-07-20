@@ -8,7 +8,7 @@
 # not already present. It also uses some /tmp/ddpt*.bin scratch files which
 # may need to be cleaned up by the user. It uses lsscsi (version 0.30
 # revision 149 or later) to identify the scratch scsi_debug generic and block
-# devices (lest it accidentally overwritesthe users real disks or SSDs). Use:
+# devices (lest it accidentally overwrites the users real disks or SSDs). Use:
 #   ./prepare.sh --help      or     ./prepare.sh -h
 # to see the command run options. By default (i.e. without the --run) option
 # it will do the preparation only. It is recommended that the user do
@@ -29,7 +29,7 @@
 # dpg 20180714
 
 VERBOSE="0"
-VERSION="1.04 20260504 [r421]"
+VERSION="1.05 20260610 [r421]"
 VB_ARG=""
 DDPT_OPTS=""
 

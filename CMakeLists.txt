@@ -14,8 +14,12 @@ find_package ( PkgConfig )
 set ( CMAKE_C_STANDARD 99 )
 set ( CMAKE_C_STANDARD_REQUIRED ON )
 set ( CMAKE_C_EXTENSIONS OFF )
-set ( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -g -Wall -W -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -DHAVE_CONFIG_H" )
-set ( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -g -Wall -W -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -DHAVE_CONFIG_H" )
+set ( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -g -Wall -W" )
+
+set ( CMAKE_CXX_STANDARD 20 )
+set ( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -g -Wall -W" )
+
+add_compile_definitions ( _LARGEFILE64_SOURCE _FILE_OFFSET_BITS=64 HAVE_CONFIG_H )
 
 string(TIMESTAMP BUILD_TIME "%Y%m%d %H:%M:%S")
 
@@ -90,11 +94,9 @@ check_function_exists(posix_fallocate HAVE_POSIX_FALLOCATE)
 check_function_exists(getrandom HAVE_GETRANDOM)
 check_function_exists(gettimeofday HAVE_GETTIMEOFDAY)
 check_function_exists(sysconf HAVE_SYSCONF)
-check_function_exists(lseek64 HAVE_LSEEK64)
 check_function_exists(srand48_r HAVE_SRAND48_R)
 check_function_exists(pthread_cancel HAVE_PTHREAD_CANCEL)
 check_function_exists(pthread_kill HAVE_PTHREAD_KILL)
-check_function_exists(setmode HAVE_SETMODE)
 
 # Locate platform's thread support, and set complier linker flags. See
 # /usr/share/doc/cmake-data/html/module/FindThreads.html when
@@ -145,6 +147,8 @@ elseif (MINGW)
     set(SG_LIB_WIN32 1)
     set(SG_LIB_MINGW 1)
     set(HAVE_NVME 1)
+    check_function_exists(setmode HAVE_SETMODE)
+    check_function_exists(_setmode HAVE__SETMODE)
 elseif (WIN32)
     message(STATUS ">> Windows build")
     set(OS_WIN32 1)

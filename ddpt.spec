@@ -53,7 +53,7 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Wed Jun 10 2026 - dgilbert at interlog dot com
+* Fri Jul 03 2026 - dgilbert at interlog dot com
 - see ChangeLog
   * ddpt-0.98
 * Wed Apr 21 2021 - dgilbert at interlog dot com

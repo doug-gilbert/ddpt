@@ -1,8 +1,100 @@
 
 Introduction
 ------------
-ddpt is a utility for copying files like its namesake, the Unix dd command.
-ddpt is specialized for files that are actually block devices. And if
+ddpt_sparse is a utility for copying files like its namesake ddpt which in
+turn is closely related to the Unix dd command. Like ddpt, ddpt_sparse is
+is specialized for files that are actually block devices. The difference
+between ddpt_sparse and ddpt, is that ddpt_sparse actively checks for
+input or output files that have "holes" in them while ddpt only supports
+sparse output files when explicitly asked (e.g. 'oflag=sparse'). The concept
+of a "hole" is a sequence of contiguous bytes (that by convention nominally
+hold zeros) that actually take up _no_ (or little) space on the underlying
+storage media.
+
+For regular files these holes can be found with the lseek(2) system call
+with a "whence" (third) argument of SEEK_DATA or SEEK_HOLE. These variants
+were standardized in POSIX.1-2024 and are supported in Linux in the following
+file systems: Btrfs, OCFS, XFS, ext4, tmpfs, NFS, FUSE and GFS2. So they are
+not supported by all regular files (e.g. files in FAT32 or NTFS file systems).
+On the device side, the SCSI GET LBA STATUS block command identifies mapped
+and unampped (but possibly anchored) blocks. The term "unmapped" is
+equivalent to a hole stretching one or more blocks. Blocks are typically 512
+contiguous bytes (or a multiple thereof) of storage aligned to the start
+of the device. The first block is given a logical block address (LBA) of 0
+and its first byte is the first byte stored. NVMe's NVM command set has
+GET LBA STATUS command with similar semantics to the SCSI command. In recent
+ATA drafts (e.g. ACS-7) there is a LBA Status log page (log address 0x19)
+that yields similar information (e.g. LBA extents that are trimmed). In SCSI
+the GET LBA STATUS command is not mandated even when logical block
+provisioning is in use. In practice it is only currently found in storage
+arrays rather than individual disks. Support for GET LBA STATUS may become
+more common in the future.
+
+One unexpected SCSI device that responds to GET LBA STATUS is a Virtual
+Disk in Ubuntu (Linux) VM in WSL, both in W10 and W11.
+
+One unexpected SCSI device that responds to GET LBA STATUS is a Virtual
+Disk in Ubuntu (Linux) VM in WSL, both in W10 and W11.
+
+
+
+[[How to emulate a SCSI storage array on Linux with QEMU/KVM, targetcli-fb
+  (Command shell for managing the Linux LIO kernel target). Does this give
+use GET LBA STATUS? Answer is no; only scsi_debug has a minimal GET LBA
+STATUS. ]]
+
+Linux/Unix helper commands for "holey" files
+--------------------------------------------
+To create a sparse file (assuming sparse.img doesn't already exist):
+    # truncate -s 10G sparse.img
+
+Using the stat utility on that file like this:
+    # stat --printf 'file_size=%s num_blocks=%b size_of_block=%B\n' sparse.img
+    file_size=10737418240 num_blocks=0 size_of_block=512
+
+So the (logical) file size is 10 GiB but it consumes 0 blocks for its data.
+It does consume a directory entry and some other resources.
+
+$ ls -lh sparse.img
+-rw-r--r-- 1 user user 1.0G sparse.img
+
+$ du -h sparse.img
+0 sparse.img
+
+dd if=/dev/zero of=sparse.img bs=1 count=1 seek=1G
+
+truncate -s 100M file.img
+
+echo "START" | dd of=file.img conv=notrunc
+echo "END" | dd of=file.img bs=1 seek=$((99*1024*1024)) conv=notrunc
+
+filefrag -v file.img
+
+xfs_io -c "fiemap" file.img
+
+xfs_io -c "stat" file.img
+
+xfs_io -c "seek -h 0" file.img   # first hole
+xfs_io -c "seek -d 0" file.img   # first data extent
+
+lseek(fd, 0, SEEK_DATA);
+lseek(fd, 0, SEEK_HOLE);
+
+truncate -s 1G demo.img
+
+echo hello | dd of=demo.img conv=notrunc
+echo world | dd of=demo.img bs=1 seek=$((1024*1024*1024-6)) conv=notrunc
+
+ls -lh demo.img
+du -h demo.img
+filefrag -v demo.img
+
+You'll get a file with an apparent size of 1 GB, only a few kilobytes actually
+allocated, and two small data extents separated by a large hole.
+
+
+ 
+ And if
 those block devices understand SCSI commands then the copy can be done by
 using either SCSI READ or WRITE commands (or both). This latter facility
 is done using a pass-through interface that bypasses the normal operating

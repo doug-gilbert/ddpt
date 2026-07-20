@@ -1419,11 +1419,11 @@ print_3pc_vpd(struct opts_t * op, bool to_stderr)
 
 /* Do POPULATE_TOKEN command, returns 0 on success */
 int
-do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
+do_pop_tok(struct opts_t * op, uint64_t blk_off, uint64_t num_blks,
            bool walk_list_id, int vb_a)
 {
     int res, k, j, n, len, fd, tmout, sz_bdrd, elems, pl_sz, err_vb;
-    uint32_t num;
+    uint64_t num;
     uint32_t pg_sz = sg_get_page_size();
     uint64_t lba, sg0_off;
     const struct scat_gath_elem * sglp;
@@ -1435,7 +1435,7 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
     csp = &cp_st;
     cp_state_init(csp, op);
     if (vb_a)
-        pr2serr("%s: blk_off=%" PRIu64 ", num_blks=%"  PRIu32 "\n", __func__,
+        pr2serr("%s: blk_off=%" PRIu64 ", num_blks=%"  PRIu64 "\n", __func__,
                 blk_off, num_blks);
     if (op->verbose == vb_a)
         err_vb = op->verbose;
@@ -1448,7 +1448,7 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
         sg0_off = blk_off;
         sglp = op->i_sgli.sglp;
         for (k = 0; k < op->i_sgli.elems; ++k, ++sglp) {
-            if ((uint64_t)sglp->num >= sg0_off)
+            if (sglp->num >= sg0_off)
                 break;
             sg0_off -= sglp->num;
         }
@@ -1493,10 +1493,11 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
             if (num > num_blks)
                 num = num_blks;
             if (vb_a)
-                pr2serr("  lba=0x%" PRIx64 ", num=%" PRIu32 ", k=%d\n", lba,
+                pr2serr("  lba=0x%" PRIx64 ", num=%" PRIu64 ", k=%d\n", lba,
                         num, k);
             sg_put_unaligned_be64(lba, pl + n);
             n += 8;
+/* xxxxxxxx block device range descriptor (LBA extent) is 8+4. If num > UINT32_MAX, will need to break down into multiple descriptors */
             sg_put_unaligned_be32(num, pl + n);
             n += 4 + 4;
         }
@@ -1509,9 +1510,10 @@ do_pop_tok(struct opts_t * op, uint64_t blk_off, uint32_t num_blks,
         sg_put_unaligned_be16(sz_bdrd, pl + 14);
         lba = op->skip + blk_off;
         if (vb_a)
-            pr2serr("  lba=0x%" PRIx64 ", num_blks=%" PRIu32 "\n", lba,
+            pr2serr("  lba=0x%" PRIx64 ", num_blks=%" PRIu64 "\n", lba,
                     num_blks);
         sg_put_unaligned_be64(lba, pl + 16);
+/* xxxxxxxx block device range descriptor (LBA extent) is 8+4. If num > UINT32_MAX, will need to break down into multiple descriptors */
         sg_put_unaligned_be32(num_blks, pl + 24);
         len = 32;
 #endif
@@ -1800,13 +1802,13 @@ get_local_rod_tok(uint8_t * tokp, int max_tok_len)
 /* Do WRITE USING TOKEN command, returns 0 on success */
 int
 do_wut(struct opts_t * op, uint8_t * tokp, uint64_t blk_off,
-       uint32_t num_blks, uint64_t oir, bool more_left, bool walk_list_id,
+       uint64_t num_blks, uint64_t oir, bool more_left, bool walk_list_id,
        int vb_a)
 {
     bool rodt_blk_zero;
     int len, k, j, n, fd, res, tmout, sz_bdrd, elems, pl_sz;
     int err_vb = 0;
-    uint32_t num;
+    uint64_t num;
     uint32_t pg_sz = sg_get_page_size();
     uint64_t lba, sg0_off;
     struct flags_t * flp;
@@ -1820,14 +1822,14 @@ do_wut(struct opts_t * op, uint8_t * tokp, uint64_t blk_off,
     else if (op->verbose > 0)
         err_vb = (vb_a > 0) ? vb_a : 1;
     if (vb_a)
-        pr2serr("%s: enter; blk_off=%" PRIu64 ", num_blks=%"  PRIu32 ", "
+        pr2serr("%s: enter; blk_off=%" PRIu64 ", num_blks=%"  PRIu64 ", "
                 " oir=0x%" PRIx64 "\n", __func__, blk_off, num_blks, oir);
     flp = op->oflagp;
     rodt_blk_zero = (RODT_BLK_ZERO == op->rod_type);
     if (op->o_sgli.sglp) {
         sglp = op->o_sgli.sglp;
         for (k = 0, sg0_off = blk_off; k < op->o_sgli.elems; ++k, ++sglp) {
-            if ((uint64_t)sglp->num >= sg0_off)
+            if (sglp->num >= sg0_off)
                 break;
             sg0_off -= sglp->num;
         }
@@ -1875,10 +1877,11 @@ do_wut(struct opts_t * op, uint8_t * tokp, uint64_t blk_off,
             if (num > num_blks)
                 num = num_blks;
             if (vb_a)
-                pr2serr("  lba=0x%" PRIx64 ", num=%" PRIu32 ", k=%d\n", lba,
+                pr2serr("  lba=0x%" PRIx64 ", num=%" PRIu64 ", k=%d\n", lba,
                         num, k);
             sg_put_unaligned_be64(lba, pl + n);
             n += 8;
+/* xxxxxxxx block device range descriptor (LBA extent) is 8+4. If num > UINT32_MAX, will need to break down into multiple descriptors */
             sg_put_unaligned_be32(num, pl + n);
             n += 4 + 4;
         }
@@ -1893,6 +1896,7 @@ do_wut(struct opts_t * op, uint8_t * tokp, uint64_t blk_off,
             pr2serr("  lba=0x%" PRIx64 ", num_blks=%" PRIu32 "\n", lba,
                     num_blks);
         sg_put_unaligned_be64(lba, pl + 536);
+/* xxxxxxx */
         sg_put_unaligned_be32(num_blks, pl + 544);
 #endif
     }

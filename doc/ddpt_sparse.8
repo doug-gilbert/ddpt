@@ -1,9 +1,9 @@
-.TH DDPT "8" "2026-07-06" "ddpt\-0.98" DDPT
+.TH DDPT_SPARSE "8" "2026-06-01" "ddpt\-0.98" DDPT
 .SH NAME
-ddpt \- copies data between files and storage devices. Support for
+ddpt_sparse \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
 .SH SYNOPSIS
-.B ddpt
+.B ddpt_sparse
 [\fIbpt=BPT[,OBPC]\fR] [\fIbs=BS\fR] [\fIcdbsz=\fRIO_CDBSZ] [\fIcdl=CDL\fR]
 [\fIcoe=\fR{0|1|2}] [\fIcoe_limit=CL\fR] [\fIconv=CONVS\fR]
 [\fIcount=COUNT\fR] [\fIddpt=VERS\fR] [\fIdelay=MS[,W_MS]\fR] [\fIibs=IBS\fR]
@@ -28,6 +28,7 @@ For comparison here is the synopsis for GNU's dd command:
 [\fIstatus=STAT\fR] [\fI\-\-help\fR] [\fI\-\-version\fR]
 .SH DESCRIPTION
 .\" Add any additional description here
+xxxxxx
 Copies data between files or simply reads data from a file. Alternatively
 if the \fI\-\-verify\fR option is given, the \fIIFILE\fR and \fIOFILE\fR
 contents are compared, stopping if an inequality is found. This utility is
@@ -1064,7 +1065,7 @@ ddpt source with the filename extension ".jf".
 .SH SCATTER GATHER LISTS
 Each element of a scatter gather list (sgl, plural: sgl_s) is made up of a
 starting logical block address (LBA, plural: LBAs), and a number of
-contiguous logical blocks (NUM) to be accessed from that starting LBA.
+blocks (NUM) to be accessed from that starting LBA.
 .PP
 The \fIskip=SKIP\fR and \fIseek=SEEK\fR options (and their aliases) can take
 scatter gather lists. These can be explicit on the command line, fed in
@@ -1647,16 +1648,6 @@ timeout if there is a low level error. However NFS (the Network File
 System) will potentially wait for a long time (e.g. expecting a network
 problem will soon be fixed) and in this case using "intio=1" may be
 best.
-.PP
-Digit separators can be useful to help humans input or read large
-numbers (decimal or hexadecimal). The C++ language chose a single quote
-as a digit separator (only on code input) while many other languages use
-an underscore. A curious property of a quote used in the input to Unix
-shells (e.g. bash) is that as long as there are an even number of them,
-they are effectively ignored. In other words a utility like ddpt sees such
-numeric arguments with all the quotes removed and that is just fine. An
-example is 1'000'000'000' for one billion, the trailing quote is there to
-make the number of quotes even (4 in this case).
 .SH VERIFY
 The usual way to check the two disks (or part of the disks) are the same
 is to move through the segments to be compared, reading from both and
