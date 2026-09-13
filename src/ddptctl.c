@@ -33,7 +33,6 @@
 #define __STDC_LIMIT_MACROS 1   /* for UINT64_MAX, UINT32_MAX, etc */
 #include <limits.h>
 #include <fcntl.h>
-#define __STDC_FORMAT_MACROS 1
 #include <inttypes.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -46,7 +45,7 @@
 #include "ddpt.h"
 
 
-const char * ddptctl_version_str = "0.98 20260719 [svn: r427]";
+const char * ddptctl_version_str = "0.98 20260912 [svn: r428]";
 
 #ifdef SG_LIB_LINUX
 #include <sys/ioctl.h>
