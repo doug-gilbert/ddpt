@@ -172,25 +172,5 @@ else ( BUILD_SHARED_LIBS )
 
 endif ( BUILD_SHARED_LIBS )
 
-function(l_util_extras util_name)
-    ## For testing it can be useful to compile C code with a C++ compiler.
-    ## That can be done by uncommenting the following line:
-    set_source_files_properties( ${util_name} PROPERTIES LANGUAGE CXX )
-
-    if ( ENABLE_DEBUG )
-        target_compile_definitions(${util_name} PRIVATE DEBUG)
-        target_compile_options(${util_name} PRIVATE
-            -Wextra -Wmisleading-indentation -Wduplicated-cond -Wlogical-op
-            -Wnull-dereference -Wshadow -Wunused -Wsizeof-array-argument
-            -Wduplicated-branches -Wjump-misses-init -Wparentheses)
-    endif ( ENABLE_DEBUG )
-
-endfunction ()
-
-l_util_extras(ddpt)
-l_util_extras(ddptctl)
-l_util_extras(ddpt_sgl)
-l_util_extras(ddpt_sparse)
-
 install(TARGETS ddpt ddptctl ddpt_sgl ddpt_sparse RUNTIME DESTINATION bin)
 

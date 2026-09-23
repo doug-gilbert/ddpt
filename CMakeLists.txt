@@ -1,7 +1,7 @@
 cmake_minimum_required ( VERSION 3.10 )
 
 project(ddpt VERSION 0.97.9 LANGUAGES C CXX)
-# Use version number: x.y.9 to indicate pre-release of x.(y+1) 
+# Use version number: x.y.9 to indicate pre-release of x.(y+1)
 # Example: VERSION 0.97.9 is pre-release of 0.98
 
 include ( CMakePackageConfigHelpers )
@@ -10,15 +10,6 @@ include ( CheckIncludeFile )
 include ( CheckFunctionExists )
 include ( CheckCSourceCompiles )
 find_package ( PkgConfig )
-
-set ( CMAKE_C_STANDARD 99 )
-set ( CMAKE_C_STANDARD_REQUIRED ON )
-set ( CMAKE_C_EXTENSIONS OFF )
-set ( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -g -Wall -W" )
-
-set ( CMAKE_CXX_STANDARD 20 )
-set ( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -g -Wall -W" )
-
 
 string(TIMESTAMP BUILD_TIME "%Y%m%d %H:%M:%S")
 
@@ -32,9 +23,11 @@ option ( DISABLE_NVME_SUPP "Remove support for NVMe devices (/dev/nvme*)" OFF)
 option ( DISABLE_LINUX_SGV4 "for Linux sg driver avoid v4 interface even if available" OFF)
 option ( DISABLE_LINUXBSG "Remove support for /dev/bsg/* devices" OFF)
 option ( DISABLE_LIBSGUTILS "Library code compiled in directly" OFF)
+option ( USE_CXX "Compile C code with C++ compiler for testing" OFF)
+
 
 set(FEATURE_COMMENT "//")
-    
+
 if ( ENABLE_DEBUG )
     MESSAGE( STATUS ">> Compile with DEBUG set" )
 endif ( ENABLE_DEBUG )
@@ -82,7 +75,7 @@ CHECK_INCLUDE_FILE( "stdatomic.h" HAVE_STDATOMIC_H )
 CHECK_INCLUDE_FILE( "linux/bsg.h" HAVE_LINUX_BSG_H )
 CHECK_INCLUDE_FILE( "linux/nvme_ioctl.h" HAVE_LINUX_NVME_IOCTL_H )
 CHECK_INCLUDE_FILE( "sys/types.h" HAVE_SYS_TYPES_H )
-    
+
 
 check_function_exists(posix_memalign HAVE_POSIX_MEMALIGN)
 check_function_exists(posix_fadvise HAVE_POSIX_FADVISE)
@@ -238,6 +231,61 @@ else ()
     add_compile_definitions ( _LARGEFILE64_SOURCE _FILE_OFFSET_BITS=64 HAVE_CONFIG_H )
 endif ()
 
+function ( l_set_cxx_compilation util_name )
+    if(TARGET ${util_name})
+        get_target_property(sources ${util_name} SOURCES)
+        if(sources)
+            set_source_files_properties( ${sources} PROPERTIES LANGUAGE CXX )
+        endif()
+    else()
+        set_source_files_properties( ${util_name} PROPERTIES LANGUAGE CXX )
+    endif()
+endfunction ( l_set_cxx_compilation )
+
+function ( l_set_compile_options util_name )
+
+    # For testing it can be useful to compile C code with a C++ compiler.
+    # That can be done by expanding the project() cmake command at the top of
+    # this file to: project( ...... LANGUAGES C CXX) .
+    if ( USE_CXX )
+        l_set_cxx_compilation ( ${util_name} )
+    endif ( USE_CXX )
+
+    if ( ENABLE_DEBUG )
+        target_compile_definitions(${util_name} PRIVATE DEBUG)
+        if ( COMP_GCC )
+MESSAGE( STATUS ">>>>>> COMP_GCC is SET" )
+            target_compile_options(${util_name} PRIVATE
+                -Wextra -Wmisleading-indentation -Wduplicated-cond -Wlogical-op
+                -Wnull-dereference -Wshadow -Wunused -Wsizeof-array-argument
+                -Wduplicated-branches -Wparentheses)
+                # -Wjump-misses-init is C++ only
+        elseif ( COMP_CLANG )
+            target_compile_options(${util_name} PRIVATE
+                -Wextra -Wshadow
+                -Wnull-dereference -Wdouble-promotion -Wformat=2 -Wundef
+                -Wimplicit-fallthrough -Woverloaded-virtual -Wnon-virtual-dtor
+                -Wcast-align -Wcast-qual -Wunused -Wno-deprecated
+                -Wunreachable-code)
+                # -Wpedantic -Wconversion -Wsign-conversion -Wold-style-cast
+                # -Weverything # generates way too much nitpicking
+        elseif ( COMP_MSVC )
+            # MESSAGE( STATUS ">> MSVC compiler detected" )
+        else ()
+            # MESSAGE( STATUS ">> did NOT detect compiler" )
+        endif ()
+    endif ( ENABLE_DEBUG )
+
+endfunction ( l_set_compile_options )
+
+set ( CMAKE_C_STANDARD 99 )
+set ( CMAKE_C_STANDARD_REQUIRED ON )
+set ( CMAKE_C_EXTENSIONS OFF )
+set ( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -W" )
+
+set ( CMAKE_CXX_STANDARD 23 )
+set ( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -W" )
+
 # This builds the config.h file which is used to passthrough parameters to
 # the compiler
 configure_file( ${CMAKE_SOURCE_DIR}/config.h.in.cmake ${CMAKE_BINARY_DIR}/config.h )
@@ -274,7 +322,7 @@ if ( BUILD_SHARED_LIBS )
 endif ()
 
 if ( SG_LIB_LINUX )
-    set(CPACK_GENERATOR "") 
+    set(CPACK_GENERATOR "")
     find_program(DPKG_EXECUTABLE dpkg)
     if (DPKG_EXECUTABLE)
         list(APPEND CPACK_GENERATOR "DEB")
