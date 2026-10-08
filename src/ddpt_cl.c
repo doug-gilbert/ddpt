@@ -835,9 +835,6 @@ cl_sanity_defaults(struct opts_t * op)
         } else if (ofp->append) {
             ofp->trunc = false;
             pr2serr("trunc ignored due to append flag\n");
-        } else if (ofp->sparing) {
-            pr2serr("trunc flag conflicts with sparing\n");
-            return SG_LIB_CONTRADICT;
         }
     }
     if (ifp->self || ofp->self) {  /* self trim: move relevant stuff to out */

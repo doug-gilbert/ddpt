@@ -1,4 +1,4 @@
-.TH DDPT "8" "2026-09-12" "ddpt\-0.98" DDPT
+.TH DDPT "8" "2026-10-07" "ddpt\-0.98" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -314,8 +314,9 @@ as well.
 write to \fIOFILE\fR. The default value is /dev/null . If \fIOFILE\fR is '\-'
 then writes to stdout. If \fIOFILE\fR is /dev/null then no actual writes are
 performed. If \fIOFILE\fR is '.' (period) then it is treated the same way as
-/dev/null . If \fIOFILE\fR exists then it is _not_ truncated
-unless "oflag=trunc" is given. See section on DD DIFFERENCES.
+/dev/null . If \fIOFILE\fR exists then it is
+.B not
+truncated unless \fIoflag=trunc\fR is given. See section on DD DIFFERENCES.
 .br
 odx: if this operand (\fIof=OFILE\fR) is not given and the \fIrtf=RTF\fR
 operand is given then the \fIRTF\fR file may be thought of as receiving the
@@ -923,6 +924,10 @@ cell can be rewritten. The granularity of the comparison can be reduced from
 the default \fIIBS\fR * \fIBPT\fR byte segment with the the \fIOBPC\fR value
 given to the "bpt=" option. The finest granularity is when \fIOBPC\fR is 1
 which implies \fIOBS\fR bytes.
+.br
+If the size of \fIIFILE\fR is larger than the size of \fIOFILE\fR then when
+the copy reaches the point when \fIOFILE\fR can no longer be read, the
+sparing flag is turned off. Then \fIOFILE\fR will be elongated as required.
 .TP
 sparse [io] [reg,blk,pt]
 after each \fIIBS\fR * \fIBPT\fR byte segment is read from \fIIFILE\fR, it
@@ -970,10 +975,23 @@ TRIM, UNMAP AND WRITE SAME section below.
 .TP
 trunc [o] [reg]
 if \fIOFILE\fR is a regular file then it is truncated prior to starting the
-copy. If \fISEEK\fR is not given or 0 then \fIOFILE\fR is truncated to zero
-length; when \fISEEK\fR is larger than zero the truncation takes place at
-file byte pointer \fISEEK*OBS\fR.  Ignored if "oflag=append". Conflicts
-with "oflag=sparing".
+copy. Where the truncation takes place, depends on whether "oflag=sparing"
+is also given. This flag is ignored (i.e. turned off) if "oflag=append" is
+also given.
+.br
+In the case where "oflag=sparing" is
+.B not
+given the following is done. If \fISEEK\fR is not given or 0 then \fIOFILE\fR
+is truncated to zero length; when \fISEEK\fR is larger than zero the
+truncation takes place at file byte pointer \fISEEK*OBS\fR.
+.br
+In the case where "oflag=sparing" is given then if the size of the
+input (about to be transferred) is equal to or greater than the size of
+\fIOFILE\fR then no truncation takes place. If the size of the input is less
+than the size of \fIOFILE\fR then \fIOFILE\fR is truncated to effectively be
+the same length/size as \fIOFILE\fR. That way both write sparing and \fIOFILE\fR
+truncation are both performed. The actual point of truncation takes into
+account \fISEEK*OBS\fR (or the scatter gather list equivalent).
 .TP
 unmap [io] [pt]
 same as the trim flag.
@@ -1488,7 +1506,7 @@ i.e. (((\fIIBS * BPT\fR) % \fIOBS\fR) == 0) ) means that a single
 copy buffer can be used since its size is a multiple of both \fIIBS\fR and
 \fIOBS\fR. Being able to precisely define the copy buffer size in ddpt
 makes sparse writing, write sparing and trim operations simpler to
-define and the user to control.
+define, implement and the user to control.
 .PP
 ddpt does not support dd's "cbs=" option (conversion block size). If
 the "cbs=" option is given to ddpt then it is ignored.
@@ -1928,6 +1946,11 @@ a command received a 'parameter list length error'.
 a command received 'illegal field in parameter list'. This may occur with an
 odx copy if some combination of parameters is illegal or not supported (e.g.
 iflag=immed).
+.TP
+.B 103
+a "target underrun" error from SCSI third party copy ASC,ASCQ: [0xd,0x4].
+Also includes the case during oflag=sparing when an EOF is detected on
+\fIOFILE\fR.
 .TP
 .B 105
 a command received 'operation in progress'. This may occur with an odx copy

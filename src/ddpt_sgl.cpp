@@ -48,7 +48,7 @@
 #endif
 
 
-static const char * ddpt_sgl_version_str = "0.98 20260914 [svn: r429]";
+static const char * ddpt_sgl_version_str = "0.98 20261007 [svn: r430]";
 
 #include "sg_lib.h"
 #include "sg_unaligned.h"
@@ -1510,7 +1510,7 @@ main(int argc, char * argv[])
         break;
     case ACT_DIVISIBLE_N:
         if (! a_sge_p) {
-            pr2serr("to do divisble<n>, need --a-sgl=SGL to be given\n");
+            pr2serr("to do divisible<n>, need --a-sgl=SGL to be given\n");
             ret = SG_LIB_SYNTAX_ERROR;
             goto fini;
         }

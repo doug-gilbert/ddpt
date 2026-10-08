@@ -58,7 +58,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <getopt.h>
 #include <errno.h>
 #include <limits.h>
 #include <fcntl.h>
@@ -67,7 +66,7 @@
 #include <inttypes.h>
 #include <sys/stat.h>
 
-static const char * ddpt_sparse_version_str = "0.98 20260914 [svn: r429]";
+static const char * ddpt_sparse_version_str = "0.98 20261007 [svn: r430]";
 
 static const char * my_name = "ddpt_sparse: ";
 
@@ -319,12 +318,19 @@ open_of(struct opts_t * op)
             flags |= O_APPEND;
         if ((FT_REG & odip->d_type) && outf_exists && ofp->trunc &&
             (! ofp->nowrite)) {
-            if (op->o_sgli.lowest_lba > 0) {
+            if (ofp->sparing) {
+                if (vb)
+                    pr2serr("%s: oflag=sparing,trunc case, wait for IFILE "
+                            "to be analyzed\n", __func__);
+            } else if (op->o_sgli.lowest_lba > 0) {
                 offset = op->o_sgli.lowest_lba * op->obs_pi;
                 if (st.st_size > offset)
                     needs_ftruncate = true;  // only truncate to shorten
-            } else
+            } else {
                 flags |= O_TRUNC;
+                if (vb > 0)
+                    pr2serr("Using O_TRUNC on open(%s)\n", ofn);
+            }
         }
         if ((fd = open(ofn, flags, 0666)) < 0) {
             err = errno;
@@ -339,7 +345,8 @@ open_of(struct opts_t * op)
                 pr2serr("could not ftruncate %s after open (seek): %s\n",
                         ofn, safe_strerror(err));
                 return -sg_convert_errno(err);
-            }
+            } else if (vb > 0)
+                pr2serr("ftruncate(%s, %" PRId64 ") success\n",  ofn, offset);
             /* N.B. file offset (pointer) not changed by ftruncate */
         }
         if ((! outf_exists) && (FT_ERROR & odip->d_type)) {
@@ -1365,15 +1372,16 @@ cp_read_of_pt(struct opts_t * op, struct cp_state_t * csp, uint8_t * bp)
                 csp->cur_out_lba);
         return res;
     } else if (blks_read != num)
-        return SG_LIB_CAT_OTHER;
+        return DDPT_CAT_TARGET_UNDERRUN;
     csp->blks_xfer = blks_read;
     csp->bytes_xfer = -1;
     /* don't updates statistics */
     return 0;
 }
 
-/* Main copy loop's read (output (of)) for block device or regular file.
- * Returns 0 on success, else SG_LIB_FILE_ERROR, SG_LIB_CAT_MEDIUM_HARD
+/* Main copy loop's read (OFILE (of)) for block device or regular file.
+ * Invoked when oflag=sparing .  Returns 0 on success, else
+ * SG_LIB_FILE_ERROR, SG_LIB_CAT_MEDIUM_HARD, DDPT_CAT_TARGET_UNDERRUN
  * or -1 . */
 static int
 cp_read_of_block_reg(struct opts_t * op, struct cp_state_t * csp,
@@ -1420,9 +1428,9 @@ cp_read_of_block_reg(struct opts_t * op, struct cp_state_t * csp,
             if (res == numbytes)
                 return 0;
             else {
-                if (vb > 2)
+                if (vb > 1)
                     pr2serr("%s: short read\n", __func__);
-                return -1;
+                return DDPT_CAT_TARGET_UNDERRUN;
             }
         }
     } else
@@ -1458,9 +1466,9 @@ cp_read_of_block_reg(struct opts_t * op, struct cp_state_t * csp,
         if (res == numbytes)
             return 0;
         else {
-            if (vb > 2)
+            if (vb > 1)
                 pr2serr("%s: short read\n", __func__);
-            return -1;
+            return DDPT_CAT_TARGET_UNDERRUN; /* includes 0=read( numBytes) */
         }
     }
 }
@@ -1908,9 +1916,9 @@ cp_write_block_reg_wrap(struct dev_info_t * dip, struct cp_state_t * csp,
     return cp_write_block_reg(op, csp, bp);
 }
 
-
-/* Only for regular OFILE. Check what to do if last blocks where
- * not written, may require OFILE length adjustment */
+/* Only for regular OFILE after sparse copy has completed. Check what to do
+ * if last blocks where not written, may require OFILE length adjustment.
+ * Also called for oflag=sparing,trunc . */
 static void
 cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
 {
@@ -1920,7 +1928,7 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
     int vb = op->verbose;
     int64_t lba, offset;
     struct sgl_info_t * sglip = &op->o_sgli;
-    struct sgl_iter_t * itp = &csp->out_iter;
+    struct sgl_iter_t * oitp = &csp->out_iter;
     struct stat a_st;
 
     if (dr || (vb > 5)) {
@@ -1937,8 +1945,8 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
                     "length when OFILE has linear sgl\n", __func__);
         return;
     }
-    if (sgl_iter_at_end(itp)) {
-        if (! sgl_iter_sub(itp, 1)) {
+    if (sgl_iter_at_end(oitp)) {
+        if (! sgl_iter_sub(oitp, 1)) {
             pr2serr("%s: logic error: can't move out iterator 1 back\n",
                     __func__);
             return;
@@ -1947,7 +1955,7 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
         csp->partial_write_bytes = obs;
     } else {
         if (csp->partial_write_bytes < 1) {
-            if (! sgl_iter_sub(itp, 1)) {
+            if (! sgl_iter_sub(oitp, 1)) {
                 pr2serr("%s: logic error(2): can't move out iterator 1 "
                         "back\n", __func__);
                 return;
@@ -1957,7 +1965,7 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
         } else
             num = csp->partial_write_bytes;
     }
-    lba = sgl_iter_lba(itp);
+    lba = sgl_iter_lba(oitp);
     offset = (lba * obs) + num;
     if (vb > 1)
         pr2serr("%s: offset=0x%" PRIx64 ", num_bytes=%d\n", __func__, offset,
@@ -2283,7 +2291,7 @@ count_calculate(struct opts_t * op)
             op->dd_count = in_num_blks;
             op->idip->limits_xfer = true;
         } else if (op->reading_fifo && (FT_REG & od_type))
-            reasonp = "reading fifo/pipe";
+            reasonp = "reading fifo/pipe (output file regular)";
         else if (op->reading_fifo && (out_num_blks < 0))
             reasonp = "reading fifo/pipe";
         else if ((out_num_blks < 0) && (in_num_blks <= 0))
@@ -2305,7 +2313,25 @@ count_calculate(struct opts_t * op)
                 op->dd_count = in_num_blks;
                 op->idip->limits_xfer = true;
                 if ((FT_REG & od_type) && (ibytes < obytes)) {
-                    if (! op->quiet)
+                    if (op->oflagp->trunc && op->oflagp->sparing) {
+                        /* OFILE probably needs to be monotonic inc. */
+                        int64_t offset = op->o_sgli.lowest_lba * op->obs_pi;
+
+                        offset += ibytes;
+                        if (op->oflagp->nowrite || op->dry_run) {
+                            pr2serr(">> bypass ftruncate(%s, %" PRId64 ")\n",
+                                    op->odip->fn, offset);
+                        } else if (ftruncate(op->odip->fd, offset) < 0) {
+                            int err = errno;
+                            pr2serr("%s: could not ftruncate(%s): %s\n",
+                                    __func__, op->odip->fn,
+                                    safe_strerror(err));
+                            return -sg_convert_errno(err);
+                        } else if (vb > 0)
+                            pr2serr(">> ftruncate(%s, %" PRId64 ") success\n",
+                                    op->odip->fn, offset);
+                    /* N.B. file offset (pointer) not changed by ftruncate */
+                    } else if ((! op->quiet) && (! op->oflagp->trunc))
                         pr2serr(">> Warning: %s will be partially "
                                 "overwritten;\n>> Use 'oflag=trunc' "
                                 "(truncate before write) to avoid this.\n",
@@ -2543,7 +2569,7 @@ rw_sparse_sparing(struct opts_t * op, struct cp_state_t * csp, int obs,
     /* oflag=sparing handling, read output to check if proposed write
      * will change it, if not then bypass write */
     if (op->oflagp->sparing && (! *sparse_skipp)) {
-        /* In write sparing, Note: _read_ from the output */
+        /* In write sparing, Note: need to _read_ from the output */
         csp->reading = true;
         csp->cur_out_num = num;
         if (FT_PT & od_type) {
@@ -2803,13 +2829,24 @@ do_rw_copy(struct opts_t * op)
                 break;      /* some error writing to of2 */
         }
 
-        /* oflag=sparse handling */
-        ret = rw_sparse_sparing(op, csp, obs, num, &sparse_skip,
-                                &sparing_skip, wPos);
-        if (-888 == ret)
-            goto bypass_write;
-        if (ret)
-            break;
+        /* oflag=sparse and/or oflag=sparing handling */
+        if (op->oflagp->sparse || op->oflagp->sparing) {
+            ret = rw_sparse_sparing(op, csp, obs, num, &sparse_skip,
+                                    &sparing_skip, wPos);
+            if (DDPT_CAT_TARGET_UNDERRUN == ret) {
+                if (vb > 0)
+                    pr2serr("%s: turn off sparing due to %s EOF\n",
+                            __func__, op->odip->fn);
+                op->oflagp->sparing = false;
+                sparing_skip = false;
+                ret = 0;
+            } else {
+                if (-888 == ret)
+                    goto bypass_write;
+                if (ret)
+                    break;
+            }
+        }
 
         /* Start of writing section */
         csp->reading = false;
@@ -2924,8 +2961,12 @@ bypass_write:
     if (op->oflagp->nowrite)
         goto copy_end;
     /* sparse: clean up ofile length when last block(s) were not written */
-    if ((FT_REG & od_type) && op->oflagp->sparse && op->o_sgli.monotonic)
-        cp_sparse_cleanup(op, csp);
+    if ((FT_REG & od_type) && op->o_sgli.monotonic) {
+        if (op->oflagp->sparse)
+            cp_sparse_cleanup(op, csp);
+        else if (op->oflagp->sparing && op->oflagp->trunc)
+            cp_sparse_cleanup(op, csp);
+    }
 
 #ifdef HAVE_FDATASYNC
     else if (op->oflagp->fdatasync) {
@@ -3101,8 +3142,9 @@ open_files_devices(struct opts_t * op)
     } else if (op->prefetch_given && (vb > 0))
             pr2serr("warning: --prefetch ignored in the absence of "
                     "--verify\n");
+    /* treat no 'of=OFILE' operand as /dev/null */
     if ('\0' == odip->fn[0])
-        strcpy(odip->fn, "."); /* treat no 'of=OFILE' operand as /dev/null */
+        sg_strscpy(odip->fn, ".", INOUTF_SZ);
     if (('-' == odip->fn[0]) && ('\0' == odip->fn[1])) {
         fd = STDOUT_FILENO;
         odip->d_type = FT_FIFO;
@@ -3481,10 +3523,6 @@ final_check(struct opts_t * op)
 {
     int id_type = op->idip->d_type;
     int od_type = op->odip->d_type;
-#if 0
-    int ibs = op->ibs_pi;
-    int obs = op->obs_pi;
-#endif
     struct sgl_info_t * isglip = &op->i_sgli;
     struct sgl_info_t * osglip = &op->o_sgli;
 

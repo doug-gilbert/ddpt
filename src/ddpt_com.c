@@ -2560,7 +2560,7 @@ cp_via_sgl_iter(struct dev_info_t * dip, struct cp_state_t * csp,
     return sgl_iter_forward_blks(dip, itp, n_blks, csp, fp, op);
 }
 
-/* id_str may be NULL (if so replace by "unknown"), present to enhance verbose
+/* id_str may be NULL (if so replace by "unknown"), supply to enhance verbose
  * output. */
 void
 sgl_print(struct sgl_info_t * sgli_p, bool skip_meta, const char * id_str,

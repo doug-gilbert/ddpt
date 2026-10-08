@@ -4,8 +4,8 @@ Content-type: text/html; charset=UTF-8
 <HTML><HEAD><TITLE>Man page of DDPT</TITLE>
 </HEAD><BODY>
 <H1>DDPT</H1>
-Section: DDPT (8)<BR>Updated: May 2026<BR><A HREF="#index">Index</A>
-<A HREF="../index.html">Return to Main Contents</A><HR>
+Section: DDPT (8)<BR>Updated: 2026-09-12<BR><A HREF="#index">Index</A>
+<A HREF="/cgi-bin/man/man2html">Return to Main Contents</A><HR>
 
 <A NAME="lbAB">&nbsp;</A>
 <H2>NAME</H2>
@@ -53,7 +53,7 @@ specialized for &quot;files&quot; that are storage devices, especially those tha
 use the SCSI command sets (e.g. SATA and SAS disks). It can issue SCSI
 commands in pass-through (&quot;pt&quot;) mode. Similar syntax and semantics to the
 Unix
-<B><A HREF="../man1/dd.1.html">dd</A>(1)</B>
+<B><A HREF="/cgi-bin/man/man2html?1+dd">dd</A>(1)</B>
 
 command.
 <P>
@@ -62,7 +62,7 @@ For comparison, the SYNOPSIS section above shows both the
 <B>ddpt</B>
 
 command line operands and options followed by GNU's
-<B><A HREF="../man1/dd.1.html">dd</A>(1)</B>
+<B><A HREF="/cgi-bin/man/man2html?1+dd">dd</A>(1)</B>
 
 command line operands and options. Broadly speaking ddpt can be considered
 a super-set of dd. See the section on DD DIFFERENCES for significant
@@ -688,7 +688,7 @@ continue on error. 'iflag=coe oflag=coe' and 'coe=1' are equivalent.
 Errors occurring on output regular or block files will stop ddpt.
 Error messages are sent to stderr. This flag is similar
 to 'conv=noerror,sync' in the
-<B><A HREF="../man1/dd.1.html">dd</A>(1)</B>
+<B><A HREF="/cgi-bin/man/man2html?1+dd">dd</A>(1)</B>
 
 utility. Unrecovered errors are counted and reported in the summary at
 the end of the copy.
@@ -722,7 +722,7 @@ devices or cause an error (e.g. Linux seems to dis-allow O_DIRECT on
 character devices (like sg devices) yielding EINVAL). This flag will
 bypass caching/buffering normally done by block layer. Beware of data
 coherency issues if the same locations have been recently accessed via the
-block layer in its normal mode (i.e. non-direct). See <A HREF="../man2/open.2.html">open</A>(2) man page.
+block layer in its normal mode (i.e. non-direct). See <A HREF="/cgi-bin/man/man2html?2+open">open</A>(2) man page.
 <DT>dpo [io] [pt]<DD>
 set the DPO bit (disable page out) in SCSI READ and WRITE commands. Not
 supported for 6 byte cdb variants of READ and WRITE. Indicates that
@@ -741,7 +741,7 @@ separated by a &quot;-&quot;. At the end of the copy a line with &quot;# stop &l
 is appended to &quot;errblk.txt&quot;. Typically used with &quot;coe&quot;.
 <DT>excl [io] [reg,blk]<DD>
 causes the O_EXCL flag to be added to the open of <I>IFILE</I> and/or
-<I>OFILE</I>. See <A HREF="../man2/open.2.html">open</A>(2) man page.
+<I>OFILE</I>. See <A HREF="/cgi-bin/man/man2html?2+open">open</A>(2) man page.
 <DT>fdatasync [o] [reg,blk]<DD>
 Flushes data associated with the <I>OFILE</I> to storage at the end of the
 copy.
@@ -761,7 +761,7 @@ an attempt is made to get an advisory exclusive lock with the flock()
 system call. The flock arguments are &quot;FLOCK_EX | FLOCK_NB&quot; which will
 cause the lock to be taken if available else a &quot;temporarily unavailable&quot;
 error is generated. An exit status of 90 is produced in the latter case
-and no copy is done. See <A HREF="../man2/flock.2.html">flock</A>(2) man page.
+and no copy is done. See <A HREF="/cgi-bin/man/man2html?2+flock">flock</A>(2) man page.
 <DT>force [io] [pt] [xcopy,odx]<DD>
 override difference between given block size and the block size found
 by the SCSI READ CAPACITY command. Use the given block size. Without
@@ -864,10 +864,10 @@ and write() commands in the absence of this flag.
 <DT>random [i]<DD>
 this flag is only active with <I>iflag=</I> and when given replaces
 <I>if=IFILE</I>. If both are given an error is generated. The input will
-be a stream of pseudo random bytes. The Linux <A HREF="../man2/getrandom.2.html">getrandom</A>(2) system call is
-used to create a seed and there after <A HREF="../man3/mrand48.3.html">mrand48</A>(3) is used to generate a
+be a stream of pseudo random bytes. The Linux <A HREF="/cgi-bin/man/man2html?2+getrandom">getrandom</A>(2) system call is
+used to create a seed and there after <A HREF="/cgi-bin/man/man2html?3+mrand48">mrand48</A>(3) is used to generate a
 pseudo random sequence, 4 bytes at a time. The quality of the randomness
-can be viewed with the <A HREF="../man1/ent.1.html">ent</A>(1) utility. This is not a high quality random
+can be viewed with the <A HREF="/cgi-bin/man/man2html?1+ent">ent</A>(1) utility. This is not a high quality random
 number generator, it is built for speed, not quality. One application is
 checking the correctness of the copy and verify operations of this utility.
 <DT>rarc [i] [pt]<DD>
@@ -922,7 +922,7 @@ has not been specified on the command line. See the sparse flag and the
 section on SPARSE WRITES below.
 <DT>sync [io] [reg,blk]<DD>
 causes the O_SYNC flag to be added to the open of <I>IFILE</I> and/or
-<I>OFILE</I>. See <A HREF="../man2/open.2.html">open</A>(2) man page.
+<I>OFILE</I>. See <A HREF="/cgi-bin/man/man2html?2+open">open</A>(2) man page.
 <DT>rtf_len [io] [odx]<DD>
 odx: with the 'read to tokens' variant, after 512 bytes of each ROD Token
 are written to <I>RTF</I> an additional 8 byte (big endian) integer is
@@ -1040,14 +1040,14 @@ copy phase. Empty lines, lines only containing whitespace(s) and anything
 from and including a '#' in a job file line are ignored.
 <P>
 
-Some examples of job files can be found in the testing directory of the
+Some examples of job files can be found in the ttesting directory of the
 ddpt source with the filename extension &quot;.jf&quot;.
 <A NAME="lbAL">&nbsp;</A>
 <H2>SCATTER GATHER LISTS</H2>
 
 Each element of a scatter gather list (sgl, plural: sgl_s) is made up of a
 starting logical block address (LBA, plural: LBAs), and a number of
-blocks (NUM) to be accessed from that starting LBA.
+contiguous logical blocks (NUM) to be accessed from that starting LBA.
 <P>
 
 The <I>skip=SKIP</I> and <I>seek=SEEK</I> options (and their aliases) can take
@@ -1164,8 +1164,8 @@ WRITE commands (and their variants) only allocate at most a 32 bit integer
 for this value. Further, modern operating systems do not allow any driver
 to get large amounts of contiguous system RAM, even if the machine has it
 available. A 32 bit integer for NUM with each block at 512 bytes is around
-2 TB of storage. Unix system calls (in Linux) also limit each <A HREF="../man2/read.2.html">read</A>(2) and
-<A HREF="../man2/write.2.html">write</A>(2) system call to 32 bits of single bytes which is 4 GB. The problem
+2 TB of storage. Unix system calls (in Linux) also limit each <A HREF="/cgi-bin/man/man2html?2+read">read</A>(2) and
+<A HREF="/cgi-bin/man/man2html?2+write">write</A>(2) system call to 32 bits of single bytes which is 4 GB. The problem
 for this utility is that the NUM can easily exceed 32 bits when a single
 scatter gather list element refers to the whole device. The action taken
 by this utility is to allow larger than 32 bit NUM values to be given on
@@ -1657,10 +1657,10 @@ option to get the usage message.
 <P>
 
 Disk partition information can often be found with
-<B><A HREF="../man8/fdisk.8.html">fdisk</A>(8)</B>
+<B><A HREF="/cgi-bin/man/man2html?8+fdisk">fdisk</A>(8)</B>
 
 [the &quot;-ul&quot; argument is useful in this respect]. Also
-<B><A HREF="../man8/parted.8.html">parted</A>(8)</B>
+<B><A HREF="/cgi-bin/man/man2html?8+parted">parted</A>(8)</B>
 
 can be used like this: 'parted /dev/sda unit s print' .
 <P>
@@ -1730,6 +1730,17 @@ timeout if there is a low level error. However NFS (the Network File
 System) will potentially wait for a long time (e.g. expecting a network
 problem will soon be fixed) and in this case using &quot;intio=1&quot; may be
 best.
+<P>
+
+Digit separators can be useful to help humans input or read large
+numbers (decimal or hexadecimal). The C++ language chose a single quote
+as a digit separator (only on code input) while many other languages use
+an underscore. A curious property of a quote used in the input to Unix
+shells (e.g. bash) is that as long as there are an even number of them,
+they are effectively ignored. In other words a utility like ddpt sees such
+numeric arguments with all the quotes removed and that is just fine. An
+example is 1'000'000'000' for one billion, the trailing quote is there to
+make the number of quotes even (4 in this case).
 <A NAME="lbAX">&nbsp;</A>
 <H2>VERIFY</H2>
 
@@ -2110,7 +2121,7 @@ not happen; given here for completeness.
 
 The examples in this page use Linux device names. For suitable device
 names in other supported Operating Systems see this web page:
-<A HREF="https://sg.danny.cz/sg/device_name.html">https://sg.danny.cz/sg/device_name.html</A> . The <A HREF="../man8/sg3_utils.8.html">sg3_utils</A>(8) man page
+<A HREF="https://sg.danny.cz/sg/device_name.html">https://sg.danny.cz/sg/device_name.html</A> . The <A HREF="/cgi-bin/man/man2html?8+sg3_utils">sg3_utils</A>(8) man page
 in the sg3_utils package also covers device naming.
 <P>
 
@@ -2286,7 +2297,7 @@ warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 <H2>SEE ALSO</H2>
 
 This utility has companion/helper utilities
-<B><A HREF="../man8/ddptctl.8.html">ddptctl</A>(8), <A HREF="../man8/ddpt_sgl.8.html">ddpt_sgl</A>(8)</B>
+<B><A HREF="/cgi-bin/man/man2html?8+ddptctl">ddptctl</A>(8), <A HREF="/cgi-bin/man/man2html?8+ddpt_sgl">ddpt_sgl</A>(8)</B>
 
 <BR>
 
@@ -2317,7 +2328,7 @@ To scan and repair disk partitions see TestDisk (testdisk).
 <P>
 
 Additional references:
-<B><A HREF="../man1/dd.1.html">dd</A>(1), <A HREF="../man1/cmp.1.html">cmp</A>(1), <A HREF="../man2/open.2.html">open</A>(2), <A HREF="../man2/flock.2.html">flock</A>(2), sg_xcopy,sg_copy_results,</B>
+<B><A HREF="/cgi-bin/man/man2html?1+dd">dd</A>(1), <A HREF="/cgi-bin/man/man2html?1+cmp">cmp</A>(1), <A HREF="/cgi-bin/man/man2html?2+open">open</A>(2), <A HREF="/cgi-bin/man/man2html?2+flock">flock</A>(2), sg_xcopy,sg_copy_results,</B>
 
 <B>sg_dd(sg3_utils)</B>
 
@@ -2363,6 +2374,6 @@ Additional references:
 This document was created by
 <A HREF="/cgi-bin/man/man2html">man2html</A>,
 using the manual pages.<BR>
-Time: 02:19:21 GMT, May 18, 2026
+Time: 15:49:18 GMT, October 06, 2026
 </BODY>
 </HTML>
