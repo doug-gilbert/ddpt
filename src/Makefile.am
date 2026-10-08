@@ -131,6 +131,10 @@ ddptctl_DEPENDENCIES = @os_deps@
 ddpt_sgl_SOURCES += $(sglib_SOURCES)
 ddpt_sgl_LDADD = @os_deps@ @SGUTILS_LIBS@
 ddpt_sgl_DEPENDENCIES = @os_deps@
+
+ddpt_sparse_SOURCES += $(sglib_SOURCES)
+ddpt_sparse_LDADD = @os_deps@ @SGUTILS_LIBS@
+ddpt_sparse_DEPENDENCIES = @os_deps@
 endif
 
 EXTRA_ddpt_SOURCES =	../lib/sg_pt_linux.c	\
