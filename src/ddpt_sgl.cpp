@@ -48,7 +48,7 @@
 #endif
 
 
-static const char * ddpt_sgl_version_str = "0.98 20261008 [svn: r431]";
+static const char * ddpt_sgl_version_str = "0.98 20261009 [svn: r432]";
 
 #include "sg_lib.h"
 #include "sg_unaligned.h"

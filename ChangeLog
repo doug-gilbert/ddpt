@@ -4,7 +4,7 @@ and the configure.ac file (in the AC_INIT item). There are also
 ddpt, ddptctl and ddpt_sgl man pages. References to github are
 to https://github.com/doug-gilbert/ddpt
 
-Changelog for pre-release ddpt-0.98 [20261008] [svn: r431]
+Changelog for pre-release ddpt-0.98 [20261009] [svn: r432]
   - add coe=2 for skip and zero output of rest of segment;
     useful for flash that has elements (e.g. 16 KB long) of
     sequential bad blocks. Retrying 1 at a time is tiresome
@@ -14,8 +14,9 @@ Changelog for pre-release ddpt-0.98 [20261008] [svn: r431]
     if size(ifile) > size(ofile) then latter will grow
   - oflag=sparing,trunc allowed. If size(ifile) < size(ofile)
     truncate ofile to equal size(ifile)
+  - fix extra write when EOF on IFILE read nothing
   - improve final summary when iflag=sparse and no ofile
-  - point svn:externals to sg3_utils revision 1144
+  - point svn:externals to sg3_utils revision 1151
   - experiment changing struct scat_gath_elem from 8+4
     bytes [LBA+num_blks] to 8+7+1 where the 1 (byte) is
     the LBA Extent type

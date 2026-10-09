@@ -55,7 +55,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.98 20261008 [svn: r431]";
+static const char * ddpt_version_str = "0.98 20261009 [svn: r432]";
 
 static const char * my_name = "ddpt: ";
 
@@ -2482,8 +2482,9 @@ rw_reg_blk_see_leave(struct opts_t * op, struct cp_state_t * csp, int num,
             return 0;
         } else {
             csp->leave_after_write = true;
-            if (n <= 0)
-                return 0;   /* finished without error */
+            if (n <= 0) {     /* hit EOF before reading anything */
+                return SG_LIB_OK_FALSE;  /* want to leave now! */
+            }
             csp->ocbpt = n / op->obs_pi;
             csp->icbpt = n / ibs;   /* so dd_count accurate */
             if (n % ibs)   /* for dd_count, round up */
@@ -2624,7 +2625,7 @@ do_rw_copy(struct opts_t * op)
         goto copy_end;
     /* Both csp->in_iter.filepos and csp->out_iter.filepos are 0 */
 
-    /* <<< main loop that does the copy >>> */
+    /* <<<< MAIN loop that does the copy >>>> */
     while ((op->dd_count > 0) || continual_read) {
         if (! first_time)
             signals_process_delay(op, DELAY_COPY_SEGMENT);
@@ -2775,20 +2776,26 @@ do_rw_copy(struct opts_t * op)
             ret = cp_via_sgl_iter(op->idip, csp, num, cp_read_block_reg_wrap,
                                   op);
             if (ret) {
-                if (DDPT_CAT_SEE_LEAVE_REASON == ret) {
-                    if ((ret = rw_reg_blk_see_leave(op, csp, num, &id_type,
-                                                    &change_over, wPos)))
-                        break;
-                } else
+                if (DDPT_CAT_SEE_LEAVE_REASON != ret)
                     break;
+                ret = rw_reg_blk_see_leave(op, csp, num, &id_type,
+                                           &change_over, wPos);
+                if (SG_LIB_OK_FALSE == ret) {
+                    ret = DDPT_CAT_SEE_LEAVE_REASON;
+                    break;
+                } else if (ret)
+                    break;
+                /* now if ret was 0 we continue */
             }
         }
         if (0 == csp->icbpt)
             break;      /* nothing read so leave loop */
-
-        /* finished reading side, now write to of2 if required, do sparse
-         * and sparing work */
-
+        /*
+         * ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+         * finished reading side, now write to of2 if required, do sparse
+         * and sparing work
+         * vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+         */
         num = csp->ocbpt;
 
         /* if required write segment (wPos) to of2 now, no iterators */
@@ -2926,7 +2933,7 @@ bypass_write:
         }
         if (first_time)
             first_time = false;
-    } /* end of main while loop that does the copy ... */
+    } /* <<<< end of MAIN while loop that does the copy >>>> */
 
     if (op->oflagp->nowrite)
         goto copy_end;
