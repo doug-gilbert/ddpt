@@ -1608,8 +1608,9 @@ decode_designation_descriptor(const uint8_t * bp, int len_less_4,
     print_p("%s", b);
 }
 
-/* Helper for case when EIO or EREMOTE errno suggests the equivalent
- * of a medium error. Returns 0 unless coe_limit exceeded. */
+/* Helper for case when a storage error (see sg_is_errno_storage_err()) is
+ * detected. A "storage error" is the regular file or block device equivalent
+ * of a SCSI medium error. Returns 0 unless coe_limit exceeded. */
 int             /* Global function, used by ddpt_win32.c */
 coe_process_eio(struct opts_t * op, int64_t skip)
 {
@@ -1772,7 +1773,7 @@ count_sgl_blocks_from(const struct scat_gath_elem * sglp, int elems,
         return 0;
 
     for (j = 0, res = 0;
-         (k < elems) && (j < md) && (res < (uint64_t)num_blks);
+         (k < elems) && (j < md) && (res < num_blks);
          ++k, ++j, ++sglp) {
         if (0 == j)
             res = sglp->num - skip_blks;  /* will be positive */

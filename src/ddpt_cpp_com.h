@@ -6,8 +6,8 @@
  *
  */
 
-#ifndef DDPT_CPP_COM_HPP
-#define DDPT_CPP_COM_HPP
+#ifndef DDPT_CPP_COM_H
+#define DDPT_CPP_COM_H
 
 /* This is a C++ header file for the ddpt_sgl and ddpt_sparse utilities.
  * See ddpt_sgl.cpp and ddpt_spare.cpp for more information.
@@ -85,6 +85,8 @@ public:
     void set_lba(uint64_t a_lba) noexcept { lba = a_lba; }
     void set_num(uint64_t a_num) noexcept { num = a_num; }
 
+    // If LBA(this) == LBA(a_lbae) then return true if
+    // num(this) < num(a_lbae)
     bool operator< (const lba_extent_w_typ & a_lbae) const noexcept
         {
             if (lba < a_lbae.lba)
@@ -139,24 +141,6 @@ private:
      * inherit from struct scat_gath_elem (in ddpt.h) rather than use
      * composition (or duplication) here.
      */
-#if 0
-    struct scat_gath_elem sge;
-#endif
-#if 0
-    uint64_t lba;       /* of start block */
-    union {
-        uint64_t com_num_typ;
-        struct {
-#if defined(__BIG_ENDIAN__) || (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
-            uint64_t  lbae_typ : 8;
-            uint64_t  num : 56;
-#else   /* assume LITTLE_ENDIAN */
-            uint64_t  num : 56;
-            uint64_t  lbae_typ : 8;
-#endif
-        };
-    };
-#endif
 };
 
 void pr_statistics(const sgl_stats & sst, FILE * fp);
@@ -185,7 +169,6 @@ struct indir_comp_t {
             case 2: cmp_f = cmp_asc_num; break;
             case 3: cmp_f = cmp_des_num; break;
             case 0: default: cmp_f = cmp_asc_lba; break;
-
 #else
             case 1: cmp_f = &indir_comp_t::des_lba; break;
             case 2: cmp_f = &indir_comp_t::asc_num; break;
@@ -227,6 +210,17 @@ private:
 
 bool non_overlap_check(const sgl_vect & sgl, const char * id_str, bool quiet);
 
+// Do any sgl elements have a num > UINT32_MAX. Returns false if sgl empty.
+bool any_large_sgl_elems(const sgl_vect & sgl);
+
+#define SGL_U32_TRIM 15
+
+// Each scat_gath_elem element in i_sgl is appended to o_sgl. If an element
+// has a num > (UINT32_MAX - SGL_U32_TRIM) then that element is split into
+// two or more contiguous elements such with the 'num' of each element being
+// <= (UINT32_MAX - SGL_U32_TRIM) . Usually o_sgl should start empty.
+void sgl_expand2smooth(const sgl_vect & i_sgl, sgl_vect o_sgl);
+
 int do_write2o_sgl(const char * bname, const char * extra, bool use_elem_opt,
                    sgl_vect & o_sgl, struct sgl_opts_t * op);
 
@@ -246,4 +240,4 @@ void rearrange_twin_sgl(const sgl_vect & twin_sgl, const sgl_vect & ref_sgl,
                         sgl_vect & out_t_sgl, int do_hex, int vb);
 
 
-#endif  /* DDPT_CPP_COM_HPP guard against multiple includes */
+#endif  /* DDPT_CPP_COM_H guard against multiple includes */

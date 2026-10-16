@@ -4,7 +4,7 @@ and the configure.ac file (in the AC_INIT item). There are also
 ddpt, ddptctl and ddpt_sgl man pages. References to github are
 to https://github.com/doug-gilbert/ddpt
 
-Changelog for pre-release ddpt-0.98 [20261009] [svn: r432]
+Changelog for pre-release ddpt-0.98 [20261016] [svn: r433]
   - add coe=2 for skip and zero output of rest of segment;
     useful for flash that has elements (e.g. 16 KB long) of
     sequential bad blocks. Retrying 1 at a time is tiresome
@@ -13,7 +13,8 @@ Changelog for pre-release ddpt-0.98 [20261009] [svn: r432]
   - oflag=sparing: turn off mid-copy if ofile hits EOF
     if size(ifile) > size(ofile) then latter will grow
   - oflag=sparing,trunc allowed. If size(ifile) < size(ofile)
-    truncate ofile to equal size(ifile)
+    truncate ofile to equal size(ifile) github issue #9
+  - Allow iflag=errblk for reg and blk devices github issue #8
   - fix extra write when EOF on IFILE read nothing
   - improve final summary when iflag=sparse and no ofile
   - point svn:externals to sg3_utils revision 1151
@@ -37,6 +38,9 @@ Changelog for pre-release ddpt-0.98 [20261009] [svn: r432]
   - rename testing directory to ttesting (to avoid cmake
     ctest artifact directory called Testing)
   - rename build_debian.sh to debian_build.sh
+  - rename ddpt_sgl.hpp to ddpt_sgl.h
+  - rename ddpt_cpp_com.hpp to ddpt_cpp_com.h
+  - copy src/sg_dd.h from sg3_utils
 
 Changelog for released ddpt-0.97 [20210421] [svn: r388]
   - ddpt: add cdl operand for command duration limits

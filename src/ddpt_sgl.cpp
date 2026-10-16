@@ -54,8 +54,8 @@ static const char * ddpt_sgl_version_str = "0.98 20261009 [svn: r432]";
 #include "sg_unaligned.h"
 #include "sg_pr2serr.h"
 
-#include "ddpt_sgl.hpp"
-#include "ddpt_cpp_com.hpp"
+#include "ddpt_sgl.h"
+#include "ddpt_cpp_com.h"
 
 using namespace std;
 // using namespace std::chrono;

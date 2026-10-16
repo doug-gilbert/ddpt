@@ -6,8 +6,8 @@
  *
  */
 
-#ifndef DDPT_SGL_HPP
-#define DDPT_SGL_HPP
+#ifndef DDPT_SGL_H
+#define DDPT_SGL_H
 
 /* This is a C++ header file for the ddpt_sgl and ddpt_sparse utilities.
  * See ddpt_sgl.cpp and ddpt_spare.cpp for more information.
@@ -89,4 +89,4 @@ struct sgl_opts_t {
     std::vector<struct split_fn_fp> b_split_out_fns; /* 'b' side for tsplit */
 };
 
-#endif /* end of ifndef DDPT_SGL_HPP */
+#endif /* end of ifndef DDPT_SGL_H */

@@ -41,6 +41,7 @@
 #define __STDC_FORMAT_MACROS 1
 #include <inttypes.h>
 #include <sys/stat.h>
+#include <limits.h>
 
 /* N.B. config.h must precede anything that depends on HAVE_*  */
 #ifdef HAVE_CONFIG_H
@@ -53,24 +54,30 @@
 #include "sg_unaligned.h"
 #include "sg_pr2serr.h"
 
-#include "ddpt_cpp_com.hpp"
-#include "ddpt_sgl.hpp"
+#include "ddpt_cpp_com.h"
+#include "ddpt_sgl.h"
 
 using namespace std;
 // using namespace std::chrono;
 
+// Compare (for ascending order) between the LBAs in two elements in the
+// same scatter gather list. Returns true if LBA(lhs) < LBA(rhs) .
 bool
 cmp_asc_lba(const sgl_vect & sgl, int lhs, int rhs)
 {
     return sgl[lhs].lba < sgl[rhs].lba;
 }
 
+// Compare (for descending order) between the LBAs in two elements in the
+// same scatter gather list. Returns true if LBA(lhs) > LBA(rhs) .
 bool
 cmp_des_lba(const sgl_vect & sgl, int lhs, int rhs)
 {
     return sgl[lhs].lba > sgl[rhs].lba;
 }
 
+// Compare (for ascending order) between the num_s in two elements in the
+// same scatter gather list. Returns true if num(lhs) < num(rhs) .
 bool
 cmp_asc_num(const sgl_vect & sgl, int lhs, int rhs)
 {
@@ -562,3 +569,55 @@ sort2o_sgl(const sgl_vect & sort_sgl, const sgl_vect & twin_sgl,
                            op->do_hex, vb);
 }
 
+bool
+any_large_sgl_elems(const sgl_vect & sgl)
+{
+    int sz = sgl.size();
+
+    for (int k = 0; k < sz; ++k) {
+        if (sgl[k].num > UINT32_MAX)
+            return true;
+    }
+    return false;
+}
+
+// Note that every split scat_gath_elem has i_sgl[k]'s lbae_typ value.
+void
+sgl_expand2smooth(const sgl_vect & i_sgl, sgl_vect o_sgl)
+{
+    int i_sz = i_sgl.size();
+    const uint64_t trimmed_u32 { UINT32_MAX - SGL_U32_TRIM };
+    const uint32_t sanity_max = 1 << 20 ;
+
+    for (int k = 0; k < i_sz; ++k) {
+        uint64_t num { i_sgl[k].num };
+
+        if (num <= trimmed_u32)
+            o_sgl.push_back(i_sgl[k]);
+        else {
+            uint64_t lba = i_sgl[k].lba;
+            uint64_t num = i_sgl[k].num;
+            uint64_t rem = trimmed_u32;
+            uint32_t n = 0;
+            const uint8_t lbae_typ = i_sgl[k].lbae_typ;
+
+            // split into contiguous elements each with num <= trimmed_u32
+            do {
+                scat_gath_elem sge;
+
+                sge.lba = lba;
+                sge.num = rem;
+                sge.lbae_typ = lbae_typ;
+                o_sgl.push_back(sge);
+                if (rem <= num)
+                    break;
+                lba += rem;
+                if (num < trimmed_u32)
+                    rem = num;
+                else
+                    rem = trimmed_u32;
+                num -= rem;     // num should never go negative
+            } while (++n < sanity_max);
+        }
+    }
+}

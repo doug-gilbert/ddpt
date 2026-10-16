@@ -1,4 +1,4 @@
-.TH DDPT "8" "2026-10-07" "ddpt\-0.98" DDPT
+.TH DDPT "8" "2026-10-16" "ddpt\-0.98" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -700,11 +700,15 @@ bad LBAs are reported by the pass\-through then the LBA of the lowest and
 highest bad block is also reported.
 .IP
 This paragraph concerns coe on input regular files and block devices.
-When a EIO or EREMOTEIO error is detected on a normal segment read then
-the segment is re\-read one block (i.e. \fIIBS\fR bytes) at a time. Any
-block that yields a EIO or EREMOTEIO error is replaced by zeros. Any
-other error, a short read or an end of file will terminate the copy,
-usually after the data that has been read is written to the output file.
+A 'storage error' is currently considered to be one of these Unix 'errno'
+values: EIO, EREMOTEIO or ENODATA. These are roughly equivalent to SCSI
+Medium errors that can occur during a transfer and effect a small part
+of that transfer. [So storage errors are different from (initial) connection
+and permission errors.] When a storage error is detected on a normal segment
+read then the segment is re\-read one block (i.e. \fIIBS\fR bytes) at a time.
+Any block that yields a storage error is replaced by zeros. Any other error,
+a short read or an end of file will terminate the copy, usually after the
+partially read data is written to the output file.
 .TP
 dc [io] [blk,pt]
 xcopy: set DC (destination counter) bit in EXTENDED COPY(LID1) parameter
@@ -728,7 +732,7 @@ data is unlikely to be required to stay in device (e.g. disk) cache.
 May speed media copy and/or cause a media copy to have less impact
 on other device users.
 .TP
-errblk [i] [pt] [experimental]
+errblk [i] [reg,blk,pt]
 attempts to create or append to a file called "errblk.txt" in the current
 directory the logical block addresses of blocks that cannot be read. The
 first (appended) line is "# start <timestamp>". That is followed by the
@@ -737,7 +741,7 @@ one LBA per line. If the sense data does not correctly identify the LBA of
 the first error in the range it was asked to read then a LBA range is
 reported in the form of the lowest and the highest LBA in the range
 separated by a "\-". At the end of the copy a line with "# stop <timestamp>"
-is appended to "errblk.txt". Typically used with "coe".
+is appended to "errblk.txt". Needs to be used with "coe" flag/operand.
 .TP
 excl [io] [reg,blk]
 causes the O_EXCL flag to be added to the open of \fIIFILE\fR and/or

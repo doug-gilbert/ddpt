@@ -37,6 +37,8 @@
 #include "config.h"
 #endif
 
+#include "sg_dd.h"
+
 /* make sure function declarations use C passing conventions */
 #ifdef __cplusplus
 extern "C" {
@@ -284,16 +286,13 @@ struct val_str_t {
  * read(2)s and write(2)s. User can give larger than 31 bit 'num's but they
  * are split into several consecutive elements. */
 struct scat_gath_elem {
-#if 0
+    // Prior scatter gather element definition modelled on what T10,
+    // T13 and NVMe have. The 'uint32_ num' is too restrictive.
+    // uint64_t lba;       /* of start block */
+    // uint32_t num;       /* number of blocks from the start block */
+
     uint64_t lba;       /* of start block */
-#if 0
-    uint32_t num;       /* number of blocks from and including start block */
-#else
-    uint64_t num;       /* number of blocks from and including start block */
-#endif
-#else
-    uint64_t lba;       /* of start block */
-    union {
+    union {     // expect this to be 16 bytes long, both on BE and LE CPUs
         uint64_t com_num_typ;
         struct {
 #if defined(__BIG_ENDIAN__) || (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
@@ -302,7 +301,6 @@ struct scat_gath_elem {
 #else   /* else assume LITTLE_ENDIAN */
             uint64_t  num : 56;
             uint64_t  lbae_typ : 8;
-#endif
 #endif
         };
     };
@@ -451,7 +449,7 @@ struct cp_state_t {
     int last_seg_wbytes; /* when ofile sz is limit; 0: no reduction */
     uint64_t cur_in_num;   /* current in number of blocks */
     uint64_t cur_out_num;  /* current out number of blocks */
-    uint64_t cur_in_lba;   /* current in starts at this logical block */
+    uint64_t cur_in_lba;   /* current in, begins at this logical block */
     uint64_t prev_in_lba;  /* previous in leaves file "pointer" here */
     uint64_t cur_out_lba;  /* current out starts at this logical block */
     uint64_t prev_out_lba; /* previous out leaves file "pointer" here */
@@ -791,8 +789,8 @@ void sge_print(const struct scat_gath_elem * sgep, const char * id_str,
  * to the start of the sgl; while num_blks and max_descriptors are relative
  * to the sgl+blk_off . */
 uint64_t count_sgl_blocks_from(const struct scat_gath_elem * sglp, int elems,
-                               uint64_t blk_off, uint64_t num_blks,
-                               uint32_t max_descriptors /* from blk_off */);
+                               uint64_t skip_blks, uint64_t num_blks,
+                               uint32_t max_descriptors /* from skip_blks */);
 
 /* Points to start of sgl after init, sets extend_last bit */
 void sgl_iter_init(struct sgl_iter_t * iter_p, struct scat_gath_elem * sglp,
