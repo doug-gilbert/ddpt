@@ -55,7 +55,7 @@
 #endif
 
 
-static const char * ddpt_version_str = "0.98 20261016 [svn: r433]";
+static const char * ddpt_version_str = "0.98 20261020 [svn: r434]";
 
 static const char * my_name = "ddpt: ";
 
@@ -1886,17 +1886,16 @@ cp_write_block_reg_wrap(struct dev_info_t * dip, struct cp_state_t * csp,
     return cp_write_block_reg(op, csp, bp);
 }
 
-
-/* Only for regular OFILE after sparse copy has completed. Check what to do
- * if last blocks where not written, may require OFILE length adjustment.
- * Also called for oflag=sparing,trunc . */
+/* For regular OFILE after sparse copy has completed or has
+ * oflag=sparing,trunc. Check what to do if last blocks where not written,
+ * may require OFILE length adjustment. */
 static void
-cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
+cp_sparse_trunc_cleanup(struct opts_t * op, struct cp_state_t * csp)
 {
-    bool dr = (bool)op->dry_run;
+    const bool dr = (bool)op->dry_run;
     int num;
-    int obs = op->obs_pi;
-    int vb = op->verbose;
+    const int obs = op->obs_pi;
+    const int vb = op->verbose;
     int64_t lba, offset;
     struct sgl_info_t * sglip = &op->o_sgli;
     struct sgl_iter_t * oitp = &csp->out_iter;
@@ -1945,7 +1944,7 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
         pr2serr("%s: offset=0x%" PRIx64 ", num_bytes=%d << too small\n",
                 __func__, offset, num);
 
-    if (offset > csp->out_iter.filepos) {
+    if (offset >= csp->out_iter.filepos) {
         if ((! op->oflagp->strunc) && (op->oflagp->sparse > 1)) {
             if (vb > 1)
                 pr2serr("asked to bypass writing sparse last block of "
@@ -1962,22 +1961,19 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
             return;
         }
         if (offset < a_st.st_size) {
-            if (vb > 1)
+            if (op->oflagp->trunc && op->oflagp->sparing) {
+                if (vb > 1)
+                    pr2serr("About to truncate %s to byte offset %"
+                            PRId64 "\n", op->odip->fn, offset);
+                if (ftruncate(op->odip->fd, offset) < 0)
+                    pr2serr("could not ftruncate after copy: %s\n",
+                            safe_strerror(errno));
+            } else if (vb > 1)
                 pr2serr("%s: OFILE longer than required, do nothing\n",
                         __func__);
             return;
         }
-        if (op->oflagp->strunc) {
-            if (vb > 1)
-                pr2serr("About to truncate %s to byte offset %" PRId64 "\n",
-                        op->odip->fn, offset);
-            if (ftruncate(op->odip->fd, offset) < 0) {
-                pr2serr("could not ftruncate after copy: %s\n",
-                        safe_strerror(errno));
-                return;
-            }
-            /* N.B. file offset (pointer) not changed by ftruncate */
-        } else if (1 == op->oflagp->sparse) {
+        if (1 == op->oflagp->sparse) {
             if (vb > 1)
                 pr2serr("writing sparse last block of zeros\n");
             signals_process_delay(op, DELAY_WRITE);
@@ -1996,7 +1992,7 @@ cp_sparse_cleanup(struct opts_t * op, struct cp_state_t * csp)
                 --csp->stats.out_sparse;
         }
     } else if (vb > 1)
-        pr2serr("%s: bypass as output_offset <= output_filepos\n", __func__);
+        pr2serr("%s: bypass as output_offset < output_filepos\n", __func__);
 }
 
 /* Main copy loop's finer grain comparison and possible write (to OFILE)
@@ -2819,8 +2815,10 @@ do_rw_copy(struct opts_t * op)
                 sparing_skip = false;
                 ret = 0;
             } else {
-                if (-888 == ret)
+                if (-888 == ret) {
+                    ret = 0;
                     goto bypass_write;
+                }
                 if (ret)
                     break;
             }
@@ -2941,9 +2939,9 @@ bypass_write:
     /* sparse: clean up ofile length when last block(s) were not written */
     if ((FT_REG & od_type) && op->o_sgli.monotonic) {
         if (op->oflagp->sparse)
-            cp_sparse_cleanup(op, csp);
+            cp_sparse_trunc_cleanup(op, csp);
         else if (op->oflagp->sparing && op->oflagp->trunc)
-            cp_sparse_cleanup(op, csp);
+            cp_sparse_trunc_cleanup(op, csp);
     }
 
 #ifdef HAVE_FDATASYNC

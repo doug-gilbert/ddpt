@@ -6,8 +6,9 @@
  *
  */
 
-/* ddpt_sgl is a helper for ddpt which is a dd clone and thus a utility
- * program for copying files.
+/* ddpt_cpp_com.cpp is a helper (holding common functions) for the two
+ * C++ utilities in this repository: ddpt_sgl and ddpt_sparse . Note those
+ * two C++ utilities also use the C source helper file: ddpt_com.c .
  */
 
 #include <iostream>
@@ -569,6 +570,8 @@ sort2o_sgl(const sgl_vect & sort_sgl, const sgl_vect & twin_sgl,
                            op->do_hex, vb);
 }
 
+// Scans sgl stopping and returning true if an element has a 'num' >
+// UINT32_MAX. Otherwise when the end of sgl is reached it returns false.
 bool
 any_large_sgl_elems(const sgl_vect & sgl)
 {
@@ -581,6 +584,10 @@ any_large_sgl_elems(const sgl_vect & sgl)
     return false;
 }
 
+// Any elements in i_sgl whose 'num' is <= (UINT32_MAX - SGL_U32_TRIM) are
+// copied o_sgl . Those elements with a larger 'num' are split into 2 or
+// more contiguous elements, each with a 'num' of (UINT32_MAX - SGL_U32_TRIM)
+// apart from the last element (in the split) that may have less.
 // Note that every split scat_gath_elem has i_sgl[k]'s lbae_typ value.
 void
 sgl_expand2smooth(const sgl_vect & i_sgl, sgl_vect o_sgl)
@@ -607,7 +614,7 @@ sgl_expand2smooth(const sgl_vect & i_sgl, sgl_vect o_sgl)
 
                 sge.lba = lba;
                 sge.num = rem;
-                sge.lbae_typ = lbae_typ;
+                sge.lbae_typ = lbae_typ;  // all split elements get lbae_typ
                 o_sgl.push_back(sge);
                 if (rem <= num)
                     break;

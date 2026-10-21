@@ -15,6 +15,10 @@
 extern "C" {
 #endif
 
+
+#define MAX_BPT_VALUE (1 << 24)         /* used for maximum bs as well */
+#define MAX_COUNT_SKIP_SEEK ((int64_t)1 << 50) /* coverity: upper bound */
+
 static inline bool sg_is_errno_storage_err(int unix_errno)
 {
     if (unix_errno < 0)

@@ -215,8 +215,10 @@ com_state_init(int my_util_enum_val, struct opts_t * op, struct flags_t * ifp,
 void
 print_stats(const char * str, struct opts_t * op, int who, bool estimate)
 {
+    int k;
+    const bool is_verify = op->verify_given;
     const char * cp;
-    const char * out_verify = op->verify_given ? "verified" : "out";
+    const char * out_verify = is_verify ? "verified" : "out";
     struct cp_statistics_t * sp = op->stp ? op->stp : &op->stats;
 
 #ifdef SG_LIB_LINUX
@@ -285,12 +287,14 @@ print_stats(const char * str, struct opts_t * op, int who, bool estimate)
         pr2serr("lowest unrecovered read lba=%" PRId64 ", highest "
                 "unrecovered lba=%" PRId64 "\n", op->lowest_unrecovered,
                 op->highest_unrecovered);
-    if (sp->wr_recovered_errs > 0)
-        pr2serr("%s%d recovered write errors\n", str, sp->wr_recovered_errs);
-    if (sp->wr_unrecovered_errs > 0)
-        pr2serr("%s%d unrecovered write error%s\n", str,
-                sp->wr_unrecovered_errs,
-                ((1 == sp->wr_unrecovered_errs) ? "" : "s"));
+    k = sp->wr_recovered_errs;
+    if (k > 0)
+        pr2serr("%s%d recovered %s error%s\n", str, k,
+                (is_verify ? "verify" : "write"), (1 == k ? "" : "s"));
+    k = sp->wr_unrecovered_errs;
+    if (k > 0)
+        pr2serr("%s%d unrecovered %s error%s\n", str, k,
+                (is_verify ? "verify" : "write"), (1 == k ? "" : "s"));
     if (sp->trim_errs)
         pr2serr("%s%d trim errors\n", str, sp->trim_errs);
     if (sp->interrupted_retries > 0)

@@ -106,7 +106,7 @@ if [[ "${HELP}" ]] ; then
     echo "  --version|-V    print out version number then exit"
     echo ""
     echo "Script for testing scatter gather list (sgl) manipulations using"
-    echo "the the ddpt_sgl helper. Uses '/tmp/ddpt_sgl*.sgl' for temporary"
+    echo "the ddpt_sgl helper. Uses '/tmp/ddpt_sgl*.sgl' for temporary"
     echo "storage."
     exit 0
 fi

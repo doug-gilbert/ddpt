@@ -4,7 +4,7 @@ and the configure.ac file (in the AC_INIT item). There are also
 ddpt, ddptctl and ddpt_sgl man pages. References to github are
 to https://github.com/doug-gilbert/ddpt
 
-Changelog for pre-release ddpt-0.98 [20261016] [svn: r433]
+Changelog for pre-release ddpt-0.98 [20261020] [svn: r434]
   - add coe=2 for skip and zero output of rest of segment;
     useful for flash that has elements (e.g. 16 KB long) of
     sequential bad blocks. Retrying 1 at a time is tiresome
@@ -15,6 +15,7 @@ Changelog for pre-release ddpt-0.98 [20261016] [svn: r433]
   - oflag=sparing,trunc allowed. If size(ifile) < size(ofile)
     truncate ofile to equal size(ifile) github issue #9
   - Allow iflag=errblk for reg and blk devices github issue #8
+  - sparse, sparing: exit status of 99 erroneously set, fix
   - fix extra write when EOF on IFILE read nothing
   - improve final summary when iflag=sparse and no ofile
   - point svn:externals to sg3_utils revision 1151
@@ -23,6 +24,10 @@ Changelog for pre-release ddpt-0.98 [20261016] [svn: r433]
     the LBA Extent type
     - change all num_blks arguments in header files from
       uint32_t to uint64_t
+  - any_large_sgl_elems(sgl) and sgl_expand2smooth(i_sgl, o_sgl)
+    added to detect large "num"_s; the 2nd function will copy
+    from i_sgl to o_sgl, splitting any "large" elements
+   "large" element into two or more elements.
   - netbsd: experimental port, scsi only
   - cmake: build alternative
     - can build deb and rpm packages with 'cpack .'

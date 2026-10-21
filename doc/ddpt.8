@@ -1,4 +1,4 @@
-.TH DDPT "8" "2026-10-16" "ddpt\-0.98" DDPT
+.TH DDPT "8" "2026-10-20" "ddpt\-0.98" DDPT
 .SH NAME
 ddpt \- copies data between files and storage devices. Support for
 devices that understand the SCSI command set.
@@ -48,7 +48,7 @@ differences between ddpt and dd.
 .PP
 This utility either does direct copies, based on read\-write sequences,
 or offloaded copies. In an offloaded copy the data being copied does not
-necessarily pass through the memory of the the machine originating the copy
+necessarily pass through the memory of the machine originating the copy
 operation; this can save a significant amount of time and lessen CPU usage.
 .PP
 When doing a direct copy, this utility breaks the copy into segments since
@@ -925,7 +925,7 @@ the \fIOFILE\fR. If the two buffers compare equal then the write to
 is significantly slower than a read. Under some conditions flash memory
 devices have slow writes plus an upper limit on the number of times the same
 cell can be rewritten. The granularity of the comparison can be reduced from
-the default \fIIBS\fR * \fIBPT\fR byte segment with the the \fIOBPC\fR value
+the default \fIIBS\fR * \fIBPT\fR byte segment with the \fIOBPC\fR value
 given to the "bpt=" option. The finest granularity is when \fIOBPC\fR is 1
 which implies \fIOBS\fR bytes.
 .br
@@ -979,23 +979,22 @@ TRIM, UNMAP AND WRITE SAME section below.
 .TP
 trunc [o] [reg]
 if \fIOFILE\fR is a regular file then it is truncated prior to starting the
-copy. Where the truncation takes place, depends on whether "oflag=sparing"
-is also given. This flag is ignored (i.e. turned off) if "oflag=append" is
-also given.
+copy unless it is accompanied by the "sparing" flag. In the sparing case a
+truncation will take place, if needed, at the completion of the copy. This
+flag is ignored (i.e. turned off) if "oflag=append" is also given.
 .br
 In the case where "oflag=sparing" is
 .B not
-given the following is done. If \fISEEK\fR is not given or 0 then \fIOFILE\fR
+given the following is done: If \fISEEK\fR is not given or 0 then \fIOFILE\fR
 is truncated to zero length; when \fISEEK\fR is larger than zero the
 truncation takes place at file byte pointer \fISEEK*OBS\fR.
 .br
-In the case where "oflag=sparing" is given then if the size of the
-input (about to be transferred) is equal to or greater than the size of
-\fIOFILE\fR then no truncation takes place. If the size of the input is less
-than the size of \fIOFILE\fR then \fIOFILE\fR is truncated to effectively be
-the same length/size as \fIOFILE\fR. That way both write sparing and \fIOFILE\fR
-truncation are both performed. The actual point of truncation takes into
-account \fISEEK*OBS\fR (or the scatter gather list equivalent).
+In the case where "oflag=sparing" is given then the truncation, if needed,
+occurs immediately after where the last block of the copy was written to
+\fIOFILE\fR (or would have been written but wasn't due to the "sparing"
+action). If \fISKIP\fR and \fISEEK\fR are not given (or both 0) the logical
+size(\fIOFILE\fR) should be the same as the logical size(\fIIFILE\fR) on
+completion with no errors.
 .TP
 unmap [io] [pt]
 same as the trim flag.
@@ -1433,7 +1432,7 @@ of a disk that contain segments full of zeros:
    ddpt if=/dev/sdc skip=0x2300 bs=512 iflag=pt,self,trim count=0x1234f0
 .PP
 The "self" oflag automatically sets up the output side of the copy
-to send trim commands (if required) back the the same device (i.e. /dev/sdc).
+to send trim commands (if required) back the same device (i.e. /dev/sdc).
 If this example was self\-trimming a partition then the partition would
 start at LBA 0x2300 and be 0x1234f0 blocks long.
 .PP

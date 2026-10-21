@@ -433,6 +433,11 @@ skip_seek(struct opts_t * op, const char * key, const char * buf,
             pr2serr("bad argument to '%s='\n", key);
             return SG_LIB_SYNTAX_ERROR;
         }
+        if (ll > MAX_COUNT_SKIP_SEEK) {
+            pr2serr("bad argument to '%s=' it is > %"
+                    PRId64 "\n", key, MAX_COUNT_SKIP_SEEK);
+            return SG_LIB_SYNTAX_ERROR;
+        }
         (*sgl_pp)->lba = (uint64_t)ll;
         *num_elems_p = 1;
         if (vb > 1)
@@ -1218,32 +1223,37 @@ ddpt_cl_parse(struct opts_t * op, int argc, char * argv[],
         parsed = true;  /* assume will be parsed, set false by final else */
         if (0 == strcmp(key, "bpt")) {
             if (op->bpt_given) {
-                pr2serr("Only one bpt= argument please\n");
+                pr2serr("Only one bpt=BPT argument please\n");
                 return SG_LIB_CONTRADICT;
             }
             cp = strchr(buf, ',');
             if (cp)
                 *cp = '\0';
-            if ((n = sg_get_num(buf)) < 0) {
-                pr2serr("bad BPT argument to 'bpt='\n");
+            n = sg_get_num(buf);
+            if ((n < 0) || (n > MAX_BPT_VALUE)) {
+                pr2serr("bpt must be >= 0 and <= %d\n", MAX_BPT_VALUE);
                 return SG_LIB_SYNTAX_ERROR;
             }
             if (n > 0) {
                 op->bpt_i = n;
                 op->bpt_given = true;
             }
+            /* if bpt=0 then leave bpt_given=false so default_bpt_i()
+             * is called. */
             if (cp) {
                 n = sg_get_num(cp + 1);
-                if (n < 0) {
-                    pr2serr("bad OBPC argument to 'bpt='\n");
+                if ((n < 0) || (n > MAX_BPT_VALUE)) {
+                    pr2serr("OBPC argument to 'bpt=BPT,OBPC' must be >= 0 "
+                            "and <= %d\n", MAX_BPT_VALUE);
                     return SG_LIB_SYNTAX_ERROR;
                 }
                 op->obpch = n;
             }
         } else if (0 == strcmp(key, "bs")) {
             n = sg_get_num(buf);
-            if (n < 0) {
-                pr2serr("bad argument to 'bs='\n");
+            if ((n < 0) || (n > MAX_BPT_VALUE)) {
+                pr2serr("bad argument to 'bs=' (negative or > %d)\n",
+                        MAX_BPT_VALUE);
                 return SG_LIB_SYNTAX_ERROR;
             }
             if (op->bs_given) {
@@ -1327,6 +1337,11 @@ ddpt_cl_parse(struct opts_t * op, int argc, char * argv[],
                     pr2serr("bad argument to 'count='\n");
                     return SG_LIB_SYNTAX_ERROR;
                 }
+                if (op->dd_count > MAX_COUNT_SKIP_SEEK) {
+                    pr2serr("bad argument to 'count=' it is > %"
+                            PRId64 "\n", MAX_COUNT_SKIP_SEEK);
+                    return SG_LIB_SYNTAX_ERROR;
+                }
             }   /* 'count=-1' is accepted, means calculate count */
             op->count_given = true;
         } else if (0 == strcmp(key, "ddpt")) {  /* check version number */
@@ -1385,8 +1400,9 @@ ddpt_cl_parse(struct opts_t * op, int argc, char * argv[],
             }
         } else if (0 == strcmp(key, "ibs")) {
             n = sg_get_num(buf);
-            if (n < 0) {
-                pr2serr("bad argument to 'ibs='\n");
+            if ((n < 0) || (n > MAX_BPT_VALUE)) {
+                pr2serr("bad argument to 'ibs=' must be >= 0 "
+                        "and <= %d\n", MAX_BPT_VALUE);
                 return SG_LIB_SYNTAX_ERROR;
             }
             if (op->bs_given) {
@@ -1418,7 +1434,7 @@ ddpt_cl_parse(struct opts_t * op, int argc, char * argv[],
             }
         } else if (strcmp(key, "if") == 0) {
             if ('\0' != op->idip->fn[0]) {
-                pr2serr("Second IFILE argument??\n");
+                pr2serr("Second if=IFILE operand ??\n");
                 return SG_LIB_CONTRADICT;
             } else if (0 == strlen(buf)) {
                 pr2serr("expected if=IFILE but no IFILE argument\n");
@@ -1463,8 +1479,9 @@ ddpt_cl_parse(struct opts_t * op, int argc, char * argv[],
             op->list_id_given = true;
         } else if (0 == strcmp(key, "obs")) {
             n = sg_get_num(buf);
-            if (n < 0) {
-                pr2serr("bad argument to 'obs='\n");
+            if ((n < 0) || (n > MAX_BPT_VALUE)) {
+                pr2serr("bad argument to 'obs=' must be >= 0 "
+                        "and <= %d\n", MAX_BPT_VALUE);
                 return SG_LIB_SYNTAX_ERROR;
             }
             if (op->bs_given) {
