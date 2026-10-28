@@ -66,7 +66,7 @@
 #include <inttypes.h>
 #include <sys/stat.h>
 
-static const char * ddpt_sparse_version_str = "0.98 20261020 [svn: r434]";
+static const char * ddpt_sparse_version_str = "0.98 20261028 [svn: r435]";
 
 static const char * my_name = "ddpt_sparse: ";
 
